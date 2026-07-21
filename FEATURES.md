@@ -62,23 +62,56 @@ Newest changes are noted in the changelog at the bottom.
 - **Custom icon** — gradient (indigo→violet) rounded tile with a white checkmark.
 - **Font** — Segoe UI Variable (Windows 11 optical sizes).
 
+## Sync (self-hosted)
+
+- **Your own server** — `npm run server` starts a sync server on any machine.
+  It prints its LAN addresses and an access token on first run. Nothing is sent
+  anywhere else; there is no hosted service.
+- **Connect a device** — the ☁ button takes a server address and token, with a
+  "Test" that checks reachability separately from the token, so a wrong address
+  reports itself as a wrong address.
+- **Offline first** — the app always reads and writes its own local database.
+  Sync is a background reconcile, never something the UI waits for.
+- **Conflicts** — last edit wins per row. Deletes travel as tombstones, so a
+  removal on one device actually reaches the others. Focus mode stays globally
+  exclusive even when two devices each focused a different task while offline.
+
+## Platforms
+
+- **Windows** — the always-on-top widget described above.
+- **iOS / Android** — the same lists and data, without the window chrome
+  (always-on-top has no meaning on a phone). Installed on iPhone from an
+  unsigned build signed locally with Sideloadly or AltStore.
+
 ## Under the hood
 
-- **Tauri v2** (Rust backend) + vanilla TypeScript frontend (Vite).
-- **SQLite persistence** — a single `tasks` table (state = `completed_at`) plus a
-  `side_thoughts` table, stored in the OS app-data dir. History survives upgrades.
+- **Flutter** (Dart) for all platforms, replacing the Tauri v2 + TypeScript
+  build. The Windows widget keeps its frameless, transparent, acrylic,
+  always-on-top window via `window_manager` and `flutter_acrylic`.
+- **SQLite persistence** on every device — `workspaces`, `tasks` and
+  `side_thoughts`. Rows are keyed by UUID and carry `updated_at` and
+  `deleted_at`, which is what makes them syncable; the old autoincrement ids
+  collided as soon as two devices were offline at once.
+- **Sync server** — Node + Express + SQLite under `server/`.
 
 ## Ideas / backlog (not built yet)
 
+- Automatic background sync (currently "Sync now" in the settings dialog).
 - Launch on Windows startup.
 - System tray icon.
 - Due dates or reminders.
 - Light theme / theme toggle.
+- Global shortcuts (Ctrl+Alt+T / Ctrl+Alt+H) — not yet reimplemented in Flutter.
 
 ---
 
 ## Changelog
 
+- **0.7.0** — Went cross-platform. Rewrote the client in Flutter (Windows, iOS,
+  Android) and added a self-hosted sync server so the same lists follow you
+  between devices. Deleting a task now leaves a tombstone instead of dropping
+  the row, so deletes actually propagate. iOS builds are produced by CI as an
+  unsigned .ipa for local signing.
 - **0.6.0** — Focus mode: ▶ on a task now flies it into a tile in the middle
   of the window and hides everything else, instead of just tinting the row. One
   task at a time (it used to allow several), and it survives a restart. Optional

@@ -58,6 +58,14 @@ Newest changes are noted in the changelog at the bottom.
   side thought remains, so you're forced to move everything into your real
   planner (or check it off) first. The footer shakes red ("Clear it all first")
   when a close is refused; once the list and thoughts are empty, it closes.
+- **Global shortcuts** (desktop) — **Ctrl+Alt+T** jumps straight into the
+  add-task field and **Ctrl+Alt+H** into the side-thought field, from anywhere,
+  even when the widget is minimised or behind another window. Both raise the
+  window and leave focus mode first, since the capture fields sit behind the
+  focus overlay. If another application already owns a combination, the footer
+  says so rather than leaving a dead shortcut.
+- **Esc** leaves focus mode; **Ctrl+Enter** in either capture field keeps it
+  open to chain another entry, plain **Enter** closes it.
 - **Resizable** within sensible min bounds.
 - **Custom icon** — gradient (indigo→violet) rounded tile with a white checkmark.
 - **Font** — Segoe UI Variable (Windows 11 optical sizes).
@@ -96,12 +104,11 @@ Newest changes are noted in the changelog at the bottom.
 
 ## Ideas / backlog (not built yet)
 
-- Automatic background sync (currently "Sync now" in the settings dialog).
 - Launch on Windows startup.
 - System tray icon.
 - Due dates or reminders.
 - Light theme / theme toggle.
-- Global shortcuts (Ctrl+Alt+T / Ctrl+Alt+H) — not yet reimplemented in Flutter.
+- Configurable shortcut combinations (currently fixed at Ctrl+Alt+T / Ctrl+Alt+H).
 
 ---
 
@@ -109,9 +116,10 @@ Newest changes are noted in the changelog at the bottom.
 
 - **0.7.0** — Went cross-platform. Rewrote the client in Flutter (Windows, iOS,
   Android) and added a self-hosted sync server so the same lists follow you
-  between devices. Deleting a task now leaves a tombstone instead of dropping
-  the row, so deletes actually propagate. iOS builds are produced by CI as an
-  unsigned .ipa for local signing.
+  between devices, syncing automatically. Deleting a task now leaves a
+  tombstone instead of dropping the row, so deletes actually propagate, and
+  deleting a workspace takes its tasks with it. Global shortcuts are back.
+  iOS builds are produced by CI as an unsigned .ipa for local signing.
 - **0.6.0** — Focus mode: ▶ on a task now flies it into a tile in the middle
   of the window and hides everything else, instead of just tinting the row. One
   task at a time (it used to allow several), and it survives a restart. Optional

@@ -12,6 +12,7 @@ import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:window_manager/window_manager.dart';
 
 import 'app_state.dart';
+import 'shortcuts.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
 import 'sync/sync_service.dart';
@@ -124,6 +125,11 @@ class _WidgetShellState extends State<WidgetShell>
     duration: T.heroDur,
   );
 
+  late final GlobalShortcuts _shortcuts = GlobalShortcuts(
+    onAddTask: _jumpToAddTask,
+    onAddThought: _jumpToAddThought,
+  );
+
   _Focus _phase = _Focus.none;
   Rect? _fromRect;
   Rect? _toRect;
@@ -139,12 +145,49 @@ class _WidgetShellState extends State<WidgetShell>
     // A task left in progress at last close reopens straight into focus, with
     // no flight - there is no row for it to have flown from.
     if (s.focusTask != null) _phase = _Focus.resting;
+    _registerShortcuts();
+  }
+
+  Future<void> _registerShortcuts() async {
+    final failed = await _shortcuts.register();
+    if (!mounted || failed.isEmpty) return;
+    // Another app already owns the combination. Say so rather than leaving a
+    // shortcut that silently does nothing.
+    setState(() => _blockedMessage = '${failed.join(' / ')} unavailable');
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _blockedMessage = null);
+    });
+  }
+
+  /// Raise the window, leave focus mode, and hand back control to the caller
+  /// so it can put the caret where it wants it. Both capture fields sit behind
+  /// the focus overlay, so jumping to either has to leave focus first.
+  Future<bool> _surfaceForCapture() async {
+    if (isDesktop) {
+      if (await windowManager.isMinimized()) await windowManager.restore();
+      await windowManager.show();
+      await windowManager.focus();
+    }
+    if (s.focusTask != null) await _exitFocus();
+    return mounted;
+  }
+
+  Future<void> _jumpToAddTask() async {
+    if (!await _surfaceForCapture()) return;
+    if (s.showHistory) s.toggleHistory();
+    _addFocus.requestFocus();
+  }
+
+  Future<void> _jumpToAddThought() async {
+    if (!await _surfaceForCapture()) return;
+    _footerKey.currentState?.openAndFocus();
   }
 
   @override
   void dispose() {
     s.removeListener(_onState);
     widget.sync.removeListener(_onState);
+    _shortcuts.dispose();
     if (isDesktop) windowManager.removeListener(this);
     _hero.dispose();
     _addController.dispose();

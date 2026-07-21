@@ -30,7 +30,11 @@ class LocalStore {
 
   static const _tables = ['workspaces', 'tasks', 'side_thoughts'];
 
-  static Future<LocalStore> open({String? path}) async {
+  /// [singleInstance] false forces a genuinely new database rather than a
+  /// cached handle. sqflite keys its cache on the path, so repeated opens of
+  /// `:memory:` otherwise all return the *same* database - which silently
+  /// shares state between tests that each believe they are starting clean.
+  static Future<LocalStore> open({String? path, bool singleInstance = true}) async {
     // sqflite ships a mobile implementation only; desktop needs the FFI one.
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       sqfliteFfiInit();
@@ -42,7 +46,11 @@ class LocalStore {
 
     final db = await databaseFactory.openDatabase(
       dbPath,
-      options: OpenDatabaseOptions(version: 1, onCreate: _create),
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: _create,
+        singleInstance: singleInstance,
+      ),
     );
     return LocalStore._(db);
   }
@@ -188,6 +196,50 @@ class LocalStore {
         whereArgs: [uuid],
       );
     });
+  }
+
+  /// Persist the manual drag order. Writing every row keeps sort_order dense,
+  /// so a later insert cannot land ambiguously between two equal values.
+  Future<void> reorderTasks(List<String> uuids) async {
+    final stamp = nowStamp();
+    await _db.transaction((txn) async {
+      for (var i = 0; i < uuids.length; i++) {
+        await txn.update(
+          'tasks',
+          {'sort_order': i, 'updated_at': stamp, 'dirty': 1},
+          where: 'uuid = ?',
+          whereArgs: [uuids[i]],
+        );
+      }
+    });
+  }
+
+  /// Next sort_order for a new task, so it appends rather than jumping to the
+  /// top of a manually ordered list.
+  Future<int> nextSortOrder(String workspaceUuid) async {
+    final rows = await _db.rawQuery(
+      'SELECT MAX(sort_order) AS m FROM tasks WHERE workspace_uuid = ?',
+      [workspaceUuid],
+    );
+    return ((rows.first['m'] as num?)?.toInt() ?? -1) + 1;
+  }
+
+  // --------------------------------------------------------------- settings
+
+  // Small key/value settings (last workspace, nudge toggle, server address)
+  // share the sync_state table rather than pulling in another dependency.
+  // These are deliberately device-local and never synced: which workspace this
+  // device is looking at is not a fact about the todo list.
+
+  Future<String?> setting(String key) async {
+    final rows = await _db
+        .query('sync_state', where: 'key = ?', whereArgs: [key], limit: 1);
+    return rows.isEmpty ? null : rows.first['value'] as String?;
+  }
+
+  Future<void> setSetting(String key, String value) async {
+    await _db.insert('sync_state', {'key': key, 'value': value},
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // ------------------------------------------------------------------- sync

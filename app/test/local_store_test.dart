@@ -15,8 +15,12 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  Future<LocalStore> freshStore() =>
-      LocalStore.open(path: inMemoryDatabasePath);
+  // singleInstance: false so each test gets its own database rather than a
+  // cached handle to a shared one.
+  Future<LocalStore> freshStore() => LocalStore.open(
+        path: inMemoryDatabasePath,
+        singleInstance: false,
+      );
 
   Task sampleTask(String uuid, String text, String updatedAt) => Task(
         uuid: uuid,

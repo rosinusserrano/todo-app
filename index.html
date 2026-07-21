@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Todo Widget</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <div class="widget">
+      <header class="titlebar" data-tauri-drag-region>
+        <span class="title" data-tauri-drag-region>Todo</span>
+        <div class="titlebar-actions">
+          <button id="pin-btn" class="icon-btn active" title="Always on top">📌</button>
+          <button id="history-btn" class="icon-btn" title="History">🕘</button>
+          <button id="min-btn" class="icon-btn" title="Minimize">—</button>
+          <button id="close-btn" class="icon-btn" title="Close">✕</button>
+        </div>
+      </header>
+
+      <div id="workspace-bar" class="workspace-bar">
+        <ul id="workspace-list" class="workspace-list"></ul>
+        <button id="workspace-add-btn" class="icon-btn workspace-add-btn" title="New workspace">＋</button>
+      </div>
+
+      <form id="workspace-form" class="workspace-form hidden">
+        <input
+          id="workspace-name-input"
+          type="text"
+          placeholder="Workspace name…"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="24"
+        />
+        <div id="workspace-color-picker" class="workspace-color-picker"></div>
+        <div class="workspace-form-actions">
+          <button id="workspace-delete-btn" type="button" class="workspace-form-btn danger hidden">Delete</button>
+          <span class="spacer"></span>
+          <button id="workspace-cancel-btn" type="button" class="workspace-form-btn">Cancel</button>
+          <button type="submit" class="workspace-form-btn primary">Save</button>
+        </div>
+      </form>
+
+      <form id="add-form" class="add-row">
+        <input
+          id="add-input"
+          type="text"
+          placeholder="Add a task…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </form>
+
+      <section id="active-view">
+        <ul id="task-list" class="task-list"></ul>
+        <p id="empty-state" class="empty">Nothing left. Nice. ✨</p>
+      </section>
+
+      <section id="history-view" class="hidden">
+        <h2 class="history-title">Done recently</h2>
+        <ul id="history-list" class="task-list history"></ul>
+        <p id="history-empty" class="empty">No completed tasks yet.</p>
+      </section>
+
+      <!-- Focus mode: overlays everything below the title bar so the task in
+           progress is the only thing on screen. The tile flies in from the row
+           it was activated from (see enterFocus in main.ts). -->
+      <section id="focus-view" class="focus-view hidden">
+        <div id="focus-tile" class="focus-tile">
+          <span id="focus-text" class="focus-text"></span>
+        </div>
+        <div id="focus-controls" class="focus-controls">
+          <button id="focus-done-btn" class="focus-btn primary" title="Check it off">✓ Done</button>
+          <button id="focus-exit-btn" class="focus-btn" title="Leave focus mode">Back to list</button>
+        </div>
+        <button id="nudge-btn" class="nudge-btn" title="Bob the tile when you go quiet">
+          <span class="nudge-dot"></span>Nudge
+        </button>
+      </section>
+
+      <footer class="footer">
+        <ul id="thought-list" class="thought-list hidden"></ul>
+        <div id="footer-bar" class="footer-bar">
+          <button id="thought-btn" class="thought-btn" title="Capture a side thought">💭</button>
+          <form id="thought-form" class="thought-form collapsed">
+            <input
+              id="thought-input"
+              type="text"
+              placeholder="Side thought…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </form>
+          <span id="thought-count" class="thought-count"></span>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,94 @@
+name: Build iOS IPA
+
+# Produces an UNSIGNED .ipa. GitHub's macOS runners have no access to an Apple
+# signing identity, and this project deliberately does not require a paid Apple
+# Developer account, so the archive is built with --no-codesign and signed
+# afterwards on your own machine.
+#
+# To install on an iPhone:
+#   1. Download the "Runner-unsigned-ipa" artifact from this run (or the file
+#      attached to the release, if this ran from a tag).
+#   2. Open it with Sideloadly or AltStore and sign with your Apple ID.
+#   3. On the phone: Settings > General > VPN & Device Management > trust the
+#      developer certificate.
+#
+# A free Apple ID signs apps for 7 days, after which the app stops launching
+# and must be re-signed with the same tool. AltStore can refresh it
+# automatically while the phone is on the same network as AltServer.
+#
+# To move to real signing later, the only change needed is to drop
+# --no-codesign, add an ExportOptions.plist, and import a certificate from
+# secrets - the rest of this workflow stays as it is.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show toolchain
+        working-directory: app
+        run: flutter --version
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze
+
+      - name: Test
+        working-directory: app
+        run: flutter test
+
+      - name: Build unsigned iOS release
+        working-directory: app
+        run: flutter build ios --release --no-codesign
+
+      # An .ipa is just a zip with the .app inside a top-level Payload/
+      # directory. `flutter build ipa` would normally do this, but it insists on
+      # an export method and a signing identity, neither of which exist here.
+      - name: Package Runner.app into an .ipa
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
+          cd build/ipa
+          zip -qry Runner-unsigned.ipa Payload
+          ls -lh Runner-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Runner-unsigned-ipa
+          path: app/build/ipa/Runner-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      # Tagged builds also get a permanent download link, so a known-good
+      # version can be re-installed later without re-running CI (artifacts
+      # expire, releases do not).
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/ipa/Runner-unsigned.ipa
+          body: |
+            Unsigned iOS build. Sign with Sideloadly or AltStore using your
+            Apple ID, then trust the certificate under
+            Settings > General > VPN & Device Management.

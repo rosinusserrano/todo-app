@@ -24,6 +24,12 @@ class AppState extends ChangeNotifier {
 
   LocalStore get store => _store;
 
+  /// Called after any change that produces dirty rows, so sync can be
+  /// scheduled. Left null in tests, which have no server.
+  void Function()? onMutated;
+
+  void _mutated() => onMutated?.call();
+
   List<Workspace> workspaces = [];
   String? currentWorkspaceUuid;
 
@@ -72,6 +78,7 @@ class AppState extends ChangeNotifier {
     await _store.setSetting(_kLastWorkspace, uuid);
     showHistory = false;
     await refreshTasks();
+    _mutated();
   }
 
   Future<void> saveWorkspace({
@@ -101,18 +108,29 @@ class AppState extends ChangeNotifier {
     await refreshWorkspaces();
   }
 
-  /// Tombstones the workspace. Its tasks are left alone rather than cascaded:
-  /// they are still real history, and a cascade here would be irreversible
-  /// across every synced device.
+  /// Tombstones the workspace and everything in it.
+  ///
+  /// The cascade covers completed tasks as well as active ones, otherwise
+  /// history would keep pointing at a workspace that no longer exists. Every
+  /// row is tombstoned rather than dropped, so the deletion reaches other
+  /// devices - and note that it reaches them irreversibly, since there is no
+  /// undo once a peer has merged it.
   Future<void> deleteWorkspace(String uuid) async {
     if (workspaces.length <= 1) return;
+    final stamp = nowStamp();
+
+    for (final t in await _store.allTasksInWorkspace(uuid)) {
+      await _store.putTask(t.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+
     final ws = workspaces.firstWhere((w) => w.uuid == uuid);
-    await _store.putWorkspace(
-      ws.copyWith(deletedAt: nowStamp(), updatedAt: nowStamp()),
-    );
+    await _store.putWorkspace(ws.copyWith(deletedAt: stamp, updatedAt: stamp));
+
+    if (focusTask?.workspaceUuid == uuid) focusTask = null;
     currentWorkspaceUuid = null;
     await refreshWorkspaces();
     await refreshTasks();
+    _mutated();
   }
 
   // ---------------------------------------------------------------- tasks
@@ -141,6 +159,7 @@ class AppState extends ChangeNotifier {
       updatedAt: nowStamp(),
     ));
     await refreshTasks();
+    _mutated();
   }
 
   /// Check off: keeps the row and stamps completed_at, so it shows in history.
@@ -150,6 +169,7 @@ class AppState extends ChangeNotifier {
     );
     if (focusTask?.uuid == t.uuid) focusTask = null;
     await refreshTasks();
+    _mutated();
   }
 
   /// Dismiss without logging: tombstoned, so the delete reaches other devices.
@@ -161,11 +181,13 @@ class AppState extends ChangeNotifier {
     );
     if (focusTask?.uuid == t.uuid) focusTask = null;
     await refreshTasks();
+    _mutated();
   }
 
   Future<void> reorder(List<String> uuids) async {
     await _store.reorderTasks(uuids);
     await refreshTasks();
+    _mutated();
   }
 
   Future<void> toggleHistory() async {
@@ -182,6 +204,7 @@ class AppState extends ChangeNotifier {
     await _store.setInProgress(t.uuid, true);
     focusTask = t;
     await refreshTasks();
+    _mutated();
   }
 
   Future<void> exitFocus() async {
@@ -190,6 +213,7 @@ class AppState extends ChangeNotifier {
     focusTask = null;
     await _store.setInProgress(t.uuid, false);
     await refreshTasks();
+    _mutated();
   }
 
   /// If a task was still in progress when the app last closed, drop straight
@@ -229,6 +253,7 @@ class AppState extends ChangeNotifier {
       updatedAt: nowStamp(),
     ));
     await refreshThoughts();
+    _mutated();
   }
 
   /// Tidy a thought into a real task. The thought is resolved rather than
@@ -243,6 +268,7 @@ class AppState extends ChangeNotifier {
       s.copyWith(resolvedAt: nowStamp(), updatedAt: nowStamp()),
     );
     await refreshThoughts();
+    _mutated();
   }
 
   /// The close guard reads the database directly rather than the cached list,

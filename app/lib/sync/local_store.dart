@@ -146,6 +146,16 @@ class LocalStore {
     return rows.map(Task.fromMap).toList();
   }
 
+  /// Every live task in a workspace, completed ones included. Used by the
+  /// workspace cascade, which must tombstone history too - leaving completed
+  /// rows behind would resurrect them in a workspace that no longer exists.
+  Future<List<Task>> allTasksInWorkspace(String workspaceUuid) async {
+    final rows = await _db.query('tasks',
+        where: 'workspace_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [workspaceUuid]);
+    return rows.map(Task.fromMap).toList();
+  }
+
   Future<Task?> inProgressTask() async {
     final rows = await _db.query('tasks',
         where: 'in_progress = 1 AND completed_at IS NULL AND deleted_at IS NULL',

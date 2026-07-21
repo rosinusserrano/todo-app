@@ -14,6 +14,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app_state.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
+import 'sync/sync_service.dart';
 import 'theme.dart';
 import 'ui/footer.dart';
 import 'ui/settings_dialog.dart';
@@ -58,20 +59,35 @@ Future<void> main() async {
   final state = AppState(store);
   await state.load();
 
-  runApp(TodoApp(state: state));
+  // Sync pulls the UI, not the other way round: a merge that brings rows in
+  // has to refresh whatever is on screen, or the user sees stale lists until
+  // they happen to switch workspace.
+  final sync = SyncService(
+    store,
+    onChangesApplied: () async {
+      await state.refreshWorkspaces();
+      await state.refreshTasks();
+      await state.refreshThoughts();
+    },
+  );
+  state.onMutated = sync.scheduleSync;
+  await sync.load();
+
+  runApp(TodoApp(state: state, sync: sync));
 }
 
 class TodoApp extends StatelessWidget {
-  const TodoApp({super.key, required this.state});
+  const TodoApp({super.key, required this.state, required this.sync});
 
   final AppState state;
+  final SyncService sync;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: T.themeData(),
-      home: WidgetShell(state: state),
+      home: WidgetShell(state: state, sync: sync),
     );
   }
 }
@@ -82,9 +98,10 @@ class TodoApp extends StatelessWidget {
 enum _Focus { none, flyingIn, resting, flyingOut }
 
 class WidgetShell extends StatefulWidget {
-  const WidgetShell({super.key, required this.state});
+  const WidgetShell({super.key, required this.state, required this.sync});
 
   final AppState state;
+  final SyncService sync;
 
   @override
   State<WidgetShell> createState() => _WidgetShellState();
@@ -117,6 +134,7 @@ class _WidgetShellState extends State<WidgetShell>
   void initState() {
     super.initState();
     s.addListener(_onState);
+    widget.sync.addListener(_onState);
     if (isDesktop) windowManager.addListener(this);
     // A task left in progress at last close reopens straight into focus, with
     // no flight - there is no row for it to have flown from.
@@ -126,6 +144,7 @@ class _WidgetShellState extends State<WidgetShell>
   @override
   void dispose() {
     s.removeListener(_onState);
+    widget.sync.removeListener(_onState);
     if (isDesktop) windowManager.removeListener(this);
     _hero.dispose();
     _addController.dispose();
@@ -310,6 +329,8 @@ class _WidgetShellState extends State<WidgetShell>
                     onClose: () =>
                         isDesktop ? windowManager.close() : null,
                     onOpenSettings: _openSettings,
+                    syncColor: _syncColor(),
+                    syncTooltip: widget.sync.describe(),
                   ),
                 ),
               ],
@@ -339,8 +360,20 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _openSettings() async {
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
-    await showSyncSettings(context, s);
+    await showSyncSettings(context, widget.sync);
   }
+
+  /// Blocked (bad token/address) is red rather than amber: it will not recover
+  /// on its own, so it needs to look different from a server that is merely
+  /// asleep.
+  Color _syncColor() => switch (widget.sync.status) {
+        SyncStatus.off => T.muted,
+        SyncStatus.idle => T.muted,
+        SyncStatus.syncing => T.accent,
+        SyncStatus.ok => const Color(0xFF7EE3A1),
+        SyncStatus.error => const Color(0xFFFFCF6C),
+        SyncStatus.blocked => T.danger,
+      };
 
   Widget _body(Color ws) {
     return Column(

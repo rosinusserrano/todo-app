@@ -1,153 +1,119 @@
 // Sync configuration.
 //
-// The server is self-hosted, so the address and token are things the user types
-// in from their own server's console. Both are stored device-locally and never
-// synced.
+// The server is self-hosted, so the address and token come from the user's own
+// server console. Both are stored device-locally and never synced.
 //
-// "Test" checks reachability before "Sync now" is worth trying, so a wrong
-// address reports itself as a wrong address rather than as an auth failure.
+// "Test" checks reachability without the token, so a wrong address reports
+// itself as a wrong address rather than as an auth failure.
 
 import 'package:flutter/material.dart';
 
-import '../app_state.dart';
 import '../sync/sync_client.dart';
+import '../sync/sync_service.dart';
 import '../theme.dart';
 
-const kServerUrl = 'sync:server-url';
-const kServerToken = 'sync:token';
-
-Future<void> showSyncSettings(BuildContext context, AppState state) {
+Future<void> showSyncSettings(BuildContext context, SyncService sync) {
   return showDialog(
     context: context,
-    builder: (_) => _SyncDialog(state: state),
+    builder: (_) => _SyncDialog(sync: sync),
   );
 }
 
 class _SyncDialog extends StatefulWidget {
-  const _SyncDialog({required this.state});
+  const _SyncDialog({required this.sync});
 
-  final AppState state;
+  final SyncService sync;
 
   @override
   State<_SyncDialog> createState() => _SyncDialogState();
 }
 
 class _SyncDialogState extends State<_SyncDialog> {
-  final _url = TextEditingController();
-  final _token = TextEditingController();
+  late final _url = TextEditingController(text: widget.sync.baseUrl ?? '');
+  late final _token = TextEditingController(text: widget.sync.token ?? '');
 
-  String? _message;
-  bool _ok = false;
+  String? _testMessage;
+  bool _testOk = false;
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final store = widget.state.store;
-    _url.text = await store.setting(kServerUrl) ?? '';
-    _token.text = await store.setting(kServerToken) ?? '';
-    if (mounted) setState(() {});
+    widget.sync.addListener(_onSync);
   }
 
   @override
   void dispose() {
+    widget.sync.removeListener(_onSync);
     _url.dispose();
     _token.dispose();
     super.dispose();
   }
 
-  SyncClient? _client() {
-    final base = SyncClient.parseBase(_url.text);
-    if (base == null) {
-      setState(() {
-        _message = 'Enter an address like 192.168.2.184:8787';
-        _ok = false;
-      });
-      return null;
-    }
-    return SyncClient(baseUrl: base.toString(), token: _token.text.trim());
-  }
-
-  Future<void> _save() async {
-    final store = widget.state.store;
-    final base = SyncClient.parseBase(_url.text);
-    await store.setSetting(kServerUrl, base?.toString() ?? '');
-    await store.setSetting(kServerToken, _token.text.trim());
+  void _onSync() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _test() async {
-    final client = _client();
-    if (client == null) return;
+    final base = SyncClient.parseBase(_url.text);
+    if (base == null) {
+      setState(() {
+        _testOk = false;
+        _testMessage = 'Enter an address like 192.168.2.184:8787';
+      });
+      return;
+    }
+
     setState(() {
       _busy = true;
-      _message = null;
+      _testMessage = null;
     });
 
+    final client = SyncClient(baseUrl: base.toString(), token: _token.text.trim());
     final result = await client.checkReachable();
     client.dispose();
     if (!mounted) return;
 
     setState(() {
       _busy = false;
-      _ok = result is SyncOk;
-      _message = switch (result) {
+      _testOk = result is SyncOk;
+      _testMessage = switch (result) {
         SyncOk() => 'Server reachable.',
         SyncFailed(:final message) => message,
       };
     });
   }
 
-  Future<void> _syncNow() async {
-    final client = _client();
-    if (client == null) return;
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
-
-    await _save();
-    final result = await client.syncOnce(widget.state.store);
-    client.dispose();
-    if (!mounted) return;
-
-    if (result is SyncOk) {
-      // The lists on screen are now stale - the merge may have brought in
-      // tasks from another device.
-      await widget.state.refreshWorkspaces();
-      await widget.state.refreshTasks();
-      await widget.state.refreshThoughts();
-    }
-    if (!mounted) return;
-
-    setState(() {
-      _busy = false;
-      _ok = result is SyncOk;
-      _message = switch (result) {
-        SyncOk(:final applied, :final pushed) =>
-          'Synced. Sent $pushed, received $applied.',
-        SyncFailed(:final message) => message,
-      };
-    });
+  Future<void> _saveAndSync() async {
+    setState(() => _busy = true);
+    await widget.sync.configure(_url.text, _token.text);
+    await widget.sync.syncNow();
+    if (mounted) setState(() => _busy = false);
   }
+
+  Color _statusColor() => switch (widget.sync.status) {
+        SyncStatus.ok => const Color(0xFF7EE3A1),
+        SyncStatus.error => const Color(0xFFFFCF6C),
+        SyncStatus.blocked => T.danger,
+        _ => T.muted,
+      };
 
   @override
   Widget build(BuildContext context) {
+    final sync = widget.sync;
+
     return AlertDialog(
       backgroundColor: T.bgSolid,
       title: const Text('Sync', style: TextStyle(fontSize: 15)),
       content: SizedBox(
-        width: 320,
+        width: 330,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Run `npm run server` on any machine, then enter the address '
-              'and token it prints.',
+              'Run `npm run server` on any machine, then enter the address and '
+              'token it prints. Everything stays on your own hardware.',
               style: TextStyle(fontSize: 11.5, color: T.muted, height: 1.4),
             ),
             const SizedBox(height: 14),
@@ -170,38 +136,57 @@ class _SyncDialogState extends State<_SyncDialog> {
                 isDense: true,
               ),
             ),
-            if (_message != null) ...[
-              const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: _statusColor(),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    sync.describe(),
+                    style: TextStyle(fontSize: 11.5, color: _statusColor()),
+                  ),
+                ),
+              ],
+            ),
+            if (_testMessage != null) ...[
+              const SizedBox(height: 8),
               Text(
-                _message!,
+                _testMessage!,
                 style: TextStyle(
                   fontSize: 11.5,
-                  color: _ok ? const Color(0xFF7EE3A1) : T.danger,
+                  color: _testOk ? const Color(0xFF7EE3A1) : T.danger,
                 ),
               ),
             ],
-            if (_busy) ...[
-              const SizedBox(height: 12),
+            if (_busy || sync.status == SyncStatus.syncing) ...[
+              const SizedBox(height: 10),
               const LinearProgressIndicator(minHeight: 2),
             ],
+            const SizedBox(height: 6),
+            const Text(
+              'Syncs automatically every minute and shortly after each change.',
+              style: TextStyle(fontSize: 10.5, color: T.muted),
+            ),
           ],
         ),
       ),
       actions: [
+        TextButton(onPressed: _busy ? null : _test, child: const Text('Test')),
         TextButton(
-          onPressed: _busy ? null : _test,
-          child: const Text('Test'),
-        ),
-        TextButton(
-          onPressed: () async {
-            await _save();
-            if (context.mounted) Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
           child: const Text('Close'),
         ),
         FilledButton(
-          onPressed: _busy ? null : _syncNow,
-          child: const Text('Sync now'),
+          onPressed: _busy ? null : _saveAndSync,
+          child: const Text('Save & sync'),
         ),
       ],
     );

@@ -21,6 +21,8 @@ class TitleBar extends StatelessWidget {
     required this.onToggleHistory,
     required this.onClose,
     required this.onOpenSettings,
+    required this.syncColor,
+    required this.syncTooltip,
   });
 
   static const height = 40.0;
@@ -31,6 +33,12 @@ class TitleBar extends StatelessWidget {
   final VoidCallback onToggleHistory;
   final VoidCallback onClose;
   final VoidCallback onOpenSettings;
+
+  /// Sync state, surfaced as the cloud icon's colour. A silent failure is worse
+  /// than a visible one here: the user would otherwise believe two devices are
+  /// in step when they are not.
+  final Color syncColor;
+  final String syncTooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -49,8 +57,9 @@ class TitleBar extends StatelessWidget {
           ),
           const Spacer(),
           _Btn(
-            tooltip: 'Sync settings',
+            tooltip: syncTooltip,
             icon: Icons.cloud_outlined,
+            tint: syncColor,
             onPressed: onOpenSettings,
           ),
           _Btn(
@@ -93,12 +102,14 @@ class _Btn extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.active = false,
+    this.tint,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
   final bool active;
+  final Color? tint;
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +123,7 @@ class _Btn extends StatelessWidget {
           child: Icon(
             icon,
             size: 15,
-            color: active ? T.accent : T.muted,
+            color: tint ?? (active ? T.accent : T.muted),
           ),
         ),
       ),

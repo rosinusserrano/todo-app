@@ -129,20 +129,46 @@ void main() {
       expect(s.thoughts, isEmpty);
     });
 
-    test('deleting a workspace leaves its tasks alone', () async {
+    test('deleting a workspace cascades to its tasks, history included',
+        () async {
       final s = await freshState();
       await s.saveWorkspace(name: 'Side project', color: '#7ee3a1');
       final side = s.currentWorkspaceUuid!;
-      await s.addTask('in the side project');
+      await s.addTask('still open');
+      await s.addTask('already done');
+      await s.completeTask(s.tasks.last);
 
       await s.deleteWorkspace(side);
 
-      // The workspace is gone from the tab bar, but the task row survives -
-      // a cascade here would be irreversible across every synced device.
       expect(s.workspaces.any((w) => w.uuid == side), isFalse);
+
+      // Both rows must be tombstoned, not dropped, so the deletion reaches
+      // other devices. Completed ones count: leaving them behind would strand
+      // history in a workspace that no longer exists.
       final rows = await s.store.raw
           .query('tasks', where: 'workspace_uuid = ?', whereArgs: [side]);
-      expect(rows.length, 1);
+      expect(rows.length, 2);
+      expect(rows.every((r) => r['deleted_at'] != null), isTrue);
+    });
+
+    test('deleting the focused workspace drops focus', () async {
+      final s = await freshState();
+      await s.saveWorkspace(name: 'Temp', color: '#ff6c6c');
+      final temp = s.currentWorkspaceUuid!;
+      await s.addTask('focused here');
+      await s.enterFocus(s.tasks.single);
+
+      await s.deleteWorkspace(temp);
+      expect(s.focusTask, isNull);
+    });
+
+    test('a mutation notifies the sync hook', () async {
+      final s = await freshState();
+      var fired = 0;
+      s.onMutated = () => fired++;
+
+      await s.addTask('triggers a sync');
+      expect(fired, greaterThan(0));
     });
 
     test('the last workspace cannot be deleted', () async {

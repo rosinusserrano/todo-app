@@ -22,6 +22,13 @@ class T {
 
   static const radius = 14.0;
 
+  /// How much larger the whole widget is drawn on a phone. Every size in this
+  /// app was picked for a 340x480 desktop window; on a phone that layout is
+  /// still the right layout, it is just small, and its hit targets are smaller
+  /// than a fingertip. See [UiScale] for why this is one number rather than a
+  /// second set of paddings and font sizes.
+  static const mobileScale = 1.28;
+
   /// --hero-dur / --hero-ease. Previously duplicated between CSS and
   /// HERO_MS in main.ts.
   static const heroDur = Duration(milliseconds: 380);
@@ -100,6 +107,47 @@ class T {
         primary: accent,
         error: danger,
         surface: bgSolid,
+      ),
+    );
+  }
+}
+
+/// A global zoom applied to the entire widget.
+///
+/// The desktop and mobile builds share one set of size tokens. Rather than fork
+/// every padding, font size and icon per platform - which would drift the two
+/// builds apart one literal at a time - the tree is laid out at 1/[scale] of
+/// the real viewport and drawn back up as a whole. Proportions stay identical
+/// to the desktop widget by construction, and there is a single number to tune.
+///
+/// The MediaQuery has to be shrunk alongside the transform, or the subtree
+/// lays out for a viewport larger than the one it ends up occupying: the
+/// bottom of the list would fall off the screen, and safe-area insets would be
+/// over-applied by exactly [scale].
+class UiScale extends StatelessWidget {
+  const UiScale({super.key, required this.scale, required this.child});
+
+  final double scale;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (scale == 1.0) return child;
+
+    final mq = MediaQuery.of(context);
+    final size = mq.size / scale;
+
+    return MediaQuery(
+      data: mq.copyWith(
+        size: size,
+        padding: mq.padding / scale,
+        viewPadding: mq.viewPadding / scale,
+        viewInsets: mq.viewInsets / scale,
+      ),
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.topLeft,
+        child: SizedBox.fromSize(size: size, child: child),
       ),
     );
   }

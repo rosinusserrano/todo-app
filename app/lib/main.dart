@@ -92,6 +92,12 @@ class TodoApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: T.themeData(),
+      // Above the Navigator, so dialogs and menus are scaled with everything
+      // else rather than staying desktop-sized on top of a zoomed widget.
+      builder: (context, child) => UiScale(
+        scale: isDesktop ? 1.0 : T.mobileScale,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: WidgetShell(state: state, sync: sync),
     );
   }
@@ -418,7 +424,7 @@ class _WidgetShellState extends State<WidgetShell>
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(T.radius),
-            child: Stack(
+            child: _inset(Stack(
               key: _stackKey,
               children: [
                 // Panels keep their layout and only fade, which is what lets
@@ -457,12 +463,21 @@ class _WidgetShellState extends State<WidgetShell>
                   ),
                 ),
               ],
-            ),
+            )),
           ),
         ),
       ),
     );
   }
+
+  /// On a phone the widget *is* the screen, so the title bar lands under the
+  /// status bar and the side-thought footer under the home indicator. Only the
+  /// content is inset - the tinted background still runs edge to edge, which
+  /// is what makes it read as one surface rather than a letterboxed window.
+  ///
+  /// On desktop there is nothing to avoid, and a SafeArea there would add the
+  /// window's own insets back into a layout that already accounts for them.
+  Widget _inset(Widget child) => isDesktop ? child : SafeArea(child: child);
 
   Future<void> _togglePin() async {
     await windowManager.setAlwaysOnTop(!_pinned);

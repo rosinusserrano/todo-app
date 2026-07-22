@@ -197,6 +197,67 @@ void main() {
     });
   });
 
+  group('UiScale', () {
+    testWidgets('is a no-op at 1.0, so desktop is untouched', (tester) async {
+      late Size seen;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UiScale(
+            scale: 1.0,
+            child: Builder(builder: (context) {
+              seen = MediaQuery.of(context).size;
+              return const SizedBox.shrink();
+            }),
+          ),
+        ),
+      );
+      expect(seen, tester.view.physicalSize / tester.view.devicePixelRatio);
+      expect(find.byType(Transform), findsNothing);
+    });
+
+    testWidgets('lays the subtree out smaller than the viewport it fills',
+        (tester) async {
+      // The transform draws the child back up to full size, so a subtree that
+      // still measured itself against the real viewport would overflow by
+      // exactly the scale factor.
+      final full = tester.view.physicalSize / tester.view.devicePixelRatio;
+      late MediaQueryData seen;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UiScale(
+            scale: 2.0,
+            child: Builder(builder: (context) {
+              seen = MediaQuery.of(context);
+              return const SizedBox.shrink();
+            }),
+          ),
+        ),
+      );
+      expect(seen.size, full / 2);
+    });
+
+    testWidgets('scales safe-area insets with the rest', (tester) async {
+      // Insets arrive in real screen pixels; left unscaled they would be
+      // multiplied by the transform and push the title bar too far down.
+      late EdgeInsets seen;
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(padding: EdgeInsets.only(top: 60)),
+          child: MaterialApp(
+            home: UiScale(
+              scale: 2.0,
+              child: Builder(builder: (context) {
+                seen = MediaQuery.of(context).padding;
+                return const SizedBox.shrink();
+              }),
+            ),
+          ),
+        ),
+      );
+      expect(seen.top, 30);
+    });
+  });
+
   group('TaskRow', () {
     testWidgets('renders the task text and reveals actions on hover',
         (tester) async {

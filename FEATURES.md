@@ -103,7 +103,11 @@ Newest changes are noted in the changelog at the bottom.
   Task Manager's Startup tab is reflected here; if a machine policy refuses the
   change, the switch shows what actually took effect rather than what was asked.
 - **Resizable** within sensible min bounds.
-- **Custom icon** — gradient (indigo→violet) rounded tile with a white checkmark.
+- **Custom icon** — gradient (indigo→violet) rounded tile with a white checkmark,
+  on every platform: taskbar, tray, iOS home screen, Android launcher. iOS gets
+  a full-bleed variant, since it applies its own rounded mask and a tile inside
+  a tile looks like a mistake; the tray art drops most of the padding, which is
+  wasted at the 16px the notification area actually draws.
 - **Font** — Segoe UI Variable (Windows 11 optical sizes).
 
 ## Sync (self-hosted)
@@ -126,6 +130,28 @@ Newest changes are noted in the changelog at the bottom.
 - **iOS / Android** — the same lists and data, without the window chrome
   (always-on-top has no meaning on a phone). Installed on iPhone from an
   unsigned build signed locally with Sideloadly or AltStore.
+- **Sized for a thumb on the phone** — the layout is deliberately the same one
+  as on the desktop, drawn about a quarter larger. It is one zoom applied to
+  the whole widget rather than a second set of mobile paddings, so the two
+  builds cannot drift apart a font size at a time. Content also keeps clear of
+  the status bar and the home indicator, while the tinted background still runs
+  to the edges of the screen.
+
+## Coming from the old version
+
+- **The Tauri database is imported automatically** — the first launch of the
+  Flutter build finds the old app's `todo.db`, copies workspaces, tasks and
+  side thoughts across, and records that it did so, so it never runs twice. The
+  old file is only ever read: if anything goes wrong the original is still sat
+  where it always was.
+- Completed tasks keep the timestamp they were checked off at rather than being
+  stamped with the import. History is the reason this app exists, and an import
+  that reset it would migrate the data while destroying the point of it.
+- Imported rows are marked as local changes, so years of history reach the sync
+  server and the phone the same way a new task does.
+- The empty "Tasks" workspace the fresh install creates stays put alongside the
+  imported ones — deleting a workspace cascades to its tasks, which is not
+  something a migration should decide on its own. Remove it in the app.
 
 ## Under the hood
 
@@ -150,6 +176,14 @@ Newest changes are noted in the changelog at the bottom.
 
 ## Changelog
 
+- **0.9.2** — The app finally looks like itself on every platform: the
+  indigo→violet checkmark replaces the placeholder Flutter logo in the taskbar,
+  the tray, the iOS home screen and the Android launcher. Databases written by
+  the old Tauri build are imported automatically on first launch, so the
+  history from before the rewrite is back — and syncs to the phone with
+  everything else.
+- **0.9.1** — Made the phone build fit the phone: everything is drawn ~28%
+  larger, and the title bar no longer sits underneath the iOS status bar.
 - **0.9.0** — Reminders. A task can be told to nag at one of a few horizons;
   when it comes due the widget surfaces itself and the row stays red until it is
   dealt with. Reminders sync between devices and are stored in the database

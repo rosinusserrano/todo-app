@@ -16,6 +16,7 @@ import 'app_state.dart';
 import 'reminders.dart';
 import 'shortcuts.dart';
 import 'startup.dart';
+import 'sync/legacy_import.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
 import 'sync/sync_service.dart';
@@ -61,6 +62,12 @@ Future<void> main() async {
   }
 
   final store = await LocalStore.open();
+
+  // Before the first read, so the Tauri-era history is already there when the
+  // UI paints rather than appearing a frame later. It is a no-op on every
+  // launch after the first.
+  debugPrint((await LegacyImport.run(store)).toString());
+
   final state = AppState(store);
   await state.load();
 

@@ -61,6 +61,7 @@ function init(db) {
       completed_at   TEXT,
       sort_order     INTEGER NOT NULL DEFAULT 0,
       in_progress    INTEGER NOT NULL DEFAULT 0,
+      remind_at      TEXT,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
@@ -83,6 +84,23 @@ function init(db) {
     CREATE INDEX IF NOT EXISTS idx_tasks_pull         ON tasks         (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_side_thoughts_pull ON side_thoughts (user_id, seq);
   `);
+
+  // `CREATE TABLE IF NOT EXISTS` above does nothing to a database that already
+  // exists, so columns added later need adding explicitly. A server that has
+  // been running since before reminders would otherwise reject every task push
+  // with "no column named remind_at".
+  addColumn(db, 'tasks', 'remind_at', 'TEXT');
+}
+
+/**
+ * Add a column if the table does not already have it. SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, so the check is against the table info.
+ */
+function addColumn(db, table, column, type) {
+  const has = db
+    .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
+    .get(table, column);
+  if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
 
 // Column lists drive the generic merge below. `uuid` and the sync bookkeeping
@@ -96,6 +114,7 @@ export const TABLES = {
     'completed_at',
     'sort_order',
     'in_progress',
+    'remind_at',
   ],
   side_thoughts: ['text', 'created_at', 'resolved_at'],
 };

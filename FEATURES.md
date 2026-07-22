@@ -31,6 +31,31 @@ Newest changes are noted in the changelog at the bottom.
   and pulls you back when you drift. Turn it off and the tile sits still. The
   setting is remembered across restarts.
 
+## Reminders
+
+- **Arm one** — the 🔔 on a task offers a few horizons: in 10 minutes, in 1
+  hour, in 3 hours, this evening (18:00), tomorrow (09:00). Times already past
+  are not offered, so a reminder can never be set into the past.
+- **Always visible once set** — an armed bell stays on the row without hovering
+  (it is state the task is carrying, not an action offered on demand), and its
+  tooltip says when: "in 26m", "tomorrow 09:00".
+- **When it comes due** — the widget puts *itself* in front of you: the window
+  surfaces (from the tray, from minimised, from behind whatever you were doing),
+  switches to the workspace the task lives in, and leaves focus mode if that
+  would hide the task. No toast, no notification permissions — being on top of
+  the screen is what this app is for.
+- **Stays due** — the row turns red and keeps showing as due until the task is
+  checked off or the reminder cleared. The window only surfaces once per
+  reminder, though; an unfinished task will not keep interrupting you.
+- **Survives being closed** — reminders live in the database, not in a timer, so
+  one that came due while the app was shut or the machine asleep fires on the
+  next launch instead of being silently lost.
+- **Syncs** — set a reminder on the phone, it is armed on the desktop. Whether
+  it has already *fired* is deliberately per-device, so the first device to
+  remind you does not silence the others.
+- Stored as an instant (UTC), so a reminder still means the right moment after
+  crossing a timezone.
+
 ## History
 
 - **"Done recently" view** — the 🕘 button shows completed tasks, newest first,
@@ -66,6 +91,17 @@ Newest changes are noted in the changelog at the bottom.
   says so rather than leaving a dead shortcut.
 - **Esc** leaves focus mode; **Ctrl+Enter** in either capture field keeps it
   open to chain another entry, plain **Enter** closes it.
+- **System tray icon** (desktop) — the widget lives in the notification area.
+  Left-click brings it back from hidden, minimised or buried; right-click gives
+  Show / Hide / Add task / Quit. **Hide** is the tray's own trick: unlike
+  minimize it drops the widget out of the taskbar entirely, with the tray icon
+  as the way back. **Quit** goes through the same close guard as ✕ and Alt+F4 —
+  it is not a back door around it, and if pending side thoughts block the quit
+  the window surfaces itself to say so rather than silently ignoring the click.
+- **Start with Windows** (toggle in Settings) — opens the widget when you sign
+  in. Windows itself owns this setting (the `Run` key), so turning it off in
+  Task Manager's Startup tab is reflected here; if a machine policy refuses the
+  change, the switch shows what actually took effect rather than what was asked.
 - **Resizable** within sensible min bounds.
 - **Custom icon** — gradient (indigo→violet) rounded tile with a white checkmark.
 - **Font** — Segoe UI Variable (Windows 11 optical sizes).
@@ -104,16 +140,27 @@ Newest changes are noted in the changelog at the bottom.
 
 ## Ideas / backlog (not built yet)
 
-- Launch on Windows startup.
-- System tray icon.
-- Due dates or reminders.
 - Light theme / theme toggle.
 - Configurable shortcut combinations (currently fixed at Ctrl+Alt+T / Ctrl+Alt+H).
+- Reminders at an arbitrary date/time — currently presets only, because a
+  Material date picker is about as wide as the whole widget.
+- Recurring reminders ("every weekday at 09:00").
 
 ---
 
 ## Changelog
 
+- **0.9.0** — Reminders. A task can be told to nag at one of a few horizons;
+  when it comes due the widget surfaces itself and the row stays red until it is
+  dealt with. Reminders sync between devices and are stored in the database
+  rather than a timer, so one that came due while the app was closed still
+  fires. Adds `remind_at` to `tasks` — both the client (schema v2) and the sync
+  server migrate existing databases in place.
+- **0.8.0** — The widget now has a life outside its window: a system tray icon
+  (show / hide / add task / quit, with Quit still answering to the close guard)
+  and a "Start with Windows" toggle in Settings. Hiding to the tray is new —
+  previously the only way to get it off screen was minimize, which left it in
+  the taskbar.
 - **0.7.0** — Went cross-platform. Rewrote the client in Flutter (Windows, iOS,
   Android) and added a self-hosted sync server so the same lists follow you
   between devices, syncing automatically. Deleting a task now leaves a

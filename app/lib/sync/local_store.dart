@@ -47,12 +47,25 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onCreate: _create,
+        onUpgrade: _upgrade,
         singleInstance: singleInstance,
       ),
     );
     return LocalStore._(db);
+  }
+
+  /// Migrations for databases created by an earlier version. There is real user
+  /// data behind this - the whole point of the app is that history survives -
+  /// so each step only ever adds, never rewrites or drops.
+  static Future<void> _upgrade(Database db, int from, int to) async {
+    if (from < 2) {
+      // Nullable, so every existing row is simply "no reminder". Rows are not
+      // marked dirty: adding a column locally is not a user edit, and flagging
+      // the entire table would push every task back at the server for nothing.
+      await db.execute('ALTER TABLE tasks ADD COLUMN remind_at TEXT');
+    }
   }
 
   static Future<void> _create(Database db, int version) async {
@@ -77,6 +90,7 @@ class LocalStore {
         completed_at   TEXT,
         sort_order     INTEGER NOT NULL DEFAULT 0,
         in_progress    INTEGER NOT NULL DEFAULT 0,
+        remind_at      TEXT,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,
         dirty          INTEGER NOT NULL DEFAULT 1
@@ -162,6 +176,22 @@ class LocalStore {
         orderBy: 'updated_at DESC',
         limit: 1);
     return rows.isEmpty ? null : Task.fromMap(rows.first);
+  }
+
+  /// Tasks with a reminder already in the past, across *every* workspace -
+  /// a reminder set in one workspace has to fire even while another is on
+  /// screen, or it is not a reminder.
+  ///
+  /// SQL narrows to armed rows; the comparison itself is done in Dart. String
+  /// ordering of these stamps is only valid when the offsets match, which stops
+  /// being true the moment a phone in another timezone sets one, so the cutoff
+  /// is applied on parsed instants instead.
+  Future<List<Task>> dueReminders([DateTime? now]) async {
+    final rows = await _db.query('tasks',
+        where: 'remind_at IS NOT NULL AND completed_at IS NULL '
+            'AND deleted_at IS NULL',
+        orderBy: 'remind_at');
+    return rows.map(Task.fromMap).where((t) => t.isDue(now)).toList();
   }
 
   Future<List<SideThought>> pendingThoughts() async {

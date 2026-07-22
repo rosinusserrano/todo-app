@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
+import 'reminder_menu.dart';
 
 class TaskRow extends StatefulWidget {
   const TaskRow({
@@ -19,6 +20,7 @@ class TaskRow extends StatefulWidget {
     required this.onComplete,
     required this.onDelete,
     required this.onFocus,
+    this.onSetReminder,
     this.dragHandle,
   });
 
@@ -27,6 +29,9 @@ class TaskRow extends StatefulWidget {
   final Future<void> Function() onComplete;
   final Future<void> Function() onDelete;
   final VoidCallback onFocus;
+
+  /// Null on the history list, where arming a reminder makes no sense.
+  final Future<void> Function(DateTime?)? onSetReminder;
   final Widget? dragHandle;
 
   @override
@@ -39,6 +44,7 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     duration: T.slideOutDur,
   );
   bool _hovered = false;
+  final _bellKey = GlobalKey();
 
   @override
   void dispose() {
@@ -55,8 +61,34 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     await action();
   }
 
+  /// Anchored to the bell rather than the pointer, so the menu appears in the
+  /// same place whether it was opened by mouse or keyboard.
+  Future<void> _openReminderMenu() async {
+    final onSet = widget.onSetReminder;
+    final box = _bellKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (onSet == null || box == null || overlay == null) return;
+
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    await showReminderMenu(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        topLeft.dx,
+        topLeft.dy + box.size.height,
+        overlay.size.width - topLeft.dx,
+        0,
+      ),
+      task: widget.task,
+      onChosen: onSet,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final due = widget.task.isDue();
+    final armed = widget.task.remindAtTime;
+
     return AnimatedBuilder(
       animation: _out,
       builder: (context, child) {
@@ -81,13 +113,20 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           margin: const EdgeInsets.symmetric(vertical: 2),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
           decoration: BoxDecoration(
-            color: widget.task.inProgress
-                ? widget.accent.withValues(alpha: 0.16)
-                : (_hovered ? T.surfaceHover : T.surface),
+            // A due reminder outranks focus for the row's colour: focus is a
+            // state you chose and can see, an overdue reminder is the thing
+            // asking for attention.
+            color: due
+                ? T.danger.withValues(alpha: 0.14)
+                : widget.task.inProgress
+                    ? widget.accent.withValues(alpha: 0.16)
+                    : (_hovered ? T.surfaceHover : T.surface),
             borderRadius: BorderRadius.circular(9),
-            border: widget.task.inProgress
-                ? Border.all(color: widget.accent.withValues(alpha: 0.5))
-                : null,
+            border: due
+                ? Border.all(color: T.danger.withValues(alpha: 0.55))
+                : widget.task.inProgress
+                    ? Border.all(color: widget.accent.withValues(alpha: 0.5))
+                    : null,
           ),
           child: Row(
             children: [
@@ -103,6 +142,23 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                   style: const TextStyle(fontSize: 13, color: T.text, height: 1.3),
                 ),
               ),
+              if (widget.onSetReminder != null)
+                _IconAction(
+                  key: _bellKey,
+                  tooltip: armed == null
+                      ? 'Remind me'
+                      : 'Reminder ${describeReminder(armed)}',
+                  icon: armed == null
+                      ? Icons.notifications_none_rounded
+                      : Icons.notifications_active_rounded,
+                  color: due
+                      ? T.danger
+                      : (armed != null ? widget.accent : T.muted),
+                  // An armed reminder stays visible without hovering: it is
+                  // state the row is carrying, not an action offered on demand.
+                  visible: _hovered || armed != null,
+                  onPressed: _openReminderMenu,
+                ),
               _IconAction(
                 tooltip: 'Work on this — hides everything else',
                 icon: Icons.play_arrow_rounded,
@@ -156,6 +212,7 @@ class _Checkbox extends StatelessWidget {
 /// inserted on hover, so revealing it cannot reflow the row's text.
 class _IconAction extends StatelessWidget {
   const _IconAction({
+    super.key,
     required this.tooltip,
     required this.icon,
     required this.color,

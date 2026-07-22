@@ -3,7 +3,10 @@
 // These cover the offline/merge behaviour that is painful to reproduce by hand
 // once the app is on a phone.
 
+import 'dart:io' show Directory;
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:todo_widget/sync/local_store.dart';
@@ -141,6 +144,111 @@ void main() {
     expect(await store.activeTasks('ws-1'), isEmpty);
     expect((await store.history('ws-1')).single.text, 'ship it');
     await store.close();
+  });
+
+  // The migration is the one change here with real user data behind it: an
+  // existing install has a v1 database full of history, and a failed upgrade
+  // loses it. This builds a genuine v1 file on disk and opens it through the
+  // normal path, rather than trusting that onCreate and onUpgrade agree.
+  test('upgrades a v1 database without touching its rows', () async {
+    final dir = await Directory.systemTemp.createTemp('todo_migration');
+    final path = p.join(dir.path, 'todo.db');
+
+    final legacy = await databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 1,
+        singleInstance: false,
+        onCreate: (db, _) async {
+          // The rest of the v1 schema, so this is a database the app could
+          // really have written rather than a tasks table on its own.
+          await db.execute('''
+            CREATE TABLE workspaces (
+              uuid       TEXT PRIMARY KEY,
+              name       TEXT NOT NULL,
+              color      TEXT NOT NULL,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT,
+              dirty      INTEGER NOT NULL DEFAULT 1
+            )''');
+          await db.execute('''
+            CREATE TABLE side_thoughts (
+              uuid        TEXT PRIMARY KEY,
+              text        TEXT NOT NULL,
+              created_at  TEXT NOT NULL,
+              resolved_at TEXT,
+              updated_at  TEXT NOT NULL,
+              deleted_at  TEXT,
+              dirty       INTEGER NOT NULL DEFAULT 1
+            )''');
+          await db.execute('''
+            CREATE TABLE sync_state (
+              key   TEXT PRIMARY KEY,
+              value TEXT NOT NULL
+            )''');
+          await db.insert('sync_state', {'key': 'cursor', 'value': '7'});
+          await db.insert('workspaces', {
+            'uuid': 'ws-1',
+            'name': 'Tasks',
+            'color': '#6c8cff',
+            'sort_order': 0,
+            'created_at': '2026-01-01T09:00:00.000',
+            'updated_at': '2026-01-01T09:00:00.000',
+            'dirty': 0,
+          });
+
+          // The v1 tasks table verbatim: no remind_at.
+          await db.execute('''
+            CREATE TABLE tasks (
+              uuid           TEXT PRIMARY KEY,
+              workspace_uuid TEXT NOT NULL,
+              text           TEXT NOT NULL,
+              created_at     TEXT NOT NULL,
+              completed_at   TEXT,
+              sort_order     INTEGER NOT NULL DEFAULT 0,
+              in_progress    INTEGER NOT NULL DEFAULT 0,
+              updated_at     TEXT NOT NULL,
+              deleted_at     TEXT,
+              dirty          INTEGER NOT NULL DEFAULT 1
+            )''');
+          await db.insert('tasks', {
+            'uuid': 'old-1',
+            'workspace_uuid': 'ws-1',
+            'text': 'written before reminders existed',
+            'created_at': '2026-01-01T09:00:00.000',
+            'updated_at': '2026-01-01T09:00:00.000',
+            'dirty': 0,
+          });
+        },
+      ),
+    );
+    await legacy.close();
+
+    final store = await LocalStore.open(path: path, singleInstance: false);
+    final task = (await store.activeTasks('ws-1')).single;
+
+    expect(task.text, 'written before reminders existed');
+    expect(task.remindAt, isNull);
+    // Everything else has to come through untouched, including the sync
+    // cursor - resetting it would re-pull the entire history from the server.
+    expect((await store.workspaces()).single.name, 'Tasks');
+    expect(await store.cursor(), 7);
+
+    // The new column has to be writable, not merely present.
+    final at = DateTime.now().add(const Duration(minutes: 5));
+    await store.putTask(task.copyWith(remindAt: reminderStamp(at)));
+    expect((await store.activeTasks('ws-1')).single.remindAt, isNotNull);
+
+    // An added column is not a user edit, so it must not have dirtied every
+    // existing row - that would push the whole table back at the server.
+    await store.putTask(task.copyWith(clearReminder: true));
+    await store.clearDirty(await store.dirtyRows());
+    expect((await store.dirtyRows())['tasks'], isEmpty);
+
+    await store.close();
+    await dir.delete(recursive: true);
   });
 
   test('timestamps compare as instants, not strings, across offsets', () {

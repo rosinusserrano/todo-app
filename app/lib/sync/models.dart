@@ -16,6 +16,12 @@ String newId() => _uuid.v4();
 /// without reformatting.
 String nowStamp() => DateTime.now().toIso8601String();
 
+/// Reminders are stored as an instant, in UTC, unlike the local-time stamps
+/// above. A reminder is a moment ("in an hour", or the instant 18:00 resolved
+/// to on the device that set it), so the instant is the part that has to
+/// survive travelling to another timezone - the wall-clock reading is not.
+String reminderStamp(DateTime at) => at.toUtc().toIso8601String();
+
 /// String comparison is a valid ordering for RFC 3339 only when the offsets
 /// match, which is not guaranteed once a phone crosses a timezone. Parsing and
 /// comparing as instants is correct everywhere.
@@ -118,6 +124,14 @@ class Task implements SyncRow {
   /// for why that invariant needs enforcing after a merge.
   final bool inProgress;
 
+  /// When this task should nag, or null for no reminder. Syncs like any other
+  /// field, so setting a reminder on the phone arms it on the desktop too.
+  ///
+  /// Whether it has *already* fired is deliberately not stored here: that is a
+  /// per-device fact, and syncing it would mean the first device to remind you
+  /// silences all the others.
+  final String? remindAt;
+
   @override
   final String updatedAt;
   @override
@@ -131,11 +145,27 @@ class Task implements SyncRow {
     this.completedAt,
     this.sortOrder = 0,
     this.inProgress = false,
+    this.remindAt,
     required this.updatedAt,
     this.deletedAt,
   });
 
   bool get isActive => completedAt == null && deletedAt == null;
+
+  /// Local time, for display. The stored value is UTC - see [reminderStamp].
+  DateTime? get remindAtTime {
+    final parsed = remindAt == null ? null : DateTime.tryParse(remindAt!);
+    return parsed?.toLocal();
+  }
+
+  /// Armed and in the past, on a task still worth nagging about. The row keeps
+  /// showing this until the reminder is cleared or the task is checked off -
+  /// the alert is a state, not just the instant it fired.
+  bool isDue([DateTime? now]) {
+    final at = remindAtTime;
+    if (at == null || !isActive) return false;
+    return !at.isAfter(now ?? DateTime.now());
+  }
 
   @override
   bool get isDeleted => deletedAt != null;
@@ -146,10 +176,12 @@ class Task implements SyncRow {
     String? completedAt,
     int? sortOrder,
     bool? inProgress,
+    String? remindAt,
     String? updatedAt,
     String? deletedAt,
     bool clearCompleted = false,
     bool clearDeleted = false,
+    bool clearReminder = false,
   }) =>
       Task(
         uuid: uuid,
@@ -159,6 +191,7 @@ class Task implements SyncRow {
         completedAt: clearCompleted ? null : (completedAt ?? this.completedAt),
         sortOrder: sortOrder ?? this.sortOrder,
         inProgress: inProgress ?? this.inProgress,
+        remindAt: clearReminder ? null : (remindAt ?? this.remindAt),
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
       );
@@ -172,6 +205,7 @@ class Task implements SyncRow {
         'completed_at': completedAt,
         'sort_order': sortOrder,
         'in_progress': inProgress ? 1 : 0,
+        'remind_at': remindAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -184,6 +218,7 @@ class Task implements SyncRow {
         completedAt: m['completed_at'] as String?,
         sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
         inProgress: ((m['in_progress'] as num?)?.toInt() ?? 0) != 0,
+        remindAt: m['remind_at'] as String?,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );

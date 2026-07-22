@@ -184,6 +184,19 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
+  /// Arm or clear a reminder. Passing null clears it, which is also how a due
+  /// reminder is acknowledged - there is no separate "dismissed" state to keep
+  /// in step across devices.
+  Future<void> setReminder(Task t, DateTime? at) async {
+    await _store.putTask(
+      at == null
+          ? t.copyWith(clearReminder: true, updatedAt: nowStamp())
+          : t.copyWith(remindAt: reminderStamp(at), updatedAt: nowStamp()),
+    );
+    await refreshTasks();
+    _mutated();
+  }
+
   Future<void> reorder(List<String> uuids) async {
     await _store.reorderTasks(uuids);
     await refreshTasks();

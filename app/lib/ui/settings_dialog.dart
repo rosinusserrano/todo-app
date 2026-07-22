@@ -1,4 +1,4 @@
-// Sync configuration.
+// Settings: sync configuration, plus the handful of device-local preferences.
 //
 // The server is self-hosted, so the address and token come from the user's own
 // server console. Both are stored device-locally and never synced.
@@ -8,21 +8,30 @@
 
 import 'package:flutter/material.dart';
 
+import '../startup.dart';
 import '../sync/sync_client.dart';
 import '../sync/sync_service.dart';
 import '../theme.dart';
 
-Future<void> showSyncSettings(BuildContext context, SyncService sync) {
+Future<void> showSyncSettings(
+  BuildContext context,
+  SyncService sync, {
+  StartupSetting? startup,
+}) {
   return showDialog(
     context: context,
-    builder: (_) => _SyncDialog(sync: sync),
+    builder: (_) => _SyncDialog(sync: sync, startup: startup),
   );
 }
 
 class _SyncDialog extends StatefulWidget {
-  const _SyncDialog({required this.sync});
+  const _SyncDialog({required this.sync, this.startup});
 
   final SyncService sync;
+
+  /// Absent on the platforms that have no such concept, which is what hides
+  /// the whole section rather than showing a dead switch.
+  final StartupSetting? startup;
 
   @override
   State<_SyncDialog> createState() => _SyncDialogState();
@@ -35,11 +44,31 @@ class _SyncDialogState extends State<_SyncDialog> {
   String? _testMessage;
   bool _testOk = false;
   bool _busy = false;
+  bool _launchAtStartup = false;
 
   @override
   void initState() {
     super.initState();
     widget.sync.addListener(_onSync);
+    _loadStartup();
+  }
+
+  Future<void> _loadStartup() async {
+    final startup = widget.startup;
+    if (startup == null) return;
+    final on = await startup.isEnabled();
+    if (mounted) setState(() => _launchAtStartup = on);
+  }
+
+  /// Shows the state that actually took effect, not the one that was asked
+  /// for - the Run key can be refused on a managed machine, and a switch that
+  /// slid across anyway would be lying.
+  Future<void> _setStartup(bool on) async {
+    final startup = widget.startup;
+    if (startup == null) return;
+    setState(() => _launchAtStartup = on);
+    final actual = await startup.setEnabled(on);
+    if (mounted) setState(() => _launchAtStartup = actual);
   }
 
   @override
@@ -104,7 +133,7 @@ class _SyncDialogState extends State<_SyncDialog> {
 
     return AlertDialog(
       backgroundColor: T.bgSolid,
-      title: const Text('Sync', style: TextStyle(fontSize: 15)),
+      title: const Text('Settings', style: TextStyle(fontSize: 15)),
       content: SizedBox(
         width: 330,
         child: Column(
@@ -175,6 +204,30 @@ class _SyncDialogState extends State<_SyncDialog> {
               'Syncs automatically every minute and shortly after each change.',
               style: TextStyle(fontSize: 10.5, color: T.muted),
             ),
+            if (widget.startup != null) ...[
+              const SizedBox(height: 16),
+              const Divider(height: 1, color: Color(0x14FFFFFF)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Start with Windows',
+                      style: TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                  Switch(
+                    value: _launchAtStartup,
+                    onChanged: _setStartup,
+                  ),
+                ],
+              ),
+              const Text(
+                'Opens the widget when you sign in. It also lives in the tray, '
+                'so it can be hidden without being closed.',
+                style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.4),
+              ),
+            ],
           ],
         ),
       ),

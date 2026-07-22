@@ -9,14 +9,18 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
+import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app_state.dart';
+import 'reminders.dart';
 import 'shortcuts.dart';
+import 'startup.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
 import 'sync/sync_service.dart';
 import 'theme.dart';
+import 'tray.dart';
 import 'ui/footer.dart';
 import 'ui/settings_dialog.dart';
 import 'ui/task_row.dart';
@@ -109,7 +113,7 @@ class WidgetShell extends StatefulWidget {
 }
 
 class _WidgetShellState extends State<WidgetShell>
-    with TickerProviderStateMixin, WindowListener {
+    with TickerProviderStateMixin, WindowListener, TrayListener {
   AppState get s => widget.state;
 
   final _addController = TextEditingController();
@@ -130,6 +134,21 @@ class _WidgetShellState extends State<WidgetShell>
     onAddThought: _jumpToAddThought,
   );
 
+  late final AppTray _tray = AppTray(
+    onShow: _surfaceWindow,
+    onHide: _hideToTray,
+    onAddTask: _jumpToAddTask,
+    // Not destroy(): the close guard decides whether the app may go.
+    onQuit: () async => windowManager.close(),
+  );
+
+  final _startup = StartupSetting();
+
+  late final ReminderService _reminders = ReminderService(
+    s.store,
+    onDue: _onRemindersDue,
+  );
+
   _Focus _phase = _Focus.none;
   Rect? _fromRect;
   Rect? _toRect;
@@ -141,12 +160,69 @@ class _WidgetShellState extends State<WidgetShell>
     super.initState();
     s.addListener(_onState);
     widget.sync.addListener(_onState);
-    if (isDesktop) windowManager.addListener(this);
+    if (isDesktop) {
+      windowManager.addListener(this);
+      trayManager.addListener(this);
+      _tray.install();
+      _startup.init();
+    }
     // A task left in progress at last close reopens straight into focus, with
     // no flight - there is no row for it to have flown from.
     if (s.focusTask != null) _phase = _Focus.resting;
     _registerShortcuts();
+    // Sweep once before polling starts, so anything that came due while the app
+    // was closed lands now rather than up to an interval later.
+    _reminders.tick();
+    _reminders.start();
   }
+
+  // --------------------------------------------------------------- reminders
+
+  /// A reminder has come due. The widget's whole personality is being in front
+  /// of you, so that is the alert: surface the window, switch to where the task
+  /// actually lives, and let the row's own due styling carry it from there.
+  Future<void> _onRemindersDue(List<Task> due) async {
+    await _surfaceWindow();
+    if (!mounted) return;
+
+    final first = due.first;
+    // A reminder can belong to a workspace that is not on screen. Showing the
+    // window without switching would surface a list the task is not even in.
+    if (first.workspaceUuid != s.currentWorkspaceUuid) {
+      await s.selectWorkspace(first.workspaceUuid);
+    }
+    if (!mounted) return;
+    if (s.showHistory) s.toggleHistory();
+    // Focus mode hides the list, so a due reminder would be invisible behind it.
+    if (s.focusTask != null && s.focusTask!.uuid != first.uuid) {
+      await _exitFocus();
+    }
+  }
+
+  // -------------------------------------------------------------------- tray
+
+  /// Bring the window back from hidden, minimised or simply buried.
+  Future<void> _surfaceWindow() async {
+    if (!isDesktop) return;
+    if (await windowManager.isMinimized()) await windowManager.restore();
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  /// Hide rather than minimise: the tray icon is now the way back, so the
+  /// widget can leave the taskbar entirely.
+  Future<void> _hideToTray() async {
+    if (isDesktop) await windowManager.hide();
+  }
+
+  @override
+  void onTrayIconMouseDown() => _surfaceWindow();
+
+  @override
+  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) => _tray.handleMenuItem(menuItem);
 
   Future<void> _registerShortcuts() async {
     final failed = await _shortcuts.register();
@@ -163,11 +239,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// so it can put the caret where it wants it. Both capture fields sit behind
   /// the focus overlay, so jumping to either has to leave focus first.
   Future<bool> _surfaceForCapture() async {
-    if (isDesktop) {
-      if (await windowManager.isMinimized()) await windowManager.restore();
-      await windowManager.show();
-      await windowManager.focus();
-    }
+    await _surfaceWindow();
     if (s.focusTask != null) await _exitFocus();
     return mounted;
   }
@@ -188,7 +260,12 @@ class _WidgetShellState extends State<WidgetShell>
     s.removeListener(_onState);
     widget.sync.removeListener(_onState);
     _shortcuts.dispose();
-    if (isDesktop) windowManager.removeListener(this);
+    _reminders.dispose();
+    if (isDesktop) {
+      windowManager.removeListener(this);
+      trayManager.removeListener(this);
+      _tray.dispose();
+    }
     _hero.dispose();
     _addController.dispose();
     _addFocus.dispose();
@@ -208,9 +285,12 @@ class _WidgetShellState extends State<WidgetShell>
       await windowManager.destroy();
       return;
     }
-    // The footer and its refusal flash live behind the focus overlay, so leave
-    // focus before flashing or the message is invisible.
+    // The refusal has to be visible, or a quit from the tray while the window
+    // is hidden looks like the app simply ignoring the click. Surface first,
+    // then leave focus - the footer flash sits behind the focus overlay too.
+    await _surfaceWindow();
     if (s.focusTask != null) await _exitFocus();
+    if (!mounted) return;
     _flashBlocked();
   }
 
@@ -403,7 +483,11 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _openSettings() async {
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
-    await showSyncSettings(context, widget.sync);
+    await showSyncSettings(
+      context,
+      widget.sync,
+      startup: isDesktop && StartupSetting.supported ? _startup : null,
+    );
   }
 
   /// Blocked (bad token/address) is red rather than amber: it will not recover
@@ -517,6 +601,7 @@ class _WidgetShellState extends State<WidgetShell>
             onComplete: () => s.completeTask(t),
             onDelete: () => s.deleteTask(t),
             onFocus: () => _startFocus(t),
+            onSetReminder: (at) => s.setReminder(t, at),
             dragHandle: ReorderableDragStartListener(
               index: i,
               child: const Padding(

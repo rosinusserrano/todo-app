@@ -8,8 +8,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:tray_manager/tray_manager.dart';
 
 import 'package:todo_widget/app_state.dart';
+import 'package:todo_widget/reminders.dart';
+import 'package:todo_widget/tray.dart';
+import 'package:todo_widget/ui/reminder_menu.dart';
 import 'package:todo_widget/sync/local_store.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
@@ -251,6 +255,173 @@ void main() {
 
       await tester.pumpAndSettle();
       expect(completed, isTrue);
+    });
+  });
+
+  group('reminders', () {
+    test('a task with no reminder is never due', () async {
+      final s = await freshState();
+      await s.addTask('unscheduled');
+      expect(s.tasks.single.isDue(), isFalse);
+    });
+
+    test('is due once its time has passed, and not before', () async {
+      final s = await freshState();
+      await s.addTask('call the dentist');
+      final at = DateTime.now().add(const Duration(hours: 1));
+      await s.setReminder(s.tasks.single, at);
+
+      final t = s.tasks.single;
+      expect(t.isDue(), isFalse);
+      expect(t.isDue(at.add(const Duration(minutes: 1))), isTrue);
+    });
+
+    test('survives the round trip through the database as an instant',
+        () async {
+      final s = await freshState();
+      await s.addTask('leave for the train');
+      final at = DateTime.now().add(const Duration(minutes: 90));
+      await s.setReminder(s.tasks.single, at);
+
+      await s.refreshTasks();
+      // Stored in UTC, read back as local: the instant is what has to match,
+      // not the wall-clock string.
+      expect(
+        s.tasks.single.remindAtTime!.difference(at).inSeconds.abs(),
+        lessThan(1),
+      );
+    });
+
+    test('a completed task stops being due', () async {
+      final s = await freshState();
+      await s.addTask('already handled');
+      await s.setReminder(
+          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 5)));
+      final t = s.tasks.single;
+      expect(t.isDue(), isTrue);
+
+      await s.completeTask(t);
+      expect(await s.store.dueReminders(), isEmpty);
+    });
+
+    test('clearing disarms it', () async {
+      final s = await freshState();
+      await s.addTask('never mind');
+      await s.setReminder(
+          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 1)));
+      expect(await s.store.dueReminders(), hasLength(1));
+
+      await s.setReminder(s.tasks.single, null);
+      expect(s.tasks.single.remindAt, isNull);
+      expect(await s.store.dueReminders(), isEmpty);
+    });
+
+    test('finds due tasks in other workspaces too', () async {
+      final s = await freshState();
+      final home = s.currentWorkspaceUuid!;
+      await s.saveWorkspace(name: 'Work', color: '#7ee3a1');
+      await s.addTask('in the other workspace');
+      await s.setReminder(
+          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 1)));
+
+      await s.selectWorkspace(home);
+      expect(s.tasks, isEmpty); // not on screen...
+      expect(await s.store.dueReminders(), hasLength(1)); // ...but still due
+    });
+
+    test('announces each reminder once, and again if it is re-armed', () async {
+      final s = await freshState();
+      await s.addTask('nag me');
+      await s.setReminder(
+          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 1)));
+
+      final announced = <String>[];
+      final service = ReminderService(
+        s.store,
+        onDue: (due) async => announced.addAll(due.map((t) => t.text)),
+      );
+
+      await service.tick();
+      await service.tick();
+      // Still due on the second tick, but surfacing the window every 20s
+      // because of one unfinished task would make the app unusable.
+      expect(announced, ['nag me']);
+
+      await s.setReminder(s.tasks.single, null);
+      await service.tick();
+      await s.setReminder(
+          s.tasks.single, DateTime.now().subtract(const Duration(seconds: 1)));
+      await service.tick();
+      expect(announced, ['nag me', 'nag me']);
+
+      service.dispose();
+    });
+  });
+
+  group('reminder presets', () {
+    test('never offers a time in the past', () {
+      // 23:30 - both fixed points (18:00 today, 09:00 tomorrow) are the
+      // interesting case here: the evening one has gone, tomorrow has not.
+      final late = DateTime(2026, 7, 21, 23, 30);
+      final presets = reminderPresets(late);
+
+      expect(presets, isNotEmpty);
+      for (final p in presets) {
+        expect(p.at.isAfter(late), isTrue, reason: '${p.label} is in the past');
+      }
+      expect(presets.map((p) => p.label), isNot(contains('This evening (18:00)')));
+    });
+
+    test('offers this evening while it is still ahead', () {
+      final presets = reminderPresets(DateTime(2026, 7, 21, 9));
+      expect(presets.map((p) => p.label), contains('This evening (18:00)'));
+    });
+
+    test('describes an armed reminder in human terms', () {
+      final now = DateTime(2026, 7, 21, 10);
+      expect(describeReminder(now.add(const Duration(minutes: 25)), now),
+          'in 26m');
+      expect(describeReminder(DateTime(2026, 7, 21, 18), now), 'at 18:00');
+      expect(describeReminder(DateTime(2026, 7, 22, 9), now), 'tomorrow 09:00');
+      expect(describeReminder(DateTime(2026, 7, 21, 9), now), 'due since 09:00');
+    });
+  });
+
+  // install() needs a notification area, so only the dispatch is covered here.
+  // That is the part with a decision in it: Quit must go through the caller's
+  // close guard rather than tearing the app down from the menu.
+  group('AppTray', () {
+    late List<String> calls;
+    late AppTray tray;
+
+    setUp(() {
+      calls = [];
+      tray = AppTray(
+        onShow: () async => calls.add('show'),
+        onHide: () async => calls.add('hide'),
+        onAddTask: () async => calls.add('add-task'),
+        onQuit: () async => calls.add('quit'),
+      );
+    });
+
+    Future<void> click(String key) =>
+        tray.handleMenuItem(MenuItem(key: key, label: key));
+
+    test('routes each item to its action', () async {
+      await click('show');
+      await click('hide');
+      await click('add-task');
+      expect(calls, ['show', 'hide', 'add-task']);
+    });
+
+    test('quit asks the close guard rather than exiting', () async {
+      await click('quit');
+      expect(calls, ['quit']);
+    });
+
+    test('ignores an unknown item instead of throwing', () async {
+      await click('nonexistent');
+      expect(calls, isEmpty);
     });
   });
 }

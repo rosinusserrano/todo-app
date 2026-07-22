@@ -5,6 +5,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openDb, sync, currentSeq } from './db.js';
 import { identify, AuthError, LAN_USER } from './auth.js';
 
@@ -150,6 +154,91 @@ test('workspaces and side thoughts round-trip independently', () => {
 
   assert.equal(changes.workspaces[0].name, 'Tasks');
   assert.equal(changes.side_thoughts[0].text, 'look into flutter');
+});
+
+test('a reminder set on one device reaches the others', () => {
+  const db = freshDb();
+
+  sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'call the dentist', '2026-07-21T10:00:00+02:00', {
+        remind_at: '2026-07-21T14:00:00.000Z',
+      }),
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  assert.equal(changes.tasks[0].remind_at, '2026-07-21T14:00:00.000Z');
+});
+
+test('clearing a reminder propagates as a null, not a stale value', () => {
+  const db = freshDb();
+
+  sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'call the dentist', '2026-07-21T10:00:00+02:00', {
+        remind_at: '2026-07-21T14:00:00.000Z',
+      }),
+    ],
+  });
+  // Same row, later write, reminder removed. A merge that only copied
+  // non-null fields would leave the old time armed on every other device.
+  const { changes } = sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'call the dentist', '2026-07-21T11:00:00+02:00', {
+        remind_at: null,
+      }),
+    ],
+  });
+
+  assert.equal(changes.tasks[0].remind_at, null);
+});
+
+test('a server database predating reminders gains the column', () => {
+  // openDb() on an existing file only runs CREATE TABLE IF NOT EXISTS, so
+  // without an explicit migration the column would never appear and every
+  // task push would fail.
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('old-1', 'local', 'ws-1', 'from before reminders', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'new one', '2026-07-21T10:00:00+02:00', {
+        remind_at: '2026-07-21T14:00:00.000Z',
+      }),
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  const byUuid = Object.fromEntries(changes.tasks.map((t) => [t.uuid, t]));
+  assert.equal(byUuid['t-1'].remind_at, '2026-07-21T14:00:00.000Z');
+  // The pre-existing row survives the migration.
+  assert.equal(byUuid['old-1'].text, 'from before reminders');
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test('auth rejects a missing, malformed or wrong token', () => {

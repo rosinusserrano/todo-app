@@ -62,9 +62,46 @@ function init(db) {
       sort_order     INTEGER NOT NULL DEFAULT 0,
       in_progress    INTEGER NOT NULL DEFAULT 0,
       remind_at      TEXT,
+      group_uuid     TEXT,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    CREATE TABLE IF NOT EXISTS parked_groups (
+      uuid              TEXT NOT NULL,
+      user_id           TEXT NOT NULL,
+      workspace_uuid    TEXT NOT NULL,
+      title             TEXT NOT NULL,
+      -- Nullable, unlike the client's column: the merge writes whatever the
+      -- push carried, and a NOT NULL here would turn one malformed row into a
+      -- rejected sync for the whole device.
+      review_every_days INTEGER,
+      last_reviewed_at  TEXT,
+      sort_order        INTEGER NOT NULL DEFAULT 0,
+      created_at        TEXT NOT NULL,
+      updated_at        TEXT NOT NULL,
+      deleted_at        TEXT,
+      seq               INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    -- Attachment *metadata* only. The bytes are not synced: this protocol is
+    -- one JSON round trip of rows, and pushing documents through it would make
+    -- every sync wait on the largest file anyone ever attached. The sha256 is
+    -- the address a later blob endpoint would serve them from.
+    CREATE TABLE IF NOT EXISTS attachments (
+      uuid       TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      task_uuid  TEXT NOT NULL,
+      filename   TEXT NOT NULL,
+      size       INTEGER,
+      sha256     TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      seq        INTEGER NOT NULL,
       PRIMARY KEY (user_id, uuid)
     );
 
@@ -80,9 +117,34 @@ function init(db) {
       PRIMARY KEY (user_id, uuid)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_workspaces_pull    ON workspaces    (user_id, seq);
-    CREATE INDEX IF NOT EXISTS idx_tasks_pull         ON tasks         (user_id, seq);
-    CREATE INDEX IF NOT EXISTS idx_side_thoughts_pull ON side_thoughts (user_id, seq);
+    -- A per-workspace journal: timestamped notes. Unlike side_thoughts this
+    -- carries a workspace_uuid, since the log belongs to one workspace rather
+    -- than the whole account.
+    -- The journal's title and text are ciphertext whenever encrypted is 1:
+    -- encryption is optional on the client (on only when a password is set),
+    -- and when it is on the server stores and relays AES-GCM blobs it cannot
+    -- read. That is deliberate - the server stays zero-knowledge about any
+    -- encrypted journal content.
+    CREATE TABLE IF NOT EXISTS journal_entries (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      title          TEXT NOT NULL DEFAULT '',
+      text           TEXT NOT NULL,
+      encrypted      INTEGER NOT NULL DEFAULT 0,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workspaces_pull      ON workspaces      (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_tasks_pull           ON tasks           (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_side_thoughts_pull   ON side_thoughts   (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_parked_groups_pull   ON parked_groups   (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_attachments_pull     ON attachments     (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_journal_entries_pull ON journal_entries (user_id, seq);
   `);
 
   // `CREATE TABLE IF NOT EXISTS` above does nothing to a database that already
@@ -90,6 +152,11 @@ function init(db) {
   // been running since before reminders would otherwise reject every task push
   // with "no column named remind_at".
   addColumn(db, 'tasks', 'remind_at', 'TEXT');
+  addColumn(db, 'tasks', 'group_uuid', 'TEXT');
+  // A server that first synced a journal before entries had titles has the
+  // table but not these columns; without them a journal push would fail.
+  addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
+  addColumn(db, 'journal_entries', 'encrypted', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 /**
@@ -107,6 +174,14 @@ function addColumn(db, table, column, type) {
 // columns are handled separately, so these are the payload fields only.
 export const TABLES = {
   workspaces: ['name', 'color', 'sort_order', 'created_at'],
+  parked_groups: [
+    'workspace_uuid',
+    'title',
+    'review_every_days',
+    'last_reviewed_at',
+    'sort_order',
+    'created_at',
+  ],
   tasks: [
     'workspace_uuid',
     'text',
@@ -115,8 +190,11 @@ export const TABLES = {
     'sort_order',
     'in_progress',
     'remind_at',
+    'group_uuid',
   ],
+  attachments: ['task_uuid', 'filename', 'size', 'sha256', 'created_at'],
   side_thoughts: ['text', 'created_at', 'resolved_at'],
+  journal_entries: ['workspace_uuid', 'title', 'text', 'encrypted', 'created_at'],
 };
 
 function nextSeq(db) {

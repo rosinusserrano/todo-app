@@ -5,6 +5,7 @@
 // a test binding. The logic worth testing lives in AppState and the row
 // widgets, neither of which touches the window.
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -17,7 +18,10 @@ import 'package:todo_widget/ui/reminder_menu.dart';
 import 'package:todo_widget/sync/local_store.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
+import 'package:todo_widget/ui/panel_header.dart';
 import 'package:todo_widget/ui/task_row.dart';
+import 'package:todo_widget/ui/title_bar.dart';
+import 'package:todo_widget/ui/workspace_bar.dart';
 
 void main() {
   setUpAll(() {
@@ -181,6 +185,48 @@ void main() {
       await s.deleteWorkspace(only!);
       expect(s.workspaces.length, 1);
     });
+
+    test('thoughts and history cannot own the content area at once', () async {
+      final s = await freshState();
+      await s.addThought('look up that paper');
+
+      s.toggleThoughts();
+      expect(s.showThoughts, isTrue);
+
+      // Opening history has to evict thoughts, and vice versa - the content
+      // area holds exactly one view.
+      await s.toggleHistory();
+      expect(s.showHistory, isTrue);
+      expect(s.showThoughts, isFalse);
+
+      s.toggleThoughts();
+      expect(s.showThoughts, isTrue);
+      expect(s.showHistory, isFalse);
+    });
+
+    test('the thoughts panel closes itself once the last one is cleared',
+        () async {
+      final s = await freshState();
+      await s.addThought('only one');
+      s.toggleThoughts();
+      expect(s.showThoughts, isTrue);
+
+      // The count badge is the only way back to the tasks and it is hidden at
+      // zero, so an empty panel would strand the user with no way out.
+      await s.resolveThought(s.thoughts.single);
+      expect(s.thoughts, isEmpty);
+      expect(s.showThoughts, isFalse);
+    });
+
+    test('promoting the last thought also closes the panel', () async {
+      final s = await freshState();
+      await s.addThought('turn me into a task');
+      s.toggleThoughts();
+
+      await s.promoteThought(s.thoughts.single);
+      expect(s.tasks.single.text, 'turn me into a task');
+      expect(s.showThoughts, isFalse);
+    });
   });
 
   group('theme', () {
@@ -316,6 +362,237 @@ void main() {
 
       await tester.pumpAndSettle();
       expect(completed, isTrue);
+    });
+  });
+
+  group('TitleBar', () {
+    const ws = Color(0xFF7EE3A1);
+
+    Widget host({
+      bool playing = true,
+      bool paused = false,
+      bool isDesktop = false,
+      double volume = 0.5,
+      ValueChanged<double>? onVolume,
+    }) =>
+        MaterialApp(
+          home: Scaffold(
+            body: TitleBar(
+              isDesktop: isDesktop,
+              pinned: true,
+              onTogglePin: () {},
+              onToggleSound: () {},
+              soundPlaying: playing,
+              soundPaused: paused,
+              onTogglePause: () {},
+              volume: volume,
+              onVolumeChanged: onVolume ?? (_) {},
+              accent: ws,
+              onClose: () {},
+              onOpenSettings: () {},
+              syncColor: T.muted,
+              syncTooltip: 'Sync off',
+            ),
+          ),
+        );
+
+    /// Pumps at the widget's real 340x480, not the 800x600 test default. The
+    /// title bar's controls are all in its right-hand end, so how much room the
+    /// hover panel has is entirely a function of the window width - testing it
+    /// on a wide viewport would not exercise the case that matters.
+    Future<void> pumpBar(
+      WidgetTester tester, {
+      bool playing = true,
+      bool paused = false,
+      bool isDesktop = false,
+      double volume = 0.5,
+      ValueChanged<double>? onVolume,
+    }) async {
+      tester.view.physicalSize = const Size(340, 480);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(
+        playing: playing,
+        paused: paused,
+        isDesktop: isDesktop,
+        volume: volume,
+        onVolume: onVolume,
+      ));
+    }
+
+    /// A mouse that stays attached for the life of the test, so hover enters
+    /// and exits actually fire.
+    Future<TestGesture> mouse(WidgetTester tester) async {
+      final g = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await g.addPointer(location: Offset.zero);
+      addTearDown(() => g.removePointer());
+      return g;
+    }
+
+    testWidgets('the pin lights in the workspace colour, not the theme accent',
+        (tester) async {
+      await pumpBar(tester, isDesktop: true);
+      expect(tester.widget<Icon>(find.byIcon(Icons.push_pin)).color, ws);
+    });
+
+    testWidgets('no transport button while nothing is loaded', (tester) async {
+      await pumpBar(tester, playing: false);
+      expect(find.byIcon(Icons.pause_rounded), findsNothing);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+    });
+
+    testWidgets('a paused source shows resume, and dims the headphones',
+        (tester) async {
+      await pumpBar(tester, paused: true);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      // Outlined headphones while paused: filled would claim audio is running.
+      expect(find.byIcon(Icons.headphones_outlined), findsOneWidget);
+    });
+
+    testWidgets('hovering the transport button drops out a volume slider',
+        (tester) async {
+      await pumpBar(tester);
+      expect(find.byType(Slider), findsNothing);
+
+      final m = await mouse(tester);
+      await m.moveTo(tester.getCenter(find.byIcon(Icons.pause_rounded)));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Slider), findsOneWidget);
+    });
+
+    testWidgets('the panel stays inside the window', (tester) async {
+      await pumpBar(tester);
+      final m = await mouse(tester);
+      await m.moveTo(tester.getCenter(find.byIcon(Icons.pause_rounded)));
+      await tester.pumpAndSettle();
+
+      // The button sits in the right-hand end of the bar, so a panel centred
+      // on it hangs off the edge and the far half of the slider cannot be
+      // reached at all. It is right-anchored for exactly this reason.
+      final panel = tester.getRect(find.byType(Slider));
+      final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+      expect(panel.right, lessThanOrEqualTo(screen.width));
+      expect(panel.left, greaterThanOrEqualTo(0.0));
+    });
+
+    testWidgets('the panel survives the pointer crossing the gap to it',
+        (tester) async {
+      await pumpBar(tester);
+      final m = await mouse(tester);
+      await m.moveTo(tester.getCenter(find.byIcon(Icons.pause_rounded)));
+      await tester.pumpAndSettle();
+
+      // Off the button, into the gap between it and the panel. Closing on the
+      // spot here would make the slider unreachable by hand.
+      await m.moveTo(const Offset(4, 400));
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(find.byType(Slider), findsOneWidget,
+          reason: 'must not close inside the grace period');
+
+      await m.moveTo(tester.getCenter(find.byType(Slider)));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(Slider), findsOneWidget,
+          reason: 'hovering the panel itself holds it open');
+
+      // And it does eventually go away once the pointer really leaves.
+      await m.moveTo(const Offset(4, 400));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(Slider), findsNothing);
+    });
+
+    testWidgets('dragging the slider reports the new volume', (tester) async {
+      final seen = <double>[];
+      await pumpBar(tester, volume: 0.5, onVolume: seen.add);
+
+      final m = await mouse(tester);
+      await m.moveTo(tester.getCenter(find.byIcon(Icons.pause_rounded)));
+      await tester.pumpAndSettle();
+
+      final track = tester.getRect(find.byType(Slider));
+      await tester.tapAt(Offset(track.right - 4, track.center.dy));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(seen, isNotEmpty);
+      expect(seen.last, greaterThan(0.5));
+    });
+  });
+
+  group('getting back to the task list', () {
+    testWidgets('the panel header title is itself the way back',
+        (tester) async {
+      var back = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: PanelHeader(title: 'Parked', onBack: () => back++),
+        ),
+      ));
+
+      // The label is the control - there is no separate button, which is the
+      // whole point: no extra row on a 340px window.
+      expect(find.text('Parked'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+
+      await tester.tap(find.text('Parked'));
+      expect(back, 1);
+    });
+
+    testWidgets('view actions still sit on the header beside the title',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: PanelHeader(
+            title: 'Parked',
+            onBack: () {},
+            actions: const [Icon(Icons.add)],
+          ),
+        ),
+      ));
+      expect(find.byIcon(Icons.add), findsOneWidget);
+    });
+
+    testWidgets('the views menu ticks whichever view is open', (tester) async {
+      Widget bar(WorkspaceView? open) => MaterialApp(
+            home: Scaffold(
+              body: WorkspaceBar(
+                workspaces: [
+                  Workspace(
+                    uuid: 'w1',
+                    name: 'Tasks',
+                    color: '#6c8cff',
+                    sortOrder: 0,
+                    createdAt: nowStamp(),
+                    updatedAt: nowStamp(),
+                  ),
+                ],
+                currentUuid: 'w1',
+                accent: T.accent,
+                onSelect: (_) {},
+                onEdit: (_) {},
+                onCreate: () {},
+                onOpenNotes: () {},
+                onOpenParked: () {},
+                onOpenHistory: () {},
+                parkedReviewDue: false,
+                openView: open,
+              ),
+            ),
+          );
+
+      // Nothing open: the menu offers three plain entries.
+      await tester.pumpWidget(bar(null));
+      await tester.tap(find.byIcon(Icons.expand_more_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.check_rounded), findsNothing);
+
+      await tester.tapAt(const Offset(5, 400)); // dismiss
+      await tester.pumpAndSettle();
+
+      // Parked open: exactly one tick, so re-picking it to close is findable.
+      await tester.pumpWidget(bar(WorkspaceView.parked));
+      await tester.tap(find.byIcon(Icons.expand_more_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     });
   });
 

@@ -21,6 +21,9 @@ class TaskRow extends StatefulWidget {
     required this.onDelete,
     required this.onFocus,
     this.onSetReminder,
+    this.onPark,
+    this.onOpenAttachments,
+    this.attachmentCount = 0,
     this.dragHandle,
   });
 
@@ -32,6 +35,19 @@ class TaskRow extends StatefulWidget {
 
   /// Null on the history list, where arming a reminder makes no sense.
   final Future<void> Function(DateTime?)? onSetReminder;
+
+  /// Shelve this task in a parked group. Takes the anchor of the button that
+  /// opened it so the picker lands under the icon rather than at the pointer.
+  final Future<void> Function(RelativeRect anchor)? onPark;
+
+  /// Opens the attachment list. Null on history, where attaching a document to
+  /// something already finished is not a thing worth offering.
+  final VoidCallback? onOpenAttachments;
+
+  /// Drives the paperclip. Like the armed bell, a task carrying documents shows
+  /// it without hovering - it is state, not an action offered on demand.
+  final int attachmentCount;
+
   final Widget? dragHandle;
 
   @override
@@ -45,6 +61,7 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
   );
   bool _hovered = false;
   final _bellKey = GlobalKey();
+  final _parkKey = GlobalKey();
 
   @override
   void dispose() {
@@ -61,27 +78,42 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     await action();
   }
 
-  /// Anchored to the bell rather than the pointer, so the menu appears in the
-  /// same place whether it was opened by mouse or keyboard.
-  Future<void> _openReminderMenu() async {
-    final onSet = widget.onSetReminder;
-    final box = _bellKey.currentContext?.findRenderObject() as RenderBox?;
+  /// Where a menu opened from [key] should appear. Anchored to the button
+  /// rather than the pointer, so it lands in the same place whether it was
+  /// opened by mouse or keyboard.
+  RelativeRect? _anchor(GlobalKey key) {
+    final box = key.currentContext?.findRenderObject() as RenderBox?;
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (onSet == null || box == null || overlay == null) return;
+    if (box == null || overlay == null) return null;
 
     final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    return RelativeRect.fromLTRB(
+      topLeft.dx,
+      topLeft.dy + box.size.height,
+      overlay.size.width - topLeft.dx,
+      0,
+    );
+  }
+
+  Future<void> _openReminderMenu() async {
+    final onSet = widget.onSetReminder;
+    final at = _anchor(_bellKey);
+    if (onSet == null || at == null) return;
+
     await showReminderMenu(
       context: context,
-      position: RelativeRect.fromLTRB(
-        topLeft.dx,
-        topLeft.dy + box.size.height,
-        overlay.size.width - topLeft.dx,
-        0,
-      ),
+      position: at,
       task: widget.task,
       onChosen: onSet,
     );
+  }
+
+  Future<void> _openParkMenu() async {
+    final onPark = widget.onPark;
+    final at = _anchor(_parkKey);
+    if (onPark == null || at == null) return;
+    await onPark(at);
   }
 
   @override
@@ -158,6 +190,27 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                   // state the row is carrying, not an action offered on demand.
                   visible: _hovered || armed != null,
                   onPressed: _openReminderMenu,
+                ),
+              if (widget.onOpenAttachments != null)
+                _IconAction(
+                  tooltip: widget.attachmentCount == 0
+                      ? 'Attach a document'
+                      : '${widget.attachmentCount} attached',
+                  icon: Icons.attach_file_rounded,
+                  color: widget.attachmentCount > 0
+                      ? widget.accent
+                      : T.muted,
+                  visible: _hovered || widget.attachmentCount > 0,
+                  onPressed: widget.onOpenAttachments!,
+                ),
+              if (widget.onPark != null)
+                _IconAction(
+                  key: _parkKey,
+                  tooltip: 'Park it in a group — off the list, not gone',
+                  icon: Icons.inbox_rounded,
+                  color: T.muted,
+                  visible: _hovered,
+                  onPressed: _openParkMenu,
                 ),
               _IconAction(
                 tooltip: 'Work on this — hides everything else',

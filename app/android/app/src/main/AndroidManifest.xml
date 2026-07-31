@@ -1,4 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Reminders. Android 13+ makes notifications an opt-in the user grants at
+         runtime; the app still works without it, it just falls back to the
+         desktop behaviour of only showing the row as due once opened. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- A reminder is a moment the user picked, so it must not be deferred into
+         a doze batching window. SCHEDULE_EXACT_ALARM is the one the user can
+         revoke; the plugin degrades to an inexact alarm when it is refused. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- Alarms do not survive a reboot on their own. The receivers below are
+         what re-register the pending ones. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
     <application
         android:label="todo_widget"
         android:name="${applicationName}"
@@ -25,6 +38,23 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- flutter_local_notifications. The first receives the alarm and posts
+             the notification; the second re-registers everything still pending
+             after a reboot or an app update, which the OS otherwise drops. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

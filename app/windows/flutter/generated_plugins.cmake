@@ -4,13 +4,17 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_acrylic
+  flutter_timezone
   hotkey_manager_windows
+  media_kit_libs_windows_audio
   screen_retriever_windows
   tray_manager
   window_manager
+  windows_taskbar
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  flutter_local_notifications_windows
   jni
 )
 

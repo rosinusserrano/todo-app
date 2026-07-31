@@ -241,6 +241,388 @@ test('a server database predating reminders gains the column', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('a parked group and its membership sync together', () => {
+  const db = freshDb();
+
+  sync(db, USER, 0, {
+    parked_groups: [
+      {
+        uuid: 'g-1',
+        workspace_uuid: 'ws-1',
+        title: 'Backlog',
+        review_every_days: 30,
+        last_reviewed_at: null,
+        sort_order: 0,
+        created_at: '2026-07-21T10:00:00+02:00',
+        updated_at: '2026-07-21T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+    tasks: [
+      task('t-1', 'someday', '2026-07-21T10:00:00+02:00', {
+        group_uuid: 'g-1',
+      }),
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  assert.equal(changes.parked_groups.length, 1);
+  assert.equal(changes.parked_groups[0].title, 'Backlog');
+  assert.equal(changes.parked_groups[0].review_every_days, 30);
+  // Membership lives on the task, so a device that merges both ends up with
+  // the task shelved rather than back on its current list.
+  assert.equal(changes.tasks[0].group_uuid, 'g-1');
+});
+
+test('unparking propagates as a null group, not a stale one', () => {
+  const db = freshDb();
+
+  sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'someday', '2026-07-21T10:00:00+02:00', {
+        group_uuid: 'g-1',
+      }),
+    ],
+  });
+  const { changes } = sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'someday', '2026-07-21T11:00:00+02:00', {
+        group_uuid: null,
+      }),
+    ],
+  });
+
+  assert.equal(changes.tasks[0].group_uuid, null);
+});
+
+test('a server database predating parked groups gains the table and column', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      remind_at      TEXT,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('old-1', 'local', 'ws-1', 'from before groups', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  sync(db, USER, 0, {
+    tasks: [
+      task('t-1', 'shelved', '2026-07-21T10:00:00+02:00', {
+        group_uuid: 'g-1',
+      }),
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  const byUuid = Object.fromEntries(changes.tasks.map((t) => [t.uuid, t]));
+  assert.equal(byUuid['t-1'].group_uuid, 'g-1');
+  assert.equal(byUuid['old-1'].text, 'from before groups');
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('attachment metadata syncs, and the bytes are not the server\'s problem', () => {
+  const db = freshDb();
+
+  const { changes } = sync(db, USER, 0, {
+    attachments: [
+      {
+        uuid: 'a-1',
+        task_uuid: 't-1',
+        filename: 'tax-return.pdf',
+        size: 412000,
+        sha256: 'f'.repeat(64),
+        created_at: '2026-07-21T10:00:00+02:00',
+        updated_at: '2026-07-21T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.equal(changes.attachments.length, 1);
+  assert.equal(changes.attachments[0].filename, 'tax-return.pdf');
+  // The digest is the whole point: it is the address a later blob endpoint
+  // would serve from, so it has to survive the round trip intact.
+  assert.equal(changes.attachments[0].sha256, 'f'.repeat(64));
+  // There is no column for the contents, and deliberately so.
+  assert.ok(!('data' in changes.attachments[0]));
+});
+
+test('a removed attachment propagates as a tombstone', () => {
+  const db = freshDb();
+  const row = (updated_at, deleted_at) => ({
+    uuid: 'a-1',
+    task_uuid: 't-1',
+    filename: 'notes.md',
+    size: 120,
+    sha256: 'e'.repeat(64),
+    created_at: '2026-07-21T10:00:00+02:00',
+    updated_at,
+    deleted_at,
+  });
+
+  sync(db, USER, 0, { attachments: [row('2026-07-21T10:00:00+02:00', null)] });
+  const { changes } = sync(db, USER, 0, {
+    attachments: [row('2026-07-21T11:00:00+02:00', '2026-07-21T11:00:00+02:00')],
+  });
+
+  assert.equal(changes.attachments[0].deleted_at, '2026-07-21T11:00:00+02:00');
+});
+
+test('a server database predating attachments gains the table', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('old-1', 'local', 'ws-1', 'from before attachments', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  const { changes } = sync(db, USER, 0, {
+    attachments: [
+      {
+        uuid: 'a-1',
+        task_uuid: 'old-1',
+        filename: 'receipt.png',
+        size: 900,
+        sha256: 'd'.repeat(64),
+        created_at: '2026-07-21T10:00:00+02:00',
+        updated_at: '2026-07-21T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.equal(changes.attachments[0].filename, 'receipt.png');
+  assert.equal(changes.tasks[0].text, 'from before attachments');
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('journal entries round-trip title and body as opaque ciphertext', () => {
+  const db = freshDb();
+
+  // When encrypted, the client sends AES-GCM blobs and the encrypted flag; the
+  // server neither reads nor cares. Any string stands in for the blobs here -
+  // what matters is they, and the flag, survive untouched.
+  const { changes } = sync(db, USER, 0, {
+    journal_entries: [
+      {
+        uuid: 'j-1',
+        workspace_uuid: 'ws-1',
+        title: 'ENC(title)',
+        text: 'ENC(body)',
+        encrypted: 1,
+        created_at: '2026-07-23T14:00:00+02:00',
+        updated_at: '2026-07-23T14:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.equal(changes.journal_entries.length, 1);
+  assert.equal(changes.journal_entries[0].title, 'ENC(title)');
+  assert.equal(changes.journal_entries[0].text, 'ENC(body)');
+  assert.equal(changes.journal_entries[0].encrypted, 1);
+  // The workspace is a payload field, not bookkeeping - a note that lost it
+  // would surface in the wrong workspace on the next device.
+  assert.equal(changes.journal_entries[0].workspace_uuid, 'ws-1');
+});
+
+test('a plaintext journal entry round-trips with encrypted = 0', () => {
+  const db = freshDb();
+  const { changes } = sync(db, USER, 0, {
+    journal_entries: [
+      {
+        uuid: 'j-1',
+        workspace_uuid: 'ws-1',
+        title: 'a plain title',
+        text: 'a plain body',
+        encrypted: 0,
+        created_at: '2026-07-23T14:00:00+02:00',
+        updated_at: '2026-07-23T14:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+  assert.equal(changes.journal_entries[0].encrypted, 0);
+  assert.equal(changes.journal_entries[0].text, 'a plain body');
+});
+
+test('editing a journal entry wins by updated_at, keeping created_at', () => {
+  const db = freshDb();
+  const entry = (text, updated_at) => ({
+    uuid: 'j-1',
+    workspace_uuid: 'ws-1',
+    text,
+    created_at: '2026-07-23T14:00:00+02:00',
+    updated_at,
+    deleted_at: null,
+  });
+
+  sync(db, USER, 0, { journal_entries: [entry('typo', '2026-07-23T14:00:00+02:00')] });
+  const { changes } = sync(db, USER, 0, {
+    journal_entries: [entry('fixed', '2026-07-23T15:00:00+02:00')],
+  });
+
+  assert.equal(changes.journal_entries[0].text, 'fixed');
+  // The edit moved updated_at but not created_at - the log keeps its order.
+  assert.equal(changes.journal_entries[0].created_at, '2026-07-23T14:00:00+02:00');
+});
+
+test('a deleted journal entry propagates as a tombstone', () => {
+  const db = freshDb();
+  const row = (updated_at, deleted_at) => ({
+    uuid: 'j-1',
+    workspace_uuid: 'ws-1',
+    text: 'logged, then removed',
+    created_at: '2026-07-23T14:00:00+02:00',
+    updated_at,
+    deleted_at,
+  });
+
+  sync(db, USER, 0, { journal_entries: [row('2026-07-23T14:00:00+02:00', null)] });
+  const { changes } = sync(db, USER, 0, {
+    journal_entries: [row('2026-07-23T15:00:00+02:00', '2026-07-23T15:00:00+02:00')],
+  });
+
+  assert.equal(changes.journal_entries[0].deleted_at, '2026-07-23T15:00:00+02:00');
+});
+
+test('a server database predating the journal gains the table', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('old-1', 'local', 'ws-1', 'from before the journal', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  sync(db, USER, 0, {
+    journal_entries: [
+      {
+        uuid: 'j-1',
+        workspace_uuid: 'ws-1',
+        text: 'first entry on the upgraded server',
+        created_at: '2026-07-23T14:00:00+02:00',
+        updated_at: '2026-07-23T14:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  assert.equal(changes.journal_entries[0].text, 'first entry on the upgraded server');
+  // The pre-existing row survives the migration.
+  assert.equal(changes.tasks[0].text, 'from before the journal');
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a server database with a title-less journal gains the column', () => {
+  // A server that first synced a journal in the v5 era has the table but no
+  // title column; openDb must add it, or every titled push would fail.
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE journal_entries (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO journal_entries (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('old-1', 'local', 'ws-1', 'ENC(before titles)', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  sync(db, USER, 0, {
+    journal_entries: [
+      {
+        uuid: 'j-1',
+        workspace_uuid: 'ws-1',
+        title: 'ENC(new title)',
+        text: 'ENC(new body)',
+        created_at: '2026-07-23T14:00:00+02:00',
+        updated_at: '2026-07-23T14:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  const byUuid = Object.fromEntries(changes.journal_entries.map((e) => [e.uuid, e]));
+  assert.equal(byUuid['j-1'].title, 'ENC(new title)');
+  // The pre-existing row survives, with an empty title from the DEFAULT.
+  assert.equal(byUuid['old-1'].text, 'ENC(before titles)');
+  assert.equal(byUuid['old-1'].title, '');
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('auth rejects a missing, malformed or wrong token', () => {
   const config = { secret: 'correct-horse' };
   const req = (auth) => ({ get: () => auth });

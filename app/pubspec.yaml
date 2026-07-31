@@ -46,6 +46,17 @@ dependencies:
   tray_manager: ^0.5.3
   launch_at_startup: ^0.5.1
   package_info_plus: ^9.0.1
+  media_kit: ^1.2.6
+  media_kit_libs_audio: ^1.0.7
+  flutter_local_notifications: ^22.1.0
+  timezone: ^0.11.1
+  flutter_timezone: ^5.1.0
+  quick_actions: ^1.1.0
+  file_picker: ^11.0.2
+  open_filex: ^4.7.0
+  crypto: ^3.0.7
+  cryptography: ^2.9.0
+  windows_taskbar: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -92,9 +103,13 @@ flutter:
 
   # tray_manager reads the icon from the bundled assets at runtime, so the
   # window icon has to be shipped as an asset as well as a Windows resource.
+  # windows_taskbar loads thumbnail-toolbar icons from disk by path, out of
+  # data/flutter_assets beside the exe, so these must be bundled assets too.
   assets:
     - assets/tray_icon.ico
     - assets/tray_icon.png
+    - assets/sound_pause.ico
+    - assets/sound_play.ico
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

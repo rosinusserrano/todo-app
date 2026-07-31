@@ -10,6 +10,17 @@
 //     and race on the cursor.
 //   - Never spin on a broken config. A wrong token is not going to fix itself,
 //     so polling stops until the settings change.
+//
+// The offline story falls out of the first rule: a write goes into the local
+// database, is flagged `dirty`, and stays there until a sync accepts it. With
+// the server off, that is simply a sync that fails and gets retried - nothing
+// is queued in memory, so it survives a restart, and `pending` is what the UI
+// shows so the user can tell queued work from lost work.
+//
+// The one thing the poll cannot cover is a *suspended* app. On a phone the
+// timer stops with the process, so a phone that spent the night asleep would
+// otherwise wait a further minute after unlock before pushing. `resume()` is
+// the app-lifecycle hook that closes that gap.
 
 import 'dart:async';
 
@@ -50,12 +61,18 @@ class SyncService extends ChangeNotifier {
   static const _interval = Duration(seconds: 60);
   static const _debounce = Duration(seconds: 2);
 
+  /// Minimum gap between two resume-triggered syncs. See [resume].
+  static const _resumeGap = Duration(seconds: 20);
+
   String? baseUrl;
   String? token;
 
   SyncStatus status = SyncStatus.off;
   String? message;
   DateTime? lastSynced;
+
+  /// Local rows not yet accepted by the server. Zero after a clean sync.
+  int pending = 0;
 
   Timer? _periodic;
   Timer? _debounceTimer;
@@ -71,11 +88,44 @@ class SyncService extends ChangeNotifier {
     baseUrl = await _store.setting(kServerUrl);
     token = await _store.setting(kServerToken);
     status = isConfigured ? SyncStatus.idle : SyncStatus.off;
+    await refreshPending();
     notifyListeners();
     if (isConfigured) {
       _startPolling();
       unawaited(syncNow());
     }
+  }
+
+  /// Re-count the rows waiting to go out.
+  ///
+  /// Cheap (an indexed COUNT per table) and only ever called around a sync or
+  /// a lifecycle change, not per keystroke.
+  Future<void> refreshPending() async {
+    final count = await _store.pendingCount();
+    if (count == pending) return;
+    pending = count;
+    notifyListeners();
+  }
+
+  /// The app came back to the foreground.
+  ///
+  /// A suspended process runs no timers, so this pushes immediately and
+  /// restarts the poll, which is what makes a phone that was offline all night
+  /// sync on unlock rather than a minute later.
+  ///
+  /// Desktop reports the same lifecycle change on every *focus* change, and an
+  /// always-on-top widget is focused constantly, so this is rate-limited:
+  /// without the gap, alt-tabbing back would sync each time, and restarting
+  /// the poll on each one would keep pushing the periodic sync out of reach.
+  void resume() {
+    unawaited(refreshPending());
+    if (!isConfigured || status == SyncStatus.blocked) return;
+
+    final since = lastSynced;
+    if (since != null && DateTime.now().difference(since) < _resumeGap) return;
+
+    _startPolling();
+    unawaited(syncNow());
   }
 
   Future<void> configure(String url, String tokenValue) async {
@@ -112,6 +162,10 @@ class SyncService extends ChangeNotifier {
   /// produces one sync rather than one per keystroke-completed entry.
   void scheduleSync() {
     if (!isConfigured) return;
+    // Count now rather than after the attempt: with the server off, that is
+    // the difference between the queue showing up immediately and only after
+    // the request has finished timing out.
+    unawaited(refreshPending());
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounce, () => unawaited(syncNow()));
   }
@@ -148,6 +202,7 @@ class SyncService extends ChangeNotifier {
         status = canRetry ? SyncStatus.error : SyncStatus.blocked;
         message = failure;
     }
+    await refreshPending();
     notifyListeners();
 
     if (_dirtyAgain) {
@@ -157,17 +212,23 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Human-readable state for the settings dialog.
+  ///
+  /// When the server is unreachable the failure alone reads like data loss, so
+  /// it is followed by the queue depth: the work is on disk and will go out.
   String describe() {
     if (!isConfigured) return 'No server configured.';
+    final queued = pending == 0
+        ? ''
+        : ' $pending change${pending == 1 ? '' : 's'} waiting.';
     return switch (status) {
       SyncStatus.off => 'No server configured.',
-      SyncStatus.idle => 'Waiting for first sync.',
+      SyncStatus.idle => 'Waiting for first sync.$queued',
       SyncStatus.syncing => 'Syncing…',
       SyncStatus.ok => lastSynced == null
           ? 'Synced.'
           : 'Last synced ${_ago(lastSynced!)}.',
-      SyncStatus.error => message ?? 'Sync failed.',
-      SyncStatus.blocked => message ?? 'Check the address and token.',
+      SyncStatus.error => '${message ?? 'Sync failed.'}$queued',
+      SyncStatus.blocked => '${message ?? 'Check the address and token.'}$queued',
     };
   }
 

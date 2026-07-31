@@ -10,6 +10,75 @@ Newest changes are noted in the changelog at the bottom.
   gets logged to history (not deleted).
 - **Delete a task** — the ✕ on hover removes it *without* logging (a plain dismiss).
 - **Empty state** — friendly "Nothing left" message when the list is clear.
+- **Park a task** — the 📥 on hover shelves it in a parked group (see below),
+  taking it off the current list without deleting it.
+- **Attach a document** — the 📎 on hover; see Attachments.
+
+## Attachments
+
+Documents attached to a task — a quote, a scan, a spec.
+
+- **Attach** — the 📎 on a task row opens its attachment list; "Attach" picks a
+  file and copies it into the app's own storage. The original is only ever read,
+  and stays where it was.
+- **Open / remove** — from the same list. Removing tombstones the row, so the
+  removal reaches your other devices.
+- **A task carrying documents shows its 📎 without hovering**, tinted in the
+  workspace colour, the same way an armed reminder keeps its bell.
+- **Stored content-addressed** — files are named by the SHA-256 of their
+  contents rather than by their filename. Attaching the same document to two
+  tasks therefore costs one copy, and a filename can never escape the storage
+  directory or collide with another. Removing one of two rows sharing a file
+  leaves the file alone; the bytes go when the last reference does.
+- **The metadata syncs; the bytes do not.** The sync protocol is one JSON round
+  trip of rows, and pushing documents through it would make every sync wait on
+  the largest file anyone ever attached.
+- **So "not on this device" is a real, visible state.** A document attached on
+  the desktop appears on the phone as a proper named, sized entry that is dimmed
+  and cannot be opened yet — rather than being hidden, or shown as broken. It
+  stays removable from there, since deciding you no longer need a document
+  shouldn't require being at the machine that holds it.
+- **Orphaned files are swept at startup** — a row tombstoned on another device
+  arrives as a merge, never as a local delete, so its bytes would otherwise sit
+  on disk forever.
+- The stored digest is already the address a future blob-sync endpoint would
+  fetch by, so adding one later needs no migration of what is on disk.
+
+## Parked groups
+
+Titled shelves inside a workspace — "Backlog", "Future ideas", "Someday" — for
+tasks you are deliberately not doing now. Unlike side thoughts these are
+**per-workspace**: a backlog is a property of the thing you are working on.
+
+- **Open them** — "Parked" in the ▾ views menu on the workspace bar swaps the
+  content area for the parked view, the same way History and Thoughts do. Click
+  the "← Parked" header, press Esc, or pick "Parked" again to go back.
+- **Park a task** — the 📥 on a task row opens a picker of this workspace's
+  groups, plus "New group…", which creates one and parks straight into it.
+- **Unpark** — ↗ on a parked task puts it back at the *bottom* of the current
+  list. ✓ checks it off from where it sits, straight into history.
+- **Parking is a move, not a copy** — the same row keeps its uuid, its history
+  and its reminder. Parking the task you are focused on drops focus, since
+  shelving something is the opposite claim to working on it.
+- **Reminders go quiet while parked** — parked means "not now", and a reminder
+  firing would surface a row that is not on the list to be seen. The time stays
+  stored, so unparking arms it again exactly as it was.
+- **Review interval** — every group asks to be looked at on a schedule: weekly,
+  monthly (the default), quarterly, yearly, or never. This is what stops a shelf
+  becoming a landfill. Until the first review the clock runs from when the group
+  was made, so a new group is never instantly overdue.
+- **When a review comes due** — the group turns the alarm colour and shows
+  "review due", and the ▾ views menu on the workspace bar gains a coloured dot,
+  which is the only sign visible while the panel is closed. Opening the panel
+  expands every overdue group automatically. "Mark reviewed" restarts its clock.
+- **Groups collapse** — on a 340×480 window three shelves of ten items each is a
+  scroll with no shape to it, so only the ones you open take up room.
+- **Deleting a group releases its tasks** — everything it held comes back onto
+  the current list rather than going down with it. Deleting the workspace does
+  cascade, the same as it always has for tasks and history.
+- **Syncs** like everything else — a `parked_groups` table plus `group_uuid` on
+  `tasks` (client schema v3; both the client and the sync server migrate
+  existing databases in place).
 
 ## Focus mode
 
@@ -20,16 +89,81 @@ Newest changes are noted in the changelog at the bottom.
   be dragged, pinned and closed.
 - **Exclusive** — only one task can be in progress at a time; starting one
   releases any other.
-- **Leave focus** — "Back to list", Esc, or the 🕘 button. The tile flies back to
-  the exact row it came from.
+- **Leave focus** — "Back to list" or Esc. The tile flies back to the exact row
+  it came from.
 - **Done** — checks the task off straight from the focus view (logged to history
   as usual); the tile drops away and the list returns.
 - **Survives restarts** — the in-progress task is stored in the DB, so reopening
   the widget drops straight back into focus on it, switching workspace if needed.
+- **Park a thought without leaving** (💭, next to Done) — focus mode has its own
+  side-thought field, because the footer's sits behind the overlay. Capturing
+  here deliberately does *not* drop you out of focus: a stray thought is exactly
+  the interruption that shouldn't cost you the task you're on. The thought still
+  lands in the same global list and still blocks closing. **Ctrl+Alt+H** while
+  focused now opens this field rather than leaving focus, and the button carries
+  the pending count so you can see the pile growing without exiting.
 - **Nudge** (toggle, bottom of the focus view) — while it's on, the tile bobs up
   and down the entire time you're focused, so it stays in the corner of your eye
   and pulls you back when you drift. Turn it off and the tile sits still. The
   setting is remembered across restarts.
+
+## Concentration sound
+
+The 🎧 button opens a sound sheet. It sits *above* the focus overlay, because
+picking something to listen to is what you do right after picking a task — so
+it stays reachable while focused. The title bar stays above it, so the window
+is still draggable and closable with the sheet open. One transport throughout:
+one thing plays at a time, and one volume, remembered across restarts. The
+headphones light up in the workspace colour while anything is playing, and go
+back to outlined when it is paused — loaded but silent should not look like
+playing.
+
+**Pause without hunting for the window.** Whenever something is loaded there is
+a ⏸ / ▶ button in the title bar, next to the headphones, and on Windows the same
+control appears on the **taskbar thumbnail** — hover the taskbar icon and the
+pause button is right there under the preview, the way it works for a music
+player. Pausing keeps the source loaded, so resuming needs no second lookup and
+the now-playing label stays put (marked "· paused", since the sheet may be
+opened long after). Live radio is the honest exception: a stream has no stored
+position, so resuming it picks up wherever the stream is *now*.
+
+**Volume without opening the sheet** — hover the ⏸ / ▶ button and a small volume
+slider drops out underneath it. It stays up while the pointer is on either the
+button or the panel, with a short grace period so the gap between them can
+actually be crossed; it hangs from the button's *right* edge rather than being
+centred, because everything in this bar lives in its right-hand end and a
+centred panel would spill off a 340px window.
+
+- The taskbar control is Windows-only and silently absent everywhere else.
+- Windows refuses to change a thumbnail toolbar while the window is hidden, and
+  this widget lives in the tray, so the intended state is cached and re-applied
+  whenever the window comes back — otherwise the buttons would be stale from
+  whenever it was last on screen.
+
+Three tiers, none of which need an account, an API key, or a licence:
+
+- **Noise** — white, pink, brown and rain, *synthesised on the spot*. Nothing is
+  downloaded and nothing ships in the bundle: 30 seconds of stereo noise is
+  generated to a temp WAV on first use and looped. Three things make that work
+  and are covered by `test/noise_test.dart`:
+  - the buffer is generated with a crossfade tail folded back over its head, so
+    it joins to itself with no click at the loop point (brown noise clicks badly
+    without this — the test asserts the seam step never exceeds the step the
+    signal already takes on its own);
+  - every kind is trimmed to the same ~0.19 RMS, because raw white noise is
+    three times louder than pink and the volume slider has to mean one thing;
+  - the two channels are generated independently, which is what makes it sound
+    wide rather than glued to the middle of your head.
+- **Ambience** — café, rain, city, forest, train and sea, streamed from the
+  Internet Archive's `radio-aporee-maps` collection: thousands of field
+  recordings, all CC0 or public-domain-mark. Each preset is a *query*, not a
+  fixed file, so tapping the same button again gives you a different café.
+- **Radio** — live stations from the Radio Browser directory, browsable by
+  genre: ambient, drone, dub techno, minimal, techno, lo-fi. Near-duplicate
+  entries for the same station are collapsed, and offline stations are filtered
+  out. The three things the directory asks of clients are all honoured: a
+  descriptive user agent, no hardcoded server (it falls through the documented
+  mirrors), and plays reported back so its rankings stay accurate.
 
 ## Reminders
 
@@ -39,11 +173,25 @@ Newest changes are noted in the changelog at the bottom.
 - **Always visible once set** — an armed bell stays on the row without hovering
   (it is state the task is carrying, not an action offered on demand), and its
   tooltip says when: "in 26m", "tomorrow 09:00".
-- **When it comes due** — the widget puts *itself* in front of you: the window
-  surfaces (from the tray, from minimised, from behind whatever you were doing),
-  switches to the workspace the task lives in, and leaves focus mode if that
-  would hide the task. No toast, no notification permissions — being on top of
-  the screen is what this app is for.
+- **When it comes due, on desktop** — the widget puts *itself* in front of you:
+  the window surfaces (from the tray, from minimised, from behind whatever you
+  were doing), switches to the workspace the task lives in, and leaves focus
+  mode if that would hide the task. No toast, no notification permissions —
+  being on top of the screen is what this app is for.
+- **When it comes due, on mobile** — a real OS notification, because the desktop
+  answer does not carry to a phone: iOS and Android suspend the app's timers the
+  moment it goes to the background and never let it raise itself to the front,
+  so a reminder not handed to the OS in advance simply would not arrive. Tapping
+  the notification opens the app on that task, in its workspace.
+  - Scheduled ahead of time from the armed reminders, and the whole schedule is
+    rebuilt on any change — including reminders merged in by sync, which no
+    local write path would ever see.
+  - Exact rather than batched into a doze window, since a reminder is a moment
+    you picked. It survives a reboot, and it degrades to an inexact alarm if
+    Android's exact-alarm permission is refused.
+  - Declining the notification permission is not fatal: the app falls back to
+    exactly its desktop behaviour, showing the row as due once opened.
+- **Parked tasks stay quiet** — see Parked groups.
 - **Stays due** — the row turns red and keeps showing as due until the task is
   checked off or the reminder cleared. The window only surfaces once per
   reminder, though; an unfinished task will not keep interrupting you.
@@ -58,19 +206,90 @@ Newest changes are noted in the changelog at the bottom.
 
 ## History
 
-- **"Done recently" view** — the 🕘 button shows completed tasks, newest first,
-  each with the date/time it was checked off (up to 100).
+- **"Done recently" view** — "History" in the ▾ views menu on the workspace bar
+  shows completed tasks, newest first, each with the date/time it was checked off
+  (up to 100). Click the "← Done recently" header or press Esc to go back.
 - Completed tasks are preserved across restarts.
+
+## Journal / Notes
+
+A quiet place to write, per workspace — plaintext by default, with **optional**
+password encryption. Reached from the ▾ **views menu on the workspace bar**
+(not the title bar): "Notes". Two things shape it: it is **quiet** (so a glance
+at the screen gives nothing away) and its lock is **opt-in**.
+
+- **Deliberately low-key** — a plain "Notes" pane in the same muted greys as the
+  rest of the widget: no "journal/diary" wording, no emoji, no warm colours, no
+  day-grouped timeline. It reads as an ordinary notes pane in a todo app.
+- **No password needed** — by default it opens straight to the list and stores
+  notes as plain text. Nothing forces a password on you.
+- **Optional password + encryption** — the 🔓 button on the list sets a
+  password. From then on each entry's **title and body are AES-256-GCM
+  encrypted** under a key derived from it (PBKDF2-HMAC-SHA256), and **existing
+  entries are re-encrypted** on the spot — the database holds only ciphertext, so
+  opening `todo.db` reveals nothing and the sync server relays blobs it cannot
+  read. It then opens to a plain unlock field; a **Lock** button and every app
+  restart re-lock it. A **Remove password** button decrypts everything back to
+  plaintext. **If you forget the password, those entries cannot be recovered.**
+- **Per-entry state** — each row records whether it is encrypted, so mixed and
+  synced states stay honest: a device without the password shows an encrypted
+  row as a **Locked** placeholder rather than garbage, and can still keep its own
+  plaintext notes.
+- **Title + body editor** — creating or opening an entry replaces the list with
+  a plain full-pane editor: a title line, a body area, and **Cancel / Save**
+  (plus **Delete** when editing). Esc backs out of the editor first, then the
+  journal.
+- **Timestamped, newest-first** — the list shows each entry's title and a plain
+  "Jul 20, 14:32" stamp. Editing changes the words but **not the timestamp** —
+  the log records when a thing was written, not when it was later edited. Saving
+  an entry emptied of both title and body deletes it.
+- **Tombstoned deletes** — removing an entry marks it deleted rather than
+  dropping it, so the removal reaches your other devices instead of resurrecting
+  on the next sync.
+- **Per-workspace**, like parked groups and unlike the global side thoughts: the
+  notes belong to the thing you are working on, reload on every workspace switch,
+  and go with the workspace if you delete it.
+- Notes, History, Thoughts and Parked are mutually exclusive — the content area
+  holds exactly one view. It syncs via a `journal_entries` table with `title`,
+  `text` and an `encrypted` flag (schema v7). When encryption is on, the password
+  salt and verifier are device-local, so a second device needs its own setup with
+  the same password to open entries synced to it — the entries travel, the key
+  material does not.
 
 ## Side thoughts
 
-- **Capture a thought** — the 💭 button expands a field to jot a quick note.
+- **Capture a thought** — the 💭 button on the *left* of the footer expands a
+  field to jot a quick note.
+- **Review them on demand** — the 💭 count on the *right* of the footer opens
+  the parked-thoughts panel, which slides up and **takes over the content area
+  in place of the tasks**. Thoughts are not shown otherwise: a parked thought is
+  something you deal with deliberately, not a list that should be eating room
+  above your tasks the whole time. Press it again (or Esc) to go back.
+  The two 💭 controls do different jobs — left captures, right reviews.
 - **Promote to task** — the ↑ turns a thought into a real task.
 - **Discard** — the ✕ throws a thought away.
+- The panel closes itself when the last thought is cleared. It has to: the count
+  badge that opens it is hidden at zero, so an empty panel would strand you in a
+  view with no way back to the tasks.
+- Thoughts, History and Parked are mutually exclusive — the content area holds
+  exactly one view, which is what keeps a 340×480 window legible.
 - Thoughts are *never* hard-deleted; every one is kept in the DB with a
   resolved timestamp.
-- **Pressure meter** — the footer bar reddens as pending thoughts pile up, and
-  starts pulsing at 10 (faster the closer you get to 20). A live 💭 count shows.
+- **Global, not per-workspace** — one pile, seen and captured from every
+  workspace, and switching workspace neither hides it nor clears it. Parked
+  groups are the per-workspace equivalent.
+- **Switching workspace is not blocked by them.** It used to be, on the theory
+  that the close guard's rule should apply everywhere. That was the wrong guard:
+  since thoughts are global, moving between workspaces cannot hide or lose one,
+  and all the block did was make the app feel stuck during the one activity —
+  looking around your own lists — that tells you where a parked thought belongs.
+  Closing still blocks; that is the path where the pile leaves the screen.
+- **Pressure meter** — with the switch block gone, the footer bar carries the
+  whole signal, and it escalates harder than it used to: it tints from the first
+  thought, starts pulsing at 4, and reaches full intensity and its fastest pulse
+  at 12. Past that the count is boxed in the alarm colour and grown, rather than
+  merely tinted. The live 💭 count is always visible even though the thoughts
+  themselves are not, so the pile can nag you without occupying the window.
 
 ## Window & look
 
@@ -86,11 +305,15 @@ Newest changes are noted in the changelog at the bottom.
 - **Global shortcuts** (desktop) — **Ctrl+Alt+T** jumps straight into the
   add-task field and **Ctrl+Alt+H** into the side-thought field, from anywhere,
   even when the widget is minimised or behind another window. Both raise the
-  window and leave focus mode first, since the capture fields sit behind the
-  focus overlay. If another application already owns a combination, the footer
-  says so rather than leaving a dead shortcut.
-- **Esc** leaves focus mode; **Ctrl+Enter** in either capture field keeps it
-  open to chain another entry, plain **Enter** closes it.
+  window and clear the sound sheet first. **Ctrl+Alt+T** also leaves focus mode,
+  since the add field sits behind the focus overlay; **Ctrl+Alt+H** no longer
+  does, because focus mode has its own thought field. If another application
+  already owns a combination, the footer says so rather than leaving a dead
+  shortcut.
+- **Esc** unwinds one layer at a time — the sound sheet, then the focus-mode
+  thought field, then focus mode, then the parked-thoughts panel.
+  **Ctrl+Enter** in any capture field
+  keeps it open to chain another entry, plain **Enter** closes it.
 - **System tray icon** (desktop) — the widget lives in the notification area.
   Left-click brings it back from hidden, minimised or buried; right-click gives
   Show / Hide / Add task / Quit. **Hide** is the tray's own trick: unlike
@@ -115,11 +338,24 @@ Newest changes are noted in the changelog at the bottom.
 - **Your own server** — `npm run server` starts a sync server on any machine.
   It prints its LAN addresses and an access token on first run. Nothing is sent
   anywhere else; there is no hosted service.
-- **Connect a device** — the ☁ button takes a server address and token, with a
-  "Test" that checks reachability separately from the token, so a wrong address
-  reports itself as a wrong address.
+- **Connect a device** — the ⚙ settings button opens a panel that takes a server
+  address and token, with a "Test" that checks reachability separately from the
+  token, so a wrong address reports itself as a wrong address. The gear's colour
+  still carries sync health, so a silent failure stays visible.
 - **Offline first** — the app always reads and writes its own local database.
   Sync is a background reconcile, never something the UI waits for.
+- **Works with the server off** — which, for a self-hosted server, is whenever
+  the machine hosting it is off. Writes go to the local database and are flagged
+  until a sync accepts them; the flag lives in the database, not in memory, so
+  the queue survives quitting the app or a crash. When the server comes back the
+  next sync carries everything out, oldest edits included.
+- **You can see the queue** — while the server is unreachable, the settings panel
+  says how many changes are waiting ("3 changes waiting"), so a failed sync reads
+  as *queued* rather than *lost*.
+- **Syncs on wake** — returning to the app pushes immediately instead of waiting
+  out the poll. This is mostly for phones, which suspend timers in the background:
+  a phone that was offline all night syncs on unlock, not a minute later. It is
+  rate-limited so alt-tabbing back to the desktop widget doesn't sync every time.
 - **Conflicts** — last edit wins per row. Deletes travel as tombstones, so a
   removal on one device actually reaches the others. Focus mode stays globally
   exclusive even when two devices each focused a different task while offline.
@@ -130,6 +366,12 @@ Newest changes are noted in the changelog at the bottom.
 - **iOS / Android** — the same lists and data, without the window chrome
   (always-on-top has no meaning on a phone). Installed on iPhone from an
   unsigned build signed locally with Sideloadly or AltStore.
+- **Home-screen quick actions** — long-press the app icon for "Add task" and
+  "Park a thought". Both land in the running app with the caret already in the
+  right field; this is the phone's counterpart to the Ctrl+Alt+T / Ctrl+Alt+H
+  global shortcuts, and it exists for the same reason — capture speed. (Not a
+  WidgetKit home-screen *widget*, which is a separate app extension and cannot
+  host a text field at all.)
 - **Sized for a thumb on the phone** — the layout is deliberately the same one
   as on the desktop, drawn about a quarter larger. It is one zoom applied to
   the whole widget rather than a second set of mobile paddings, so the two
@@ -158,11 +400,17 @@ Newest changes are noted in the changelog at the bottom.
 - **Flutter** (Dart) for all platforms, replacing the Tauri v2 + TypeScript
   build. The Windows widget keeps its frameless, transparent, acrylic,
   always-on-top window via `window_manager` and `flutter_acrylic`.
-- **SQLite persistence** on every device — `workspaces`, `tasks` and
-  `side_thoughts`. Rows are keyed by UUID and carry `updated_at` and
+- **SQLite persistence** on every device — `workspaces`, `tasks`,
+  `parked_groups`, `attachments`, `side_thoughts` and `journal_entries`. Rows
+  are keyed by UUID and carry `updated_at` and
   `deleted_at`, which is what makes them syncable; the old autoincrement ids
   collided as soon as two devices were offline at once.
 - **Sync server** — Node + Express + SQLite under `server/`.
+- **Audio** — `media_kit` (libmpv). Picked over the lighter alternatives because
+  live internet radio is the hard case: Icecast/Shoutcast servers serve AAC+ and
+  HLS and send headers that trip up Media Foundation. It costs roughly 30-40MB
+  of bundled native libraries, which is the price of stations that actually
+  play.
 
 ## Ideas / backlog (not built yet)
 
@@ -171,11 +419,114 @@ Newest changes are noted in the changelog at the bottom.
 - Reminders at an arbitrary date/time — currently presets only, because a
   Material date picker is about as wide as the whole widget.
 - Recurring reminders ("every weekday at 09:00").
+- **Syncing attachment bytes.** Needs a second channel beside the JSON sync —
+  `PUT/GET /blob/:sha256`, content-addressed, plus an upload/download queue with
+  its own retry and progress. The metadata layer is built for it already: the
+  digest is the address, and "not on this device" is the state it would clear.
 
 ---
 
 ## Changelog
 
+- **0.12.4** — **Trusting the offline queue.** Writing with the sync server off
+  already worked — every write goes to the local database first and carries a
+  flag until the server accepts it — but nothing said so, and two gaps made it
+  less reliable than it looked. The settings panel now reports the queue depth
+  when a sync fails ("Cannot reach server… 3 changes waiting"), which is the
+  difference between *queued* and *lost*. And the app now syncs when it returns
+  to the foreground: a suspended phone runs no timers, so a phone that spent the
+  night offline used to sit for another minute after unlock before pushing
+  anything. That resume is rate-limited, because desktop reports the same
+  lifecycle event on every focus change and an always-on-top widget is focused
+  constantly. The queue itself is unchanged — it was always the `dirty` column,
+  which is why it survives a crash.
+
+- **0.12.3** — **A visible way out of Notes, Parked and History.** These three
+  take over the content area, and nothing on screen said how to get back — Esc
+  worked and re-picking the menu item closed them, but neither was discoverable.
+  The header label at the top of each view is now the back control itself
+  ("← Parked", "← Notes", "← Done recently"), which puts the way out on the very
+  thing that says where you are and costs no extra row. Two gaps closed
+  alongside it: **Esc now closes History** (it handled thoughts, parked and the
+  journal, but History had been left out of the unwind chain), and the ▾ views
+  menu now **ticks and tints whichever view is open**, so closing it from there
+  is findable too — with the ▾ itself tinting while any view is open. Not the
+  workspace tab: that is the edit control, and it answers "which workspace", not
+  "which view".
+
+- **0.12.2** — **Pause the sound from the taskbar.** The concentration sound
+  gained a real pause (as opposed to only stop), surfaced two ways: a ⏸ / ▶
+  button in the title bar beside the headphones whenever something is loaded,
+  and — on Windows — a matching button on the taskbar thumbnail, so hovering the
+  taskbar icon silences it without bringing the widget forward. Pausing keeps
+  the source loaded; the now-playing label stays and says "· paused". The
+  headphones now only fill in while audio is actually running. Hovering the
+  transport button drops out a **volume slider**, so the level is adjustable
+  without opening the sheet either. The **pin** now lights in the workspace
+  colour rather than the fixed theme accent, so every lit control in the title
+  bar reads as one family.
+
+- **0.12.1** — **Workspace bar tidy.** The bar now shows only the *active*
+  workspace as a tab, with a ▾ switcher tucked into that tab's right edge
+  listing the others — a fixed width no matter how many workspaces exist,
+  instead of a row that scrolled once there were more than a few. Clicking the
+  name still opens the workspace for editing; the arrow, divided off inside the
+  same outline, opens the switcher. It sits *inside* the pill rather than beside
+  it so it cannot be mistaken for the free-standing ▾ views menu further along
+  the bar — two loose arrows in one 340px row read as two of the same control.
+  In the title bar the ☁ sync button became a ⚙
+  settings gear (it always opened Settings, where sync lives); the gear still
+  tints with sync health.
+
+- **0.12.0** — **Journal / Notes**, and a tidy of where per-workspace views
+  live. A per-workspace place to write, deliberately low-key — a plain "Notes"
+  pane in the widget's own muted greys, no diary chrome — so a glance at the
+  screen gives nothing away. Plaintext by default; a password is **optional** and
+  turns on encryption (AES-256-GCM under a PBKDF2 key), re-encrypting existing
+  entries so the `todo.db` file and the sync server hold only ciphertext, with a
+  Lock button, re-lock on restart, and a Remove-password path back to plaintext.
+  Each row records whether it is encrypted, so a device without the password
+  shows encrypted rows as "Locked" rather than garbage. Entries have a title and
+  a body, edited in a plain full-pane in-app editor with Cancel / Save, are
+  timestamped newest-first (editing keeps the original stamp), and tombstone on
+  delete. Per-workspace like parked groups (cascaded when a workspace is
+  deleted). Adds a `journal_entries` table with `title`, `text` and an
+  `encrypted` flag (schema v7; client and server migrate in place). **Notes,
+  Parked and History** now live in a ▾ menu on the **workspace bar** rather than
+  the title bar — they are about the current workspace, not the window — leaving
+  the title bar to the window/global controls (sync, sound, pin, minimize,
+  close).
+- **0.11.0** — Five things, mostly about what happens to work you are *not*
+  doing right now.
+  **Attachments**: documents on a task, stored content-addressed so the same
+  file attached twice costs one copy. The row syncs, the bytes stay device-local
+  — so an attachment made on the desktop shows on the phone as a real named
+  entry marked "not on this device", rather than being hidden or looking broken.
+  Adds an `attachments` table (schema v4).
+  **Parked groups**: titled shelves per workspace ("Backlog", "Future ideas")
+  that take tasks off the current list without deleting them, each with a review
+  interval — monthly by default — after which the group says so, in the panel
+  and as a dot on the title bar. Deleting a group releases its tasks rather than
+  taking them with it. Adds `parked_groups` and `group_uuid` on `tasks` (schema
+  v3; client and server both migrate in place).
+  **Mobile reminders** now fire as real OS notifications, scheduled ahead of
+  time and rebuilt from the database on every change, because a phone will not
+  let the app surface itself the way the desktop widget does.
+  **Home-screen quick actions** on iOS and Android — long-press the icon to add
+  a task or park a thought, the phone's version of the global shortcuts.
+  **Side thoughts no longer block switching workspace.** They are global, so
+  switching cannot lose one; the block only punished looking around your own
+  lists. The footer's pressure meter escalates earlier and harder to compensate,
+  and closing still blocks.
+- **0.10.0** — Concentration sound. A 🎧 sheet with three tiers — synthesised
+  white/pink/brown/rain noise, public-domain field recordings from the Internet
+  Archive, and live radio from the Radio Browser directory — all key-free and
+  licence-free, and reachable from inside focus mode. Focus mode also gained its
+  own side-thought field, so parking a stray thought no longer costs you the
+  task you're on, and the focus tile now keeps clear of the window edges instead
+  of snapping to full width the moment its flight ended. Parked thoughts stopped
+  living permanently above the task list: the 💭 count in the footer now opens
+  them as a panel that replaces the tasks, and the footer is just the bar again.
 - **0.9.2** — The app finally looks like itself on every platform: the
   indigo→violet checkmark replaces the placeholder Flutter logo in the taskbar,
   the tray, the iOS home screen and the Android launcher. Databases written by

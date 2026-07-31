@@ -34,6 +34,8 @@ class TitleBar extends StatelessWidget {
     required this.accent,
     required this.onClose,
     required this.onOpenSettings,
+    required this.onToggleCalendar,
+    required this.calendarOpen,
     required this.syncColor,
     required this.syncTooltip,
   });
@@ -78,6 +80,13 @@ class TitleBar extends StatelessWidget {
   final Color syncColor;
   final String syncTooltip;
 
+  /// The calendar lives here rather than in the workspace bar's views menu,
+  /// even though it has a per-workspace scope: it can show *every* workspace at
+  /// once, it replaces the whole window rather than the content area, and it
+  /// has to stay reachable while a per-workspace view is open.
+  final VoidCallback onToggleCalendar;
+  final bool calendarOpen;
+
   @override
   Widget build(BuildContext context) {
     final bar = SizedBox(
@@ -94,6 +103,14 @@ class TitleBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          _Btn(
+            tooltip: calendarOpen ? 'Back to tasks' : 'Calendar',
+            icon: calendarOpen
+                ? Icons.calendar_month
+                : Icons.calendar_month_outlined,
+            tint: calendarOpen ? accent : null,
+            onPressed: onToggleCalendar,
+          ),
           _Btn(
             tooltip: syncTooltip,
             icon: Icons.settings_outlined,

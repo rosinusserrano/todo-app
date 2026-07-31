@@ -20,6 +20,23 @@ import 'package:todo_widget/sync/models.dart';
 
 const _pw = 'correct horse battery staple';
 
+/// The attachments table as it stood from v4, which is what the hand-built v5
+/// and v6 fixtures below would really have had. The v8 migration adds
+/// `event_uuid` to it, so a fixture without the table never gets as far as the
+/// journal columns actually under test.
+const _v4Attachments = '''
+      CREATE TABLE attachments (
+        uuid       TEXT PRIMARY KEY,
+        task_uuid  TEXT NOT NULL,
+        filename   TEXT NOT NULL,
+        size       INTEGER NOT NULL DEFAULT 0,
+        sha256     TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        dirty      INTEGER NOT NULL DEFAULT 1
+      )''';
+
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -326,6 +343,9 @@ void main() {
       )''');
     await db.execute(
         'CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    // Scaffolding, not the subject of this test: a real v5 database has had an
+    // attachments table since v4, and the v8 step adds a column to it.
+    await db.execute(_v4Attachments);
     await db.insert('journal_entries', {
       'uuid': 'j-old',
       'workspace_uuid': 'ws-1',
@@ -370,6 +390,7 @@ void main() {
       )''');
     await db.execute(
         'CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    await db.execute(_v4Attachments);
     await db.insert('journal_entries', {
       'uuid': 'j-enc',
       'workspace_uuid': 'ws-1',

@@ -20,6 +20,23 @@ import 'theme.dart';
 
 const _kLastWorkspace = 'ui:last-workspace';
 const _kNudge = 'ui:nudge-enabled';
+const _kCalendarMode = 'ui:calendar-mode';
+const _kCalendarScope = 'ui:calendar-scope';
+const _kCalendarHidden = 'ui:calendar-hidden';
+
+/// The three grids. There is deliberately no month view: the year view is
+/// twelve months drawn at once, so a single month would be the same thing with
+/// less on it.
+enum CalendarViewMode { day, week, year }
+
+/// Whose events are on screen.
+enum CalendarScope {
+  /// The current workspace's calendar, plus the standalone ones.
+  workspace,
+
+  /// Every calendar, every workspace.
+  all,
+}
 
 /// A journal entry ready for the UI: its title and body as plain text, whether
 /// they came from a plaintext row or were decrypted. [locked] marks a row that
@@ -203,6 +220,16 @@ class AppState extends ChangeNotifier {
       await _store.putJournal(e.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
 
+    // The workspace's calendar and everything on it. Its uuid is the
+    // workspace's, so it is found by id rather than by scanning.
+    for (final e in await _store.eventsOnCalendar(uuid)) {
+      await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    for (final c in await _store.calendars()) {
+      if (c.workspaceUuid != uuid) continue;
+      await _store.putCalendar(c.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+
     final ws = workspaces.firstWhere((w) => w.uuid == uuid);
     await _store.putWorkspace(ws.copyWith(deletedAt: stamp, updatedAt: stamp));
 
@@ -243,10 +270,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Hand the OS the whole schedule: armed task reminders and upcoming calendar
+  /// events in one call, because the service cancels everything before it
+  /// rewrites (see notifications.dart) and two calls would each wipe the other.
+  ///
+  /// Reads the events straight from the store rather than using [events], which
+  /// holds only whatever range the calendar happens to be showing - and is
+  /// empty entirely when the calendar has never been opened.
   Future<void> _rescheduleNotifications() async {
     final n = notifications;
     if (n == null) return;
-    await n.reschedule(await _store.pendingReminders());
+    await n.reschedule(
+      await _store.pendingReminders(),
+      events: await _store.upcomingEvents(),
+      calendars: {for (final c in await _store.calendars()) c.uuid: c},
+    );
   }
 
   Future<void> addTask(String text) async {
@@ -742,6 +780,354 @@ class AppState extends ChangeNotifier {
       item.entry.copyWith(deletedAt: nowStamp(), updatedAt: nowStamp()),
     );
     await refreshJournal();
+    _mutated();
+  }
+
+  // -------------------------------------------------------------- calendar
+
+  /// Every live calendar, workspace-backed and standalone alike.
+  List<Calendar> calendars = [];
+
+  /// The events overlapping whatever range the calendar is showing. Loaded per
+  /// range rather than wholesale: a year view of a well-used calendar is
+  /// thousands of rows, and only the visible window is ever drawn.
+  List<CalendarEvent> events = [];
+
+  /// Which of those have a file on them, for the paperclip on the blob.
+  Set<String> eventsWithAttachments = {};
+
+  bool showCalendar = false;
+  CalendarViewMode calendarMode = CalendarViewMode.week;
+  CalendarScope calendarScope = CalendarScope.workspace;
+
+  /// The day the view is built around: the day shown, the week containing it,
+  /// or the year containing it.
+  DateTime calendarAnchor = DateTime.now();
+
+  /// Calendars the user has unticked. Device-local, like the other UI prefs -
+  /// which calendars you want to look at is a property of where you are
+  /// sitting, not of the account.
+  Set<String> hiddenCalendars = {};
+
+  /// The calendars whose events belong on screen right now.
+  ///
+  /// Scope first, then the hidden set, so unticking something in the all view
+  /// does not silently follow you into the workspace view.
+  List<Calendar> get visibleCalendars {
+    final ws = currentWorkspaceUuid;
+    return [
+      for (final c in calendars)
+        if (!hiddenCalendars.contains(c.uuid))
+          if (calendarScope == CalendarScope.all ||
+              c.workspaceUuid == null ||
+              c.workspaceUuid == ws)
+            c,
+    ];
+  }
+
+  Map<String, Calendar> get calendarsByUuid => {
+        for (final c in calendars) c.uuid: c,
+      };
+
+  /// A calendar's display name. A workspace calendar reads its name from the
+  /// workspace, so renaming the workspace renames the calendar too rather than
+  /// leaving a stale copy behind.
+  String calendarName(Calendar c) {
+    final wsUuid = c.workspaceUuid;
+    if (wsUuid == null) return c.name;
+    for (final w in workspaces) {
+      if (w.uuid == wsUuid) return w.name;
+    }
+    return c.name;
+  }
+
+  /// Same rule as [calendarName], for the colour every event of this calendar
+  /// is drawn in.
+  Color calendarColor(Calendar c) {
+    final wsUuid = c.workspaceUuid;
+    if (wsUuid != null) {
+      for (final w in workspaces) {
+        if (w.uuid == wsUuid) return T.parseHex(w.color);
+      }
+    }
+    return T.parseHex(c.color);
+  }
+
+  Color colorForEvent(CalendarEvent e) {
+    for (final c in calendars) {
+      if (c.uuid == e.calendarUuid) return calendarColor(c);
+    }
+    return T.accent;
+  }
+
+  /// The half-open window the current mode needs, in local time.
+  (DateTime, DateTime) get calendarRange {
+    final a = DateTime(calendarAnchor.year, calendarAnchor.month, calendarAnchor.day);
+    return switch (calendarMode) {
+      CalendarViewMode.day => (a, a.add(const Duration(days: 1))),
+      CalendarViewMode.week => (startOfWeek(a), startOfWeek(a).add(const Duration(days: 7))),
+      CalendarViewMode.year => (
+          DateTime(a.year),
+          DateTime(a.year + 1),
+        ),
+    };
+  }
+
+  /// Monday. Fixed rather than locale-driven: the grid is drawn for one person,
+  /// and a week that starts on a different day depending on the phone's region
+  /// would make the same calendar read differently on two of their devices.
+  static DateTime startOfWeek(DateTime d) =>
+      DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
+
+  Future<void> loadCalendarPrefs() async {
+    final mode = await _store.setting(_kCalendarMode);
+    calendarMode = CalendarViewMode.values.firstWhere(
+      (m) => m.name == mode,
+      orElse: () => CalendarViewMode.week,
+    );
+    final scope = await _store.setting(_kCalendarScope);
+    calendarScope = CalendarScope.values.firstWhere(
+      (s) => s.name == scope,
+      orElse: () => CalendarScope.workspace,
+    );
+    final hidden = await _store.setting(_kCalendarHidden) ?? '';
+    hiddenCalendars =
+        hidden.split(',').where((s) => s.isNotEmpty).toSet();
+  }
+
+  /// Give every workspace a calendar, and drop the ones whose workspace is gone.
+  ///
+  /// Lazy provisioning rather than a hook on workspace creation: sync can bring
+  /// a workspace in from another device without any local write path running,
+  /// and that workspace still needs somewhere to put events. The uuid is the
+  /// workspace's own, so two devices doing this independently agree on the row
+  /// instead of producing a duplicate each.
+  Future<void> ensureWorkspaceCalendars() async {
+    final existing = {
+      for (final c in calendars)
+        if (c.workspaceUuid != null) c.workspaceUuid!: c,
+    };
+    var added = false;
+    for (final ws in workspaces) {
+      if (existing.containsKey(ws.uuid)) continue;
+      await _store.putCalendar(Calendar.forWorkspace(ws));
+      added = true;
+    }
+    if (added) {
+      calendars = await _store.calendars();
+      _mutated();
+    }
+  }
+
+  Future<void> refreshCalendars() async {
+    calendars = await _store.calendars();
+    await ensureWorkspaceCalendars();
+    await refreshEvents();
+  }
+
+  /// Reload the events for the visible window.
+  Future<void> refreshEvents() async {
+    final (from, to) = calendarRange;
+    final all = await _store.eventsBetween(from, to);
+    final visible = {for (final c in visibleCalendars) c.uuid};
+    events = [
+      for (final e in all)
+        if (visible.contains(e.calendarUuid)) e,
+    ];
+    eventsWithAttachments = await _store.eventsWithAttachments();
+    notifyListeners();
+  }
+
+  Future<void> toggleCalendar() async {
+    showCalendar = !showCalendar;
+    if (showCalendar) {
+      _closeOtherViews();
+      await loadCalendarPrefs();
+      await refreshCalendars();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setCalendarMode(CalendarViewMode mode) async {
+    calendarMode = mode;
+    await _store.setSetting(_kCalendarMode, mode.name);
+    await refreshEvents();
+  }
+
+  Future<void> setCalendarScope(CalendarScope scope) async {
+    calendarScope = scope;
+    await _store.setSetting(_kCalendarScope, scope.name);
+    await refreshEvents();
+  }
+
+  Future<void> setCalendarAnchor(DateTime day) async {
+    calendarAnchor = DateTime(day.year, day.month, day.day);
+    await refreshEvents();
+  }
+
+  /// Step one day, week or year, whichever the current mode is built on.
+  Future<void> stepCalendar(int delta) async {
+    final a = calendarAnchor;
+    calendarAnchor = switch (calendarMode) {
+      CalendarViewMode.day => a.add(Duration(days: delta)),
+      CalendarViewMode.week => a.add(Duration(days: 7 * delta)),
+      CalendarViewMode.year => DateTime(a.year + delta, a.month, a.day),
+    };
+    await refreshEvents();
+  }
+
+  Future<void> toggleCalendarHidden(String uuid) async {
+    if (!hiddenCalendars.remove(uuid)) hiddenCalendars.add(uuid);
+    await _store.setSetting(_kCalendarHidden, hiddenCalendars.join(','));
+    await refreshEvents();
+  }
+
+  /// Create or update a standalone calendar. Workspace calendars are not
+  /// editable here - their name and colour belong to the workspace.
+  Future<Calendar?> saveCalendar({
+    Calendar? existing,
+    required String name,
+    required String color,
+    int? notifyMinutes,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    final stamp = nowStamp();
+
+    final row = existing == null
+        ? Calendar(
+            uuid: newId(),
+            name: trimmed,
+            color: color,
+            notifyMinutes: notifyMinutes,
+            sortOrder: calendars.length,
+            createdAt: stamp,
+            updatedAt: stamp,
+          )
+        : existing.copyWith(
+            name: trimmed,
+            color: color,
+            notifyMinutes: notifyMinutes,
+            clearNotify: notifyMinutes == null,
+            updatedAt: stamp,
+          );
+
+    await _store.putCalendar(row);
+    await refreshCalendars();
+    await _rescheduleNotifications();
+    _mutated();
+    return row;
+  }
+
+  /// Tombstone a standalone calendar and everything on it.
+  ///
+  /// Refuses a workspace calendar: deleting it would leave the workspace with
+  /// nowhere to put events and [ensureWorkspaceCalendars] would recreate it on
+  /// the next refresh anyway. Deleting the workspace is the way to do that, and
+  /// it cascades here.
+  Future<void> deleteCalendar(Calendar c) async {
+    if (c.isWorkspaceCalendar) return;
+    final stamp = nowStamp();
+    for (final e in await _store.eventsOnCalendar(c.uuid)) {
+      await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    await _store.putCalendar(c.copyWith(deletedAt: stamp, updatedAt: stamp));
+    hiddenCalendars.remove(c.uuid);
+    await refreshCalendars();
+    await _rescheduleNotifications();
+    _mutated();
+  }
+
+  Future<CalendarEvent?> saveEvent({
+    CalendarEvent? existing,
+    required String calendarUuid,
+    required String title,
+    String description = '',
+    required DateTime start,
+    required DateTime end,
+    int? notifyMinutes,
+    bool clearNotify = false,
+  }) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return null;
+    // A backwards drag, or a click that never moved. Either way the block needs
+    // a positive length or it cannot be drawn, let alone grabbed again.
+    final from = start.isBefore(end) ? start : end;
+    var to = start.isBefore(end) ? end : start;
+    if (!to.isAfter(from)) to = from.add(const Duration(minutes: 15));
+
+    final stamp = nowStamp();
+    final row = existing == null
+        ? CalendarEvent(
+            uuid: newId(),
+            calendarUuid: calendarUuid,
+            title: trimmed,
+            description: description,
+            startAt: reminderStamp(from),
+            endAt: reminderStamp(to),
+            notifyMinutes: notifyMinutes,
+            createdAt: stamp,
+            updatedAt: stamp,
+          )
+        : existing.copyWith(
+            calendarUuid: calendarUuid,
+            title: trimmed,
+            description: description,
+            startAt: reminderStamp(from),
+            endAt: reminderStamp(to),
+            notifyMinutes: notifyMinutes,
+            clearNotify: clearNotify,
+            updatedAt: stamp,
+          );
+
+    await _store.putEvent(row);
+    await refreshEvents();
+    await _rescheduleNotifications();
+    _mutated();
+    return row;
+  }
+
+  Future<void> deleteEvent(CalendarEvent e) async {
+    final stamp = nowStamp();
+    // The attachments go with it, for the same reason a deleted task's do: a
+    // row pointing at an event that no longer exists is unreachable, and its
+    // bytes would never be collected.
+    for (final a in await _store.eventAttachments(e.uuid)) {
+      await _store.putAttachment(a.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
+    await refreshEvents();
+    await _rescheduleNotifications();
+    _mutated();
+  }
+
+  Future<List<Attachment>> eventAttachments(CalendarEvent e) =>
+      _store.eventAttachments(e.uuid);
+
+  /// Copy a file into the blob store and attach it to an event. Mirrors
+  /// [attachFile] for tasks - same content addressing, same dedup.
+  Future<Attachment?> attachFileToEvent(CalendarEvent e, File source) async {
+    final store = blobs;
+    if (store == null) return null;
+    final row = await store.addForEvent(source, e.uuid);
+    await _store.putAttachment(row);
+    await refreshEvents();
+    _mutated();
+    return row;
+  }
+
+  /// Tombstones an event's attachment, dropping the bytes only if nothing else
+  /// points at them. Mirrors [removeAttachment], which refreshes the task list
+  /// instead - the same call would rebuild the wrong screen here.
+  Future<void> removeEventAttachment(Attachment a) async {
+    final stamp = nowStamp();
+    await _store.putAttachment(a.copyWith(deletedAt: stamp, updatedAt: stamp));
+    final store = blobs;
+    if (store != null &&
+        !await _store.isBlobReferenced(a.sha256, excludingUuid: a.uuid)) {
+      await store.removeBlob(a.sha256);
+    }
+    await refreshEvents();
     _mutated();
   }
 

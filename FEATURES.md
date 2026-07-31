@@ -204,6 +204,44 @@ Three tiers, none of which need an account, an API key, or a licence:
 - Stored as an instant (UTC), so a reminder still means the right moment after
   crossing a timezone.
 
+## Calendar
+
+- **Three views: day, week, year.** There is deliberately no month view — the
+  year is twelve months drawn at once, so a single month would be the same
+  thing with less on it. D / W / Y in the header switches between them, and the
+  choice is remembered.
+- **Drag to create.** Drag down a column from the start time to the end time and
+  the event form opens with the times already filled in, so the only thing left
+  to type is the title. Drags snap to 15 minutes, and dragging upwards works —
+  it is normalised rather than rejected.
+  - On a **phone** it is press-and-hold, then drag: a plain one-finger drag has
+    to scroll the day, which is the only way to reach the rest of it.
+- **An event is** a title (required), plus an optional description, an optional
+  attachment, and a start and end. Its blob on the grid shows the title, the
+  first lines of the description, and a paperclip if a file is attached.
+- **A calendar per workspace, plus your own.** Every workspace has a calendar in
+  its own colour, and you can add free-standing ones — "Workout", "Gigs" — that
+  belong to no workspace and pick their own colour. The filter menu switches
+  between *this workspace* and *all workspaces*, and individual calendars can be
+  unticked to get them off the screen without deleting anything.
+- **Everything in the colour it belongs to**, which is the point of the week
+  view: one glance says how much of the week is work, and how much is not.
+- **Multi-day events sit in a band above the grid**, one bar spanning the days
+  they cover, with the start and end times at its ends. A block running from
+  Tuesday morning to Thursday evening has no single column to live in, and
+  slicing it into three would read as three separate events.
+- **Notification rules belong to the calendar** — Workout can warn you ten
+  minutes ahead while Work warns you an hour ahead — because that is the level
+  the answer actually varies at. Any single event can override its calendar,
+  including down to silence.
+- **The window grows to fit.** On desktop, opening the calendar resizes the
+  widget to something a week grid fits in and puts your old size back when you
+  close it. At 340px a day column is 43 pixels wide, which is not enough to read
+  a title in, let alone drag out a span.
+- Deleting a workspace takes its calendar and everything on it; deleting a
+  free-standing calendar takes its events. A workspace calendar cannot be
+  deleted on its own — the workspace is the way to do that.
+
 ## History
 
 - **"Done recently" view** — "History" in the ▾ views menu on the workspace bar
@@ -427,6 +465,18 @@ at the screen gives nothing away) and its lock is **opt-in**.
 ---
 
 ## Changelog
+
+- **0.13.0** — **The calendar.** Day, week and year views, with events you make
+  by dragging from a start time to an end time. Every workspace gets a calendar
+  in its own colour and you can add free-standing ones alongside them
+  ("Workout"), so a week reads as a picture of where the time actually goes —
+  which was the point of building it. Multi-day events get a spanning band above
+  the grid rather than being sliced into one block per day. Notification rules
+  sit on the calendar, where the answer varies, and any event can override its
+  own. Two structural notes: a workspace's calendar deliberately carries that
+  workspace's uuid, so two devices provisioning it offline produce one row
+  rather than two; and on desktop the widget grows to fit the grid and shrinks
+  back on the way out, because a seven-column week does not fit in 340px.
 
 - **0.12.4** — **Trusting the offline queue.** Writing with the sync server off
   already worked — every write goes to the local database first and carries a

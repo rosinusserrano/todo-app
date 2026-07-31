@@ -43,12 +43,26 @@ class AttachmentStore {
 
   Future<bool> hasLocal(Attachment a) => fileFor(a.sha256).exists();
 
+  /// Copies [source] in and returns the row to save, owned by a task.
+  Future<Attachment> add(File source, String taskUuid) =>
+      _copyIn(source, taskUuid: taskUuid);
+
+  /// The same, owned by a calendar event. One copy of the bytes serves both:
+  /// the file is addressed by its contents, so a document attached to a task
+  /// and to an event is stored once.
+  Future<Attachment> addForEvent(File source, String eventUuid) =>
+      _copyIn(source, eventUuid: eventUuid);
+
   /// Copies [source] in and returns the row to save.
   ///
   /// Hashing streams rather than reading the file whole: attachments are
   /// documents, and a big one read into memory on a phone is how this becomes
   /// the feature that makes the app die on a 200 MB video.
-  Future<Attachment> add(File source, String taskUuid) async {
+  Future<Attachment> _copyIn(
+    File source, {
+    String taskUuid = '',
+    String? eventUuid,
+  }) async {
     final digest = await sha256.bind(source.openRead()).first;
     final hash = digest.toString();
 
@@ -67,6 +81,7 @@ class AttachmentStore {
     return Attachment(
       uuid: newId(),
       taskUuid: taskUuid,
+      eventUuid: eventUuid,
       filename: p.basename(source.path),
       size: await source.length(),
       sha256: hash,

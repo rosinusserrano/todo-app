@@ -16,11 +16,26 @@ String newId() => _uuid.v4();
 /// without reformatting.
 String nowStamp() => DateTime.now().toIso8601String();
 
-/// Reminders are stored as an instant, in UTC, unlike the local-time stamps
-/// above. A reminder is a moment ("in an hour", or the instant 18:00 resolved
-/// to on the device that set it), so the instant is the part that has to
-/// survive travelling to another timezone - the wall-clock reading is not.
-String reminderStamp(DateTime at) => at.toUtc().toIso8601String();
+/// Reminders and calendar events are stored as an instant, in UTC, unlike the
+/// local-time stamps above. Both are a moment ("in an hour", or the instant
+/// 18:00 resolved to on the device that set it), so the instant is the part
+/// that has to survive travelling to another timezone - the wall-clock reading
+/// is not.
+///
+/// Truncated to milliseconds, which is what makes these safe to compare **as
+/// strings** in SQL - the way [LocalStore.eventsBetween] does. `toIso8601String`
+/// prints three fractional digits when the microseconds are zero and six when
+/// they are not, and "…00.000Z" sorts *after* "…00.000500Z" because 'Z' is
+/// greater than '1'. Every instant printed at the same precision removes that
+/// entirely.
+String reminderStamp(DateTime at) {
+  final utc = at.toUtc();
+  final ms = DateTime.fromMillisecondsSinceEpoch(
+    utc.millisecondsSinceEpoch,
+    isUtc: true,
+  );
+  return ms.toIso8601String();
+}
 
 /// String comparison is a valid ordering for RFC 3339 only when the offsets
 /// match, which is not guaranteed once a phone crosses a timezone. Parsing and
@@ -360,7 +375,18 @@ class Task implements SyncRow {
 class Attachment implements SyncRow {
   @override
   final String uuid;
+
+  /// The task this belongs to, or empty when it belongs to a calendar event.
+  ///
+  /// Two nullable owner columns rather than one polymorphic pair of
+  /// (owner_type, owner_id): the sync protocol copies columns verbatim and has
+  /// no notion of a discriminator, so a typo'd type string would sync happily
+  /// and orphan the row on the peer. Exactly one of these is set; [ownerUuid]
+  /// is the accessor that does not care which.
   final String taskUuid;
+
+  /// The calendar event this belongs to, or null when it belongs to a task.
+  final String? eventUuid;
 
   /// The name as the user chose it. Not what the file is called on disk - that
   /// is [sha256], so two tasks attaching the same document share one copy.
@@ -376,7 +402,8 @@ class Attachment implements SyncRow {
 
   const Attachment({
     required this.uuid,
-    required this.taskUuid,
+    this.taskUuid = '',
+    this.eventUuid,
     required this.filename,
     required this.size,
     required this.sha256,
@@ -384,6 +411,11 @@ class Attachment implements SyncRow {
     required this.updatedAt,
     this.deletedAt,
   });
+
+  /// Whichever row owns this attachment.
+  String get ownerUuid => eventUuid ?? taskUuid;
+
+  bool get isForEvent => eventUuid != null;
 
   @override
   bool get isDeleted => deletedAt != null;
@@ -404,6 +436,7 @@ class Attachment implements SyncRow {
       Attachment(
         uuid: uuid,
         taskUuid: taskUuid,
+        eventUuid: eventUuid,
         filename: filename ?? this.filename,
         size: size,
         sha256: sha256,
@@ -416,6 +449,7 @@ class Attachment implements SyncRow {
   Map<String, Object?> toMap() => {
         'uuid': uuid,
         'task_uuid': taskUuid,
+        'event_uuid': eventUuid,
         'filename': filename,
         'size': size,
         'sha256': sha256,
@@ -426,7 +460,8 @@ class Attachment implements SyncRow {
 
   static Attachment fromMap(Map<String, Object?> m) => Attachment(
         uuid: m['uuid']! as String,
-        taskUuid: m['task_uuid']! as String,
+        taskUuid: (m['task_uuid'] as String?) ?? '',
+        eventUuid: m['event_uuid'] as String?,
         filename: m['filename']! as String,
         size: (m['size'] as num?)?.toInt() ?? 0,
         sha256: m['sha256']! as String,
@@ -598,6 +633,258 @@ class SideThought implements SyncRow {
         text: m['text']! as String,
         createdAt: m['created_at']! as String,
         resolvedAt: m['resolved_at'] as String?,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// A named, coloured container for calendar events.
+///
+/// Two kinds, distinguished by [workspaceUuid]:
+///
+///   - **A workspace's calendar** carries that workspace's uuid, and takes its
+///     name and colour from the workspace rather than from its own columns -
+///     one source of truth, so renaming a workspace cannot leave a stale
+///     calendar name behind.
+///   - **A standalone calendar** ("Workout") has no workspace and owns its name
+///     and colour outright.
+///
+/// A workspace calendar's [uuid] *is* its workspace's uuid. That looks like a
+/// shortcut and is actually the point: the row is provisioned lazily, and
+/// deriving the id means two devices that each provision it while offline
+/// produce the same row rather than two duplicates sync can only keep as
+/// siblings.
+class Calendar implements SyncRow {
+  @override
+  final String uuid;
+
+  /// The workspace this mirrors, or null for a standalone calendar.
+  final String? workspaceUuid;
+
+  /// Ignored for a workspace calendar - see the class comment.
+  final String name;
+  final String color;
+
+  /// Default lead time for this calendar's events, in minutes before the start.
+  /// Null means this calendar never notifies. An event can override either way.
+  final int? notifyMinutes;
+
+  final int sortOrder;
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const Calendar({
+    required this.uuid,
+    this.workspaceUuid,
+    required this.name,
+    required this.color,
+    this.notifyMinutes,
+    this.sortOrder = 0,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  bool get isWorkspaceCalendar => workspaceUuid != null;
+
+  /// The calendar a workspace owns. Deterministic, so two devices agree.
+  static Calendar forWorkspace(Workspace ws, {String? at}) {
+    final stamp = at ?? nowStamp();
+    return Calendar(
+      uuid: ws.uuid,
+      workspaceUuid: ws.uuid,
+      name: ws.name,
+      color: ws.color,
+      sortOrder: ws.sortOrder,
+      createdAt: stamp,
+      updatedAt: stamp,
+    );
+  }
+
+  Calendar copyWith({
+    String? name,
+    String? color,
+    int? notifyMinutes,
+    bool clearNotify = false,
+    int? sortOrder,
+    String? updatedAt,
+    String? deletedAt,
+    bool clearDeleted = false,
+  }) =>
+      Calendar(
+        uuid: uuid,
+        workspaceUuid: workspaceUuid,
+        name: name ?? this.name,
+        color: color ?? this.color,
+        notifyMinutes:
+            clearNotify ? null : (notifyMinutes ?? this.notifyMinutes),
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'workspace_uuid': workspaceUuid,
+        'name': name,
+        'color': color,
+        'notify_minutes': notifyMinutes,
+        'sort_order': sortOrder,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  static Calendar fromMap(Map<String, Object?> m) => Calendar(
+        uuid: m['uuid']! as String,
+        workspaceUuid: m['workspace_uuid'] as String?,
+        name: (m['name'] as String?) ?? '',
+        color: (m['color'] as String?) ?? '#6c8cff',
+        notifyMinutes: (m['notify_minutes'] as num?)?.toInt(),
+        sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: m['created_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// One block of time on a calendar.
+///
+/// [startAt] and [endAt] are instants in UTC, for the same reason reminders are
+/// (see [reminderStamp]): an event is a moment, so the moment is what has to
+/// survive travelling to another timezone - not the wall-clock reading.
+class CalendarEvent implements SyncRow {
+  @override
+  final String uuid;
+  final String calendarUuid;
+
+  /// Required, unlike the description: an untitled block on a week grid is
+  /// unreadable at the size these are drawn at.
+  final String title;
+
+  final String description;
+
+  final String startAt;
+  final String endAt;
+
+  /// Minutes before [startAt] to notify.
+  ///
+  /// Null inherits the calendar's rule; [notifySilent] means this event stays
+  /// quiet even when its calendar notifies. A sentinel rather than a second
+  /// boolean column because it syncs as one value - two columns can disagree
+  /// after a merge, and "override = true, minutes = null" has no meaning.
+  final int? notifyMinutes;
+
+  static const notifySilent = -1;
+
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const CalendarEvent({
+    required this.uuid,
+    required this.calendarUuid,
+    required this.title,
+    this.description = '',
+    required this.startAt,
+    required this.endAt,
+    this.notifyMinutes,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  DateTime get start => DateTime.tryParse(startAt)?.toLocal() ?? DateTime.now();
+  DateTime get end => DateTime.tryParse(endAt)?.toLocal() ?? start;
+
+  Duration get duration => end.difference(start);
+
+  /// Whether this covers more than one calendar day, which is what moves it out
+  /// of the hour grid and into the spanning band at the top.
+  bool get spansDays {
+    final s = start;
+    final e = end;
+    return e.year != s.year || e.month != s.month || e.day != s.day;
+  }
+
+  /// Resolved lead time, given the calendar this sits on. Null means silent.
+  Duration? notifyLead(Calendar? calendar) {
+    final own = notifyMinutes;
+    if (own == notifySilent) return null;
+    final minutes = own ?? calendar?.notifyMinutes;
+    if (minutes == null || minutes < 0) return null;
+    return Duration(minutes: minutes);
+  }
+
+  /// When the OS should fire for this event, or null if it should not.
+  DateTime? notifyAt(Calendar? calendar) {
+    final lead = notifyLead(calendar);
+    if (lead == null) return null;
+    return start.subtract(lead);
+  }
+
+  CalendarEvent copyWith({
+    String? calendarUuid,
+    String? title,
+    String? description,
+    String? startAt,
+    String? endAt,
+    int? notifyMinutes,
+    bool clearNotify = false,
+    String? updatedAt,
+    String? deletedAt,
+    bool clearDeleted = false,
+  }) =>
+      CalendarEvent(
+        uuid: uuid,
+        calendarUuid: calendarUuid ?? this.calendarUuid,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        startAt: startAt ?? this.startAt,
+        endAt: endAt ?? this.endAt,
+        notifyMinutes:
+            clearNotify ? null : (notifyMinutes ?? this.notifyMinutes),
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'calendar_uuid': calendarUuid,
+        'title': title,
+        'description': description,
+        'start_at': startAt,
+        'end_at': endAt,
+        'notify_minutes': notifyMinutes,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  static CalendarEvent fromMap(Map<String, Object?> m) => CalendarEvent(
+        uuid: m['uuid']! as String,
+        calendarUuid: m['calendar_uuid']! as String,
+        title: m['title']! as String,
+        description: (m['description'] as String?) ?? '',
+        startAt: m['start_at']! as String,
+        endAt: m['end_at']! as String,
+        notifyMinutes: (m['notify_minutes'] as num?)?.toInt(),
+        createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );

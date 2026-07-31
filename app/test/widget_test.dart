@@ -390,6 +390,8 @@ void main() {
               accent: ws,
               onClose: () {},
               onOpenSettings: () {},
+              onToggleCalendar: () {},
+              calendarOpen: false,
               syncColor: T.muted,
               syncTooltip: 'Sync off',
             ),

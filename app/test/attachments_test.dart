@@ -238,11 +238,13 @@ void main() {
       updatedAt: nowStamp(),
     ));
     // Roll the freshly-created schema back to what v3 actually had: no
-    // attachments table, and no journal_entries (which arrived in v5). Dropping
-    // them is what makes the reopen exercise the real upgrade path rather than
-    // colliding on a table _create already made.
+    // attachments table, no journal_entries (which arrived in v5) and no
+    // calendars (v8). Dropping them is what makes the reopen exercise the real
+    // upgrade path rather than colliding on a table _create already made.
     await store.raw.execute('DROP TABLE attachments');
     await store.raw.execute('DROP TABLE journal_entries');
+    await store.raw.execute('DROP TABLE calendars');
+    await store.raw.execute('DROP TABLE calendar_events');
     await store.raw.setVersion(3);
     await store.close();
 

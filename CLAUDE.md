@@ -45,7 +45,15 @@ Run from `app/` unless noted. The Flutter SDK must be on `PATH`.
 
 There **is** a test suite — `app/test/` covers the local store, the sync merge,
 the legacy import, reminders, parked groups, attachments, the encrypted journal,
-notification scheduling, the tray and the noise synthesis. Run it. The server
+the calendar, notification scheduling, the tray and the noise synthesis. Run it.
+
+`test/noise_test.dart`'s "nothing clips" is **flaky and has been since before
+the calendar landed**: `noise.dart` uses an unseeded `Random()`, and at the
+documented ~0.19 RMS a peak of 1.0 is 5.26σ, so across the 2.6M samples in a
+buffer you expect ~0.37 exceedances — roughly a third of runs have one sample
+clamped. A single clamped sample in 2.6M is inaudible, but the invariant in the
+file header does say "stays under 1.0 peak", so this is a real if minor
+discrepancy rather than a bad assertion. Don't "fix" it by loosening the test. The server
 has its own: `node --test
 server/sync.test.js`, and a schema change on either side needs both.
 
@@ -66,10 +74,10 @@ window, the focus flight, the tray and the overlays.
 
 ### Data model — SQLite is the source of truth
 
-`LocalStore` (`app/lib/sync/local_store.dart`) owns six tables: `workspaces`,
+`LocalStore` (`app/lib/sync/local_store.dart`) owns eight tables: `workspaces`,
 `parked_groups`, `tasks`, `attachments`, `side_thoughts`, `journal_entries`,
-plus a key/value `settings` table used for UI prefs (last workspace, nudge,
-sound volume).
+`calendars`, `calendar_events`, plus a key/value `settings` table used for UI
+prefs (last workspace, nudge, sound volume, calendar mode/scope/hidden).
 
 Rows are keyed by **UUID**, not autoincrement — two devices offline at once used
 to collide. Every row carries `updated_at` and `deleted_at`; deletes are
@@ -122,12 +130,60 @@ three mutually-exclusive content views alongside thoughts, driven by
 bar is hidden during focus mode, so those views are not reachable while focused —
 that is fine, they are not things you reach for mid-focus.
 
-A schema change here is still the **three edits** — but note the journal table
-has version-specific splits in `local_store.dart` (`_journalTableV5` for the
-v4→v5 upgrade path, `_journalTable` for a fresh current schema, plus `from < 6`
-and `from < 7` ALTERs that add `title` and `encrypted`): when a table gains a
-column in a later version, `_create` must build the final shape directly so it
-does not collide with the migration that adds the column.
+A schema change here is still the **three edits** — but note the version-specific
+table splits in `local_store.dart`. The journal has `_journalTableV5` for the
+v4→v5 upgrade path and `_journalTable` for a fresh current schema, plus `from <
+6` / `from < 7` ALTERs adding `title` and `encrypted`; attachments now have the
+same shape, `_attachmentsTableV4` versus `_attachmentsTable`, with `from < 8`
+adding `event_uuid`. When a table gains a column in a later version, `_create`
+must build the final shape directly so it does not collide with the migration
+that adds the column.
+
+The migration tests build old databases by hand or by rolling a fresh one back
+(`DROP TABLE` + `setVersion`). **A new table means updating those fixtures** —
+they will otherwise either collide on a table `_create` already made, or fail
+in a later step that alters a table the fixture never created.
+
+### The calendar
+
+Two tables. `calendars` is a coloured container; `calendar_events` is a block of
+time on one. The rules that are not obvious from the schema:
+
+- **A workspace's calendar has the workspace's uuid.** `Calendar.forWorkspace`
+  derives it rather than generating one. Rows are provisioned *lazily*
+  (`ensureWorkspaceCalendars`, called on every calendar refresh) because sync
+  can bring a workspace in from another device with no local write path running
+  — and if two devices each provision while offline, deriving the id is what
+  makes them produce the same row instead of two siblings sync can only merge
+  as duplicates.
+- A workspace calendar's **name and colour come from the workspace**, not from
+  its own columns (`AppState.calendarName` / `calendarColor`). The columns exist
+  for standalone calendars. A second place to edit them would be a second source
+  of truth.
+- `start_at`/`end_at` are **UTC instants** (`reminderStamp`), not wall-clock
+  readings. `reminderStamp` truncates to milliseconds, and that is load-bearing:
+  `eventsBetween` compares stamps **as strings** in SQL, and `toIso8601String`
+  prints three fractional digits at zero microseconds and six otherwise — so
+  `…00.000Z` would sort *after* `…00.000500Z`.
+- `eventsBetween` tests **overlap** (`start_at < to AND end_at > from`), not
+  containment. A query keyed on `start_at` alone silently drops exactly the
+  multi-day events the spanning band exists for.
+- `notify_minutes` on an event is a **three-state column**: null inherits the
+  calendar's rule, `CalendarEvent.notifySilent` (-1) overrides it to quiet, any
+  other value is a lead time. One column rather than a flag plus a value,
+  because two columns can disagree after a merge. Note `copyWith` cannot tell
+  "leave alone" from "set back to inherit" — that is what `clearNotify` is for.
+- Notifications for tasks and events are rewritten in **one** call
+  (`NotificationService.reschedule`), because the cancel is global; two calls
+  would each wipe the other's work.
+- The calendar is the one view that replaces the **whole window** rather than
+  the content area, and on desktop `_toggleCalendar` resizes the window and
+  restores the previous size on the way out. It lives on the *title* bar, not
+  the workspace bar's views menu, because it can show every workspace at once.
+- Drag-to-create is split by input device in `time_grid.dart`: a mouse drag
+  creates (Flutter's default `dragDevices` excludes the mouse, so it is not
+  competing with the scroll view), while touch uses long-press-then-drag because
+  a one-finger drag has to scroll.
 
 ### Attachments: rows sync, bytes don't
 

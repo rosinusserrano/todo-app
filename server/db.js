@@ -139,12 +139,54 @@ function init(db) {
       PRIMARY KEY (user_id, uuid)
     );
 
+    -- A calendar is a coloured container for events. workspace_uuid is set
+    -- when the calendar belongs to a workspace, in which case its uuid is that
+    -- workspace's uuid, and null for a standalone one ("Workout"). Nullable
+    -- here for the same reason review_every_days is: the merge writes whatever
+    -- the push carried, and a NOT NULL would turn one malformed row into a
+    -- rejected sync for the whole device.
+    CREATE TABLE IF NOT EXISTS calendars (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT,
+      name           TEXT,
+      color          TEXT,
+      notify_minutes INTEGER,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    -- start_at/end_at are UTC instants, not wall-clock readings, so an event
+    -- keeps its moment when a device crosses a timezone. notify_minutes is the
+    -- per-event override of its calendar's rule: null inherits, -1 is silent.
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      calendar_uuid  TEXT NOT NULL,
+      title          TEXT NOT NULL,
+      description    TEXT,
+      start_at       TEXT NOT NULL,
+      end_at         TEXT NOT NULL,
+      notify_minutes INTEGER,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_workspaces_pull      ON workspaces      (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_tasks_pull           ON tasks           (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_side_thoughts_pull   ON side_thoughts   (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_parked_groups_pull   ON parked_groups   (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_attachments_pull     ON attachments     (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_journal_entries_pull ON journal_entries (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_calendars_pull       ON calendars       (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_pull ON calendar_events (user_id, seq);
   `);
 
   // `CREATE TABLE IF NOT EXISTS` above does nothing to a database that already
@@ -157,6 +199,10 @@ function init(db) {
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
   addColumn(db, 'journal_entries', 'encrypted', 'INTEGER NOT NULL DEFAULT 0');
+  // Attachments gained a second possible owner when calendar events could
+  // carry them. A server that predates the calendar has the table but not the
+  // column, and would reject every attachment push without this.
+  addColumn(db, 'attachments', 'event_uuid', 'TEXT');
 }
 
 /**
@@ -192,9 +238,33 @@ export const TABLES = {
     'remind_at',
     'group_uuid',
   ],
-  attachments: ['task_uuid', 'filename', 'size', 'sha256', 'created_at'],
+  attachments: [
+    'task_uuid',
+    'event_uuid',
+    'filename',
+    'size',
+    'sha256',
+    'created_at',
+  ],
   side_thoughts: ['text', 'created_at', 'resolved_at'],
   journal_entries: ['workspace_uuid', 'title', 'text', 'encrypted', 'created_at'],
+  calendars: [
+    'workspace_uuid',
+    'name',
+    'color',
+    'notify_minutes',
+    'sort_order',
+    'created_at',
+  ],
+  calendar_events: [
+    'calendar_uuid',
+    'title',
+    'description',
+    'start_at',
+    'end_at',
+    'notify_minutes',
+    'created_at',
+  ],
 };
 
 function nextSeq(db) {

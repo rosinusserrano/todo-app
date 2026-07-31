@@ -35,6 +35,8 @@ class LocalStore {
     'attachments',
     'side_thoughts',
     'journal_entries',
+    'calendars',
+    'calendar_events',
   ];
 
   /// [singleInstance] false forces a genuinely new database rather than a
@@ -54,7 +56,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 7,
+        version: 8,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -81,7 +83,7 @@ class LocalStore {
       await db.execute(_tasksGroupIndex);
     }
     if (from < 4) {
-      await db.execute(_attachmentsTable);
+      await db.execute(_attachmentsTableV4);
       await db.execute(_attachmentsIndex);
     }
     if (from < 5) {
@@ -113,7 +115,60 @@ class LocalStore {
         await db.execute('UPDATE journal_entries SET encrypted = 1');
       }
     }
+    if (from < 8) {
+      await db.execute(_calendarsTable);
+      await db.execute(_calendarEventsTable);
+      await db.execute(_calendarsWsIndex);
+      await db.execute(_eventsCalendarIndex);
+      await db.execute(_eventsStartIndex);
+      // Attachments grew a second possible owner. Nullable, so every existing
+      // row stays exactly what it was: an attachment on a task.
+      await db.execute('ALTER TABLE attachments ADD COLUMN event_uuid TEXT');
+      await db.execute(_attachmentsEventIndex);
+    }
   }
+
+  static const _calendarsTable = '''
+      CREATE TABLE calendars (
+        uuid           TEXT PRIMARY KEY,
+        workspace_uuid TEXT,
+        name           TEXT NOT NULL DEFAULT '',
+        color          TEXT NOT NULL DEFAULT '#6c8cff',
+        notify_minutes INTEGER,
+        sort_order     INTEGER NOT NULL DEFAULT 0,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT,
+        dirty          INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  static const _calendarEventsTable = '''
+      CREATE TABLE calendar_events (
+        uuid           TEXT PRIMARY KEY,
+        calendar_uuid  TEXT NOT NULL,
+        title          TEXT NOT NULL,
+        description    TEXT NOT NULL DEFAULT '',
+        start_at       TEXT NOT NULL,
+        end_at         TEXT NOT NULL,
+        notify_minutes INTEGER,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT,
+        dirty          INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  static const _calendarsWsIndex =
+      'CREATE INDEX idx_calendars_ws ON calendars (workspace_uuid)';
+  static const _eventsCalendarIndex =
+      'CREATE INDEX idx_events_cal ON calendar_events (calendar_uuid)';
+
+  /// The week and day views both ask for one window of time across every
+  /// visible calendar, so the range scan is the query that has to be fast.
+  static const _eventsStartIndex =
+      'CREATE INDEX idx_events_start ON calendar_events (start_at)';
+
+  static const _attachmentsEventIndex =
+      'CREATE INDEX idx_attachments_event ON attachments (event_uuid)';
 
   /// The v5 journal table, kept verbatim only for the upgrade path from a
   /// database that predated the title column. New databases get [_journalTable]
@@ -145,10 +200,32 @@ class LocalStore {
   static const _journalIndex =
       'CREATE INDEX idx_journal_ws ON journal_entries (workspace_uuid)';
 
-  static const _attachmentsTable = '''
+  /// The v4 attachments table, kept verbatim for the upgrade path from a
+  /// database that predated calendar events owning attachments. `event_uuid` is
+  /// added to it by the from < 8 migration; a fresh database gets
+  /// [_attachmentsTable] with the column already in place, so the create and
+  /// that ALTER never collide.
+  static const _attachmentsTableV4 = '''
       CREATE TABLE attachments (
         uuid       TEXT PRIMARY KEY,
         task_uuid  TEXT NOT NULL,
+        filename   TEXT NOT NULL,
+        size       INTEGER NOT NULL DEFAULT 0,
+        sha256     TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        dirty      INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  /// `task_uuid` keeps its NOT NULL and gains a default: an attachment on a
+  /// calendar event has no task, and the empty string says so without making
+  /// every existing read handle a null.
+  static const _attachmentsTable = '''
+      CREATE TABLE attachments (
+        uuid       TEXT PRIMARY KEY,
+        task_uuid  TEXT NOT NULL DEFAULT '',
+        event_uuid TEXT,
         filename   TEXT NOT NULL,
         size       INTEGER NOT NULL DEFAULT 0,
         sha256     TEXT NOT NULL,
@@ -212,6 +289,8 @@ class LocalStore {
     await db.execute(_parkedGroupsTable);
     await db.execute(_attachmentsTable);
     await db.execute(_journalTable);
+    await db.execute(_calendarsTable);
+    await db.execute(_calendarEventsTable);
 
     await db.execute('''
       CREATE TABLE side_thoughts (
@@ -236,7 +315,11 @@ class LocalStore {
     await db.execute(_parkedGroupsIndex);
     await db.execute(_tasksGroupIndex);
     await db.execute(_attachmentsIndex);
+    await db.execute(_attachmentsEventIndex);
     await db.execute(_journalIndex);
+    await db.execute(_calendarsWsIndex);
+    await db.execute(_eventsCalendarIndex);
+    await db.execute(_eventsStartIndex);
 
     // A first workspace, so the app is never in a state with nowhere to add a
     // task. Sync merges it with any peer's default by uuid, so two devices
@@ -379,10 +462,32 @@ class LocalStore {
 
   Future<List<Attachment>> attachmentsFor(String taskUuid) async {
     final rows = await _db.query('attachments',
-        where: 'task_uuid = ? AND deleted_at IS NULL',
+        // Event rows carry an empty task_uuid, so without this a caller that
+        // ever passed '' would be handed every attachment on the calendar.
+        where: 'task_uuid = ? AND event_uuid IS NULL AND deleted_at IS NULL',
         whereArgs: [taskUuid],
         orderBy: 'created_at');
     return rows.map(Attachment.fromMap).toList();
+  }
+
+  Future<List<Attachment>> eventAttachments(String eventUuid) async {
+    final rows = await _db.query('attachments',
+        where: 'event_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [eventUuid],
+        orderBy: 'created_at');
+    return rows.map(Attachment.fromMap).toList();
+  }
+
+  /// Which events have at least one attachment, for the paperclip on the blob.
+  ///
+  /// A set rather than counts: the grid draws one icon regardless of how many,
+  /// and at the size an event is drawn there is no room for a number.
+  Future<Set<String>> eventsWithAttachments() async {
+    final rows = await _db.rawQuery(
+      'SELECT DISTINCT event_uuid FROM attachments '
+      'WHERE event_uuid IS NOT NULL AND deleted_at IS NULL',
+    );
+    return {for (final r in rows) r['event_uuid']! as String};
   }
 
   /// How many attachments each task in a workspace has, keyed by task uuid.
@@ -444,6 +549,60 @@ class LocalStore {
     return rows.map(JournalEntry.fromMap).toList();
   }
 
+  // -------------------------------------------------------------- calendars
+
+  Future<List<Calendar>> calendars() async {
+    final rows = await _db.query('calendars',
+        where: 'deleted_at IS NULL', orderBy: 'sort_order, created_at');
+    return rows.map(Calendar.fromMap).toList();
+  }
+
+  /// Events overlapping [from, to).
+  ///
+  /// Overlap, not containment: an event that started yesterday and ends
+  /// tomorrow belongs on today's grid, and a query keyed only on `start_at`
+  /// would miss exactly the multi-day events the spanning band exists for.
+  ///
+  /// Both bounds are compared as stored UTC strings, which is a valid ordering
+  /// here because [reminderStamp] normalises every stamp to UTC before it is
+  /// written - unlike the local-offset stamps [compareStamps] has to parse.
+  Future<List<CalendarEvent>> eventsBetween(DateTime from, DateTime to) async {
+    final rows = await _db.query(
+      'calendar_events',
+      where: 'deleted_at IS NULL AND start_at < ? AND end_at > ?',
+      whereArgs: [reminderStamp(to), reminderStamp(from)],
+      orderBy: 'start_at',
+    );
+    return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  /// Every event that has not finished yet, for the notification schedule.
+  Future<List<CalendarEvent>> upcomingEvents([DateTime? now]) async {
+    final rows = await _db.query(
+      'calendar_events',
+      where: 'deleted_at IS NULL AND end_at > ?',
+      whereArgs: [reminderStamp(now ?? DateTime.now())],
+      orderBy: 'start_at',
+    );
+    return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  /// Every live event on one calendar, for cascading a delete.
+  Future<List<CalendarEvent>> eventsOnCalendar(String calendarUuid) async {
+    final rows = await _db.query('calendar_events',
+        where: 'calendar_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [calendarUuid],
+        orderBy: 'start_at');
+    return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  Future<CalendarEvent?> eventByUuid(String uuid) async {
+    final rows = await _db
+        .query('calendar_events', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+    if (rows.isEmpty) return null;
+    return CalendarEvent.fromMap(rows.first);
+  }
+
   Future<List<SideThought>> pendingThoughts() async {
     final rows = await _db.query('side_thoughts',
         where: 'resolved_at IS NULL AND deleted_at IS NULL',
@@ -470,6 +629,8 @@ class LocalStore {
   Future<void> putGroup(ParkedGroup g) => put('parked_groups', g);
   Future<void> putAttachment(Attachment a) => put('attachments', a);
   Future<void> putJournal(JournalEntry e) => put('journal_entries', e);
+  Future<void> putCalendar(Calendar c) => put('calendars', c);
+  Future<void> putEvent(CalendarEvent e) => put('calendar_events', e);
 
   /// Focus mode is globally exclusive: flagging one task clears every other.
   Future<void> setInProgress(String uuid, bool value) async {

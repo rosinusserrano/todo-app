@@ -30,6 +30,9 @@ import 'sync/sync_service.dart';
 import 'theme.dart';
 import 'tray.dart';
 import 'ui/attachment_sheet.dart';
+import 'ui/calendar/calendar_form.dart';
+import 'ui/calendar/calendar_view.dart';
+import 'ui/calendar/event_editor.dart';
 import 'ui/footer.dart';
 import 'ui/journal_panel.dart';
 import 'ui/panel_header.dart';
@@ -277,6 +280,7 @@ class _WidgetShellState extends State<WidgetShell>
     _registerShortcuts();
     _quickActions.install();
     widget.notifications.onTapped = _openTappedReminder;
+    widget.notifications.onEventTapped = _openTappedEvent;
     // Sweep once before polling starts, so anything that came due while the app
     // was closed lands now rather than up to an interval later.
     _reminders.tick();
@@ -295,6 +299,138 @@ class _WidgetShellState extends State<WidgetShell>
     if (lifecycle != AppLifecycleState.resumed) return;
     widget.sync.resume();
     _reminders.tick();
+  }
+
+  // --------------------------------------------------------------- calendar
+
+  /// The window size to restore when the calendar closes. Captured rather than
+  /// assumed: the widget is resizable, and putting 340x480 back would quietly
+  /// undo whatever size the user had actually chosen.
+  Size? _sizeBeforeCalendar;
+
+  /// A week grid needs room. At 340px each day column is 43 pixels wide, which
+  /// is not enough to read a title in, and dragging out a span in one is
+  /// hopeless - so on desktop opening the calendar grows the window, and
+  /// closing it puts back exactly what was there before.
+  static const _calendarSize = Size(920, 640);
+
+  Future<void> _toggleCalendar() async {
+    // The calendar covers the add field and the footer, so anything focused
+    // behind it has to let go first - the same reason the other views do this.
+    if (s.focusTask != null) _exitFocus();
+    _closeSound();
+
+    final opening = !s.showCalendar;
+    if (isDesktop) {
+      if (opening) {
+        _sizeBeforeCalendar = await windowManager.getSize();
+        await windowManager.setSize(_calendarSize);
+        await windowManager.center();
+      } else {
+        final previous = _sizeBeforeCalendar;
+        if (previous != null) await windowManager.setSize(previous);
+        _sizeBeforeCalendar = null;
+      }
+    }
+    await s.toggleCalendar();
+  }
+
+  Future<void> _createEvent(DateTime start, DateTime end) async {
+    final calendars = s.visibleCalendars;
+    if (calendars.isEmpty) return;
+
+    // The current workspace's calendar if it is on screen, otherwise whatever
+    // is - a drag has to land somewhere, and the workspace you are in is the
+    // best guess about where.
+    final preferred = calendars.firstWhere(
+      (c) => c.workspaceUuid == s.currentWorkspaceUuid,
+      orElse: () => calendars.first,
+    );
+
+    final edit = await showEventForm(
+      context,
+      calendars: calendars,
+      nameFor: s.calendarName,
+      colorFor: s.calendarColor,
+      initialCalendarUuid: preferred.uuid,
+      initialStart: start,
+      initialEnd: end,
+    );
+    if (edit == null || edit.delete) return;
+
+    await s.saveEvent(
+      calendarUuid: edit.calendarUuid,
+      title: edit.title,
+      description: edit.description,
+      start: edit.start!,
+      end: edit.end!,
+      notifyMinutes: edit.notifyMinutes,
+    );
+  }
+
+  Future<void> _openEvent(CalendarEvent event) async {
+    final calendars = s.calendars;
+    if (calendars.isEmpty) return;
+
+    final edit = await showEventForm(
+      context,
+      existing: event,
+      calendars: calendars,
+      nameFor: s.calendarName,
+      colorFor: s.calendarColor,
+      initialCalendarUuid: event.calendarUuid,
+      initialStart: event.start,
+      initialEnd: event.end,
+      loadAttachments: () => s.eventAttachments(event),
+      onAddAttachment: (file) => s.attachFileToEvent(event, file),
+      onRemoveAttachment: s.removeEventAttachment,
+    );
+    if (edit == null) return;
+
+    if (edit.delete) {
+      await s.deleteEvent(event);
+      return;
+    }
+    await s.saveEvent(
+      existing: event,
+      calendarUuid: edit.calendarUuid,
+      title: edit.title,
+      description: edit.description,
+      start: edit.start!,
+      end: edit.end!,
+      notifyMinutes: edit.notifyMinutes,
+      // copyWith cannot tell "leave it alone" from "set it back to inherit",
+      // so the form's null has to be passed as an explicit clear.
+      clearNotify: edit.notifyMinutes == null,
+    );
+  }
+
+  Future<void> _editCalendar(Calendar? existing) async {
+    final edit = await showCalendarForm(context, existing: existing);
+    if (edit == null) return;
+
+    if (edit.delete) {
+      if (existing != null) await s.deleteCalendar(existing);
+      return;
+    }
+    await s.saveCalendar(
+      existing: existing,
+      name: edit.name,
+      color: edit.color,
+      notifyMinutes: edit.notifyMinutes,
+    );
+  }
+
+  /// A calendar notification was tapped. Same shape as the reminder path: the
+  /// OS has already surfaced the app, so what is left is landing on the thing
+  /// it was about.
+  Future<void> _openTappedEvent(String eventUuid) async {
+    final event = await s.store.eventByUuid(eventUuid);
+    if (event == null || !mounted) return;
+    if (!s.showCalendar) await _toggleCalendar();
+    await s.setCalendarAnchor(event.start);
+    if (!mounted) return;
+    await _openEvent(event);
   }
 
   /// A reminder notification was tapped. The OS has already brought the app
@@ -459,6 +595,7 @@ class _WidgetShellState extends State<WidgetShell>
     _focusThoughtFocus.dispose();
     _shortcuts.dispose();
     widget.notifications.onTapped = null;
+    widget.notifications.onEventTapped = null;
     _reminders.dispose();
     if (isDesktop) {
       windowManager.removeListener(this);
@@ -621,6 +758,8 @@ class _WidgetShellState extends State<WidgetShell>
             _closeFocusThought();
           } else if (s.focusTask != null) {
             _exitFocus();
+          } else if (s.showCalendar) {
+            _toggleCalendar();
           } else if (s.showThoughts) {
             s.toggleThoughts();
           } else if (s.showParked) {
@@ -692,6 +831,8 @@ class _WidgetShellState extends State<WidgetShell>
                     onClose: () =>
                         isDesktop ? windowManager.close() : null,
                     onOpenSettings: _openSettings,
+                    onToggleCalendar: _toggleCalendar,
+                    calendarOpen: s.showCalendar,
                     syncColor: _syncColor(),
                     syncTooltip: widget.sync.describe(),
                   ),
@@ -775,6 +916,27 @@ class _WidgetShellState extends State<WidgetShell>
       };
 
   Widget _body(Color ws) {
+    // The calendar replaces the whole body, workspace bar and footer included:
+    // it spans workspaces, so a workspace tab above it would be saying
+    // something the grid underneath does not agree with.
+    if (s.showCalendar) {
+      return Column(
+        children: [
+          const SizedBox(height: TitleBar.height),
+          Expanded(
+            child: CalendarView(
+              state: s,
+              onClose: _toggleCalendar,
+              onOpenEvent: _openEvent,
+              onCreate: _createEvent,
+              onNewCalendar: () => _editCalendar(null),
+              onEditCalendar: (c) => _editCalendar(c),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       children: [
         const SizedBox(height: TitleBar.height),

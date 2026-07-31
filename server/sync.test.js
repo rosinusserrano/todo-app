@@ -623,6 +623,194 @@ test('a server database with a title-less journal gains the column', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('calendars and events round-trip, including the null workspace', () => {
+  const db = freshDb();
+
+  sync(db, USER, 0, {
+    calendars: [
+      {
+        uuid: 'cal-ws',
+        workspace_uuid: 'ws-1',
+        name: 'Work',
+        color: '#6c8cff',
+        notify_minutes: null,
+        sort_order: 0,
+        created_at: '2026-07-30T09:00:00+02:00',
+        updated_at: '2026-07-30T09:00:00+02:00',
+        deleted_at: null,
+      },
+      {
+        uuid: 'cal-workout',
+        workspace_uuid: null,
+        name: 'Workout',
+        color: '#ffcf6c',
+        notify_minutes: 10,
+        sort_order: 1,
+        created_at: '2026-07-30T09:00:00+02:00',
+        updated_at: '2026-07-30T09:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+    calendar_events: [
+      {
+        uuid: 'e-1',
+        calendar_uuid: 'cal-workout',
+        title: 'squats',
+        description: 'leg day',
+        start_at: '2026-07-30T16:00:00.000Z',
+        end_at: '2026-07-30T17:00:00.000Z',
+        notify_minutes: null,
+        created_at: '2026-07-30T09:00:00+02:00',
+        updated_at: '2026-07-30T09:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  const cals = Object.fromEntries(changes.calendars.map((c) => [c.uuid, c]));
+
+  // A standalone calendar has no workspace, and that null has to survive: a
+  // workspace_uuid invented on the way through would bind it to a workspace.
+  assert.equal(cals['cal-workout'].workspace_uuid, null);
+  assert.equal(cals['cal-workout'].notify_minutes, 10);
+  assert.equal(cals['cal-ws'].workspace_uuid, 'ws-1');
+
+  const event = changes.calendar_events[0];
+  assert.equal(event.title, 'squats');
+  assert.equal(event.description, 'leg day');
+  assert.equal(event.start_at, '2026-07-30T16:00:00.000Z');
+  // Null means "inherit the calendar's rule", so it must not arrive as a 0 -
+  // that would silently turn every inheriting event into "notify at start".
+  assert.equal(event.notify_minutes, null);
+
+  db.close();
+});
+
+test('an event moved on one device wins by updated_at', () => {
+  const db = freshDb();
+  const event = (start, updated_at) => ({
+    uuid: 'e-1',
+    calendar_uuid: 'cal-1',
+    title: 'standup',
+    description: '',
+    start_at: start,
+    end_at: '2026-07-30T10:00:00.000Z',
+    notify_minutes: null,
+    created_at: '2026-07-30T08:00:00+02:00',
+    updated_at,
+    deleted_at: null,
+  });
+
+  sync(db, USER, 0, {
+    calendar_events: [event('2026-07-30T09:00:00.000Z', '2026-07-30T09:00:00+02:00')],
+  });
+  sync(db, USER, 0, {
+    calendar_events: [event('2026-07-30T11:00:00.000Z', '2026-07-30T10:00:00+02:00')],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  assert.equal(changes.calendar_events.length, 1);
+  assert.equal(changes.calendar_events[0].start_at, '2026-07-30T11:00:00.000Z');
+
+  db.close();
+});
+
+test('a deleted event propagates as a tombstone', () => {
+  const db = freshDb();
+  const row = (updated_at, deleted_at) => ({
+    uuid: 'e-1',
+    calendar_uuid: 'cal-1',
+    title: 'cancelled',
+    description: '',
+    start_at: '2026-07-30T09:00:00.000Z',
+    end_at: '2026-07-30T10:00:00.000Z',
+    notify_minutes: null,
+    created_at: '2026-07-30T08:00:00+02:00',
+    updated_at,
+    deleted_at,
+  });
+
+  sync(db, USER, 0, { calendar_events: [row('2026-07-30T09:00:00+02:00', null)] });
+  sync(db, USER, 0, {
+    calendar_events: [
+      row('2026-07-30T10:00:00+02:00', '2026-07-30T10:00:00+02:00'),
+    ],
+  });
+
+  const { changes } = sync(db, USER, 0, {});
+  assert.equal(changes.calendar_events[0].deleted_at, '2026-07-30T10:00:00+02:00');
+
+  db.close();
+});
+
+test('a server database predating the calendar gains its tables and column', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  // Attachments as they stood before events could own them: no event_uuid.
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE attachments (
+      uuid       TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      task_uuid  TEXT NOT NULL,
+      filename   TEXT NOT NULL,
+      size       INTEGER,
+      sha256     TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      seq        INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO attachments (uuid, user_id, task_uuid, filename, sha256, created_at, updated_at, seq)
+    VALUES ('a-old', 'local', 't-1', 'notes.txt', 'e', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  const { changes } = sync(db, USER, 0, {
+    attachments: [
+      {
+        uuid: 'a-event',
+        task_uuid: '',
+        event_uuid: 'e-1',
+        filename: 'route.gpx',
+        size: 400,
+        sha256: 'f'.repeat(64),
+        created_at: '2026-07-30T10:00:00+02:00',
+        updated_at: '2026-07-30T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+    calendar_events: [
+      {
+        uuid: 'e-1',
+        calendar_uuid: 'cal-1',
+        title: 'long run',
+        description: '',
+        start_at: '2026-07-30T06:00:00.000Z',
+        end_at: '2026-07-30T08:00:00.000Z',
+        notify_minutes: 30,
+        created_at: '2026-07-30T10:00:00+02:00',
+        updated_at: '2026-07-30T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const byUuid = Object.fromEntries(changes.attachments.map((a) => [a.uuid, a]));
+  assert.equal(byUuid['a-event'].event_uuid, 'e-1');
+  // The row that was already there survives, with a null owner from the ALTER.
+  assert.equal(byUuid['a-old'].filename, 'notes.txt');
+  assert.equal(byUuid['a-old'].event_uuid, null);
+  assert.equal(changes.calendar_events[0].title, 'long run');
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('auth rejects a missing, malformed or wrong token', () => {
   const config = { secret: 'correct-horse' };
   const req = (auth) => ({ get: () => auth });

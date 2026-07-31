@@ -42,6 +42,7 @@ Run from `app/` unless noted. The Flutter SDK must be on `PATH`.
 | Build a Windows release | `flutter build windows` |
 | Add a dependency | `flutter pub add <pkg>` |
 | Run the sync server (repo root) | `npm run server` |
+| Start the server with setup + firewall help | `server\start-server.ps1` / `server/start-server.sh` |
 
 There **is** a test suite — `app/test/` covers the local store, the sync merge,
 the legacy import, reminders, parked groups, attachments, the encrypted journal,
@@ -280,9 +281,24 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   Quit) through `onWindowClose` — the single close guard.
 - Design tokens live in `theme.dart` (`T.*`), ported from the old CSS. Durations
   that used to be duplicated between CSS and JS now have exactly one copy each.
-- `UiScale` draws the whole widget ~28% larger on phones rather than forking
-  every padding per platform. Keep it that way — a second set of mobile sizes
-  would drift from the desktop one literal at a time.
+- `UiScale` draws the whole widget larger on phones rather than forking every
+  padding per platform. Keep it that way — a second set of mobile sizes would
+  drift from the desktop one literal at a time. Two things about it are
+  load-bearing and both were once wrong:
+  - It must use **`OverflowBox`, not `SizedBox`**. The constraints coming down
+    from `MaterialApp` are *tight*, and a `SizedBox` cannot defy a tight
+    constraint — it was silently ignored, the subtree laid out at full screen
+    width, and the transform then magnified that off the edge of the screen.
+    Nothing catches this: a `Transform` does not report overflow, and because
+    the `MediaQuery` *was* being shrunk, anything measuring itself from
+    MediaQuery disagreed with its own box.
+  - `T.mobileScale` is a **maximum, not a factor**. The zoom applied is
+    `clamp(width / T.designWidth, 1.0, mobileScale)`, so the layout always gets
+    at least the 340px it was designed against. A flat 1.28 left a 375pt phone
+    293 points and squeezed the controls at the ends of the bars.
+
+  `test/ui_scale_test.dart` pins both: the subtree fills the screen exactly, and
+  never lays out below the design width.
 
 ## Gotchas
 

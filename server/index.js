@@ -122,11 +122,26 @@ app.use((err, _req, res, _next) => {
 
 // --------------------------------------------------------------------- start
 
+/// Addresses a client could plausibly reach this on, best guess first.
+///
+/// A machine with WSL, a VM or a VPN on it reports a handful of these, and only
+/// one of them is the wifi the phone is also on - so the ordering matters more
+/// than it looks. 169.254.x is dropped outright: that is what an interface
+/// picks when DHCP failed, so it is never the answer.
 function lanAddresses() {
+  const rank = (ip) => {
+    if (ip.startsWith('192.168.')) return 0; // home wifi, almost always
+    if (ip.startsWith('10.')) return 1;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return 2; // often a vSwitch
+    return 3;
+  };
+
   return Object.values(networkInterfaces())
     .flat()
     .filter((n) => n && n.family === 'IPv4' && !n.internal)
-    .map((n) => n.address);
+    .map((n) => n.address)
+    .filter((ip) => !ip.startsWith('169.254.'))
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 app.listen(PORT, HOST, () => {
@@ -141,8 +156,15 @@ app.listen(PORT, HOST, () => {
     console.log(`    http://127.0.0.1:${PORT}   (this machine only)`);
   } else {
     console.log(`    http://localhost:${PORT}`);
-    for (const ip of lanAddresses()) {
+    const ips = lanAddresses();
+    for (const ip of ips) {
       console.log(`    http://${ip}:${PORT}`);
+    }
+    if (ips.length > 1) {
+      console.log('');
+      console.log('  Several are listed because this machine has more than one');
+      console.log('  network (a VM, WSL or a VPN adds its own). The right one is');
+      console.log('  the one starting with the same numbers as your phone\'s IP.');
     }
   }
   console.log(`└${bar}┘\n`);

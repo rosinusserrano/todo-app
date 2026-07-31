@@ -466,6 +466,22 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 ## Changelog
 
+- **0.13.1** — **The phone build actually fits the phone now.** Two bugs, which
+  together were why most of the controls on iOS could not be tapped. The zoom
+  wrapped the app in a `SizedBox`, which cannot override the tight constraints
+  it is handed — so the layout ran at the full screen width and was then
+  magnified by 1.28, painting about a fifth of the width and height off the edge
+  of the screen. Nothing warned about it: a transform does not report overflow.
+  And the zoom was a flat 1.28 regardless of screen, which left a 375pt phone
+  only 293 points to lay out in — narrower than the 340 window every size in the
+  app was picked against. The zoom is now the largest one that still leaves the
+  layout its design width, capped at 1.28, so the widget fills the screen
+  exactly on every phone and is never squeezed below the size it was drawn for.
+  Also: `server/start-server.ps1` and `server/start-server.sh` start the sync
+  server from anywhere, install dependencies on first run, and say what to do
+  about the firewall; and the server's address list now drops link-local
+  addresses and puts the likely-right one first.
+
 - **0.13.0** — **The calendar.** Day, week and year views, with events you make
   by dragging from a start time to an end time. Every workspace gets a calendar
   in its own colour and you can add free-standing ones alongside them

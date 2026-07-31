@@ -285,10 +285,17 @@ void main() {
     testWidgets('scales safe-area insets with the rest', (tester) async {
       // Insets arrive in real screen pixels; left unscaled they would be
       // multiplied by the transform and push the title bar too far down.
+      //
+      // The size matters: the zoom applied is the largest that still leaves the
+      // design width, so a MediaQueryData with no size gets no zoom at all.
+      // 680 is twice the design width, which is what pins the factor at 2.
       late EdgeInsets seen;
       await tester.pumpWidget(
         MediaQuery(
-          data: const MediaQueryData(padding: EdgeInsets.only(top: 60)),
+          data: const MediaQueryData(
+            size: Size(T.designWidth * 2, 900),
+            padding: EdgeInsets.only(top: 60),
+          ),
           child: MaterialApp(
             home: UiScale(
               scale: 2.0,

@@ -22,12 +22,21 @@ class T {
 
   static const radius = 14.0;
 
-  /// How much larger the whole widget is drawn on a phone. Every size in this
-  /// app was picked for a 340x480 desktop window; on a phone that layout is
-  /// still the right layout, it is just small, and its hit targets are smaller
-  /// than a fingertip. See [UiScale] for why this is one number rather than a
-  /// second set of paddings and font sizes.
+  /// The **most** the whole widget is enlarged by on a phone. Every size in
+  /// this app was picked for a 340x480 desktop window; on a phone that layout
+  /// is still the right layout, it is just small, and its hit targets are
+  /// smaller than a fingertip. See [UiScale] for why this is one number rather
+  /// than a second set of paddings and font sizes.
+  ///
+  /// A *maximum* rather than a fixed factor: zooming by a flat 1.28 on a 375pt
+  /// iPhone leaves the layout only 293 points to lay out in, which is narrower
+  /// than the window it was designed for, so the controls at the ends of the
+  /// bars get squeezed. [UiScale] takes the largest zoom that still leaves
+  /// [designWidth] to work with.
   static const mobileScale = 1.28;
+
+  /// The width every size in this app was chosen against - the desktop window.
+  static const designWidth = 340.0;
 
   /// --hero-dur / --hero-ease. Previously duplicated between CSS and
   /// HERO_MS in main.ts.
@@ -127,27 +136,58 @@ class T {
 class UiScale extends StatelessWidget {
   const UiScale({super.key, required this.scale, required this.child});
 
+  /// The **maximum** zoom. The zoom actually applied is whatever leaves at
+  /// least [T.designWidth] to lay out in - see [effectiveScale].
   final double scale;
+
   final Widget child;
+
+  /// The largest zoom no greater than [max] that still leaves the layout its
+  /// design width.
+  ///
+  /// Never below 1: shrinking the widget to fit a very narrow screen would
+  /// make the text smaller than the desktop build, which is the opposite of
+  /// what this is for.
+  @visibleForTesting
+  static double effectiveScale(double width, double max) {
+    if (max <= 1.0 || width <= 0) return 1.0;
+    return (width / T.designWidth).clamp(1.0, max);
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (scale == 1.0) return child;
+    if (scale <= 1.0) return child;
 
     final mq = MediaQuery.of(context);
-    final size = mq.size / scale;
+    final applied = effectiveScale(mq.size.width, scale);
+    if (applied == 1.0) return child;
+    final size = mq.size / applied;
 
     return MediaQuery(
       data: mq.copyWith(
         size: size,
-        padding: mq.padding / scale,
-        viewPadding: mq.viewPadding / scale,
-        viewInsets: mq.viewInsets / scale,
+        padding: mq.padding / applied,
+        viewPadding: mq.viewPadding / applied,
+        viewInsets: mq.viewInsets / applied,
       ),
       child: Transform.scale(
-        scale: scale,
+        scale: applied,
         alignment: Alignment.topLeft,
-        child: SizedBox.fromSize(size: size, child: child),
+        // OverflowBox, not SizedBox. The incoming constraints from MaterialApp
+        // are *tight* at the full viewport, and a SizedBox cannot defy a tight
+        // constraint - it was silently ignored, the subtree laid out at the
+        // full screen width, and Transform then magnified that by [scale], so
+        // ~22% of the width and height fell off the screen with no overflow
+        // warning (a Transform does not report one). OverflowBox is the widget
+        // that actually hands a child different constraints than it was given.
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: size.width,
+          maxWidth: size.width,
+          minHeight: size.height,
+          maxHeight: size.height,
+          child: child,
+        ),
       ),
     );
   }

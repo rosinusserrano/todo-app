@@ -20,6 +20,41 @@ import 'package:todo_widget/sync/models.dart';
 
 const _pw = 'correct horse battery staple';
 
+/// More scaffolding: every real database has had a workspaces table since v1,
+/// and the v9 migration reads it looking for duplicated default workspaces.
+/// A fixture without one fails in that step rather than in anything it meant
+/// to test.
+const _workspaces = '''
+      CREATE TABLE workspaces (
+        uuid       TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        color      TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        dirty      INTEGER NOT NULL DEFAULT 1
+      )''';
+
+/// And the tasks table as it stood before v10, which adds `event_uuid` to it.
+/// Same reason as the attachments scaffolding below: a fixture without the
+/// table fails in that step rather than in the journal columns under test.
+const _v9Tasks = '''
+      CREATE TABLE tasks (
+        uuid           TEXT PRIMARY KEY,
+        workspace_uuid TEXT NOT NULL,
+        text           TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        completed_at   TEXT,
+        sort_order     INTEGER NOT NULL DEFAULT 0,
+        in_progress    INTEGER NOT NULL DEFAULT 0,
+        remind_at      TEXT,
+        group_uuid     TEXT,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT,
+        dirty          INTEGER NOT NULL DEFAULT 1
+      )''';
+
 /// The attachments table as it stood from v4, which is what the hand-built v5
 /// and v6 fixtures below would really have had. The v8 migration adds
 /// `event_uuid` to it, so a fixture without the table never gets as far as the
@@ -346,6 +381,8 @@ void main() {
     // Scaffolding, not the subject of this test: a real v5 database has had an
     // attachments table since v4, and the v8 step adds a column to it.
     await db.execute(_v4Attachments);
+    await db.execute(_v9Tasks);
+    await db.execute(_workspaces);
     await db.insert('journal_entries', {
       'uuid': 'j-old',
       'workspace_uuid': 'ws-1',
@@ -391,6 +428,8 @@ void main() {
     await db.execute(
         'CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
     await db.execute(_v4Attachments);
+    await db.execute(_v9Tasks);
+    await db.execute(_workspaces);
     await db.insert('journal_entries', {
       'uuid': 'j-enc',
       'workspace_uuid': 'ws-1',

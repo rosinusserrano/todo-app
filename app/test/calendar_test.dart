@@ -11,11 +11,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:flutter/material.dart';
+
 import 'package:todo_widget/app_state.dart';
 import 'package:todo_widget/sync/local_store.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
-import 'package:todo_widget/ui/calendar/time_grid.dart' show packOverlaps;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
+
+import 'package:todo_widget/ui/calendar/time_grid.dart'
+    show EventBlock, TimeGridView, packOverlaps;
+import 'package:todo_widget/ui/calendar/year_view.dart';
 
 void main() {
   setUpAll(() {
@@ -244,6 +250,55 @@ void main() {
     });
   });
 
+  group('time-block mode', () {
+    test('the target is remembered, and reads back as a calendar', () async {
+      final s = await device();
+      await s.refreshCalendars();
+      final cal = s.calendars.single;
+
+      expect(s.timeBlocking, isFalse);
+      await s.setTimeBlockCalendar(cal.uuid);
+      expect(s.timeBlockCalendar!.uuid, cal.uuid);
+
+      // Device-local, like the other calendar prefs, so it has to survive
+      // through the settings table rather than in memory.
+      final again = AppState(s.store);
+      await again.load();
+      await again.loadCalendarPrefs();
+      await again.refreshCalendars();
+      expect(again.timeBlockCalendar!.uuid, cal.uuid);
+
+      await s.store.close();
+    });
+
+    test('a target that goes off screen turns the mode off', () async {
+      final s = await device();
+      await s.refreshCalendars();
+      final workout = (await s.saveCalendar(name: 'Workout', color: '#ffcf6c'))!;
+      await s.setTimeBlockCalendar(workout.uuid);
+      expect(s.timeBlocking, isTrue);
+
+      // Unticked in the filter: its chip is gone from the strip, so a drag must
+      // not still be landing on it.
+      await s.toggleCalendarHidden(workout.uuid);
+      expect(s.timeBlockCalendar, isNull);
+      expect(s.timeBlocking, isFalse);
+
+      await s.toggleCalendarHidden(workout.uuid);
+      expect(s.timeBlockCalendar!.uuid, workout.uuid);
+
+      await s.store.close();
+    });
+
+    test('a target that no longer exists resolves to null', () async {
+      final s = await device();
+      await s.refreshCalendars();
+      await s.setTimeBlockCalendar('a-calendar-from-another-device');
+      expect(s.timeBlockCalendar, isNull);
+      await s.store.close();
+    });
+  });
+
   group('saving', () {
     test('a backwards drag is normalised, not rejected', () async {
       final s = await device();
@@ -401,6 +456,418 @@ void main() {
     });
   });
 
+  group('planned todos and the session', () {
+    /// A workspace with one calendar, one block and one task in it.
+    Future<(AppState, CalendarEvent, Task)> planned({
+      required DateTime start,
+      required DateTime end,
+    }) async {
+      final s = await device();
+      await s.refreshCalendars();
+      await s.setCalendarAnchor(start);
+      await s.addTask('write the summary');
+
+      final event = (await s.saveEvent(
+        calendarUuid: s.calendars.single.uuid,
+        title: 'Deep work',
+        start: start,
+        end: end,
+      ))!;
+      await s.setTaskEvent(s.tasks.single, event.uuid);
+      return (s, event, s.tasks.single);
+    }
+
+    test('a task planned into a block stays on the list', () async {
+      final now = DateTime.now();
+      final (s, event, task) = await planned(
+        start: now.subtract(const Duration(minutes: 10)),
+        end: now.add(const Duration(hours: 1)),
+      );
+
+      // Parking takes a task off the list; planning deliberately does not - it
+      // says when you will do it, not that you have put it away.
+      expect(s.tasks.single.uuid, task.uuid);
+      expect(s.tasks.single.eventUuid, event.uuid);
+      expect(s.tasks.single.isPlanned, isTrue);
+
+      await s.store.close();
+    });
+
+    test('the block running now is the session, with its todos', () async {
+      final now = DateTime.now();
+      final (s, event, task) = await planned(
+        start: now.subtract(const Duration(minutes: 10)),
+        end: now.add(const Duration(hours: 1)),
+      );
+
+      expect(s.hasLiveSession, isTrue);
+      expect(s.liveEvents.single.uuid, event.uuid);
+      expect(s.sessionTasks[event.uuid]!.single.uuid, task.uuid);
+
+      // Checking it off empties the session without ending it.
+      await s.completeTask(task);
+      expect(s.hasLiveSession, isTrue);
+      expect(s.sessionTaskList, isEmpty);
+
+      await s.store.close();
+    });
+
+    test('a block that has not started or is over is not live', () async {
+      final now = DateTime.now();
+
+      final (later, _, _) = await planned(
+        start: now.add(const Duration(hours: 1)),
+        end: now.add(const Duration(hours: 2)),
+      );
+      expect(later.hasLiveSession, isFalse);
+      await later.store.close();
+
+      final (earlier, _, _) = await planned(
+        start: now.subtract(const Duration(hours: 2)),
+        end: now.subtract(const Duration(hours: 1)),
+      );
+      expect(earlier.hasLiveSession, isFalse);
+      await earlier.store.close();
+    });
+
+    test('a block is live at its start and over at its end', () async {
+      final s = await device();
+      await s.refreshCalendars();
+      final start = DateTime(2026, 7, 30, 9);
+      final end = DateTime(2026, 7, 30, 10);
+      await s.setCalendarAnchor(start);
+      await s.saveEvent(
+        calendarUuid: s.calendars.single.uuid,
+        title: 'standup',
+        start: start,
+        end: end,
+      );
+
+      // Half-open, matching the grid: the block you are in at 09:00 is this
+      // one, and at 10:00 you are already out of it.
+      await s.refreshSessions(start.subtract(const Duration(seconds: 1)));
+      expect(s.hasLiveSession, isFalse);
+      await s.refreshSessions(start);
+      expect(s.hasLiveSession, isTrue);
+      await s.refreshSessions(end.subtract(const Duration(seconds: 1)));
+      expect(s.hasLiveSession, isTrue);
+      await s.refreshSessions(end);
+      expect(s.hasLiveSession, isFalse);
+
+      await s.store.close();
+    });
+
+    test('a parked task drops out of its session but keeps its block',
+        () async {
+      final now = DateTime.now();
+      final (s, event, task) = await planned(
+        start: now.subtract(const Duration(minutes: 5)),
+        end: now.add(const Duration(hours: 1)),
+      );
+
+      final group = await s.saveGroup(title: 'Later', reviewEveryDays: 30);
+      await s.parkTask(task, group!.uuid);
+
+      // Shelving says "not now", and a session list is the strongest "now"
+      // there is - but the plan itself survives, so unparking restores it.
+      expect(s.sessionTaskList, isEmpty);
+      expect((await s.store.taskByUuid(task.uuid))!.eventUuid, event.uuid);
+
+      await s.unparkTask(task);
+      expect(s.sessionTasks[event.uuid]!.single.uuid, task.uuid);
+
+      await s.store.close();
+    });
+
+    test('deleting the block releases its todos rather than taking them',
+        () async {
+      final now = DateTime.now();
+      final (s, event, task) = await planned(
+        start: now.subtract(const Duration(minutes: 5)),
+        end: now.add(const Duration(hours: 1)),
+      );
+
+      await s.deleteEvent(event);
+
+      // The task is still a task. It has only lost the time set aside for it -
+      // and it must not keep pointing at a block that no longer exists.
+      expect(s.tasks.single.uuid, task.uuid);
+      expect(s.tasks.single.eventUuid, isNull);
+      expect(s.hasLiveSession, isFalse);
+
+      await s.store.close();
+    });
+
+    test('deleting a calendar releases the todos on its blocks', () async {
+      final s = await device();
+      await s.refreshCalendars();
+      final workout = (await s.saveCalendar(name: 'Workout', color: '#ffcf6c'))!;
+      final start = DateTime.now();
+      await s.setCalendarAnchor(start);
+      await s.addTask('stretch first');
+      final event = (await s.saveEvent(
+        calendarUuid: workout.uuid,
+        title: 'gym',
+        start: start,
+        end: start.add(const Duration(hours: 1)),
+      ))!;
+      await s.setTaskEvent(s.tasks.single, event.uuid);
+
+      await s.deleteCalendar(workout);
+
+      expect(s.tasks.single.eventUuid, isNull);
+      await s.store.close();
+    });
+
+    test('a task is in at most one block: planning it again moves it',
+        () async {
+      final now = DateTime.now();
+      final (s, first, task) = await planned(
+        start: now.subtract(const Duration(minutes: 5)),
+        end: now.add(const Duration(minutes: 30)),
+      );
+      final second = (await s.saveEvent(
+        calendarUuid: s.calendars.single.uuid,
+        title: 'Second block',
+        start: now.add(const Duration(hours: 2)),
+        end: now.add(const Duration(hours: 3)),
+      ))!;
+
+      await s.setTaskEvent(s.tasks.single, second.uuid);
+
+      expect(await s.tasksForEvent(first.uuid), isEmpty);
+      expect((await s.tasksForEvent(second.uuid)).single.uuid, task.uuid);
+
+      // And unplanning puts it back to being an ordinary task.
+      await s.setTaskEvent(s.tasks.single, null);
+      expect(await s.tasksForEvent(second.uuid), isEmpty);
+      expect(s.tasks.single.isPlanned, isFalse);
+
+      await s.store.close();
+    });
+
+    test('overlapping blocks are both live, each with its own todos', () async {
+      final now = DateTime.now();
+      final (s, first, firstTask) = await planned(
+        start: now.subtract(const Duration(minutes: 10)),
+        end: now.add(const Duration(hours: 1)),
+      );
+      await s.addTask('and the other thing');
+      final second = (await s.saveEvent(
+        calendarUuid: s.calendars.single.uuid,
+        title: 'Overlapping',
+        start: now.subtract(const Duration(minutes: 5)),
+        end: now.add(const Duration(minutes: 30)),
+      ))!;
+      await s.setTaskEvent(
+        s.tasks.firstWhere((t) => t.text == 'and the other thing'),
+        second.uuid,
+      );
+
+      // Two things really can be scheduled at once. Picking one of them would
+      // be a guess, so both are live and the view lists them in order.
+      expect(s.liveEvents.map((e) => e.uuid), [first.uuid, second.uuid]);
+      expect(s.sessionTasks[first.uuid]!.single.uuid, firstTask.uuid);
+      expect(s.sessionTasks[second.uuid]!.single.text, 'and the other thing');
+
+      await s.store.close();
+    });
+
+    test('the plannable list is the calendar owner\'s workspace', () async {
+      final s = await device();
+      await s.saveWorkspace(name: 'Second', color: '#7ee3a1');
+      await s.refreshCalendars();
+      final second = s.workspaces.firstWhere((w) => w.name == 'Second');
+      final first = s.workspaces.firstWhere((w) => w.name != 'Second');
+
+      await s.selectWorkspace(second.uuid);
+      await s.addTask('belongs to Second');
+      await s.selectWorkspace(first.uuid);
+      await s.addTask('belongs to the first');
+
+      final start = DateTime(2026, 7, 30, 9);
+      await s.setCalendarAnchor(start);
+      final event = (await s.saveEvent(
+        calendarUuid: second.uuid, // the second workspace's calendar
+        title: 'their block',
+        start: start,
+        end: start.add(const Duration(hours: 1)),
+      ))!;
+
+      // The block belongs to Second, so what can be planned into it is
+      // Second's list - not the workspace that happens to be on screen.
+      final offered = await s.plannableTasks(event);
+      expect(offered.map((t) => t.text), ['belongs to Second']);
+
+      await s.store.close();
+    });
+  });
+
+  group('the year view', () {
+    Widget yearAt(int year) => MaterialApp(
+          home: Scaffold(
+            body: YearView(
+              year: year,
+              events: const [],
+              colorFor: (_) => T.accent,
+              onPickDay: (_) {},
+            ),
+          ),
+        );
+
+    testWidgets('every month tile is drawn the same height', (tester) async {
+      // Wide enough for several columns, which is the case where unequal tiles
+      // showed: a 4-week February beside a 6-week month left the row ragged.
+      await tester.binding.setSurfaceSize(const Size(820, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(yearAt(2026));
+
+      final grids = find.byType(GridView);
+      expect(grids, findsNWidgets(12));
+      final heights = {
+        for (var i = 0; i < 12; i++) tester.getSize(grids.at(i)).height,
+      };
+      expect(heights.length, 1);
+    });
+
+    testWidgets('a February that fits in four weeks still gets six rows',
+        (tester) async {
+      // February 2026 starts on a Sunday: 6 leading blanks + 28 days = 34
+      // cells, and February 2027 starts on a Monday and needs only 28. Both
+      // are padded to the same 42, which is what makes the heights above equal
+      // rather than coincidentally so for one year.
+      await tester.binding.setSurfaceSize(const Size(820, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      for (final year in [2026, 2027]) {
+        await tester.pumpWidget(yearAt(year));
+        final grid = tester.widget<GridView>(find.byType(GridView).at(1));
+        expect((grid.childrenDelegate as SliverChildListDelegate).children.length,
+            42);
+      }
+    });
+  });
+
+  group('the hour grid', () {
+    final day = DateTime(2026, 7, 30);
+
+    testWidgets('clicking an event opens it and does not create another',
+        (tester) async {
+      // Both gestures live in the same grid, and creating used to sit on an
+      // ancestor of the blocks - so opening an event also wrote a new one
+      // behind the editor.
+      await tester.binding.setSurfaceSize(const Size(400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final opened = <String>[];
+      final created = <DateTime>[];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: [day],
+            events: [
+              event('e1', day.add(const Duration(hours: 9)),
+                  day.add(const Duration(hours: 10))),
+            ],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => false,
+            taskCountFor: (_) => 0,
+            onOpenEvent: (e) => opened.add(e.uuid),
+            onCreate: (start, _) => created.add(start),
+          ),
+        ),
+      ));
+
+      final block = tester.getCenter(find.byType(EventBlock));
+      await tester.tapAt(block, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      expect(opened, ['e1']);
+      expect(created, isEmpty);
+
+      // The other half of the same guard: empty grid still creates on a click.
+      await tester.tapAt(block + const Offset(0, 60),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      expect(created, hasLength(1));
+      expect(opened, ['e1']);
+    });
+
+    testWidgets('a phone-width week is seven real columns', (tester) async {
+      // The size an iPhone 15 lays out at, inside the window frame. Every day
+      // has to be there, drawn as a column you can drag on - not folded into
+      // an agenda, and not seven slivers with the gutter eating a fifth of it.
+      const width = 338.0;
+      await tester.binding.setSurfaceSize(const Size(width, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final monday = DateTime(2026, 7, 27);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: [for (var i = 0; i < 7; i++) monday.add(Duration(days: i))],
+            events: [
+              event('e1', monday.add(const Duration(hours: 9)),
+                  monday.add(const Duration(hours: 10)),
+                  title: 'standup'),
+            ],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => true,
+            taskCountFor: (_) => 2,
+            onOpenEvent: (_) {},
+            onCreate: (_, _) {},
+          ),
+        ),
+      ));
+
+      // Initials, because 'Mon 27' does not fit in 45px - but all seven days.
+      for (final d in ['M 27', 'T 28', 'W 29', 'T 30', 'F 31', 'S 1', 'S 2']) {
+        expect(find.text(d), findsOneWidget);
+      }
+
+      // The block is drawn in its own column, at a width the compact geometry
+      // is what makes usable: (338 - 22) / 7.
+      final block = tester.getSize(find.byType(EventBlock));
+      expect(block.width, closeTo((width - 22) / 7 - 3, 1.5));
+      expect(find.text('standup'), findsOneWidget);
+      // ...and the ornament that would have left the title nothing is gone.
+      expect(find.byIcon(Icons.attach_file), findsNothing);
+    });
+
+    testWidgets('a long press on an event does not create either',
+        (tester) async {
+      // The touch path starts from a long press rather than a drag, and it
+      // needs the same protection as the mouse one.
+      await tester.binding.setSurfaceSize(const Size(400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final created = <DateTime>[];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: [day],
+            events: [
+              event('e1', day.add(const Duration(hours: 9)),
+                  day.add(const Duration(hours: 10))),
+            ],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => false,
+            taskCountFor: (_) => 0,
+            onOpenEvent: (_) {},
+            onCreate: (start, _) => created.add(start),
+          ),
+        ),
+      ));
+
+      await tester.longPressAt(tester.getCenter(find.byType(EventBlock)));
+      await tester.pumpAndSettle();
+
+      expect(created, isEmpty);
+    });
+  });
+
   group('overlap packing', () {
     CalendarEvent at(String uuid, int fromHour, int toHour) => event(
           uuid,
@@ -458,7 +925,11 @@ void main() {
       createdAt: nowStamp(),
       updatedAt: nowStamp(),
     ));
-    // Roll back to v7: no calendar tables, and attachments without event_uuid.
+    // Roll back to v7: no calendar tables, attachments without event_uuid, and
+    // no event_uuid on tasks (v10). The index on it goes first - SQLite refuses
+    // to drop a column an index is built on.
+    await store.raw.execute('DROP INDEX idx_tasks_event');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
     await store.raw.execute('DROP TABLE calendars');
     await store.raw.execute('DROP TABLE calendar_events');
     await store.raw.execute('DROP TABLE attachments');

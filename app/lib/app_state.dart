@@ -23,6 +23,7 @@ const _kNudge = 'ui:nudge-enabled';
 const _kCalendarMode = 'ui:calendar-mode';
 const _kCalendarScope = 'ui:calendar-scope';
 const _kCalendarHidden = 'ui:calendar-hidden';
+const _kCalendarBlock = 'ui:calendar-block';
 
 /// The three grids. There is deliberately no month view: the year view is
 /// twelve months drawn at once, so a single month would be the same thing with
@@ -118,6 +119,7 @@ class AppState extends ChangeNotifier {
   bool showThoughts = false;
   bool showParked = false;
   bool showJournal = false;
+  bool showSession = false;
 
   Workspace? get currentWorkspace {
     for (final w in workspaces) {
@@ -141,6 +143,80 @@ class AppState extends ChangeNotifier {
     await refreshTasks();
     await refreshThoughts();
     await restoreFocus();
+  }
+
+  // -------------------------------------------------------------- sessions
+  //
+  // A "session" is simply the calendar block happening *now*, and the todos
+  // planned into it. It is the payoff for planning a week: having said on
+  // Sunday what a block is for, the widget can answer "what am I meant to be
+  // doing right now" without you going looking for it.
+  //
+  // Two decisions worth keeping:
+  //
+  //   - Sessions ignore the calendar's scope and hidden set. Those are about
+  //     what you want to *look at* on the grid; this is about what time it
+  //     actually is, and a block you unticked yesterday is still the block you
+  //     are in. They are also loaded lazily (only once the calendar has been
+  //     opened), so filtering on them would make the banner depend on whether
+  //     you had visited the calendar this session.
+  //   - Overlapping blocks are all live. Picking one for the user would be
+  //     guessing; the view lists them in order and lets the eye do it.
+
+  /// The blocks covering right now, earliest first.
+  List<CalendarEvent> liveEvents = [];
+
+  /// What is still open in each of them, keyed by event uuid.
+  Map<String, List<Task>> sessionTasks = {};
+
+  bool get hasLiveSession => liveEvents.isNotEmpty;
+
+  /// Everything planned into whatever is running, flattened.
+  List<Task> get sessionTaskList =>
+      [for (final e in liveEvents) ...?sessionTasks[e.uuid]];
+
+  /// What the banner is made of. Compared before and after a poll so that a
+  /// tick which found nothing new does not rebuild the whole widget every 20
+  /// seconds.
+  String get _sessionSignature => [
+        for (final e in liveEvents)
+          '${e.uuid}:${e.endAt}:'
+              '${(sessionTasks[e.uuid] ?? const []).map((t) => t.uuid).join(',')}',
+      ].join('|');
+
+  /// Reload the live blocks and their todos.
+  ///
+  /// Called from [refreshTasks] and [refreshEvents] - so an edit or a merge
+  /// from sync is picked up - and from the reminder poll, which is what
+  /// notices a block *starting* when nothing at all has been edited.
+  Future<void> refreshSessions([DateTime? now]) async {
+    final before = _sessionSignature;
+
+    liveEvents = await _store.liveEvents(now);
+    sessionTasks = {
+      for (final e in liveEvents) e.uuid: await _store.tasksForEvent(e.uuid),
+    };
+    // [calendars] is normally loaded by opening the calendar view, and the
+    // banner can appear on a run where that never happened - a block needs its
+    // calendar to know what colour and whose it is. Read-only, and only in the
+    // one case that needs it, so it does not turn the poll into a write.
+    if (liveEvents.isNotEmpty && calendars.isEmpty) {
+      calendars = await _store.calendars();
+    }
+    // The view is only meaningful while something is running; when the last
+    // block ends it hands the content area back rather than showing an empty
+    // shell of a session that is over.
+    if (showSession && liveEvents.isEmpty) showSession = false;
+
+    // Always while the view is open: it shows a live countdown, which is the
+    // one thing that changes when nothing in the database has.
+    if (showSession || _sessionSignature != before) notifyListeners();
+  }
+
+  void toggleSession() {
+    showSession = !showSession;
+    if (showSession) _closeOtherViews(keepSession: true);
+    notifyListeners();
   }
 
   // ----------------------------------------------------------- workspaces
@@ -264,6 +340,10 @@ class AppState extends ChangeNotifier {
     // is open, so it is not swept up in every task edit. refreshJournal itself
     // handles the locked case by clearing the list.
     if (showJournal) await refreshJournal();
+    // Unconditionally, like the parked groups above: checking a task off is one
+    // of the things that changes what a live block still has left on it, and
+    // the banner has to be right whether or not the session view is open.
+    await refreshSessions();
     // Every task mutation and every merge from sync lands here, which makes
     // this the one place the OS schedule can be kept honest.
     await _rescheduleNotifications();
@@ -337,6 +417,56 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
+  /// Plan a task into a block of time, or take it out again with null.
+  ///
+  /// Deliberately *not* a park: the task stays on the list. Saying when you
+  /// will do something should not make it harder to see, and a plan that hid
+  /// its own contents would be a way to lose tasks rather than a way to get
+  /// through them.
+  Future<void> setTaskEvent(Task t, String? eventUuid) async {
+    await _store.putTask(
+      eventUuid == null
+          ? t.copyWith(clearEvent: true, updatedAt: nowStamp())
+          : t.copyWith(eventUuid: eventUuid, updatedAt: nowStamp()),
+    );
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// What can be planned into [e]: the open, unshelved tasks of the workspace
+  /// the event's calendar belongs to.
+  ///
+  /// A standalone calendar has no workspace of its own, so it offers the one
+  /// you are in - the same guess the editor makes about where a new event
+  /// belongs. Tasks already planned into this block are in here too, marked by
+  /// their own [Task.eventUuid]; they are not filtered out, because the list is
+  /// how they get *unplanned* again.
+  Future<List<Task>> plannableTasks(CalendarEvent e) async {
+    final ws = calendarsByUuid[e.calendarUuid]?.workspaceUuid ??
+        currentWorkspaceUuid;
+    if (ws == null) return [];
+    return _store.activeTasks(ws);
+  }
+
+  Future<List<Task>> tasksForEvent(String eventUuid) =>
+      _store.tasksForEvent(eventUuid);
+
+  /// Release everything planned into an event that is going away.
+  ///
+  /// A task pointing at a deleted block is unreachable from any session and
+  /// nothing would ever clear it, so the delete has to. Completed and parked
+  /// rows are released too - the pointer is just as stale on those.
+  ///
+  /// Note this only runs for a *local* delete. An event tombstoned on another
+  /// device arrives as a merge, and the task keeps a pointer to a block that no
+  /// longer exists; that is harmless (the task is still on the list, it simply
+  /// never turns up in a session again) which is why there is no sweep for it.
+  Future<void> _releaseEventTasks(String eventUuid) async {
+    for (final t in await _store.allTasksForEvent(eventUuid)) {
+      await _store.putTask(t.copyWith(clearEvent: true, updatedAt: nowStamp()));
+    }
+  }
+
   Future<void> reorder(List<String> uuids) async {
     await _store.reorderTasks(uuids);
     await refreshTasks();
@@ -378,11 +508,13 @@ class AppState extends ChangeNotifier {
     bool keepThoughts = false,
     bool keepParked = false,
     bool keepJournal = false,
+    bool keepSession = false,
   }) {
     showHistory = keepHistory;
     showThoughts = keepThoughts;
     showParked = keepParked;
     showJournal = keepJournal;
+    showSession = keepSession;
   }
 
   // ----------------------------------------------------------- attachments
@@ -796,6 +928,11 @@ class AppState extends ChangeNotifier {
   /// Which of those have a file on them, for the paperclip on the blob.
   Set<String> eventsWithAttachments = {};
 
+  /// How many open todos each event carries, for the count on the blob. Every
+  /// event, not just the visible range - it is one grouped query either way,
+  /// and the session view asks about blocks the grid is not showing.
+  Map<String, int> eventTaskCounts = {};
+
   bool showCalendar = false;
   CalendarViewMode calendarMode = CalendarViewMode.week;
   CalendarScope calendarScope = CalendarScope.workspace;
@@ -828,6 +965,42 @@ class AppState extends ChangeNotifier {
   Map<String, Calendar> get calendarsByUuid => {
         for (final c in calendars) c.uuid: c,
       };
+
+  /// The calendar time-block mode drags onto, or null when the mode is off.
+  ///
+  /// Planning a week is one gesture repeated twenty times - drag, name it,
+  /// save - and nineteen of those names are the same word. Picking the calendar
+  /// *once* and then dragging turns the editor from something you dismiss on
+  /// every block into something you only open when a block needs more than a
+  /// span. Blocks are titled after the calendar, which for a workspace calendar
+  /// is the workspace name, so the plan reads as "Client work, 09:00-11:00".
+  String? timeBlockCalendarUuid;
+
+  /// Resolved against what is *on screen*, not just against [calendars]: the
+  /// target is stored as a uuid and it can go away underneath the setting - the
+  /// calendar is unticked, the scope narrows, the workspace is deleted. Every
+  /// one of those means the chip the user picked is gone from the strip, so the
+  /// mode reading as off is what the screen already says.
+  Calendar? get timeBlockCalendar {
+    final uuid = timeBlockCalendarUuid;
+    if (uuid == null) return null;
+    for (final c in visibleCalendars) {
+      if (c.uuid == uuid) return c;
+    }
+    return null;
+  }
+
+  bool get timeBlocking => timeBlockCalendar != null;
+
+  /// Turn the mode on for one calendar, or off with null.
+  ///
+  /// Device-local like the other calendar prefs: which calendar you are filling
+  /// in right now is about this sitting, not about the account.
+  Future<void> setTimeBlockCalendar(String? uuid) async {
+    timeBlockCalendarUuid = uuid;
+    await _store.setSetting(_kCalendarBlock, uuid ?? '');
+    notifyListeners();
+  }
 
   /// A calendar's display name. A workspace calendar reads its name from the
   /// workspace, so renaming the workspace renames the calendar too rather than
@@ -893,6 +1066,8 @@ class AppState extends ChangeNotifier {
     final hidden = await _store.setting(_kCalendarHidden) ?? '';
     hiddenCalendars =
         hidden.split(',').where((s) => s.isNotEmpty).toSet();
+    final block = await _store.setting(_kCalendarBlock) ?? '';
+    timeBlockCalendarUuid = block.isEmpty ? null : block;
   }
 
   /// Give every workspace a calendar, and drop the ones whose workspace is gone.
@@ -935,7 +1110,11 @@ class AppState extends ChangeNotifier {
         if (visible.contains(e.calendarUuid)) e,
     ];
     eventsWithAttachments = await _store.eventsWithAttachments();
+    eventTaskCounts = await _store.eventTaskCounts();
     notifyListeners();
+    // Moving or deleting a block changes what is running now, and the banner
+    // outlives the calendar view that changed it.
+    await refreshSessions();
   }
 
   Future<void> toggleCalendar() async {
@@ -1029,11 +1208,13 @@ class AppState extends ChangeNotifier {
     if (c.isWorkspaceCalendar) return;
     final stamp = nowStamp();
     for (final e in await _store.eventsOnCalendar(c.uuid)) {
+      await _releaseEventTasks(e.uuid);
       await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
     await _store.putCalendar(c.copyWith(deletedAt: stamp, updatedAt: stamp));
     hiddenCalendars.remove(c.uuid);
     await refreshCalendars();
+    await refreshTasks();
     await _rescheduleNotifications();
     _mutated();
   }
@@ -1095,8 +1276,14 @@ class AppState extends ChangeNotifier {
     for (final a in await _store.eventAttachments(e.uuid)) {
       await _store.putAttachment(a.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
+    // The tasks do *not* go with it - they are still things to do, they have
+    // simply lost the time that was set aside for them. Only the pointer goes.
+    await _releaseEventTasks(e.uuid);
     await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
     await refreshEvents();
+    // The rows that were just released are on the list with a stale "planned"
+    // mark until this runs.
+    await refreshTasks();
     await _rescheduleNotifications();
     _mutated();
   }

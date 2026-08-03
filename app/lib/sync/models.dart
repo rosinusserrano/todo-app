@@ -260,6 +260,21 @@ class Task implements SyncRow {
   /// uuid, and with it the reminder and everything sync knows about it.
   final String? groupUuid;
 
+  /// The [CalendarEvent] this task is planned into, or null for one that is not
+  /// tied to a block of time.
+  ///
+  /// One nullable column for the same reason [groupUuid] is one: a planned task
+  /// is the same row, with the same history, reminder and uuid - it has simply
+  /// been said *when*. The cost is that a task belongs to at most one block,
+  /// which a join table would not impose; that is the right trade here, because
+  /// "do this twice" is two tasks, and a second table would have to be created,
+  /// migrated, synced and garbage-collected to express it.
+  ///
+  /// Unlike parking, this does **not** take the task off the list: it is still
+  /// something to do today, and hiding it until its block came round would make
+  /// planning a week a way to lose things.
+  final String? eventUuid;
+
   @override
   final String updatedAt;
   @override
@@ -275,6 +290,7 @@ class Task implements SyncRow {
     this.inProgress = false,
     this.remindAt,
     this.groupUuid,
+    this.eventUuid,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -282,6 +298,8 @@ class Task implements SyncRow {
   bool get isActive => completedAt == null && deletedAt == null;
 
   bool get isParked => groupUuid != null;
+
+  bool get isPlanned => eventUuid != null;
 
   /// Local time, for display. The stored value is UTC - see [reminderStamp].
   DateTime? get remindAtTime {
@@ -309,12 +327,14 @@ class Task implements SyncRow {
     bool? inProgress,
     String? remindAt,
     String? groupUuid,
+    String? eventUuid,
     String? updatedAt,
     String? deletedAt,
     bool clearCompleted = false,
     bool clearDeleted = false,
     bool clearReminder = false,
     bool clearGroup = false,
+    bool clearEvent = false,
   }) =>
       Task(
         uuid: uuid,
@@ -326,6 +346,7 @@ class Task implements SyncRow {
         inProgress: inProgress ?? this.inProgress,
         remindAt: clearReminder ? null : (remindAt ?? this.remindAt),
         groupUuid: clearGroup ? null : (groupUuid ?? this.groupUuid),
+        eventUuid: clearEvent ? null : (eventUuid ?? this.eventUuid),
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
       );
@@ -341,6 +362,7 @@ class Task implements SyncRow {
         'in_progress': inProgress ? 1 : 0,
         'remind_at': remindAt,
         'group_uuid': groupUuid,
+        'event_uuid': eventUuid,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -355,6 +377,7 @@ class Task implements SyncRow {
         inProgress: ((m['in_progress'] as num?)?.toInt() ?? 0) != 0,
         remindAt: m['remind_at'] as String?,
         groupUuid: m['group_uuid'] as String?,
+        eventUuid: m['event_uuid'] as String?,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );

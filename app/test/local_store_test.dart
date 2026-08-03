@@ -189,10 +189,15 @@ void main() {
               value TEXT NOT NULL
             )''');
           await db.insert('sync_state', {'key': 'cursor', 'value': '7'});
+          // Deliberately *not* the seeded default ("Tasks" in the default
+          // colour): this test is about column migrations leaving rows alone,
+          // and the v9 step folds seeded defaults onto a canonical uuid, which
+          // legitimately moves and dirties their tasks. That path has its own
+          // tests in default_workspace_test.dart; here it would only be noise.
           await db.insert('workspaces', {
             'uuid': 'ws-1',
-            'name': 'Tasks',
-            'color': '#6c8cff',
+            'name': 'Work',
+            'color': '#ff6c6c',
             'sort_order': 0,
             'created_at': '2026-01-01T09:00:00.000',
             'updated_at': '2026-01-01T09:00:00.000',
@@ -233,7 +238,7 @@ void main() {
     expect(task.remindAt, isNull);
     // Everything else has to come through untouched, including the sync
     // cursor - resetting it would re-pull the entire history from the server.
-    expect((await store.workspaces()).single.name, 'Tasks');
+    expect((await store.workspaces()).single.name, 'Work');
     expect(await store.cursor(), 7);
 
     // The new column has to be writable, not merely present.

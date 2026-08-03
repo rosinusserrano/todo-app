@@ -21,6 +21,8 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { deleteUserIdentity, initUsers } from './users.js';
+
 export function openDb(path) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
@@ -31,7 +33,16 @@ export function openDb(path) {
 }
 
 function init(db) {
+  // Who the user_id on every row below refers to.
+  initUsers(db);
+
   // Server-assigned cursor. A single row holding the last handed-out seq.
+  //
+  // Deliberately global rather than per user: it only ever has to be
+  // *monotonic*, and one counter shared by everyone still is. A user's cursor
+  // therefore skips numbers whenever someone else writes, which costs nothing -
+  // no row of theirs can ever be assigned a seq below a cursor they have
+  // already been handed.
   db.exec(`
     CREATE TABLE IF NOT EXISTS meta (
       key   TEXT PRIMARY KEY,
@@ -63,6 +74,10 @@ function init(db) {
       in_progress    INTEGER NOT NULL DEFAULT 0,
       remind_at      TEXT,
       group_uuid     TEXT,
+      -- The calendar event this task is planned into, or null. Nullable and
+      -- unconstrained: the merge writes whatever the push carried, and the
+      -- event it names may legitimately arrive in a later push than the task.
+      event_uuid     TEXT,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
@@ -195,6 +210,10 @@ function init(db) {
   // with "no column named remind_at".
   addColumn(db, 'tasks', 'remind_at', 'TEXT');
   addColumn(db, 'tasks', 'group_uuid', 'TEXT');
+  // Tasks gained a block of time they can be planned into. A server that
+  // predates it has the table but not the column, and would reject every task
+  // push without this.
+  addColumn(db, 'tasks', 'event_uuid', 'TEXT');
   // A server that first synced a journal before entries had titles has the
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -237,6 +256,7 @@ export const TABLES = {
     'in_progress',
     'remind_at',
     'group_uuid',
+    'event_uuid',
   ],
   attachments: [
     'task_uuid',
@@ -274,6 +294,52 @@ function nextSeq(db) {
 
 export function currentSeq(db) {
   return Number(db.prepare("SELECT value FROM meta WHERE key = 'seq'").get().value);
+}
+
+/**
+ * The highest seq this user actually owns a row at - their cursor.
+ *
+ * Not `currentSeq`, now that a server can hold more than one user: the global
+ * counter moves when *anyone* writes, so handing it back as a cursor would make
+ * every client see "the cursor changed" every time a different user touched
+ * anything, and sync on a poll that has nothing to fetch. It is still a valid
+ * watermark (the counter is monotonic, so a later row of theirs is always
+ * above it) and a tighter one.
+ *
+ * Each MAX is served by the (user_id, seq) pull index, so this is eight index
+ * probes, not eight scans.
+ */
+export function userCursor(db, userId) {
+  let max = 0;
+  for (const table of Object.keys(TABLES)) {
+    const row = db.prepare(`SELECT MAX(seq) AS m FROM ${table} WHERE user_id = ?`).get(userId);
+    if (row?.m != null && row.m > max) max = Number(row.m);
+  }
+  return max;
+}
+
+/**
+ * Remove an account: every row it owns, then the identity and its tokens.
+ *
+ * A hard DELETE, not a tombstone. Tombstones exist so a *peer* learns about a
+ * removal, and the peers here are that user's own devices - which are being
+ * cut off at the same moment, and whose local databases this server cannot
+ * reach anyway. Keeping tombstones would only keep their contents on a server
+ * they no longer have an account on.
+ *
+ * It lives here rather than in users.js because deleting a user means deleting
+ * their rows, and TABLES is what says which those are.
+ */
+export function purgeUser(db, userId) {
+  const run = db.transaction(() => {
+    let rows = 0;
+    for (const table of Object.keys(TABLES)) {
+      rows += db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId).changes;
+    }
+    deleteUserIdentity(db, userId);
+    return rows;
+  });
+  return run();
 }
 
 /**
@@ -359,7 +425,10 @@ export function sync(db, userId, since, incoming) {
         .all(userId, since)
         .map(({ user_id, ...rest }) => rest);
     }
-    return { cursor: currentSeq(db), changes };
+    // Computed inside the transaction, from the same rows just read, for the
+    // same reason the pull is: a cursor read outside it could sit above a write
+    // that this response did not carry.
+    return { cursor: userCursor(db, userId), changes };
   });
 
   return run();

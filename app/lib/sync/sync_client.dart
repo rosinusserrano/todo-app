@@ -31,6 +31,39 @@ class SyncFailed extends SyncResult {
   const SyncFailed(this.message, {this.transient = true});
 }
 
+/// Who the server says this token belongs to.
+///
+/// The account matters now that a server can hold several: the same address
+/// with a different token is a different set of tasks, and [admin] is what
+/// decides whether this device gets the user-management panel at all.
+class ServerIdentity {
+  const ServerIdentity({required this.user, required this.label, required this.admin});
+
+  final String user;
+  final String label;
+  final bool admin;
+
+  static ServerIdentity? parse(String body) {
+    try {
+      final map = jsonDecode(body) as Map<String, dynamic>;
+      final id = map['user'];
+      if (id is! String || id.isEmpty) return null;
+      return ServerIdentity(
+        user: id,
+        label: (map['label'] as String?)?.trim().isNotEmpty == true
+            ? map['label'] as String
+            : id,
+        // Absent on a server older than the admin panel, which is exactly the
+        // case where the panel must stay hidden rather than call routes that
+        // are not there.
+        admin: map['admin'] == true,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class SyncClient {
   SyncClient({required this.baseUrl, required this.token, http.Client? client})
       : _http = client ?? http.Client();
@@ -75,6 +108,25 @@ class SyncClient {
       return const SyncOk(0, 0, 0);
     } catch (e) {
       return SyncFailed('Cannot reach server: ${_short(e)}');
+    }
+  }
+
+  /// Which account this token belongs to, or null if the question could not be
+  /// answered (old server, offline, bad token).
+  ///
+  /// Null is not an error worth surfacing: identity is decoration on a sync
+  /// that either worked or reported its own failure, so a null here means the
+  /// panel stays hidden and nothing else changes.
+  Future<ServerIdentity?> whoAmI() async {
+    try {
+      final res = await _http.get(
+        _endpoint('/api/me'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(_timeout);
+      if (res.statusCode != 200) return null;
+      return ServerIdentity.parse(res.body);
+    } catch (_) {
+      return null;
     }
   }
 

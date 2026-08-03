@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "server": "node server/index.js",
+    "token": "node server/tokens.js",
     "test:server": "node --test server"
   },
   "dependencies": {

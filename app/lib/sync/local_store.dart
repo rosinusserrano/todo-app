@@ -28,6 +28,30 @@ class LocalStore {
 
   Database get raw => _db;
 
+  /// The uuid of the workspace every fresh database seeds.
+  ///
+  /// **Fixed, not generated**, and that is the whole point. A generated one
+  /// meant every fresh database - a new phone, a reinstall, each in-memory
+  /// store an integration test opens - seeded a *different* row that happened
+  /// to be called "Tasks". Sync then did exactly what it should: merged by
+  /// uuid, found no match, and kept both. Six test runs against a real server
+  /// left seven "Tasks" workspaces that no merge rule could ever fold, because
+  /// they were not versions of one row - they were different rows.
+  ///
+  /// Deriving the id instead of generating it is the same trick
+  /// [Calendar.forWorkspace] uses for a workspace's calendar, and for the same
+  /// reason: two devices provisioning the same thing while offline have to
+  /// produce the same row, or sync can only ever see siblings.
+  ///
+  /// The value is a valid v4-shaped uuid so it cannot collide with a generated
+  /// one, and is recognisable on sight when reading rows by hand.
+  static const defaultWorkspaceUuid = '00000000-0000-4000-8000-000000000001';
+
+  /// What the seeded default looks like, and therefore what the v9 migration
+  /// recognises as "a default someone else's device seeded".
+  static const _defaultWorkspaceName = 'Tasks';
+  static const _defaultWorkspaceColor = '#6c8cff';
+
   static const _tables = [
     'workspaces',
     'parked_groups',
@@ -56,7 +80,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 8,
+        version: 10,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -125,6 +149,107 @@ class LocalStore {
       // row stays exactly what it was: an attachment on a task.
       await db.execute('ALTER TABLE attachments ADD COLUMN event_uuid TEXT');
       await db.execute(_attachmentsEventIndex);
+    }
+    if (from < 9) {
+      await _foldSeededDefaults(db);
+    }
+    if (from < 10) {
+      // Tasks can be planned into a block of time. Nullable, so every existing
+      // task is simply "not planned into anything".
+      await db.execute('ALTER TABLE tasks ADD COLUMN event_uuid TEXT');
+      await db.execute(_tasksEventIndex);
+    }
+  }
+
+  /// Collapse every seeded "Tasks" workspace onto [defaultWorkspaceUuid].
+  ///
+  /// The clean-up half of the fix above: the duplicates already out there were
+  /// created before the id was fixed, so nothing about the new id retires them
+  /// on its own. This moves their contents onto the canonical row and
+  /// tombstones the husks.
+  ///
+  /// Three things make it safe to run against real data:
+  ///
+  ///   - It only touches rows that look exactly like something *we* seeded
+  ///     (the default name and colour). A renamed or recoloured workspace is
+  ///     the user's, and is left alone even if that means it sits beside the
+  ///     canonical one.
+  ///   - Nothing is deleted, only re-parented. Tasks, shelves, journal entries
+  ///     and events move across; the empty workspace is then tombstoned.
+  ///   - Every row it moves is marked dirty, so the collapse propagates to the
+  ///     other devices as ordinary edits and tombstones rather than having to
+  ///     be repeated there.
+  static Future<void> _foldSeededDefaults(Database db) async {
+    final seeded = await db.query(
+      'workspaces',
+      where: 'name = ? AND color = ? AND deleted_at IS NULL',
+      whereArgs: [_defaultWorkspaceName, _defaultWorkspaceColor],
+      orderBy: 'created_at',
+    );
+    if (seeded.isEmpty) return;
+
+    final strays = seeded.where((w) => w['uuid'] != defaultWorkspaceUuid).toList();
+    if (strays.isEmpty) return;
+
+    final now = nowStamp();
+
+    // The canonical row may not exist yet - on this database the seed that ran
+    // at install time had a generated id. Promote the oldest stray's own
+    // details rather than inventing new ones, so a workspace that has been
+    // sorted somewhere specific stays there.
+    final canonical = seeded.firstWhere(
+      (w) => w['uuid'] == defaultWorkspaceUuid,
+      orElse: () => const {},
+    );
+    if (canonical.isEmpty) {
+      final oldest = strays.first;
+      await db.insert('workspaces', {
+        'uuid': defaultWorkspaceUuid,
+        'name': _defaultWorkspaceName,
+        'color': _defaultWorkspaceColor,
+        'sort_order': oldest['sort_order'],
+        'created_at': oldest['created_at'],
+        'updated_at': now,
+        'deleted_at': null,
+        'dirty': 1,
+      });
+    }
+
+    for (final stray in strays) {
+      final uuid = stray['uuid'] as String;
+
+      for (final table in ['tasks', 'parked_groups', 'journal_entries']) {
+        await db.update(
+          table,
+          {'workspace_uuid': defaultWorkspaceUuid, 'updated_at': now, 'dirty': 1},
+          where: 'workspace_uuid = ?',
+          whereArgs: [uuid],
+        );
+      }
+
+      // A workspace's calendar carries the workspace's own uuid
+      // (Calendar.forWorkspace), so a duplicate workspace brought a duplicate
+      // calendar with it. Its events move to the canonical calendar; the empty
+      // calendar goes the way of its workspace.
+      await db.update(
+        'calendar_events',
+        {'calendar_uuid': defaultWorkspaceUuid, 'updated_at': now, 'dirty': 1},
+        where: 'calendar_uuid = ?',
+        whereArgs: [uuid],
+      );
+      await db.update(
+        'calendars',
+        {'deleted_at': now, 'updated_at': now, 'dirty': 1},
+        where: 'uuid = ? AND deleted_at IS NULL',
+        whereArgs: [uuid],
+      );
+
+      await db.update(
+        'workspaces',
+        {'deleted_at': now, 'updated_at': now, 'dirty': 1},
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
     }
   }
 
@@ -257,6 +382,11 @@ class LocalStore {
   static const _tasksGroupIndex =
       'CREATE INDEX idx_tasks_group ON tasks (group_uuid)';
 
+  /// The session view asks "what is planned into this block" every poll, which
+  /// is the one read here that runs on a timer.
+  static const _tasksEventIndex =
+      'CREATE INDEX idx_tasks_event ON tasks (event_uuid)';
+
   static Future<void> _create(Database db, int version) async {
     await db.execute('''
       CREATE TABLE workspaces (
@@ -281,6 +411,7 @@ class LocalStore {
         in_progress    INTEGER NOT NULL DEFAULT 0,
         remind_at      TEXT,
         group_uuid     TEXT,
+        event_uuid     TEXT,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,
         dirty          INTEGER NOT NULL DEFAULT 1
@@ -314,6 +445,7 @@ class LocalStore {
     await db.execute('CREATE INDEX idx_tasks_dirty ON tasks (dirty)');
     await db.execute(_parkedGroupsIndex);
     await db.execute(_tasksGroupIndex);
+    await db.execute(_tasksEventIndex);
     await db.execute(_attachmentsIndex);
     await db.execute(_attachmentsEventIndex);
     await db.execute(_journalIndex);
@@ -322,12 +454,10 @@ class LocalStore {
     await db.execute(_eventsStartIndex);
 
     // A first workspace, so the app is never in a state with nowhere to add a
-    // task. Sync merges it with any peer's default by uuid, so two devices
-    // that both start fresh will end up with two - acceptable, and far less
-    // confusing than an app that refuses to accept input.
+    // task.
     final now = nowStamp();
     await db.insert('workspaces', {
-      'uuid': newId(),
+      'uuid': defaultWorkspaceUuid,
       'name': 'Tasks',
       'color': '#6c8cff',
       'sort_order': 0,
@@ -585,6 +715,63 @@ class LocalStore {
       orderBy: 'start_at',
     );
     return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  /// The events covering this instant - the block (or blocks) you are in.
+  ///
+  /// Half-open at the start and closed at the end for the same reason the grid
+  /// is: an event ending at 11:00 is over at 11:00, and one starting then has
+  /// begun. Overlaps are not resolved here - two events really can be running
+  /// at once, and picking one of them for the user would be guessing.
+  Future<List<CalendarEvent>> liveEvents([DateTime? now]) async {
+    final at = reminderStamp(now ?? DateTime.now());
+    final rows = await _db.query(
+      'calendar_events',
+      where: 'deleted_at IS NULL AND start_at <= ? AND end_at > ?',
+      whereArgs: [at, at],
+      orderBy: 'start_at',
+    );
+    return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  /// What is still to be done in one block.
+  ///
+  /// Parked tasks are excluded, exactly as they are from [activeTasks] and the
+  /// reminder sweep: shelving something says "not now", and a session list is
+  /// the most emphatic "now" in the app. The `event_uuid` is kept either way,
+  /// so unparking puts it back in its block.
+  Future<List<Task>> tasksForEvent(String eventUuid) async {
+    final rows = await _db.query('tasks',
+        where: 'event_uuid = ? AND completed_at IS NULL '
+            'AND deleted_at IS NULL AND group_uuid IS NULL',
+        whereArgs: [eventUuid],
+        orderBy: 'sort_order, created_at');
+    return rows.map(Task.fromMap).toList();
+  }
+
+  /// Every live task pointing at an event, completed and parked ones included.
+  /// Used when the event goes away, which has to release all of them - a task
+  /// pointing at a deleted block would be unreachable from any session.
+  Future<List<Task>> allTasksForEvent(String eventUuid) async {
+    final rows = await _db.query('tasks',
+        where: 'event_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [eventUuid]);
+    return rows.map(Task.fromMap).toList();
+  }
+
+  /// How many open tasks each event has, keyed by event uuid; events with none
+  /// are absent. One query for the whole grid, like [attachmentCounts].
+  Future<Map<String, int>> eventTaskCounts() async {
+    final rows = await _db.rawQuery(
+      'SELECT event_uuid, COUNT(*) AS n FROM tasks '
+      'WHERE event_uuid IS NOT NULL AND completed_at IS NULL '
+      'AND deleted_at IS NULL AND group_uuid IS NULL '
+      'GROUP BY event_uuid',
+    );
+    return {
+      for (final r in rows)
+        r['event_uuid']! as String: (r['n'] as num).toInt(),
+    };
   }
 
   /// Every live event on one calendar, for cascading a delete.

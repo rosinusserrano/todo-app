@@ -4,39 +4,38 @@
 //
 // Self-contained: creates its own database and access token on first run, and
 // prints the LAN address to type into a client. Configuration is by environment
-// variable, all optional:
+// variable (see config.js), all optional.
 //
-//   TODO_SYNC_PORT    default 8787
-//   TODO_SYNC_DB      default ./server/data/sync.db
-//   TODO_SYNC_SECRET  default: generated once into ./server/data/secret.txt
-//   TODO_SYNC_HOST    default 0.0.0.0 (set to 127.0.0.1 to refuse LAN clients)
+// It serves more than one user: each access token belongs to a user, and every
+// row is scoped to the user whose token pushed it, so a second person on the
+// same server gets their own account rather than a second view of yours. Issue
+// them a token with `npm run token -- add "<name>"`.
 
 import express from 'express';
-import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
-import { dirname, resolve } from 'node:path';
 
-import { openDb, sync, currentSeq, TABLES } from './db.js';
-import { middleware } from './auth.js';
-
-const PORT = Number(process.env.TODO_SYNC_PORT ?? 8787);
-const HOST = process.env.TODO_SYNC_HOST ?? '0.0.0.0';
-const DB_PATH = resolve(process.env.TODO_SYNC_DB ?? 'server/data/sync.db');
-const SECRET_PATH = resolve('server/data/secret.txt');
-
-function loadSecret() {
-  if (process.env.TODO_SYNC_SECRET) return process.env.TODO_SYNC_SECRET;
-  if (existsSync(SECRET_PATH)) return readFileSync(SECRET_PATH, 'utf8').trim();
-
-  const secret = randomBytes(24).toString('base64url');
-  mkdirSync(dirname(SECRET_PATH), { recursive: true });
-  writeFileSync(SECRET_PATH, secret + '\n', { mode: 0o600 });
-  return secret;
-}
+import { openDb, purgeUser, sync, userCursor, TABLES } from './db.js';
+import { adminOnly, middleware } from './auth.js';
+import { DB_PATH, HOST, PORT, loadSecret } from './config.js';
+import {
+  adoptBootstrapSecret,
+  createUser,
+  getUser,
+  isAdmin,
+  issueToken,
+  listTokens,
+  listUsers,
+  revokeToken,
+} from './users.js';
 
 const SECRET = loadSecret();
 const db = openDb(DB_PATH);
+
+// The secret becomes the `local` user's token rather than a parallel way in -
+// see users.js. This is what keeps every device set up before multi-user
+// working, and pointing at the same rows: they already carry user_id 'local'.
+adoptBootstrapSecret(db, SECRET);
+
 const app = express();
 app.use(express.json({ limit: '8mb' }));
 
@@ -98,7 +97,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'todo-widget-sync', version: 1 });
 });
 
-app.post('/api/sync', middleware({ secret: SECRET }), (req, res, next) => {
+app.post('/api/sync', middleware({ db }), (req, res, next) => {
   const problem = validatePayload(req.body);
   if (problem) return res.status(400).json({ error: problem });
 
@@ -111,8 +110,121 @@ app.post('/api/sync', middleware({ secret: SECRET }), (req, res, next) => {
 });
 
 // Cheap way for a client to ask "is there anything new?" without uploading.
-app.get('/api/cursor', middleware({ secret: SECRET }), (_req, res) => {
-  res.json({ cursor: currentSeq(db) });
+// Scoped to the caller: a global counter would move whenever *another* user
+// wrote, and every client would sync on a poll with nothing to fetch.
+app.get('/api/cursor', middleware({ db }), (req, res) => {
+  res.json({ cursor: userCursor(db, req.userId) });
+});
+
+// Which account a token belongs to. Lets a client show whose data it is holding
+// - and lets whoever was handed a token check it works before typing a day of
+// tasks into the wrong account. `admin` is what makes the app show the user
+// management panel at all, so an ordinary account never sees a door it cannot
+// open (the routes below still check for themselves - this only hides the UI).
+app.get('/api/me', middleware({ db }), (req, res) => {
+  const user = getUser(db, req.userId);
+  res.json({
+    user: req.userId,
+    label: user?.label ?? req.userId,
+    admin: isAdmin(db, req.userId),
+  });
+});
+
+// ------------------------------------------------------------------ admin api
+//
+// The same routes the CLI covers, for the app's user-management panel. They are
+// not a second authentication surface: `adminOnly` is a role check on the token
+// that is already syncing, so there is no extra credential to steal or leak. The
+// CLI stays for the case the panel cannot help with - no admin token to hand.
+
+const admin = [middleware({ db }), adminOnly({ db })];
+
+/// Labels end up in listings and in a user id; keep them sane rather than
+/// letting a 4KB "name" through into every future console line.
+function readLabel(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  return trimmed.length <= 60 ? trimmed : null;
+}
+
+app.get('/api/admin/users', ...admin, (_req, res) => {
+  res.json({
+    users: listUsers(db).map((u) => ({
+      id: u.id,
+      label: u.label,
+      admin: u.is_admin === 1,
+      created_at: u.created_at,
+      // Never the hash: it is not needed to administer anything, and shipping
+      // it to a client turns a stolen response into an offline guessing target.
+      tokens: listTokens(db, u.id).map((t) => ({
+        id: t.id,
+        label: t.label,
+        created_at: t.created_at,
+        last_seen_at: t.last_seen_at,
+        revoked: t.revoked_at != null,
+      })),
+    })),
+  });
+});
+
+// Creates the account *and* its first token, because an account nobody can log
+// into is not a thing anyone wants to have made. The token is in the response
+// once and never again.
+app.post('/api/admin/users', ...admin, (req, res) => {
+  const label = readLabel(req.body?.label, null);
+  if (!label) return res.status(400).json({ error: 'A name is required (60 chars max)' });
+
+  const user = createUser(db, label);
+  const { token, id } = issueToken(db, user.id, 'first device');
+  res.json({ user: { id: user.id, label: user.label, admin: false }, token, token_id: id });
+});
+
+app.post('/api/admin/users/:id/tokens', ...admin, (req, res) => {
+  const user = getUser(db, req.params.id);
+  if (!user) return res.status(404).json({ error: 'No such user' });
+
+  const label = readLabel(req.body?.label, 'device');
+  if (!label) return res.status(400).json({ error: 'Invalid token name (60 chars max)' });
+
+  const { token, id } = issueToken(db, user.id, label);
+  res.json({ token, token_id: id });
+});
+
+app.post('/api/admin/tokens/:id/revoke', ...admin, (req, res) => {
+  const token = listTokens(db).find((t) => t.id === req.params.id);
+  if (!token) return res.status(404).json({ error: 'No such token' });
+  // Revoking your own last token locks you out of the server from this device,
+  // and the panel you would use to fix it goes with it.
+  if (token.user_id === req.userId) {
+    const mine = listTokens(db, req.userId).filter((t) => !t.revoked_at);
+    if (mine.length <= 1) {
+      return res.status(400).json({ error: 'That is the token you are using right now' });
+    }
+  }
+  if (!revokeToken(db, req.params.id)) {
+    return res.status(400).json({ error: 'That token is already revoked' });
+  }
+  res.json({ ok: true });
+});
+
+// Deletes the account and everything in it. Their devices keep their local
+// copies - this server simply stops knowing them.
+app.delete('/api/admin/users/:id', ...admin, (req, res) => {
+  const user = getUser(db, req.params.id);
+  if (!user) return res.status(404).json({ error: 'No such user' });
+  if (user.id === req.userId) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+  // An admin is someone who can undo this; make removing them a deliberate two
+  // steps (drop admin, then delete) rather than one click on the wrong row.
+  if (user.is_admin === 1) {
+    return res.status(400).json({ error: 'Remove admin from this account first' });
+  }
+
+  const rows = purgeUser(db, user.id);
+  res.json({ ok: true, rows });
 });
 
 app.use((err, _req, res, _next) => {
@@ -166,6 +278,19 @@ app.listen(PORT, HOST, () => {
       console.log('  network (a VM, WSL or a VPN adds its own). The right one is');
       console.log('  the one starting with the same numbers as your phone\'s IP.');
     }
+  }
+
+  const others = listUsers(db).filter((u) => u.id !== 'local');
+  console.log('');
+  if (others.length === 0) {
+    console.log('  Someone else on this server? Give them their own account:');
+    console.log('    npm run token -- add "<name>"');
+  } else {
+    console.log(`  Also serving ${others.length} other account(s):`);
+    for (const u of others) {
+      console.log(`    ${u.label}  (${u.id})  ${u.active_tokens} token(s)`);
+    }
+    console.log('  npm run token -- list');
   }
   console.log(`└${bar}┘\n`);
 });

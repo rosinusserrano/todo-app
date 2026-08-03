@@ -15,6 +15,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app_state.dart';
 import 'journal_crypto.dart';
+import 'layout.dart';
 import 'notifications.dart';
 import 'quick_actions.dart';
 import 'reminders.dart';
@@ -33,15 +34,18 @@ import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
 import 'ui/calendar/calendar_view.dart';
 import 'ui/calendar/event_editor.dart';
+import 'ui/calendar/time_grid.dart' show hhmm;
 import 'ui/footer.dart';
 import 'ui/journal_panel.dart';
 import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
-import 'ui/settings_dialog.dart';
+import 'ui/session_view.dart';
+import 'ui/settings_sheet.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/workspace_bar.dart';
+import 'ui/workspace_rail.dart';
 
 bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
@@ -219,6 +223,11 @@ class _WidgetShellState extends State<WidgetShell>
 
   bool _soundOpen = false;
 
+  /// Settings is a sheet in this Stack, not a dialog route: a route's modal
+  /// barrier covers the title bar, and the title bar is how the window is
+  /// dragged. See settings_sheet.dart.
+  bool _settingsOpen = false;
+
   /// One key per visible row, so a row can be measured for the hero flight.
   final _rowKeys = <String, GlobalKey>{};
 
@@ -252,6 +261,8 @@ class _WidgetShellState extends State<WidgetShell>
   late final ReminderService _reminders = ReminderService(
     s.store,
     onDue: _onRemindersDue,
+    // A block starting writes nothing, so only the clock can notice it.
+    onTick: s.refreshSessions,
   );
 
   _Focus _phase = _Focus.none;
@@ -259,6 +270,11 @@ class _WidgetShellState extends State<WidgetShell>
   Rect? _toRect;
   String? _blockedMessage;
   bool _pinned = true;
+
+  /// The close was accepted and teardown is running. Tearing the window down
+  /// is not instant - see [_closeNow] - and without this the widget just sat
+  /// there looking alive and ignoring the ✕, which reads as a hang.
+  bool _closing = false;
 
   @override
   void initState() {
@@ -303,41 +319,45 @@ class _WidgetShellState extends State<WidgetShell>
 
   // --------------------------------------------------------------- calendar
 
-  /// The window size to restore when the calendar closes. Captured rather than
-  /// assumed: the widget is resizable, and putting 340x480 back would quietly
-  /// undo whatever size the user had actually chosen.
-  Size? _sizeBeforeCalendar;
-
-  /// A week grid needs room. At 340px each day column is 43 pixels wide, which
-  /// is not enough to read a title in, and dragging out a span in one is
-  /// hopeless - so on desktop opening the calendar grows the window, and
-  /// closing it puts back exactly what was there before.
-  static const _calendarSize = Size(920, 640);
-
+  /// Opening the calendar **does not touch the window.**
+  ///
+  /// It used to grow it to 920x640 and centre it, because a week grid at 340px
+  /// gives each day 43 unusable pixels. That fixed the grid by moving the
+  /// window: a widget deliberately pinned to a corner jumped to the middle of
+  /// the screen at a size nobody had asked for, and closing the calendar was
+  /// the only way to get it back.
+  ///
+  /// The views adapt to the window instead - see [Layout], the agenda fallback
+  /// in the week view and the reflowing year. If you want the big grid, make
+  /// the window big; it stays big.
   Future<void> _toggleCalendar() async {
     // The calendar covers the add field and the footer, so anything focused
     // behind it has to let go first - the same reason the other views do this.
     if (s.focusTask != null) _exitFocus();
     _closeSound();
-
-    final opening = !s.showCalendar;
-    if (isDesktop) {
-      if (opening) {
-        _sizeBeforeCalendar = await windowManager.getSize();
-        await windowManager.setSize(_calendarSize);
-        await windowManager.center();
-      } else {
-        final previous = _sizeBeforeCalendar;
-        if (previous != null) await windowManager.setSize(previous);
-        _sizeBeforeCalendar = null;
-      }
-    }
+    _closeSettings();
     await s.toggleCalendar();
   }
 
   Future<void> _createEvent(DateTime start, DateTime end) async {
     final calendars = s.visibleCalendars;
     if (calendars.isEmpty) return;
+
+    // Time-block mode: the calendar was picked once on the strip, so the drag
+    // is the whole gesture and the block is titled after it. Laying out a week
+    // is the same event twenty times over, and an editor between each of them
+    // is twenty dismissals. Anything a block needs beyond a span - a note, a
+    // reminder, a different name - is one tap on the block afterwards.
+    final block = s.timeBlockCalendar;
+    if (block != null) {
+      await s.saveEvent(
+        calendarUuid: block.uuid,
+        title: s.calendarName(block),
+        start: start,
+        end: end,
+      );
+      return;
+    }
 
     // The current workspace's calendar if it is on screen, otherwise whatever
     // is - a drag has to land somewhere, and the workspace you are in is the
@@ -384,6 +404,8 @@ class _WidgetShellState extends State<WidgetShell>
       loadAttachments: () => s.eventAttachments(event),
       onAddAttachment: (file) => s.attachFileToEvent(event, file),
       onRemoveAttachment: s.removeEventAttachment,
+      loadTasks: () => s.plannableTasks(event),
+      onPlanTask: (task, on) => s.setTaskEvent(task, on ? event.uuid : null),
     );
     if (edit == null) return;
 
@@ -515,6 +537,7 @@ class _WidgetShellState extends State<WidgetShell>
     await _surfaceWindow();
     if (!mounted) return false;
     _closeSound();
+    _closeSettings();
     if (leaveFocus && s.focusTask != null) await _exitFocus();
     return mounted;
   }
@@ -618,8 +641,11 @@ class _WidgetShellState extends State<WidgetShell>
   /// Tasks themselves do not block - they persist across restarts.
   @override
   void onWindowClose() async {
+    // A second ✕ (or Alt+F4, or the tray's Quit) while teardown is already
+    // running would start a second one behind the first.
+    if (_closing) return;
     if (await s.canProceedPastThoughts()) {
-      await windowManager.destroy();
+      await _closeNow();
       return;
     }
     // The refusal has to be visible, or a quit from the tray while the window
@@ -628,9 +654,63 @@ class _WidgetShellState extends State<WidgetShell>
     await _surfaceWindow();
     if (!mounted) return;
     _closeSound();
+    _closeSettings();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
     _flashBlocked();
+  }
+
+  /// Actually go, with something on screen while it happens.
+  ///
+  /// `destroy()` is not instant on Windows - the engine, the acrylic surface
+  /// and mpv all come down inside it, and that is dead time the user spends
+  /// looking at a widget that has apparently ignored their click. Nothing here
+  /// can make the platform teardown quick, so this makes it *legible* instead:
+  /// paint the closing state, let that frame reach the screen, then go.
+  ///
+  /// The player is stopped first, and only when it is actually running: an mpv
+  /// instance holding a network stream open is the one part of the teardown
+  /// this side can get out of the way in advance. It is bounded, because a
+  /// stop that hangs must not be the reason the app cannot quit.
+  Future<void> _closeNow() async {
+    setState(() => _closing = true);
+    await WidgetsBinding.instance.endOfFrame;
+
+    if (widget.sound.isPlaying || widget.sound.isPaused) {
+      await widget.sound
+          .stop()
+          .timeout(const Duration(milliseconds: 600), onTimeout: () {});
+    }
+    await windowManager.destroy();
+  }
+
+  /// Covers everything, title bar included: once the close is accepted there is
+  /// nothing left to press, and a live-looking ✕ during teardown invites the
+  /// second click [onWindowClose] then has to throw away.
+  Widget _closingOverlay(Color ws) {
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: Container(
+          color: T.bgSolid.withValues(alpha: 0.72),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(strokeWidth: 1.8, color: ws),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Closing…',
+                style: TextStyle(fontSize: 12, color: T.muted),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _flashBlocked() {
@@ -642,23 +722,23 @@ class _WidgetShellState extends State<WidgetShell>
 
   // ----------------------------------------------------------- focus flight
 
-  /// How far the focus tile stays clear of the window edges. Used both by the
-  /// resting layout and by the flight's landing rect — if the two disagree, the
-  /// tile visibly jumps sideways the instant the flight ends.
-  static const _tileMargin = 28.0;
-
   /// Geometry of the tile at rest. Computed rather than measured: the layout is
   /// fully determined here, and measuring would need an extra frame with the
   /// tile already mounted, which is what the CSS version had to work around.
-  Rect _restingTileRect(Size size) {
-    const margin = _tileMargin;
+  ///
+  /// The width comes from [Layout.focusTileWidth] and so does the resting
+  /// layout's — if those two disagree the tile visibly jumps sideways the
+  /// instant the flight ends, which is why neither computes its own.
+  Rect _restingTileRect() {
     const tileHeight = 110.0;
+    final size = _layout.size;
     final areaTop = TitleBar.height;
     final areaHeight = size.height - areaTop;
+    final width = _layout.focusTileWidth;
     return Rect.fromLTWH(
-      margin,
+      (size.width - width) / 2,
       areaTop + (areaHeight - tileHeight) / 2 - 30,
-      size.width - margin * 2,
+      width,
       tileHeight,
     );
   }
@@ -677,10 +757,9 @@ class _WidgetShellState extends State<WidgetShell>
     await s.enterFocus(t);
     if (!mounted) return;
 
-    final size = (context.findRenderObject() as RenderBox).size;
     setState(() {
       _fromRect = from;
-      _toRect = _restingTileRect(size);
+      _toRect = _restingTileRect();
       _phase = from == null ? _Focus.resting : _Focus.flyingIn;
     });
 
@@ -695,8 +774,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (t == null) return;
     _closeFocusThought();
 
-    final size = (context.findRenderObject() as RenderBox).size;
-    final tileRect = _restingTileRect(size);
+    final tileRect = _restingTileRect();
 
     await s.exitFocus();
     if (!mounted) return;
@@ -737,6 +815,15 @@ class _WidgetShellState extends State<WidgetShell>
 
   bool get _focusVisible => _phase != _Focus.none;
 
+  /// The box the content actually got, republished to the subtree as
+  /// [LayoutScope] and kept here for the paths that run outside a build - the
+  /// focus flight computes its rects from a callback, not from a builder.
+  ///
+  /// Measured inside the safe area, so it is the same coordinate space the
+  /// hero rects are in. Assigned during build, which is safe: nothing here
+  /// notifies, it is a record of what layout just decided.
+  Layout _layout = const Layout(Size(T.designWidth, 480));
+
   @override
   Widget build(BuildContext context) {
     final ws = s.workspaceColor;
@@ -752,7 +839,9 @@ class _WidgetShellState extends State<WidgetShell>
               event.logicalKey != LogicalKeyboardKey.escape) {
             return KeyEventResult.ignored;
           }
-          if (_soundOpen) {
+          if (_settingsOpen) {
+            _closeSettings();
+          } else if (_soundOpen) {
             _closeSound();
           } else if (_focusThoughtOpen) {
             _closeFocusThought();
@@ -766,6 +855,8 @@ class _WidgetShellState extends State<WidgetShell>
             s.toggleParked();
           } else if (s.showJournal) {
             s.toggleJournal();
+          } else if (s.showSession) {
+            s.toggleSession();
           } else if (s.showHistory) {
             s.toggleHistory();
           } else {
@@ -782,66 +873,89 @@ class _WidgetShellState extends State<WidgetShell>
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(T.radius),
-            child: _inset(Stack(
-              key: _stackKey,
-              children: [
-                // Panels keep their layout and only fade, which is what lets
-                // the tile fly back to the exact row it came from.
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: _focusVisible ? 0 : 1,
-                    duration: T.heroDur,
-                    child: IgnorePointer(
-                      ignoring: _focusVisible,
-                      child: _body(ws),
-                    ),
-                  ),
-                ),
-
-                if (_phase == _Focus.resting) _focusOverlay(ws),
-                if (_phase == _Focus.flyingIn || _phase == _Focus.flyingOut)
-                  _flyingTile(ws),
-
-                // Above the focus overlay, since picking something to listen
-                // to is exactly what you do *after* picking a task.
-                if (_soundOpen)
-                  SoundSheet(
-                    sound: widget.sound,
-                    accent: ws,
-                    onClose: _closeSound,
-                  ),
-
-                // Above everything, so the window stays draggable and
-                // closable during focus mode and with the sheet open.
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: TitleBar(
-                    isDesktop: isDesktop,
-                    pinned: _pinned,
-                    onTogglePin: _togglePin,
-                    onToggleSound: _toggleSound,
-                    soundPlaying: widget.sound.isPlaying,
-                    soundPaused: widget.sound.isPaused,
-                    onTogglePause: widget.sound.togglePause,
-                    volume: widget.sound.volume,
-                    onVolumeChanged: widget.sound.setVolume,
-                    accent: ws,
-                    onClose: () =>
-                        isDesktop ? windowManager.close() : null,
-                    onOpenSettings: _openSettings,
-                    onToggleCalendar: _toggleCalendar,
-                    calendarOpen: s.showCalendar,
-                    syncColor: _syncColor(),
-                    syncTooltip: widget.sync.describe(),
-                  ),
-                ),
-              ],
-            )),
+            child: _inset(LayoutBuilder(builder: (context, constraints) {
+              _layout = Layout(constraints.biggest);
+              return LayoutScope(
+                layout: _layout,
+                child: _shell(ws),
+              );
+            })),
           ),
         ),
       ),
+    );
+  }
+
+  /// Everything inside the window frame. Split out from [build] only so the
+  /// [LayoutScope] above it is an ancestor of this whole tree - a descendant
+  /// asking [Layout.of] from `build`'s own context would get the fallback.
+  Widget _shell(Color ws) {
+    return Stack(
+      key: _stackKey,
+      children: [
+        // Panels keep their layout and only fade, which is what lets the tile
+        // fly back to the exact row it came from.
+        Positioned.fill(
+          child: AnimatedOpacity(
+            opacity: _focusVisible ? 0 : 1,
+            duration: T.heroDur,
+            child: IgnorePointer(
+              ignoring: _focusVisible,
+              child: _body(ws),
+            ),
+          ),
+        ),
+
+        if (_phase == _Focus.resting) _focusOverlay(ws),
+        if (_phase == _Focus.flyingIn || _phase == _Focus.flyingOut)
+          _flyingTile(ws),
+
+        // Above the focus overlay, since picking something to listen to is
+        // exactly what you do *after* picking a task.
+        if (_soundOpen)
+          SoundSheet(
+            sound: widget.sound,
+            accent: ws,
+            onClose: _closeSound,
+          ),
+
+        if (_settingsOpen)
+          SettingsSheet(
+            sync: widget.sync,
+            accent: ws,
+            onClose: _closeSettings,
+            startup: isDesktop && StartupSetting.supported ? _startup : null,
+          ),
+
+        // Above everything, so the window stays draggable and closable during
+        // focus mode and with the sheet open.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: TitleBar(
+            isDesktop: isDesktop,
+            pinned: _pinned,
+            onTogglePin: _togglePin,
+            onToggleSound: _toggleSound,
+            soundPlaying: widget.sound.isPlaying,
+            soundPaused: widget.sound.isPaused,
+            onTogglePause: widget.sound.togglePause,
+            volume: widget.sound.volume,
+            onVolumeChanged: widget.sound.setVolume,
+            accent: ws,
+            onClose: () => isDesktop ? windowManager.close() : null,
+            onOpenSettings: _openSettings,
+            onToggleCalendar: _toggleCalendar,
+            calendarOpen: s.showCalendar,
+            syncColor: _syncColor(),
+            syncTooltip: widget.sync.describe(),
+          ),
+        ),
+
+        // Last, so it is over the title bar too - see _closingOverlay.
+        if (_closing) _closingOverlay(ws),
+      ],
     );
   }
 
@@ -877,10 +991,47 @@ class _WidgetShellState extends State<WidgetShell>
     s.toggleJournal();
   }
 
+  void _toggleThoughts() {
+    if (_clearOverlays()) return;
+    s.toggleThoughts();
+  }
+
+  void _toggleSession() {
+    if (_clearOverlays()) return;
+    s.toggleSession();
+  }
+
+  /// The name to print beside a live block. Empty when its calendar is not
+  /// known here, which the session view then leaves out of the line rather than
+  /// printing a blank field.
+  String _calendarNameForEvent(CalendarEvent e) {
+    final cal = s.calendarsByUuid[e.calendarUuid];
+    return cal == null ? '' : s.calendarName(cal);
+  }
+
+  /// Back to the task list from the rail.
+  ///
+  /// The ▾ menu closes a view by re-picking it, which works because the menu
+  /// only ever offers the three; a rail lists Tasks as a destination of its
+  /// own, and a destination has to be reachable from any of them. Every branch
+  /// is a toggle and at most one view is open, so at most one fires.
+  void _showTasks() {
+    if (_clearOverlays()) return;
+    if (s.showHistory) s.toggleHistory();
+    if (s.showThoughts) s.toggleThoughts();
+    if (s.showParked) s.toggleParked();
+    if (s.showJournal) s.toggleJournal();
+    if (s.showSession) s.toggleSession();
+  }
+
   /// Dismisses whatever is covering the content area. Returns true if it did,
   /// meaning the press was spent on getting out of the way rather than on the
   /// view the caller wanted.
   bool _clearOverlays() {
+    if (_settingsOpen) {
+      _closeSettings();
+      return true;
+    }
     if (_soundOpen) {
       _closeSound();
       return true;
@@ -896,11 +1047,11 @@ class _WidgetShellState extends State<WidgetShell>
     _closeSound();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
-    await showSyncSettings(
-      context,
-      widget.sync,
-      startup: isDesktop && StartupSetting.supported ? _startup : null,
-    );
+    setState(() => _settingsOpen = !_settingsOpen);
+  }
+
+  void _closeSettings() {
+    if (_settingsOpen) setState(() => _settingsOpen = false);
   }
 
   /// Blocked (bad token/address) is red rather than amber: it will not recover
@@ -937,30 +1088,63 @@ class _WidgetShellState extends State<WidgetShell>
       );
     }
 
+    // Narrow: the workspace bar across the top, with its two ▾ menus. Wide
+    // enough and the same controls unroll into a rail down the left, where the
+    // workspace list and the views are on screen instead of behind a press.
+    final middle = Column(
+      children: [
+        if (!_layout.hasRail)
+          WorkspaceBar(
+            workspaces: s.workspaces,
+            currentUuid: s.currentWorkspaceUuid,
+            accent: ws,
+            onSelect: (w) => _switchWorkspace(w),
+            onEdit: (w) => _editWorkspace(w),
+            onCreate: () => _editWorkspace(null),
+            onOpenNotes: _toggleJournal,
+            onOpenParked: _toggleParked,
+            onOpenHistory: _toggleHistory,
+            parkedReviewDue: s.groupsDueForReview.isNotEmpty,
+            // The menu holds three of the four, and lighting its ▾ for a view
+            // it does not contain would point at the wrong control.
+            openView: _openView == WorkspaceView.thoughts ? null : _openView,
+          ),
+        if (s.hasLiveSession && !s.showSession) _sessionBanner(),
+        Expanded(child: _contentArea(ws)),
+      ],
+    );
+
     return Column(
       children: [
         const SizedBox(height: TitleBar.height),
-        WorkspaceBar(
-          workspaces: s.workspaces,
-          currentUuid: s.currentWorkspaceUuid,
-          accent: ws,
-          onSelect: (w) => _switchWorkspace(w),
-          onEdit: (w) => _editWorkspace(w),
-          onCreate: () => _editWorkspace(null),
-          onOpenNotes: _toggleJournal,
-          onOpenParked: _toggleParked,
-          onOpenHistory: _toggleHistory,
-          parkedReviewDue: s.groupsDueForReview.isNotEmpty,
-          openView: s.showJournal
-              ? WorkspaceView.notes
-              : s.showParked
-                  ? WorkspaceView.parked
-                  : s.showHistory
-                      ? WorkspaceView.history
-                      : null,
+        Expanded(
+          child: _layout.hasRail
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    WorkspaceRail(
+                      workspaces: s.workspaces,
+                      currentUuid: s.currentWorkspaceUuid,
+                      accent: ws,
+                      onSelect: (w) => _switchWorkspace(w),
+                      onEdit: (w) => _editWorkspace(w),
+                      onCreate: () => _editWorkspace(null),
+                      onShowTasks: _showTasks,
+                      onOpenNotes: _toggleJournal,
+                      onOpenParked: _toggleParked,
+                      onOpenHistory: _toggleHistory,
+                      onOpenThoughts: _toggleThoughts,
+                      thoughtCount: s.thoughtCount,
+                      parkedReviewDue: s.groupsDueForReview.isNotEmpty,
+                      openView: _openView,
+                    ),
+                    Expanded(child: middle),
+                  ],
+                )
+              : middle,
         ),
-        _addField(ws),
-        Expanded(child: _contentView(ws)),
+        // Outside the rail, spanning the whole width: the pressure meter is
+        // about the pile, not about the workspace you happen to be in.
         ThoughtFooter(
           key: _footerKey,
           thoughts: s.thoughts,
@@ -974,10 +1158,140 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
-  /// The content area holds exactly one of three views. Thoughts and history
-  /// both take it over rather than stacking on top of the tasks, which is what
-  /// keeps a 340x480 window legible.
-  Widget _contentView(Color ws) {
+  /// The way into the session view, and the only one.
+  ///
+  /// There is no permanent button for "Now" because for most of the day there
+  /// is no answer: the block you are in is a thing that comes and goes, so the
+  /// entry point comes and goes with it. It sits above the content area rather
+  /// than in the title bar because it is about the list underneath it - and it
+  /// deliberately says what is running and what is left on it, so that a glance
+  /// is often enough and the view is only opened when it is not.
+  ///
+  /// The time it prints is the block's end, not a countdown: this rebuilds only
+  /// when the live blocks or their todos change (see AppState.refreshSessions),
+  /// and a minutes-remaining figure here would sit there going stale. The
+  /// countdown lives inside the view, which does rebuild on every poll.
+  Widget _sessionBanner() {
+    final first = s.liveEvents.first;
+    final left = s.sessionTaskList.length;
+    final more = s.liveEvents.length - 1;
+    final color = s.colorForEvent(first);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      child: Material(
+        color: Color.lerp(T.bgSolid, color, 0.22),
+        borderRadius: BorderRadius.circular(9),
+        child: InkWell(
+          onTap: _toggleSession,
+          borderRadius: BorderRadius.circular(9),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              border: Border(left: BorderSide(color: color, width: 3)),
+            ),
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        more > 0
+                            ? '${first.title}  +$more more'
+                            : first.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: T.text,
+                        ),
+                      ),
+                      Text(
+                        'until ${hhmm(first.end)} · '
+                        '${left == 0 ? 'nothing planned' : '$left to do'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, color: T.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, size: 16, color: T.muted),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Which view owns the content area, for whichever navigation is on screen.
+  WorkspaceView? get _openView => s.showJournal
+      ? WorkspaceView.notes
+      : s.showParked
+          ? WorkspaceView.parked
+          : s.showHistory
+              ? WorkspaceView.history
+              : s.showThoughts
+                  ? WorkspaceView.thoughts
+                  : null;
+
+  /// The content area.
+  ///
+  /// In a 340px window it holds exactly one view: Notes, Parked, History and
+  /// Thoughts *replace* the task list rather than stacking on top of it, which
+  /// is what keeps the widget legible. Given [Layout.splitMinWidth] they stop
+  /// replacing it and open beside it instead - the same views, no longer a
+  /// trade against seeing what you are meant to be doing.
+  Widget _contentArea(Color ws) {
+    final secondary = _secondaryView(ws);
+    if (secondary == null) return _taskColumn(ws);
+
+    if (!_layout.splitsContent) {
+      // One at a time, and the add field stays above whatever is showing: a
+      // task can be captured without first closing the panel you are reading.
+      return Column(
+        children: [
+          _addField(ws),
+          Expanded(child: secondary),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 5, child: _taskColumn(ws)),
+        const VerticalDivider(width: 1, thickness: 1, color: Color(0x14FFFFFF)),
+        Expanded(flex: 4, child: secondary),
+      ],
+    );
+  }
+
+  /// The add field and the task list, capped at a readable column width.
+  ///
+  /// The cap is why a wide window grows a rail and a second pane rather than
+  /// simply stretching: a tick box 900px from the end of its own line is a
+  /// worse checklist, not a bigger one.
+  Widget _taskColumn(Color ws) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),
+        child: Column(
+          children: [
+            _addField(ws),
+            Expanded(child: _activeView(ws)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Whatever has taken the content area over, or null while the tasks have it.
+  Widget? _secondaryView(Color ws) {
     if (s.showHistory) return _historyView();
     if (s.showThoughts) {
       return ThoughtsPanel(
@@ -999,6 +1313,20 @@ class _WidgetShellState extends State<WidgetShell>
         onBack: _toggleParked,
       );
     }
+    if (s.showSession) {
+      return SessionView(
+        events: s.liveEvents,
+        tasks: s.sessionTasks,
+        accent: ws,
+        colorFor: s.colorForEvent,
+        nameFor: _calendarNameForEvent,
+        onComplete: s.completeTask,
+        onDelete: s.deleteTask,
+        onFocus: (t) => _startFocus(t),
+        onUnplan: (t) => s.setTaskEvent(t, null),
+        onBack: _toggleSession,
+      );
+    }
     if (s.showJournal) {
       return JournalView(
         configured: s.journalConfigured,
@@ -1015,7 +1343,7 @@ class _WidgetShellState extends State<WidgetShell>
         onBack: _toggleJournal,
       );
     }
-    return _activeView(ws);
+    return null;
   }
 
   // ----------------------------------------------------------- attachments
@@ -1024,6 +1352,7 @@ class _WidgetShellState extends State<WidgetShell>
     final blobs = s.blobs;
     if (blobs == null) return;
     _closeSound();
+    _closeSettings();
     await showAttachments(
       context,
       task: t,
@@ -1139,6 +1468,9 @@ class _WidgetShellState extends State<WidgetShell>
             onFocus: () => _startFocus(t),
             onSetReminder: (at) => s.setReminder(t, at),
             onPark: (anchor) => _parkTask(t, anchor),
+            // Only ever drawn on a task that *is* planned, where it doubles as
+            // the mark saying so - the list is otherwise unchanged by planning.
+            onUnplan: () => s.setTaskEvent(t, null),
             onOpenAttachments: () => _openAttachments(t),
             attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
             dragHandle: ReorderableDragStartListener(
@@ -1219,21 +1551,24 @@ class _WidgetShellState extends State<WidgetShell>
     final t = s.focusTask;
     if (t == null) return const SizedBox.shrink();
 
+    // The tile and the controls under it are held to the tile's own width, so
+    // the whole thing stays one object in the middle of the window however wide
+    // that window is.
+    final width = _layout.focusTileWidth;
+
     return Positioned.fill(
       top: TitleBar.height,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Column(
+      child: Center(
+        child: SizedBox(
+          width: width,
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // The same inset the flight lands on, so the tile does not shift
+              // Exactly the box the flight lands on, so the tile does not shift
               // sideways when it hands back to normal layout.
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: _tileMargin),
-                child: NudgeBob(
-                  active: s.nudgeEnabled,
-                  child: _tile(t.text, ws, 20),
-                ),
+              NudgeBob(
+                active: s.nudgeEnabled,
+                child: _tile(t.text, ws, 20),
               ),
               const SizedBox(height: 22),
 
@@ -1244,8 +1579,7 @@ class _WidgetShellState extends State<WidgetShell>
                 curve: Curves.easeOut,
                 child: _focusThoughtOpen
                     ? Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                            _tileMargin, 0, _tileMargin, 12),
+                        padding: const EdgeInsets.only(bottom: 12),
                         child: TextField(
                           controller: _focusThoughtController,
                           focusNode: _focusThoughtFocus,
@@ -1321,8 +1655,8 @@ class _WidgetShellState extends State<WidgetShell>
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }

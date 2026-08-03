@@ -27,7 +27,12 @@ import '../theme.dart';
 /// Which of the per-workspace views currently owns the content area, so the ▾
 /// menu can say so. Re-picking the open one closes it - true before this
 /// existed too, but nothing on screen admitted it.
-enum WorkspaceView { notes, parked, history }
+///
+/// [thoughts] is not in the ▾ menu: the pile is global, and its way in is the
+/// count on the footer, which is where the pressure is shown. It is in this
+/// enum because [WorkspaceRail] lists every view that can own the content area
+/// and would otherwise light up Tasks while the thoughts panel is on screen.
+enum WorkspaceView { notes, parked, history, thoughts }
 
 class WorkspaceBar extends StatelessWidget {
   const WorkspaceBar({

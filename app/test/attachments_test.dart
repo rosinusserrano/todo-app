@@ -245,6 +245,10 @@ void main() {
     await store.raw.execute('DROP TABLE journal_entries');
     await store.raw.execute('DROP TABLE calendars');
     await store.raw.execute('DROP TABLE calendar_events');
+    // ...and no event_uuid on tasks (v10). Its index has to go first: SQLite
+    // refuses to drop a column an index is built on.
+    await store.raw.execute('DROP INDEX idx_tasks_event');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
     await store.raw.setVersion(3);
     await store.close();
 

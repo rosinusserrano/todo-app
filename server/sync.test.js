@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb, sync, currentSeq } from './db.js';
 import { identify, AuthError, LAN_USER } from './auth.js';
+import { adoptBootstrapSecret } from './users.js';
 
 const USER = 'local';
 
@@ -811,8 +812,70 @@ test('a server database predating the calendar gains its tables and column', () 
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('a server database predating planned todos gains tasks.event_uuid', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  // Tasks as they stood before one could be planned into a calendar block.
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      remind_at      TEXT,
+      group_uuid     TEXT,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('t-old', 'local', 'ws-1', 'from before', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  // Without the ALTER this push fails outright with "no column named
+  // event_uuid" - and it is every task push, not just the planned ones.
+  const { changes } = sync(db, USER, 0, {
+    tasks: [
+      {
+        uuid: 't-planned',
+        workspace_uuid: 'ws-1',
+        text: 'write the summary',
+        created_at: '2026-07-30T10:00:00+02:00',
+        completed_at: null,
+        sort_order: 0,
+        in_progress: 0,
+        remind_at: null,
+        group_uuid: null,
+        event_uuid: 'e-1',
+        updated_at: '2026-07-30T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const byUuid = Object.fromEntries(changes.tasks.map((t) => [t.uuid, t]));
+  assert.equal(byUuid['t-planned'].event_uuid, 'e-1');
+  // The row that was already there survives, unplanned, from the ALTER.
+  assert.equal(byUuid['t-old'].text, 'from before');
+  assert.equal(byUuid['t-old'].event_uuid, null);
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('auth rejects a missing, malformed or wrong token', () => {
-  const config = { secret: 'correct-horse' };
+  const db = freshDb();
+  adoptBootstrapSecret(db, 'correct-horse');
+  const config = { db };
   const req = (auth) => ({ get: () => auth });
 
   assert.throws(() => identify(req(undefined), config), AuthError);
@@ -820,5 +883,7 @@ test('auth rejects a missing, malformed or wrong token', () => {
   assert.throws(() => identify(req('Bearer wrong'), config), AuthError);
   assert.throws(() => identify(req('Bearer correct-hors'), config), AuthError);
 
+  // The bootstrap secret authenticates as the same user every pre-multi-user
+  // row was written by, so an existing setup keeps its data.
   assert.equal(identify(req('Bearer correct-horse'), config), LAN_USER);
 });

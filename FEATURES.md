@@ -216,9 +216,48 @@ Three tiers, none of which need an account, an API key, or a licence:
   it is normalised rather than rejected.
   - On a **phone** it is press-and-hold, then drag: a plain one-finger drag has
     to scroll the day, which is the only way to reach the rest of it.
+  - Creating only happens on **empty** grid. A click or press on an existing
+    event opens that event and nothing else.
+- **Time-block mode** (⚡ in the header) is for laying out a whole week at once.
+  Pick a calendar once from the strip of chips that appears under the header, and
+  from then on every drag saves an event straight away, titled after that
+  calendar — no form, no dismissing anything. Planning a week is the same gesture
+  twenty times over and nineteen of the titles are the same word, so the editor
+  in between is twenty dismissals. The draft under the pointer is drawn in the
+  target's colour and carries its name, so you can see what a drag is about to
+  become. Switching target is one tap on another chip; ⚡ again, or the ✕ on the
+  strip, leaves the mode. Anything a block needs beyond a span — a note, a
+  reminder, a different title — is one tap on the block afterwards.
 - **An event is** a title (required), plus an optional description, an optional
-  attachment, and a start and end. Its blob on the grid shows the title, the
-  first lines of the description, and a paperclip if a file is attached.
+  attachment, todos planned into it, and a start and end. Its blob on the grid
+  shows the title, the first lines of the description, a count of its open
+  todos, and a paperclip if a file is attached.
+- **Plan todos into a block.** Open a saved event and tick tasks from the
+  workspace's open list — planning is choosing among things you have already
+  decided to do, so there is nothing to type. A planned task **stays on the
+  list** (it is not parked; saying *when* should not make it harder to see) and
+  wears a small calendar mark, which is also the way to take it back out. A task
+  is in at most one block, so ticking it somewhere else moves it; a task planned
+  elsewhere says so rather than being hidden. Deleting the block releases its
+  todos — they are still things to do, they have only lost the time set aside
+  for them.
+- **"Now" — the session view.** While a block is running, a banner appears above
+  the task list saying what it is, when it ends and how much is left on it.
+  Opening it shows **only** the todos planned into that block, with a live
+  countdown — the payoff for planning a week, and the answer to "what am I meant
+  to be doing right now" without going to look for it. Check them off, or ▶ one
+  into focus mode, from there.
+  - There is no permanent button for it because for most of the day there is no
+    answer: the way in appears when a block starts and the view hands the
+    content area back when the last one ends. Esc closes it like the other
+    views.
+  - It ignores the calendar's scope and hidden filters — those are about what
+    you want to *look at*, and this is about what time it is. A block on
+    another workspace's calendar shows, and says whose it is.
+  - Overlapping blocks are all listed, each with its own todos. Two things
+    really can be scheduled at once, and choosing one for you would be a guess.
+  - A parked task drops out of its session (shelving says "not now") but keeps
+    its plan, so unparking puts it back in the block.
 - **A calendar per workspace, plus your own.** Every workspace has a calendar in
   its own colour, and you can add free-standing ones — "Workout", "Gigs" — that
   belong to no workspace and pick their own colour. The filter menu switches
@@ -234,10 +273,26 @@ Three tiers, none of which need an account, an API key, or a licence:
   minutes ahead while Work warns you an hour ahead — because that is the level
   the answer actually varies at. Any single event can override its calendar,
   including down to silence.
-- **The window grows to fit.** On desktop, opening the calendar resizes the
-  widget to something a week grid fits in and puts your old size back when you
-  close it. At 340px a day column is 43 pixels wide, which is not enough to read
-  a title in, let alone drag out a span.
+- **The calendar fits the window you have.** Opening it never moves or resizes
+  the widget. Instead the views change shape:
+  - The **week stays a week** — seven real columns you can drag on — right down
+    to phone width. It gets there by tightening rather than by dropping a day:
+    the hour gutter narrows and loses its ":00", the day names become initials
+    (`M 27`), and a block shows its title alone. That is the same trade every
+    phone calendar makes, and it is what a 393pt iPhone shows.
+  - Below about 300px — the widget dragged down to its smallest — the **week
+    becomes an agenda**: the same seven days stacked, each event on a line of
+    its own with its times beside it. Days with nothing on them still appear,
+    marked *free*, because which days are clear is half of what you came to find
+    out. A **+** on each day header makes an event there, and tapping the day
+    drops into its grid where dragging works.
+  - The **year reflows**, from four months across down to a single column of
+    twelve — a year as one scrolling strip of months, which is how it fits in a
+    340px widget. Every month tile is drawn on a six-week grid whether its month
+    needs one or not, so tiles side by side are the same height rather than
+    ragged.
+  - The grid comes back on its own the moment the window is wide enough for
+    seven readable columns. Make the window big and it stays big.
 - Deleting a workspace takes its calendar and everything on it; deleting a
   free-standing calendar takes its events. A workspace calendar cannot be
   deleted on its own — the workspace is the way to do that.
@@ -340,6 +395,13 @@ at the screen gives nothing away) and its lock is **opt-in**.
   side thought remains, so you're forced to move everything into your real
   planner (or check it off) first. The footer shakes red ("Clear it all first")
   when a close is refused; once the list and thoughts are empty, it closes.
+- **A "Closing…" state while it goes.** Tearing the window down is not instant —
+  the engine, the acrylic surface and the audio player all come down with it —
+  and the widget used to spend that time sitting there looking alive and
+  apparently ignoring the ✕. It now dims and says what it is doing, and a second
+  click on ✕ or Alt+F4 is swallowed rather than starting a second teardown.
+  Anything still playing is stopped first, since an open network stream is the
+  one part of the wait that can be got out of the way in advance.
 - **Global shortcuts** (desktop) — **Ctrl+Alt+T** jumps straight into the
   add-task field and **Ctrl+Alt+H** into the side-thought field, from anywhere,
   even when the widget is minimised or behind another window. Both raise the
@@ -371,6 +433,41 @@ at the screen gives nothing away) and its lock is **opt-in**.
   wasted at the 16px the notification area actually draws.
 - **Font** — Segoe UI Variable (Windows 11 optical sizes).
 
+## Adapting to the window
+
+The widget is one window that ranges from a 260px sliver in the corner of a
+screen, through the 340×480 it was designed against, to a half-screen panel on a
+big monitor — and it is the same window the whole time. Rather than each view
+guessing at its own thresholds, every size-dependent decision lives in one
+place, and follows two rules: **no size takes a feature away** (it changes
+shape instead), and **extra width buys more at once, not bigger** — nothing is
+simply stretched.
+
+- **340px and up — the widget as designed.** Nothing below is missing here; the
+  workspace list and the views sit behind the two ▾ menus, and the calendar
+  shows the compact week grid and the single-column year described above.
+- **~300px — the week grid gives way to the agenda**, below which seven columns
+  stop being columns. Widen it and the grid comes straight back.
+- **~560px and 400px tall — the workspace bar unrolls into a side rail.** The
+  same controls, no longer behind a press: every workspace listed down the left,
+  and Tasks / Notes / Parked / History as permanent entries, with the count of
+  pending side thoughts and the parked-review dot where you can see them.
+  Clicking a workspace switches to it, clicking the one you are on edits it —
+  exactly the tab's behaviour. Narrow the window and the bar comes back.
+- **~900px — the panels stop covering the tasks.** Notes, Parked, History and
+  the thoughts pile open *beside* the task list instead of replacing it, so
+  reviewing what you parked no longer costs you sight of what you are meant to
+  be doing.
+- **The task column stops at 620px.** Beyond that the extra room goes to the
+  rail and the second pane: a tick box 900 pixels from the end of its own line
+  is a worse checklist, not a bigger one. The focus tile is capped the same way
+  and stays centred — a task title stretched across a wide window is a line you
+  have to sweep your head along.
+- The **phone zoom** sits underneath all of this: sizes are picked against a
+  340px layout and the whole widget is drawn larger on a phone, so a phone
+  reports the width its layout actually runs at and gets the same decisions a
+  desktop window of that width would.
+
 ## Sync (self-hosted)
 
 - **Your own server** — `npm run server` starts a sync server on any machine.
@@ -397,6 +494,33 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **Conflicts** — last edit wins per row. Deletes travel as tombstones, so a
   removal on one device actually reaches the others. Focus mode stays globally
   exclusive even when two devices each focused a different task while offline.
+- **More than one person per server** — give someone their own account and they
+  get their own tasks, workspaces, journal and calendar on your server. Nothing
+  is shared, and neither of you can see the other's rows. It is one server and
+  one database, partitioned by account — not a shared list.
+- **You are the admin, and you invite people from the app** — whoever signs in
+  with the token the server printed is an admin of it. Settings then grows a
+  *People on this server* panel: add someone, and it shows their token once, to
+  copy and hand over. They enter it in their own Settings, with the same address.
+  The panel also lists everyone, shows when each device last synced, revokes a
+  token, and deletes an account with everything in it.
+  - It only appears for an admin, and the server checks again on every action —
+    an ordinary account cannot reach any of it.
+  - Safety rails on the things you cannot undo from inside the app: you cannot
+    delete your own account, cannot revoke the token you are using right now,
+    and cannot delete another admin without dropping their admin first.
+- **One token per device — optional, not required** — the same token works on as
+  many devices as you like. Splitting them buys two things: a lost phone can be
+  revoked without re-entering anything on your other devices, and the listing
+  shows which device is actually syncing. "Add a device" issues another.
+- **Tokens are stored hashed**, so a token is shown exactly once, when it is
+  issued. If one is lost the fix is to issue another and revoke the old.
+- **Nothing changes for an existing setup** — the token the server has always
+  printed keeps working and keeps pointing at the same data; it is simply the
+  first account, and now an admin one.
+- **Also from the command line** — `npm run token -- add "Alice"`, `list`,
+  `revoke <token-id>`, `admin <user-id> [on|off]`. Same operations as the panel,
+  and the way back in if nobody can sign in at all.
 
 ## Platforms
 
@@ -466,6 +590,100 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 ## Changelog
 
+- **0.16.1** — **The week is a week on a phone too.** It used to fall back to
+  the stacked agenda at anything under ~470px, which is every phone — so an
+  iPhone never saw the actual grid. The grid now has a compact shape (narrow
+  hour gutter, weekday initials, title-only blocks) and seven columns of ~45px
+  fit at phone width, which is what every phone calendar shows. The agenda is
+  still there for the widget squeezed below ~300px.
+
+  **Clicking a calendar event no longer creates one as well.**
+  Opening a block in the day or week grid also dropped a fresh 15-minute event
+  underneath the editor — in time-block mode it was saved outright, so tidying
+  up a week left a trail of stray blocks. Creating now sits below the blocks
+  rather than around them, so a click on an event only opens it and a click on
+  empty grid still creates.
+
+- **0.16.0** — **Todos belong to blocks of time now, and "Now" shows you the
+  ones you are in.** Open a calendar event and tick tasks from the workspace's
+  list to plan them into it; the event's blob then carries a count, and the task
+  keeps its place on the list with a small calendar mark. When a block is
+  running, a banner above the list says what it is and what is left on it, and
+  opening it gives a view of *only* that block's todos with a countdown to its
+  end. It appears when a block starts and goes away when the last one ends,
+  because for most of the day there is nothing for it to say. Deleting a block
+  releases its todos rather than taking them with it.
+
+  Schema v10 on both sides (`tasks.event_uuid`) — an older sync server picks the
+  column up on start, and an older client simply sees tasks that are not planned
+  into anything.
+
+- **0.15.2** — **Time-block mode**, for laying out a week in one sitting. ⚡ in
+  the calendar header puts a strip of calendar chips under it; pick one and every
+  drag saves a block straight away, titled after that calendar, with no form in
+  between. The draft under the pointer wears the target's colour and name so you
+  can see what you are about to write. Switching target is one tap; ⚡ again
+  leaves the mode, and a block that needs more than a span is still one tap away
+  from the full editor.
+
+  Also: **month tiles in the year view are all the same height** — every tile is
+  drawn on a six-week grid whether its month needs one or not, so a 4-week
+  February no longer leaves a hole beside its neighbours. And **closing says it
+  is closing**: the teardown of the window is not instant, and the widget now
+  dims with a spinner instead of appearing to ignore the ✕.
+
+- **0.15.1** — **Fixed the duplicate "Tasks" workspaces.** Every fresh database
+  seeded its first workspace with a freshly generated id, so a new phone, a
+  reinstall or a test run each produced a *different* row that happened to be
+  called "Tasks" — and sync, correctly, kept them all, because they were never
+  two versions of one row. The seeded workspace now has a fixed id, so every
+  device that starts fresh seeds the *same* row and they merge into one. On
+  upgrade, the duplicates already on your devices are folded together: their
+  tasks, notes, shelves and events move onto the surviving workspace and the
+  empties are removed, which then syncs to your other devices. A workspace you
+  renamed or recoloured is yours and is left alone.
+
+- **0.15.0** — **The sync server takes more than one person, and you invite them
+  from the app.** Each access token now belongs to an account, and every row is
+  scoped to the account that pushed it, so someone else gets their own tasks,
+  journal and calendar on your server rather than a second seat at yours.
+  Whoever holds the token the server prints is its admin: Settings grows a
+  *People on this server* panel that adds an account, shows its token once to
+  hand over, lists who is on the server and when each device last synced,
+  revokes a token and deletes an account. Tokens are stored as hashes — printed
+  once, never recoverable — and can be one per device, which is optional but
+  means a lost phone is revoked on its own. `npm run token` does all of it from
+  the command line too, for when nobody can sign in.
+
+  Existing setups are untouched: the token the server has always printed is now
+  simply the first account's, still pointing at the same data. Also fixes a
+  cursor that would have made every client sync pointlessly whenever a
+  *different* account wrote; each account's cursor is now its own.
+
+  **Settings is a sheet now, not a dialog.** It used to be a modal route, whose
+  barrier covered the title bar — so with Settings open the window could not be
+  dragged, pinned or closed, and its contents were squeezed into a smear at
+  short window heights instead of scrolling. It now sits below the title bar
+  like the sound sheet, leaving the bar live, and its body scrolls.
+
+- **0.14.0** — **The layout adapts to the window instead of the window adapting
+  to the layout.** Opening the calendar used to resize the widget to 920×640 and
+  centre it, which fixed the week grid by moving the window: a widget pinned to
+  a corner jumped into the middle of the screen at a size nobody chose. It no
+  longer touches the window. The views change shape instead — the week falls
+  back to a stacked agenda when seven columns would be unreadable, and the year
+  reflows from four months across down to a single column, which is how twelve
+  months fit in 340px. Both come back as grids the moment there is room.
+
+  The same idea runs the other way at the top end: past ~560px the workspace bar
+  unrolls into a side rail with every workspace and every view permanently on
+  screen, and past ~900px Notes, Parked, History and the thoughts pile open
+  *beside* the task list rather than covering it. The task column and the focus
+  tile are capped, so the extra width buys more at once rather than longer
+  lines. All of it comes from one place (`layout.dart`) rather than each view
+  picking its own breakpoints, and none of it is a platform check — a 400px
+  window behaves the same whether it is a phone or a shrunken desktop widget.
+
 - **0.13.1** — **The phone build actually fits the phone now.** Two bugs, which
   together were why most of the controls on iOS could not be tapped. The zoom
   wrapped the app in a `SizedBox`, which cannot override the tight constraints
@@ -491,8 +709,9 @@ at the screen gives nothing away) and its lock is **opt-in**.
   sit on the calendar, where the answer varies, and any event can override its
   own. Two structural notes: a workspace's calendar deliberately carries that
   workspace's uuid, so two devices provisioning it offline produce one row
-  rather than two; and on desktop the widget grows to fit the grid and shrinks
-  back on the way out, because a seven-column week does not fit in 340px.
+  rather than two; and on desktop the widget grew to fit the grid and shrank
+  back on the way out, because a seven-column week does not fit in 340px —
+  replaced in 0.14.0 by views that fit the window instead.
 
 - **0.12.4** — **Trusting the offline queue.** Writing with the sync server off
   already worked — every write goes to the local database first and carries a

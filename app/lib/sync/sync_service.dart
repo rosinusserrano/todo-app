@@ -67,6 +67,17 @@ class SyncService extends ChangeNotifier {
   String? baseUrl;
   String? token;
 
+  /// Which account this token belongs to, once a sync has succeeded and the
+  /// server has been asked. Null on an older server, or before the first sync.
+  ///
+  /// Not persisted: it is the server's answer, not a device setting, and a
+  /// remembered "you are an admin" would outlive the server saying so.
+  ServerIdentity? identity;
+
+  /// Whether to offer the user-management panel. The server enforces this for
+  /// itself on every admin route - this only decides what is worth showing.
+  bool get isAdmin => identity?.admin ?? false;
+
   SyncStatus status = SyncStatus.off;
   String? message;
   DateTime? lastSynced;
@@ -135,6 +146,9 @@ class SyncService extends ChangeNotifier {
     await _store.setSetting(kServerUrl, baseUrl!);
     await _store.setSetting(kServerToken, token!);
 
+    // A different token is a different account, so who we are is now unknown
+    // rather than what it was a moment ago.
+    identity = null;
     status = isConfigured ? SyncStatus.idle : SyncStatus.off;
     message = null;
     notifyListeners();
@@ -185,6 +199,12 @@ class SyncService extends ChangeNotifier {
     SyncResult result;
     try {
       result = await client.syncOnce(_store);
+      // Only once per configuration, and only on the back of a sync that
+      // already worked - so this is never the reason a sync is slow, and never
+      // a request made against a server that just refused us.
+      if (result is SyncOk && identity == null) {
+        identity = await client.whoAmI();
+      }
     } finally {
       client.dispose();
       _inFlight = false;

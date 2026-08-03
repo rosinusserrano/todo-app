@@ -4,10 +4,16 @@
 // the caret in the title - the one field that is required and the only thing
 // the drag could not have told us.
 //
-// Attachments appear only when editing a saved event: they are rows keyed by
-// the event's uuid, and a new event does not have one until it is saved. Asking
-// the user to save first is better than inventing an id for a form they might
-// cancel, which would leave orphaned bytes on disk.
+// Attachments and todos appear only when editing a saved event: both are rows
+// keyed by the event's uuid, and a new event does not have one until it is
+// saved. Asking the user to save first is better than inventing an id for a
+// form they might cancel, which would leave orphaned bytes on disk.
+//
+// The todo list is the *workspace's* open tasks with a tick beside each, not a
+// place to write new ones: planning a block is choosing among things you have
+// already decided to do. A task planned into some other block says so rather
+// than being hidden, because taking it is a legitimate thing to want and
+// silently omitting it would look like the task had disappeared.
 
 import 'dart:io' show File;
 
@@ -64,6 +70,8 @@ Future<EventEdit?> showEventForm(
   Future<List<Attachment>> Function()? loadAttachments,
   Future<void> Function(File)? onAddAttachment,
   Future<void> Function(Attachment)? onRemoveAttachment,
+  Future<List<Task>> Function()? loadTasks,
+  Future<void> Function(Task, bool)? onPlanTask,
 }) {
   return showDialog<EventEdit>(
     context: context,
@@ -78,6 +86,8 @@ Future<EventEdit?> showEventForm(
       loadAttachments: loadAttachments,
       onAddAttachment: onAddAttachment,
       onRemoveAttachment: onRemoveAttachment,
+      loadTasks: loadTasks,
+      onPlanTask: onPlanTask,
     ),
   );
 }
@@ -94,6 +104,8 @@ class _EventDialog extends StatefulWidget {
     required this.loadAttachments,
     required this.onAddAttachment,
     required this.onRemoveAttachment,
+    required this.loadTasks,
+    required this.onPlanTask,
   });
 
   final CalendarEvent? existing;
@@ -106,6 +118,13 @@ class _EventDialog extends StatefulWidget {
   final Future<List<Attachment>> Function()? loadAttachments;
   final Future<void> Function(File)? onAddAttachment;
   final Future<void> Function(Attachment)? onRemoveAttachment;
+
+  /// The tasks that could be planned into this block - the workspace's open
+  /// list, with the ones already planned marked by their own [Task.eventUuid].
+  final Future<List<Task>> Function()? loadTasks;
+
+  /// Plan a task into this block, or take it out again.
+  final Future<void> Function(Task, bool)? onPlanTask;
 
   @override
   State<_EventDialog> createState() => _EventDialogState();
@@ -122,6 +141,7 @@ class _EventDialogState extends State<_EventDialog> {
   late int? _notify = widget.existing?.notifyMinutes;
 
   List<Attachment>? _attachments;
+  List<Task>? _tasks;
 
   /// Null is "follow the calendar", which is the default and the one most
   /// events should keep - the point of a per-calendar rule is not having to
@@ -140,6 +160,7 @@ class _EventDialogState extends State<_EventDialog> {
   void initState() {
     super.initState();
     _reloadAttachments();
+    _reloadTasks();
   }
 
   Future<void> _reloadAttachments() async {
@@ -147,6 +168,26 @@ class _EventDialogState extends State<_EventDialog> {
     if (load == null) return;
     final list = await load();
     if (mounted) setState(() => _attachments = list);
+  }
+
+  Future<void> _reloadTasks() async {
+    final load = widget.loadTasks;
+    if (load == null) return;
+    final list = await load();
+    if (mounted) setState(() => _tasks = list);
+  }
+
+  /// Ticking a task writes it straight through rather than waiting for Save.
+  ///
+  /// The tick is an edit to the *task*, not to the event being composed, so
+  /// there is nothing on this form for it to be part of - and Cancel meaning
+  /// "undo the times but keep the todos" would be a worse surprise than the
+  /// list simply doing what it says. Same reason attachments write immediately.
+  Future<void> _plan(Task t, bool on) async {
+    final plan = widget.onPlanTask;
+    if (plan == null) return;
+    await plan(t, on);
+    await _reloadTasks();
   }
 
   @override
@@ -318,6 +359,14 @@ class _EventDialogState extends State<_EventDialog> {
                     ),
                 ],
               ),
+              if (editing && widget.loadTasks != null) ...[
+                const SizedBox(height: 14),
+                _TodosSection(
+                  tasks: _tasks,
+                  eventUuid: widget.existing!.uuid,
+                  onPlan: widget.onPlanTask == null ? null : _plan,
+                ),
+              ],
               if (editing && widget.loadAttachments != null) ...[
                 const SizedBox(height: 14),
                 _AttachmentsSection(
@@ -422,6 +471,133 @@ class _WhenRow extends StatelessWidget {
           child: Text(hhmm(at), style: const TextStyle(fontSize: 12)),
         ),
       ],
+    );
+  }
+}
+
+/// The workspace's open tasks, ticked into this block or not.
+///
+/// A plain scrolling list of ticks rather than a picker dialog: planning is
+/// several of these in a row, and a dialog per task would put two presses
+/// around each one. It is height-capped because the dialog itself scrolls -
+/// without the cap a workspace with forty open tasks would push Save off the
+/// bottom of a 480px window.
+class _TodosSection extends StatelessWidget {
+  const _TodosSection({
+    required this.tasks,
+    required this.eventUuid,
+    required this.onPlan,
+  });
+
+  final List<Task>? tasks;
+  final String eventUuid;
+  final Future<void> Function(Task, bool)? onPlan;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = tasks;
+    final planned =
+        list == null ? 0 : list.where((t) => t.eventUuid == eventUuid).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('Todos in this block',
+                style: TextStyle(fontSize: 11.5, color: T.muted)),
+            const Spacer(),
+            if (planned > 0)
+              Text('$planned',
+                  style: const TextStyle(fontSize: 11.5, color: T.muted)),
+          ],
+        ),
+        if (list == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: Text('…', style: TextStyle(fontSize: 11.5, color: T.muted)),
+          )
+        else if (list.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              'This workspace has nothing open to plan.',
+              style: TextStyle(fontSize: 11.5, color: T.muted),
+            ),
+          )
+        else
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 172),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final t in list)
+                    _TodoTick(
+                      task: t,
+                      here: t.eventUuid == eventUuid,
+                      // Planned into a *different* block. Ticking it moves it
+                      // here, which is one column of state doing what it says -
+                      // a task is in at most one block.
+                      elsewhere: t.eventUuid != null && t.eventUuid != eventUuid,
+                      onPlan: onPlan,
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TodoTick extends StatelessWidget {
+  const _TodoTick({
+    required this.task,
+    required this.here,
+    required this.elsewhere,
+    required this.onPlan,
+  });
+
+  final Task task;
+  final bool here;
+  final bool elsewhere;
+  final Future<void> Function(Task, bool)? onPlan;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPlan == null ? null : () => onPlan!(task, !here),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+        child: Row(
+          children: [
+            Icon(
+              here ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 15,
+              color: here ? T.accent : T.muted,
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                task.text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: here ? T.text : T.muted,
+                ),
+              ),
+            ),
+            if (elsewhere)
+              const Tooltip(
+                message: 'Planned into another block — ticking moves it here',
+                child: Icon(Icons.event_available_rounded,
+                    size: 12, color: T.muted),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

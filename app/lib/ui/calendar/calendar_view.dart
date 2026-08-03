@@ -2,21 +2,39 @@
 // the mode switch and the navigation, and the calendar filter.
 //
 // This is the only view that takes over the *whole* window rather than the
-// content area - it has its own header, and on desktop it grows the window to
-// fit (see main.dart). A week grid inside a 340px widget gives each day 43
-// pixels, which is not enough to read a title, let alone drag out a span.
+// content area - it has its own header. It used to also grow the window to
+// 920x640 on the way in and put the old size back on the way out, because a
+// week grid inside a 340px widget gives each day 43 pixels, which is not enough
+// to read a title in, let alone drag out a span. That fixed the grid by moving
+// the window: an always-on-top widget parked in a corner jumped to the middle
+// of the screen at a size the user never chose.
+//
+// The window is left alone now and the *views* adapt instead: the week falls
+// back to [AgendaView] when the grid does not fit, and the year stacks into as
+// many columns as there is room for, down to one. Both decisions come from
+// [Layout], not from a platform check - the same 400px window behaves the same
+// way whether it is a phone or a shrunken desktop widget.
 //
 // Scope and filter are two different questions and are answered separately:
 // "this workspace or all of them" is the scope, and the tick list underneath is
 // for hiding an individual calendar you do not want to look at today. Hiding is
 // remembered; the scope is remembered too, but the two do not interact - see
 // AppState.visibleCalendars.
+//
+// **Time-block mode** puts a strip of calendar chips under the header and turns
+// a drag into a saved block titled after the picked calendar, with no editor in
+// between. It is a *third* thing the chips could have meant - they are not the
+// scope and they are not the filter - which is why they are their own strip
+// rather than another section of the filter menu: the strip only exists while
+// the mode is on, and while it is on it is the answer to "what am I filling in".
 
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
+import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
+import 'agenda_view.dart';
 import 'time_grid.dart';
 import 'year_view.dart';
 
@@ -74,52 +92,241 @@ class CalendarView extends StatelessWidget {
     return [for (var i = 0; i < 7; i++) start.add(Duration(days: i))];
   }
 
+  /// Drill into one day. The year view's tap and the agenda's day header both
+  /// mean the same thing - "show me this one properly" - so they land here.
+  Future<void> _openDay(DateTime day) async {
+    await state.setCalendarAnchor(day);
+    await state.setCalendarMode(CalendarViewMode.day);
+  }
+
+  /// Turn time-block mode on, off, or onto a different calendar.
+  ///
+  /// Turning it on has to choose a target, and the same guess the editor makes
+  /// for a fresh drag is the right one: the workspace you are in.
+  Future<void> _toggleBlocking() async {
+    if (state.timeBlocking) {
+      await state.setTimeBlockCalendar(null);
+      return;
+    }
+    final visible = state.visibleCalendars;
+    if (visible.isEmpty) return;
+    final preferred = visible.firstWhere(
+      (c) => c.workspaceUuid == state.currentWorkspaceUuid,
+      orElse: () => visible.first,
+    );
+    await state.setTimeBlockCalendar(preferred.uuid);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final layout = Layout.of(context);
+    final block = state.timeBlockCalendar;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Header(
           title: _title,
           mode: state.calendarMode,
+          compact: !layout.weekGridFits,
           scope: state.calendarScope,
           calendars: state.calendars,
           hidden: state.hiddenCalendars,
           nameFor: state.calendarName,
           colorFor: state.calendarColor,
+          blocking: block != null,
           onClose: onClose,
           onMode: state.setCalendarMode,
           onScope: state.setCalendarScope,
           onStep: state.stepCalendar,
           onToday: () => state.setCalendarAnchor(DateTime.now()),
           onToggleHidden: state.toggleCalendarHidden,
+          onToggleBlocking: _toggleBlocking,
           onNewCalendar: onNewCalendar,
           onEditCalendar: onEditCalendar,
         ),
-        Expanded(
-          child: state.calendarMode == CalendarViewMode.year
-              ? YearView(
-                  year: state.calendarAnchor.year,
-                  events: state.events,
-                  colorFor: state.colorForEvent,
-                  onPickDay: (day) async {
-                    // Drilling in: the year is for finding the week that has
-                    // something in it, and the day view is where you then work.
-                    await state.setCalendarAnchor(day);
-                    await state.setCalendarMode(CalendarViewMode.day);
-                  },
-                )
-              : TimeGridView(
-                  days: _days,
-                  events: state.events,
-                  colorFor: state.colorForEvent,
-                  hasAttachment: (e) =>
-                      state.eventsWithAttachments.contains(e.uuid),
-                  onOpenEvent: onOpenEvent,
-                  onCreate: onCreate,
-                ),
-        ),
+        if (block != null)
+          _BlockStrip(
+            calendars: state.visibleCalendars,
+            selected: block.uuid,
+            nameFor: state.calendarName,
+            colorFor: state.calendarColor,
+            onPick: state.setTimeBlockCalendar,
+            onOff: () => state.setTimeBlockCalendar(null),
+          ),
+        Expanded(child: _grid(layout)),
       ],
+    );
+  }
+
+  /// The body for the current mode, at the current size.
+  ///
+  /// Only the *week* changes shape with the width. A day is one column and fits
+  /// anywhere, and the year is a wrap that reflows on its own - so this is one
+  /// fallback, not a parallel set of narrow views.
+  Widget _grid(Layout layout) {
+    // The year is for finding the week that has something in it; the day view
+    // is where you then work. Both of the drill-downs below say that.
+    if (state.calendarMode == CalendarViewMode.year) {
+      return YearView(
+        year: state.calendarAnchor.year,
+        events: state.events,
+        colorFor: state.colorForEvent,
+        onPickDay: _openDay,
+      );
+    }
+
+    if (state.calendarMode == CalendarViewMode.week && !layout.weekGridFits) {
+      return AgendaView(
+        days: _days,
+        events: state.events,
+        colorFor: state.colorForEvent,
+        hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
+        taskCountFor: (e) => state.eventTaskCounts[e.uuid] ?? 0,
+        onOpenEvent: onOpenEvent,
+        onCreate: onCreate,
+        onPickDay: _openDay,
+      );
+    }
+
+    final block = state.timeBlockCalendar;
+    return TimeGridView(
+      days: _days,
+      events: state.events,
+      colorFor: state.colorForEvent,
+      hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
+      taskCountFor: (e) => state.eventTaskCounts[e.uuid] ?? 0,
+      onOpenEvent: onOpenEvent,
+      onCreate: onCreate,
+      // What the drag is about to become. In block mode the editor never opens,
+      // so the draft is the only chance to see what is being saved.
+      blockTitle: block == null ? null : state.calendarName(block),
+      blockColor: block == null ? null : state.calendarColor(block),
+    );
+  }
+}
+
+/// The calendar chips under the header while time-block mode is on.
+///
+/// A horizontal strip rather than a dropdown: the whole point of the mode is
+/// that retargeting is as cheap as dragging, and a menu would put two presses
+/// between "meetings" and "deep work". It lists [AppState.visibleCalendars], so
+/// what you can block onto is exactly what you can see - blocking time onto a
+/// calendar that is filtered out would produce an event that vanishes.
+class _BlockStrip extends StatelessWidget {
+  const _BlockStrip({
+    required this.calendars,
+    required this.selected,
+    required this.nameFor,
+    required this.colorFor,
+    required this.onPick,
+    required this.onOff,
+  });
+
+  final List<Calendar> calendars;
+  final String selected;
+  final String Function(Calendar) nameFor;
+  final Color Function(Calendar) colorFor;
+  final void Function(String) onPick;
+  final VoidCallback onOff;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final c in calendars)
+                    _BlockChip(
+                      label: nameFor(c),
+                      color: colorFor(c),
+                      selected: c.uuid == selected,
+                      onTap: () => onPick(c.uuid),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          // The way out is on the strip as well as on the header toggle: the
+          // strip is what says the mode is on, so it is where you look to end it.
+          Tooltip(
+            message: 'Leave time-block mode',
+            child: InkWell(
+              onTap: onOff,
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, size: 13, color: T.muted),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BlockChip extends StatelessWidget {
+  const _BlockChip({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Material(
+        color: selected ? Color.lerp(T.bgSolid, color, 0.4) : T.surface,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(11),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: selected ? color : Colors.transparent,
+                width: 1,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? T.text : T.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -128,28 +335,41 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.title,
     required this.mode,
+    required this.compact,
     required this.scope,
     required this.calendars,
     required this.hidden,
     required this.nameFor,
     required this.colorFor,
+    required this.blocking,
     required this.onClose,
     required this.onMode,
     required this.onScope,
     required this.onStep,
     required this.onToday,
     required this.onToggleHidden,
+    required this.onToggleBlocking,
     required this.onNewCalendar,
     required this.onEditCalendar,
   });
 
   final String title;
   final CalendarViewMode mode;
+
+  /// No room for the word "Today" beside everything else, so it becomes its
+  /// icon. Dropping the control instead would strand someone who had navigated
+  /// three months out with nothing but the ‹ › to get home.
+  final bool compact;
+
   final CalendarScope scope;
   final List<Calendar> calendars;
   final Set<String> hidden;
   final String Function(Calendar) nameFor;
   final Color Function(Calendar) colorFor;
+
+  /// Time-block mode is on. The strip below the header says which calendar;
+  /// this only lights the toggle.
+  final bool blocking;
 
   final VoidCallback onClose;
   final void Function(CalendarViewMode) onMode;
@@ -157,6 +377,7 @@ class _Header extends StatelessWidget {
   final void Function(int) onStep;
   final VoidCallback onToday;
   final void Function(String) onToggleHidden;
+  final VoidCallback onToggleBlocking;
   final VoidCallback onNewCalendar;
   final void Function(Calendar) onEditCalendar;
 
@@ -202,16 +423,32 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          TextButton(
-            onPressed: onToday,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          if (compact)
+            _IconBtn(
+              icon: Icons.today_outlined,
+              tooltip: 'Today',
+              onTap: onToday,
+            )
+          else
+            TextButton(
+              onPressed: onToday,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Today', style: TextStyle(fontSize: 11.5)),
             ),
-            child: const Text('Today', style: TextStyle(fontSize: 11.5)),
-          ),
           const Spacer(),
+          _IconBtn(
+            icon: Icons.bolt,
+            tooltip: blocking
+                ? 'Time-block mode on – drag to fill the week'
+                : 'Time-block mode: drag blocks straight onto a calendar',
+            active: blocking,
+            onTap: onToggleBlocking,
+          ),
+          const SizedBox(width: 2),
           _ModeSwitch(mode: mode, onMode: onMode),
           const SizedBox(width: 4),
           _FilterMenu(
@@ -236,11 +473,16 @@ class _IconBtn extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
+    this.active = false,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+
+  /// A toggle that is currently on, drawn in the accent. The navigation buttons
+  /// leave this alone - they do something rather than being in a state.
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -251,7 +493,7 @@ class _IconBtn extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         child: Padding(
           padding: const EdgeInsets.all(4),
-          child: Icon(icon, size: 16, color: T.muted),
+          child: Icon(icon, size: 16, color: active ? T.accent : T.muted),
         ),
       ),
     );

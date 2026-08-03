@@ -15,6 +15,11 @@
 //
 // Both paths feed the same draft, so there is one code path for what a drag
 // actually means and only the way it starts differs.
+//
+// Both of them also sit *below* the event blocks in the stack rather than
+// around them: an ancestor is handed the pointer even when a child took it, so
+// creating used to run on top of opening and a click on an event wrote a new
+// 15-minute block behind the editor.
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
@@ -27,6 +32,16 @@ const double kHourHeight = 44;
 
 /// The time-of-day gutter down the left edge.
 const double kGutter = 38;
+
+/// What that gutter shrinks to when the columns are tight - "9" instead of
+/// "09:00". Seven columns on a phone cannot spare 38px for a label that is the
+/// same on every screenful, and this is 16px given back to the days.
+const double kGutterCompact = 22;
+
+/// Below this a day column switches to the compact geometry: the narrow gutter
+/// above, weekday initials instead of names, and the title alone in a block.
+/// A phone week is ~45px per day, which is where every phone calendar sits.
+const double kCompactColumn = 70;
 
 /// Drags snap to this. Fifteen minutes is fine enough to place a real meeting
 /// and coarse enough that a shaky drag still lands on a round number.
@@ -42,8 +57,11 @@ class TimeGridView extends StatefulWidget {
     required this.events,
     required this.colorFor,
     required this.hasAttachment,
+    required this.taskCountFor,
     required this.onOpenEvent,
     required this.onCreate,
+    this.blockTitle,
+    this.blockColor,
   });
 
   /// The columns, left to right, each at local midnight.
@@ -52,10 +70,23 @@ class TimeGridView extends StatefulWidget {
   final List<CalendarEvent> events;
   final Color Function(CalendarEvent) colorFor;
   final bool Function(CalendarEvent) hasAttachment;
+
+  /// How many todos are planned into an event, for the count on its blob. Zero
+  /// draws nothing - most blocks have none, and an empty badge on every one of
+  /// them would be noise.
+  final int Function(CalendarEvent) taskCountFor;
+
   final void Function(CalendarEvent) onOpenEvent;
 
-  /// A drag finished. The editor opens prefilled with this span.
+  /// A drag finished. The editor opens prefilled with this span - unless time
+  /// block mode is on, in which case the caller saves it outright.
   final void Function(DateTime start, DateTime end) onCreate;
+
+  /// What the drag will be saved as in time-block mode, or null when it is off
+  /// and the drag only opens the editor. The draft carries them because in that
+  /// mode nothing else ever shows what is about to be written.
+  final String? blockTitle;
+  final Color? blockColor;
 
   @override
   State<TimeGridView> createState() => _TimeGridViewState();
@@ -74,10 +105,23 @@ class _TimeGridViewState extends State<TimeGridView> {
     super.dispose();
   }
 
+  /// Whether the columns are narrow enough for the compact geometry, and so
+  /// which gutter the grid drew with. Both are decided once per build from the
+  /// measured width and recorded here, because the drag maths runs from a
+  /// pointer callback that has no builder context - the same reason the shell
+  /// keeps its [Layout]. Nothing notifies off them.
+  bool _compact = false;
+  double _gutter = kGutter;
+
+  /// Decided against the *roomy* gutter, so the answer cannot depend on itself:
+  /// a column that is tight even with 38px to spare is tight.
+  bool _isCompact(double width) =>
+      (width - kGutter) / widget.days.length < kCompactColumn;
+
   double get _columnWidth {
     final box = context.findRenderObject() as RenderBox?;
     final width = box?.size.width ?? 0;
-    return (width - kGutter) / widget.days.length;
+    return (width - _gutter) / widget.days.length;
   }
 
   /// Which column and minute a point in the grid falls on.
@@ -86,7 +130,7 @@ class _TimeGridViewState extends State<TimeGridView> {
     if (colWidth <= 0) return null;
 
     final day = anchorDay ??
-        ((local.dx - kGutter) / colWidth).floor().clamp(0, widget.days.length - 1);
+        ((local.dx - _gutter) / colWidth).floor().clamp(0, widget.days.length - 1);
 
     final raw = (local.dy / kHourHeight) * 60;
     final snapped = (raw / kSnapMinutes).round() * kSnapMinutes;
@@ -165,40 +209,31 @@ class _TimeGridViewState extends State<TimeGridView> {
   Widget build(BuildContext context) {
     final spanning = _spanning;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _DayHeaderRow(days: widget.days),
-        if (spanning.isNotEmpty)
-          _SpanBand(
-            days: widget.days,
-            events: spanning,
-            colorFor: widget.colorFor,
-            onOpen: widget.onOpenEvent,
-          ),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _scroll,
-            child: Listener(
-              // Mouse only. Touch drags belong to the scroll view, which is why
-              // the long-press path below exists for them.
-              onPointerDown: (e) {
-                if (e.kind != PointerDeviceKind.mouse) return;
-                _begin(e.localPosition);
-              },
-              onPointerMove: (e) {
-                if (e.kind != PointerDeviceKind.mouse) return;
-                _extend(e.localPosition);
-              },
-              onPointerUp: (e) {
-                if (e.kind != PointerDeviceKind.mouse) return;
-                _commit();
-              },
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onLongPressStart: (d) => _begin(d.localPosition),
-                onLongPressMoveUpdate: (d) => _extend(d.localPosition),
-                onLongPressEnd: (_) => _commit(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _compact = _isCompact(constraints.maxWidth);
+        _gutter = _compact ? kGutterCompact : kGutter;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DayHeaderRow(
+              days: widget.days,
+              gutter: _gutter,
+              compact: _compact,
+            ),
+            if (spanning.isNotEmpty)
+              _SpanBand(
+                days: widget.days,
+                events: spanning,
+                colorFor: widget.colorFor,
+                onOpen: widget.onOpenEvent,
+                gutter: _gutter,
+                compact: _compact,
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _scroll,
                 child: SizedBox(
                   height: 24 * kHourHeight,
                   child: _GridBody(
@@ -207,14 +242,22 @@ class _TimeGridViewState extends State<TimeGridView> {
                     draft: _draft,
                     colorFor: widget.colorFor,
                     hasAttachment: widget.hasAttachment,
+                    taskCountFor: widget.taskCountFor,
                     onOpenEvent: widget.onOpenEvent,
+                    onDragBegin: _begin,
+                    onDragExtend: _extend,
+                    onDragCommit: _commit,
+                    blockTitle: widget.blockTitle,
+                    blockColor: widget.blockColor,
+                    gutter: _gutter,
+                    compact: _compact,
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -243,7 +286,15 @@ class _GridBody extends StatelessWidget {
     required this.draft,
     required this.colorFor,
     required this.hasAttachment,
+    required this.taskCountFor,
     required this.onOpenEvent,
+    required this.onDragBegin,
+    required this.onDragExtend,
+    required this.onDragCommit,
+    required this.blockTitle,
+    required this.blockColor,
+    required this.gutter,
+    required this.compact,
   });
 
   final List<DateTime> days;
@@ -251,46 +302,90 @@ class _GridBody extends StatelessWidget {
   final _Draft? draft;
   final Color Function(CalendarEvent) colorFor;
   final bool Function(CalendarEvent) hasAttachment;
+  final int Function(CalendarEvent) taskCountFor;
   final void Function(CalendarEvent) onOpenEvent;
+
+  /// The create-by-dragging gesture, in the grid's own coordinates.
+  final void Function(Offset) onDragBegin;
+  final void Function(Offset) onDragExtend;
+  final VoidCallback onDragCommit;
+
+  final String? blockTitle;
+  final Color? blockColor;
+
+  /// The grid's geometry, decided once by the view above and passed down so
+  /// every part of it - painter, labels, blocks - draws to the same one.
+  final double gutter;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final colWidth = (constraints.maxWidth - kGutter) / days.length;
+        final colWidth = (constraints.maxWidth - gutter) / days.length;
         final today = DateTime.now();
 
         return Stack(
           children: [
             Positioned.fill(
               child: CustomPaint(
-                painter: _GridPainter(columns: days.length),
+                painter: _GridPainter(columns: days.length, gutter: gutter),
               ),
             ),
-            const Positioned.fill(child: _HourLabels()),
+            Positioned.fill(child: _HourLabels(gutter: gutter)),
 
             // The now line, only on the column that is actually today.
             for (var i = 0; i < days.length; i++)
               if (_isSameDay(days[i], today))
                 Positioned(
-                  left: kGutter + i * colWidth,
+                  left: gutter + i * colWidth,
                   width: colWidth,
                   top: (today.hour * 60 + today.minute) / 60 * kHourHeight,
                   height: 2,
                   child: const _NowLine(),
                 ),
 
+            // Creating sits *below* the event blocks in the stack, which is
+            // what stops a click on an event from also starting a draft: a
+            // Stack hit-tests top-down and stops at the first child that takes
+            // the pointer, where an ancestor listener would have been handed
+            // the down as well and created a block behind the editor.
+            Positioned.fill(
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                // Mouse only. Touch drags belong to the scroll view, which is
+                // why the long-press path below exists for them.
+                onPointerDown: (e) {
+                  if (e.kind != PointerDeviceKind.mouse) return;
+                  onDragBegin(e.localPosition);
+                },
+                onPointerMove: (e) {
+                  if (e.kind != PointerDeviceKind.mouse) return;
+                  onDragExtend(e.localPosition);
+                },
+                onPointerUp: (e) {
+                  if (e.kind != PointerDeviceKind.mouse) return;
+                  onDragCommit();
+                },
+                child: GestureDetector(
+                  onLongPressStart: (d) => onDragBegin(d.localPosition),
+                  onLongPressMoveUpdate: (d) => onDragExtend(d.localPosition),
+                  onLongPressEnd: (_) => onDragCommit(),
+                ),
+              ),
+            ),
+
             for (var i = 0; i < days.length; i++)
               ..._positionedEvents(
                 events: timedByDay[i],
                 day: days[i],
-                left: kGutter + i * colWidth,
+                left: gutter + i * colWidth,
                 width: colWidth,
               ),
 
             if (draft != null)
               Positioned(
-                left: kGutter + draft!.dayIndex * colWidth + 1,
+                left: gutter + draft!.dayIndex * colWidth + 1,
                 width: colWidth - 2,
                 top: draft!.lowMinutes / 60 * kHourHeight,
                 height: ((draft!.highMinutes - draft!.lowMinutes) / 60 * kHourHeight)
@@ -300,6 +395,9 @@ class _GridBody extends StatelessWidget {
                       .add(Duration(minutes: draft!.lowMinutes)),
                   to: days[draft!.dayIndex]
                       .add(Duration(minutes: draft!.highMinutes)),
+                  title: blockTitle,
+                  color: blockColor,
+                  compact: compact,
                 ),
               ),
           ],
@@ -332,7 +430,11 @@ class _GridBody extends StatelessWidget {
               event: p.event,
               color: colorFor(p.event),
               hasAttachment: hasAttachment(p.event),
+              taskCount: taskCountFor(p.event),
               onTap: () => onOpenEvent(p.event),
+              // Two events side by side in a phone column are ~22px each, so
+              // the blob's own ornament goes by its slot, not by the day's.
+              compact: compact || slotWidth < kCompactColumn,
             ),
           );
         }(),
@@ -424,12 +526,24 @@ class EventBlock extends StatelessWidget {
     required this.color,
     required this.hasAttachment,
     required this.onTap,
+    this.taskCount = 0,
+    this.compact = false,
   });
 
   final CalendarEvent event;
   final Color color;
   final bool hasAttachment;
   final VoidCallback onTap;
+
+  /// Open todos planned into this block. Drawn as a bare number beside the
+  /// paperclip: at this size a labelled badge would cost the title its width.
+  final int taskCount;
+
+  /// A column too narrow for anything but the title. The marks below - the
+  /// todo count, the paperclip, the description - are each ~9px of a ~45px
+  /// column, and three of them leave the title nothing; they are all one tap
+  /// away in the event itself, and the title is what makes the block findable.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -446,9 +560,11 @@ class EventBlock extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               // The calendar's colour, stated once down the leading edge. A
               // fully saturated fill at this size drowns the text.
-              border: Border(left: BorderSide(color: color, width: 2.5)),
+              border: Border(
+                  left: BorderSide(color: color, width: compact ? 2 : 2.5)),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            padding: EdgeInsets.symmetric(
+                horizontal: compact ? 2.5 : 4, vertical: compact ? 1 : 2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -460,19 +576,27 @@ class EventBlock extends StatelessWidget {
                         event.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 10.5,
+                        style: TextStyle(
+                          fontSize: compact ? 9.5 : 10.5,
                           height: 1.15,
                           fontWeight: FontWeight.w600,
                           color: T.text,
                         ),
                       ),
                     ),
-                    if (hasAttachment)
+                    if (!compact && taskCount > 0) ...[
+                      const Icon(Icons.check_circle_outline,
+                          size: 9, color: T.muted),
+                      Text(
+                        '$taskCount',
+                        style: const TextStyle(fontSize: 9, color: T.muted),
+                      ),
+                    ],
+                    if (!compact && hasAttachment)
                       const Icon(Icons.attach_file, size: 9, color: T.muted),
                   ],
                 ),
-                if (event.description.isNotEmpty)
+                if (!compact && event.description.isNotEmpty)
                   Flexible(
                     child: Text(
                       event.description,
@@ -494,26 +618,79 @@ class EventBlock extends StatelessWidget {
   }
 }
 
+/// The span under the pointer mid-drag.
+///
+/// In time-block mode it is drawn in the target calendar's colour and carries
+/// its name, because there the drag is the *whole* interaction - letting go
+/// writes the event - so this is the only sight of what is being created. With
+/// no block target it is the accent and just the times, which is all a draft
+/// about to open the editor has to say.
 class _DraftBlock extends StatelessWidget {
-  const _DraftBlock({required this.from, required this.to});
+  const _DraftBlock({
+    required this.from,
+    required this.to,
+    this.title,
+    this.color,
+    this.compact = false,
+  });
 
   final DateTime from;
   final DateTime to;
+  final String? title;
+  final Color? color;
+
+  /// A phone-width column: "09:00 – 10:00" is half as wide again as the column
+  /// it is in, so the two ends of the span stack instead of being clipped.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final tint = color ?? T.accent;
     return Container(
       decoration: BoxDecoration(
-        color: T.accent.withValues(alpha: 0.28),
+        color: tint.withValues(alpha: 0.28),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: T.accent, width: 1),
+        border: Border.all(color: tint, width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      child: Text(
-        '${hhmm(from)} – ${hhmm(to)}',
-        maxLines: 1,
-        overflow: TextOverflow.clip,
-        style: const TextStyle(fontSize: 9.5, color: T.text),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 2.5 : 4, vertical: 1),
+      // The box is as tall as the span dragged so far, which starts at six
+      // pixels. Two lines only go in once there is room for two lines - a
+      // Column that merely overflows would paint the debug stripes over the
+      // grid, and the times are the half that changes as you drag.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final times = Text(
+            compact
+                ? '${hhmm(from)}\n${hhmm(to)}'
+                : '${hhmm(from)} – ${hhmm(to)}',
+            maxLines: compact && constraints.maxHeight >= 22 ? 2 : 1,
+            overflow: TextOverflow.clip,
+            style: TextStyle(
+                fontSize: compact ? 8.5 : 9.5, height: 1.15, color: T.text),
+          );
+          if (title == null || constraints.maxHeight < (compact ? 40 : 26)) {
+            return times;
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 9 : 10,
+                  height: 1.15,
+                  fontWeight: FontWeight.w700,
+                  color: T.text,
+                ),
+              ),
+              times,
+            ],
+          );
+        },
       ),
     );
   }
@@ -544,21 +721,25 @@ class _NowLine extends StatelessWidget {
 }
 
 class _HourLabels extends StatelessWidget {
-  const _HourLabels();
+  const _HourLabels({required this.gutter});
+
+  final double gutter;
 
   @override
   Widget build(BuildContext context) {
+    // A narrow gutter drops the ":00", which is the same on all 23 of them.
+    final compact = gutter < kGutter;
     return Stack(
       children: [
         for (var h = 1; h < 24; h++)
           Positioned(
             left: 0,
-            width: kGutter - 6,
+            width: gutter - (compact ? 4 : 6),
             top: h * kHourHeight - 6,
             child: Text(
-              '${h.toString().padLeft(2, '0')}:00',
+              compact ? '$h' : '${h.toString().padLeft(2, '0')}:00',
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 9, color: T.muted),
+              style: TextStyle(fontSize: compact ? 8.5 : 9, color: T.muted),
             ),
           ),
       ],
@@ -567,9 +748,10 @@ class _HourLabels extends StatelessWidget {
 }
 
 class _GridPainter extends CustomPainter {
-  const _GridPainter({required this.columns});
+  const _GridPainter({required this.columns, required this.gutter});
 
   final int columns;
+  final double gutter;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -582,28 +764,35 @@ class _GridPainter extends CustomPainter {
 
     for (var h = 0; h <= 24; h++) {
       final y = h * kHourHeight;
-      canvas.drawLine(Offset(kGutter, y), Offset(size.width, y), hour);
+      canvas.drawLine(Offset(gutter, y), Offset(size.width, y), hour);
       if (h < 24) {
         final mid = y + kHourHeight / 2;
-        canvas.drawLine(Offset(kGutter, mid), Offset(size.width, mid), half);
+        canvas.drawLine(Offset(gutter, mid), Offset(size.width, mid), half);
       }
     }
 
-    final colWidth = (size.width - kGutter) / columns;
+    final colWidth = (size.width - gutter) / columns;
     for (var c = 0; c <= columns; c++) {
-      final x = kGutter + c * colWidth;
+      final x = gutter + c * colWidth;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), hour);
     }
   }
 
   @override
-  bool shouldRepaint(_GridPainter old) => old.columns != columns;
+  bool shouldRepaint(_GridPainter old) =>
+      old.columns != columns || old.gutter != gutter;
 }
 
 class _DayHeaderRow extends StatelessWidget {
-  const _DayHeaderRow({required this.days});
+  const _DayHeaderRow({
+    required this.days,
+    required this.gutter,
+    required this.compact,
+  });
 
   final List<DateTime> days;
+  final double gutter;
+  final bool compact;
 
   static const _names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -614,16 +803,20 @@ class _DayHeaderRow extends StatelessWidget {
       height: 26,
       child: Row(
         children: [
-          const SizedBox(width: kGutter),
+          SizedBox(width: gutter),
           for (final d in days)
             Expanded(
               child: Builder(builder: (context) {
                 final isToday = _isSameDay(d, today);
+                final name = _names[d.weekday - 1];
                 return Center(
                   child: Text(
-                    '${_names[d.weekday - 1]} ${d.day}',
+                    // Initials in a narrow column, as every phone calendar
+                    // does: two of them repeat, but their position says which.
+                    compact ? '${name[0]} ${d.day}' : '$name ${d.day}',
+                    maxLines: 1,
                     style: TextStyle(
-                      fontSize: 10.5,
+                      fontSize: compact ? 9.5 : 10.5,
                       color: isToday ? T.accent : T.muted,
                       fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
                     ),
@@ -649,12 +842,16 @@ class _SpanBand extends StatelessWidget {
     required this.events,
     required this.colorFor,
     required this.onOpen,
+    required this.gutter,
+    required this.compact,
   });
 
   final List<DateTime> days;
   final List<CalendarEvent> events;
   final Color Function(CalendarEvent) colorFor;
   final void Function(CalendarEvent) onOpen;
+  final double gutter;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -664,7 +861,7 @@ class _SpanBand extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final colWidth = (constraints.maxWidth - kGutter) / days.length;
+        final colWidth = (constraints.maxWidth - gutter) / days.length;
         final last = days.last.add(const Duration(days: 1));
 
         return SizedBox(
@@ -682,7 +879,7 @@ class _SpanBand extends StatelessWidget {
                   final startCol = from.difference(days.first).inMinutes / (24 * 60);
                   final endCol = to.difference(days.first).inMinutes / (24 * 60);
 
-                  final left = kGutter + startCol * colWidth;
+                  final left = gutter + startCol * colWidth;
                   final width = ((endCol - startCol) * colWidth).clamp(18.0, double.infinity);
 
                   return Positioned(
@@ -694,9 +891,11 @@ class _SpanBand extends StatelessWidget {
                       event: e,
                       color: colorFor(e),
                       // Only label the ends that are really in view - a time
-                      // shown at a clipped edge would be the wrong time.
-                      showStart: !e.start.isBefore(days.first),
-                      showEnd: !e.end.isAfter(last),
+                      // shown at a clipped edge would be the wrong time. In a
+                      // phone week the two times are the whole bar, so the
+                      // title wins and they go.
+                      showStart: !compact && !e.start.isBefore(days.first),
+                      showEnd: !compact && !e.end.isAfter(last),
                       onTap: () => onOpen(e),
                     ),
                   );

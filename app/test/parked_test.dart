@@ -288,11 +288,14 @@ void main() {
     await db.close();
 
     final store = await LocalStore.open(path: path, singleInstance: false);
-    expect((await store.activeTasks('ws-1')).single.text,
-        'survives the migration');
+    // 'ws-1' was a seeded default ("Tasks", default colour), so the v9
+    // migration folded it onto the canonical workspace and brought its tasks
+    // with it - which is the behaviour being relied on here.
+    const ws = LocalStore.defaultWorkspaceUuid;
+    expect((await store.activeTasks(ws)).single.text, 'survives the migration');
     // The new column reads as "not parked" for every existing row.
-    expect((await store.activeTasks('ws-1')).single.groupUuid, isNull);
-    expect(await store.parkedGroups('ws-1'), isEmpty);
+    expect((await store.activeTasks(ws)).single.groupUuid, isNull);
+    expect(await store.parkedGroups(ws), isEmpty);
     await store.close();
   });
 }

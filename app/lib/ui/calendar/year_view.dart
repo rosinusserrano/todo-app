@@ -8,9 +8,24 @@
 //
 // Tapping a day opens it in the day view, which is the drill-down the year is
 // for.
+//
+// The twelve tiles reflow: four across a wide window, one under another in a
+// 340px widget. **One column is a real answer, not a degraded one** - a year as
+// a single scrolling strip of months is perfectly legible, it just trades the
+// at-a-glance shape of the whole year for fitting in the width there is. It is
+// what lets the year view exist at every size instead of only after the window
+// has been grown to hold a grid.
+//
+// Every tile is drawn on a **six-week grid** whether its month needs one or
+// not, so tiles side by side are the same height. A month occupies four to six
+// week rows depending on where its 1st falls, and sizing each tile to its own
+// month left the row of tiles ragged - February against a 31-day month starting
+// on a Sunday differ by two rows, and the gap read as a rendering fault rather
+// than as information.
 
 import 'package:flutter/material.dart';
 
+import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
 
@@ -63,19 +78,23 @@ class YearView extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Tiles want ~190px to keep the day numbers legible; below three
-        // columns this is a phone, where two is the most that fits.
-        final columns = (constraints.maxWidth / 190).floor().clamp(2, 4);
+        // Measured here rather than taken from the enclosing window: the year
+        // view is also what a *pane* would hand it, and its own box is the only
+        // thing that knows.
+        final columns = Layout(constraints.biggest).yearColumns;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
           child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: Layout.monthTileGap,
+            runSpacing: Layout.monthTileGap,
             children: [
               for (var month = 1; month <= 12; month++)
                 SizedBox(
-                  width: (constraints.maxWidth - 16 - (columns - 1) * 8) / columns,
+                  width: (constraints.maxWidth -
+                          16 -
+                          (columns - 1) * Layout.monthTileGap) /
+                      columns,
                   child: _MonthTile(
                     year: year,
                     month: month,
@@ -103,6 +122,11 @@ class _MonthTile extends StatelessWidget {
   final int month;
   final Map<DateTime, List<Color>> dots;
   final void Function(DateTime) onPickDay;
+
+  /// Week rows every tile is drawn with. Six is the worst case - a 31-day month
+  /// beginning on a Sunday needs 6 leading blanks + 31 days = 37 cells - and
+  /// every tile uses it so that two side by side end up the same height.
+  static const _weekRows = 6;
 
   static const _names = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -132,6 +156,11 @@ class _MonthTile extends StatelessWidget {
             onTap: () => onPickDay(day),
           );
         }(),
+      // Padded out to the full six weeks - see _weekRows. Empty cells rather
+      // than the next month's days: this tile is one month, and greyed-out
+      // neighbours at this size are just noise around the dots.
+      for (var i = leading + daysInMonth; i < _weekRows * 7; i++)
+        const SizedBox.shrink(),
     ];
 
     return Container(

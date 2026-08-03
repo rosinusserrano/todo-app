@@ -18,7 +18,7 @@ import 'sync/local_store.dart';
 import 'sync/models.dart';
 
 class ReminderService {
-  ReminderService(this._store, {required this.onDue, Duration? interval})
+  ReminderService(this._store, {required this.onDue, this.onTick, Duration? interval})
       : _interval = interval ?? const Duration(seconds: 20);
 
   final LocalStore _store;
@@ -27,6 +27,15 @@ class ReminderService {
   /// Called with the tasks that have just come due. Never called with an empty
   /// list, so the callback can surface the window unconditionally.
   final Future<void> Function(List<Task> due) onDue;
+
+  /// Called on every tick, due reminders or not.
+  ///
+  /// This poll is the only clock in the app, and reminders are not the only
+  /// thing that comes true because time passed: a calendar block *starting* is
+  /// the other, and nothing is written to the database when it does. A second
+  /// timer for that would be a second thing to start, stop, resume and keep in
+  /// step with this one, for the same 20-second question.
+  final Future<void> Function()? onTick;
 
   Timer? _timer;
 
@@ -49,6 +58,8 @@ class ReminderService {
   /// due while the app was closed lands immediately rather than up to one
   /// interval later.
   Future<void> tick([DateTime? now]) async {
+    await onTick?.call();
+
     final due = await _store.dueReminders(now);
 
     // Forget tasks that are no longer due at all - cleared, completed or

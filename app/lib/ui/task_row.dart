@@ -22,6 +22,7 @@ class TaskRow extends StatefulWidget {
     required this.onFocus,
     this.onSetReminder,
     this.onPark,
+    this.onUnplan,
     this.onOpenAttachments,
     this.attachmentCount = 0,
     this.dragHandle,
@@ -39,6 +40,12 @@ class TaskRow extends StatefulWidget {
   /// Shelve this task in a parked group. Takes the anchor of the button that
   /// opened it so the picker lands under the icon rather than at the pointer.
   final Future<void> Function(RelativeRect anchor)? onPark;
+
+  /// Take this task back out of the calendar block it is planned into. The
+  /// icon it drives appears **only** on a task that is planned - it is a mark
+  /// saying so first and an action second, which is why it does not fade in on
+  /// hover like the rest of them.
+  final Future<void> Function()? onUnplan;
 
   /// Opens the attachment list. Null on history, where attaching a document to
   /// something already finished is not a thing worth offering.
@@ -202,6 +209,14 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                       : T.muted,
                   visible: _hovered || widget.attachmentCount > 0,
                   onPressed: widget.onOpenAttachments!,
+                ),
+              if (widget.onUnplan != null && widget.task.isPlanned)
+                _IconAction(
+                  tooltip: 'Planned into a calendar block — click to take it out',
+                  icon: Icons.event_available_rounded,
+                  color: widget.accent,
+                  visible: true,
+                  onPressed: () => widget.onUnplan!(),
                 ),
               if (widget.onPark != null)
                 _IconAction(

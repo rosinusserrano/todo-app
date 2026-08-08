@@ -1,15 +1,20 @@
 // Choosing when to be reminded.
 //
-// Presets rather than a date picker, and not only to save taps: the window is
-// 340px wide, and Material's date picker wants roughly that on its own, so it
-// would either overflow or force the widget to grow into something that is no
-// longer a sticky note. The presets cover what a scratchpad todo actually needs
-// - "not now, but don't let me forget" at a few horizons.
+// Presets first, and not only to save taps: they cover what a scratchpad todo
+// actually needs - "not now, but don't let me forget" at a few horizons - and
+// leading with them keeps the common case one click deep.
+//
+// An exact date and time is the last item, in reminder_picker.dart. That used
+// to be absent on the grounds that Material's date picker wants roughly this
+// whole 340px window; the calendar's MonthGrid is a month that already fits, so
+// the objection went away and the item could be added without the widget
+// growing into something that is no longer a sticky note.
 
 import 'package:flutter/material.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
+import 'reminder_picker.dart';
 
 class ReminderPreset {
   const ReminderPreset(this.label, this.at);
@@ -35,8 +40,12 @@ List<ReminderPreset> reminderPresets(DateTime now) {
     out.add(ReminderPreset('This evening (18:00)', evening));
   }
 
-  final tomorrow = DateTime(now.year, now.month, now.day, 9)
-      .add(const Duration(days: 1));
+  final tomorrow = DateTime(
+    now.year,
+    now.month,
+    now.day,
+    9,
+  ).add(const Duration(days: 1));
   out.add(ReminderPreset('Tomorrow (09:00)', tomorrow));
 
   return out;
@@ -48,7 +57,8 @@ List<ReminderPreset> reminderPresets(DateTime now) {
 String describeReminder(DateTime at, [DateTime? nowOverride]) {
   final now = nowOverride ?? DateTime.now();
   final delta = at.difference(now);
-  final hhmm = '${at.hour.toString().padLeft(2, '0')}:'
+  final hhmm =
+      '${at.hour.toString().padLeft(2, '0')}:'
       '${at.minute.toString().padLeft(2, '0')}';
 
   if (delta.isNegative) return 'due since $hhmm';
@@ -93,8 +103,10 @@ Future<void> showReminderMenu({
         const PopupMenuItem<Object>(
           value: _clear,
           height: 34,
-          child: Text('Clear reminder',
-              style: TextStyle(fontSize: 12.5, color: T.danger)),
+          child: Text(
+            'Clear reminder',
+            style: TextStyle(fontSize: 12.5, color: T.danger),
+          ),
         ),
         const PopupMenuDivider(),
       ],
@@ -104,11 +116,30 @@ Future<void> showReminderMenu({
           height: 34,
           child: Text(p.label, style: const TextStyle(fontSize: 12.5)),
         ),
+      const PopupMenuDivider(),
+      // Last, and deliberately: the presets are the right answer most of the
+      // time, and a menu that led with the long way round would make the quick
+      // path feel like the exception.
+      const PopupMenuItem<Object>(
+        value: _pick,
+        height: 34,
+        child: Text('Pick a date and time…', style: TextStyle(fontSize: 12.5)),
+      ),
     ],
   );
 
   if (chosen == null) return;
-  await onChosen(chosen == _clear ? null : chosen as DateTime);
+  if (chosen == _clear) return onChosen(null);
+
+  if (chosen == _pick) {
+    if (!context.mounted) return;
+    final at = await showReminderPicker(context, initial: armed);
+    if (at != null) await onChosen(at);
+    return;
+  }
+
+  await onChosen(chosen as DateTime);
 }
 
 const _clear = 'clear';
+const _pick = 'pick';

@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
+import '../month_grid.dart';
 
 class YearView extends StatelessWidget {
   const YearView({
@@ -91,7 +92,8 @@ class YearView extends StatelessWidget {
             children: [
               for (var month = 1; month <= 12; month++)
                 SizedBox(
-                  width: (constraints.maxWidth -
+                  width:
+                      (constraints.maxWidth -
                           16 -
                           (columns - 1) * Layout.monthTileGap) /
                       columns,
@@ -123,45 +125,9 @@ class _MonthTile extends StatelessWidget {
   final Map<DateTime, List<Color>> dots;
   final void Function(DateTime) onPickDay;
 
-  /// Week rows every tile is drawn with. Six is the worst case - a 31-day month
-  /// beginning on a Sunday needs 6 leading blanks + 31 days = 37 cells - and
-  /// every tile uses it so that two side by side end up the same height.
-  static const _weekRows = 6;
-
-  static const _names = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final first = DateTime(year, month);
-    // Day 0 of the next month is the last day of this one - avoids a leap-year
-    // table.
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final leading = first.weekday - 1; // Monday-based, matching the week view.
     final today = DateTime.now();
-
-    final cells = <Widget>[
-      for (var i = 0; i < leading; i++) const SizedBox.shrink(),
-      for (var d = 1; d <= daysInMonth; d++)
-        () {
-          final day = DateTime(year, month, d);
-          return _DayCell(
-            day: day,
-            isToday: day.year == today.year &&
-                day.month == today.month &&
-                day.day == today.day,
-            dots: dots[day] ?? const [],
-            onTap: () => onPickDay(day),
-          );
-        }(),
-      // Padded out to the full six weeks - see _weekRows. Empty cells rather
-      // than the next month's days: this tile is one month, and greyed-out
-      // neighbours at this size are just noise around the dots.
-      for (var i = leading + daysInMonth; i < _weekRows * 7; i++)
-        const SizedBox.shrink(),
-    ];
 
     return Container(
       decoration: BoxDecoration(
@@ -173,7 +139,7 @@ class _MonthTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _names[month - 1],
+            kMonthNames[month - 1],
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
@@ -181,26 +147,15 @@ class _MonthTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              for (final d in const ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      d,
-                      style: const TextStyle(fontSize: 8, color: T.muted),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          GridView.count(
-            crossAxisCount: 7,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 0.92,
-            children: cells,
+          MonthGrid(
+            year: year,
+            month: month,
+            dayBuilder: (day) => _DayCell(
+              day: day,
+              isToday: isSameDay(day, today),
+              dots: dots[day] ?? const [],
+              onTap: () => onPickDay(day),
+            ),
           ),
         ],
       ),

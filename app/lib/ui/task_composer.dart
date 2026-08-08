@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'reminder_menu.dart';
+import 'reminder_picker.dart';
 
 /// What the composer produced. There is no delete here - a task nobody wants is
 /// dismissed from its row, where the ✕ already is.
@@ -206,6 +207,25 @@ class _ComposerDialogState extends State<_ComposerDialog> {
                         selected: _remindAt == p.at,
                         onSelected: (_) => setState(() => _remindAt = p.at),
                       ),
+                    // The exact-time door, the same one the row's reminder menu
+                    // ends with. An ActionChip rather than a ChoiceChip because
+                    // it opens something instead of being a value: what it
+                    // returns turns up as the selected chip beside it, via the
+                    // not-a-preset branch above.
+                    ActionChip(
+                      avatar: const Icon(Icons.event_rounded, size: 14),
+                      label: const Text(
+                        'Pick…',
+                        style: TextStyle(fontSize: 11.5),
+                      ),
+                      onPressed: () async {
+                        final at = await showReminderPicker(
+                          context,
+                          initial: _remindAt,
+                        );
+                        if (at != null) setState(() => _remindAt = at);
+                      },
+                    ),
                   ],
                 ),
               ],

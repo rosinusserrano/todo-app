@@ -4,8 +4,10 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
-import 'dart:io' show Platform;
+import 'dart:convert' show utf8;
+import 'dart:io' show File, Platform;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
@@ -25,6 +27,7 @@ import 'sound/taskbar_transport.dart';
 import 'startup.dart';
 import 'sync/attachment_store.dart';
 import 'sync/legacy_import.dart';
+import 'sync/ics.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
 import 'sync/sync_service.dart';
@@ -33,6 +36,7 @@ import 'tray.dart';
 import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
 import 'ui/calendar/calendar_view.dart';
+import 'ui/calendar/ics_import.dart';
 import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
 import 'ui/calendar/time_grid.dart' show hhmm;
@@ -50,7 +54,8 @@ import 'ui/title_bar.dart';
 import 'ui/workspace_bar.dart';
 import 'ui/workspace_rail.dart';
 
-bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+bool get isDesktop =>
+    Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -139,12 +144,14 @@ Future<void> main() async {
   final sound = SoundService(store);
   await sound.load();
 
-  runApp(TodoApp(
-    state: state,
-    sync: sync,
-    sound: sound,
-    notifications: notifications,
-  ));
+  runApp(
+    TodoApp(
+      state: state,
+      sync: sync,
+      sound: sound,
+      notifications: notifications,
+    ),
+  );
 }
 
 class TodoApp extends StatelessWidget {
@@ -403,9 +410,9 @@ class _WidgetShellState extends State<WidgetShell>
   /// The line under a block's title, wherever one is shown on its own: whose
   /// calendar it is and when it runs.
   String _describeEvent(CalendarEvent e) => [
-        if (_calendarNameForEvent(e).isNotEmpty) _calendarNameForEvent(e),
-        '${hhmm(e.start)}–${hhmm(e.end)}',
-      ].join(' · ');
+    if (_calendarNameForEvent(e).isNotEmpty) _calendarNameForEvent(e),
+    '${hhmm(e.start)}–${hhmm(e.end)}',
+  ].join(' · ');
 
   Future<void> _createEvent(DateTime start, DateTime end) async {
     final calendars = s.visibleCalendars;
@@ -512,8 +519,12 @@ class _WidgetShellState extends State<WidgetShell>
         const PopupMenuDivider(),
         _menuItem(EventAction.edit, Icons.edit_outlined, 'Edit'),
         _menuItem(EventAction.plan, Icons.playlist_add_rounded, 'Todos…'),
-        _menuItem(EventAction.delete, Icons.delete_outline, 'Delete',
-            color: T.danger),
+        _menuItem(
+          EventAction.delete,
+          Icons.delete_outline,
+          'Delete',
+          color: T.danger,
+        ),
       ],
     );
     if (action == null || !mounted) return;
@@ -848,9 +859,10 @@ class _WidgetShellState extends State<WidgetShell>
     await WidgetsBinding.instance.endOfFrame;
 
     if (widget.sound.isPlaying || widget.sound.isPaused) {
-      await widget.sound
-          .stop()
-          .timeout(const Duration(milliseconds: 600), onTimeout: () {});
+      await widget.sound.stop().timeout(
+        const Duration(milliseconds: 600),
+        onTimeout: () {},
+      );
     }
     await windowManager.destroy();
   }
@@ -1046,13 +1058,14 @@ class _WidgetShellState extends State<WidgetShell>
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(T.radius),
-            child: _inset(LayoutBuilder(builder: (context, constraints) {
-              _layout = Layout(constraints.biggest);
-              return LayoutScope(
-                layout: _layout,
-                child: _shell(ws),
-              );
-            })),
+            child: _inset(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  _layout = Layout(constraints.biggest);
+                  return LayoutScope(layout: _layout, child: _shell(ws));
+                },
+              ),
+            ),
           ),
         ),
       ),
@@ -1072,10 +1085,7 @@ class _WidgetShellState extends State<WidgetShell>
           child: AnimatedOpacity(
             opacity: _focusVisible ? 0 : 1,
             duration: T.heroDur,
-            child: IgnorePointer(
-              ignoring: _focusVisible,
-              child: _body(ws),
-            ),
+            child: IgnorePointer(ignoring: _focusVisible, child: _body(ws)),
           ),
         ),
 
@@ -1086,11 +1096,7 @@ class _WidgetShellState extends State<WidgetShell>
         // Above the focus overlay, since picking something to listen to is
         // exactly what you do *after* picking a task.
         if (_soundOpen)
-          SoundSheet(
-            sound: widget.sound,
-            accent: ws,
-            onClose: _closeSound,
-          ),
+          SoundSheet(sound: widget.sound, accent: ws, onClose: _closeSound),
 
         if (_settingsOpen)
           SettingsSheet(
@@ -1210,6 +1216,71 @@ class _WidgetShellState extends State<WidgetShell>
   /// open the session view: that view's whole body would be the sentence the
   /// tile just said. The list stays, and the tile's own "Sublist" button is the
   /// way to answer it.
+  /// Bring in events from an .ics file another application produced.
+  ///
+  /// A file picker rather than the share sheet, and for now that is the whole
+  /// feature: picking works identically on every platform today, whereas
+  /// receiving a share needs native glue per platform (see ROADMAP). The parse,
+  /// the confirmation and the write are the same either way, so the share sheet
+  /// becomes a second way in rather than a second implementation.
+  Future<void> _importIcs() async {
+    // lockParentWindow for the same reason attachment_sheet.dart passes it:
+    // this window is always-on-top, so without it the picker opens behind the
+    // thing that asked for it.
+    final picked = await FilePicker.pickFiles(
+      dialogTitle: 'Import a calendar file',
+      type: FileType.custom,
+      allowedExtensions: const ['ics', 'ical', 'ifb'],
+      withData: true,
+      lockParentWindow: true,
+    );
+    if (picked == null || !mounted) return;
+
+    final file = picked.files.single;
+    final bytes =
+        file.bytes ??
+        (file.path == null ? null : await File(file.path!).readAsBytes());
+    if (bytes == null) return;
+
+    // allowMalformed rather than a strict decode: an .ics is meant to be UTF-8,
+    // and a stray Windows-1252 one should import with a single odd character
+    // rather than failing outright.
+    final events = parseIcs(utf8.decode(bytes, allowMalformed: true));
+
+    if (!mounted) return;
+    if (events.isEmpty) {
+      await _notice('Nothing to import', 'No events were found in that file.');
+      return;
+    }
+
+    final target = await showImportIcs(context, events, state: s);
+    if (target == null || !mounted) return;
+
+    await s.importIcsEvents(events, calendarUuid: target);
+  }
+
+  /// A one-line dialog for something that has already happened.
+  ///
+  /// A dialog rather than a sheet, per the rule in this file: it is transient
+  /// and modal by nature. There is no toast mechanism in this app and adding
+  /// one for a single message would be a second way of saying things.
+  Future<void> _notice(String title, String body) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: T.bgSolid,
+        title: Text(title, style: const TextStyle(fontSize: 15)),
+        content: Text(body, style: const TextStyle(fontSize: 12.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(fontSize: 12.5)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openSession() async {
     if (_clearOverlays()) return;
     final first = s.liveEvents.isEmpty ? null : s.liveEvents.first;
@@ -1300,13 +1371,13 @@ class _WidgetShellState extends State<WidgetShell>
   /// on its own, so it needs to look different from a server that is merely
   /// asleep.
   Color _syncColor() => switch (widget.sync.status) {
-        SyncStatus.off => T.muted,
-        SyncStatus.idle => T.muted,
-        SyncStatus.syncing => T.accent,
-        SyncStatus.ok => const Color(0xFF7EE3A1),
-        SyncStatus.error => const Color(0xFFFFCF6C),
-        SyncStatus.blocked => T.danger,
-      };
+    SyncStatus.off => T.muted,
+    SyncStatus.idle => T.muted,
+    SyncStatus.syncing => T.accent,
+    SyncStatus.ok => const Color(0xFF7EE3A1),
+    SyncStatus.error => const Color(0xFFFFCF6C),
+    SyncStatus.blocked => T.danger,
+  };
 
   Widget _body(Color ws) {
     // The calendar replaces the whole body, workspace bar and footer included:
@@ -1376,30 +1447,30 @@ class _WidgetShellState extends State<WidgetShell>
   /// pressure meter is about the pile, not about the workspace - or the view -
   /// you happen to be in.
   Widget _footer(Color ws) => ThoughtFooter(
-        key: _footerKey,
-        thoughts: s.thoughts,
-        workspaceColor: ws,
-        blockedMessage: _blockedMessage,
-        onAdd: s.addThought,
-        listOpen: s.showThoughts,
-        onToggleList: s.toggleThoughts,
-      );
+    key: _footerKey,
+    thoughts: s.thoughts,
+    workspaceColor: ws,
+    blockedMessage: _blockedMessage,
+    onAdd: s.addThought,
+    listOpen: s.showThoughts,
+    onToggleList: s.toggleThoughts,
+  );
 
   Widget _workspaceBar(Color ws) => WorkspaceBar(
-        workspaces: s.workspaces,
-        currentUuid: s.currentWorkspaceUuid,
-        accent: ws,
-        onSelect: (w) => _switchWorkspace(w),
-        onEdit: (w) => _editWorkspace(w),
-        onCreate: () => _editWorkspace(null),
-        onOpenNotes: _toggleJournal,
-        onOpenParked: _toggleParked,
-        onOpenHistory: _toggleHistory,
-        parkedReviewDue: s.groupsDueForReview.isNotEmpty,
-        // The menu holds three of the four, and lighting its ▾ for a view it
-        // does not contain would point at the wrong control.
-        openView: _openView == WorkspaceView.thoughts ? null : _openView,
-      );
+    workspaces: s.workspaces,
+    currentUuid: s.currentWorkspaceUuid,
+    accent: ws,
+    onSelect: (w) => _switchWorkspace(w),
+    onEdit: (w) => _editWorkspace(w),
+    onCreate: () => _editWorkspace(null),
+    onOpenNotes: _toggleJournal,
+    onOpenParked: _toggleParked,
+    onOpenHistory: _toggleHistory,
+    parkedReviewDue: s.groupsDueForReview.isNotEmpty,
+    // The menu holds three of the four, and lighting its ▾ for a view it
+    // does not contain would point at the wrong control.
+    openView: _openView == WorkspaceView.thoughts ? null : _openView,
+  );
 
   /// The calendar, wherever it is drawn.
   ///
@@ -1418,6 +1489,7 @@ class _WidgetShellState extends State<WidgetShell>
           onEventMenu: _eventMenu,
           onCreate: _createEvent,
           onNewCalendar: () => _editCalendar(null),
+          onImportIcs: _importIcs,
           onEditCalendar: (c) => _editCalendar(c),
           // Only where there is a list beside it to drag out of.
           onPlanTask: _layout.splitsCalendar
@@ -1464,7 +1536,10 @@ class _WidgetShellState extends State<WidgetShell>
                 ),
               ),
               const VerticalDivider(
-                  width: 1, thickness: 1, color: Color(0x14FFFFFF)),
+                width: 1,
+                thickness: 1,
+                color: Color(0x14FFFFFF),
+              ),
               Expanded(child: _calendar()),
             ],
           ),
@@ -1518,9 +1593,7 @@ class _WidgetShellState extends State<WidgetShell>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        more > 0
-                            ? '${first.title}  +$more more'
-                            : first.title,
+                        more > 0 ? '${first.title}  +$more more' : first.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -1543,10 +1616,7 @@ class _WidgetShellState extends State<WidgetShell>
                 // With nothing planned there is no list yet, so the tile offers
                 // to start one instead of pointing at an empty view.
                 if (left == 0)
-                  _SublistButton(
-                    color: color,
-                    onTap: () => _openSublist(first),
-                  )
+                  _SublistButton(color: color, onTap: () => _openSublist(first))
                 else
                   const Icon(Icons.chevron_right, size: 16, color: T.muted),
               ],
@@ -1561,12 +1631,12 @@ class _WidgetShellState extends State<WidgetShell>
   WorkspaceView? get _openView => s.showJournal
       ? WorkspaceView.notes
       : s.showParked
-          ? WorkspaceView.parked
-          : s.showHistory
-              ? WorkspaceView.history
-              : s.showThoughts
-                  ? WorkspaceView.thoughts
-                  : null;
+      ? WorkspaceView.parked
+      : s.showHistory
+      ? WorkspaceView.history
+      : s.showThoughts
+      ? WorkspaceView.thoughts
+      : null;
 
   /// The content area.
   ///
@@ -1770,51 +1840,58 @@ class _WidgetShellState extends State<WidgetShell>
 
   Widget _addField(Color ws) {
     final field = TextField(
-        controller: _addController,
-        focusNode: _addFocus,
-        style: const TextStyle(fontSize: 13),
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: 'Add a task…',
-          filled: true,
-          fillColor: T.surface,
-          // The shortcut, made visible - and the only way in on a phone, which
-          // has no Ctrl to hold.
-          suffixIcon: Tooltip(
-            message: 'More: notes, priority, reminder (Ctrl+D)',
-            child: InkWell(
-              onTap: _openComposer,
-              borderRadius: BorderRadius.circular(6),
-              child: const Icon(Icons.open_in_full_rounded,
-                  size: 14, color: T.muted),
+      controller: _addController,
+      focusNode: _addFocus,
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Add a task…',
+        filled: true,
+        fillColor: T.surface,
+        // The shortcut, made visible - and the only way in on a phone, which
+        // has no Ctrl to hold.
+        suffixIcon: Tooltip(
+          message: 'More: notes, priority, reminder (Ctrl+D)',
+          child: InkWell(
+            onTap: _openComposer,
+            borderRadius: BorderRadius.circular(6),
+            child: const Icon(
+              Icons.open_in_full_rounded,
+              size: 14,
+              color: T.muted,
             ),
           ),
-          suffixIconConstraints:
-              const BoxConstraints(minWidth: 34, minHeight: 30),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9),
-            borderSide: BorderSide(color: ws.withValues(alpha: 0.6)),
-          ),
         ),
-        onSubmitted: (value) async {
-          // Ctrl+Enter keeps the field focused for chaining entries; plain
-          // Enter drops focus once the task is added.
-          final chain = HardwareKeyboard.instance.isControlPressed;
-          _addController.clear();
-          await s.addTask(value);
-          if (!mounted) return;
-          if (chain) {
-            _addFocus.requestFocus();
-          } else {
-            _addFocus.unfocus();
-          }
-        },
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 34,
+          minHeight: 30,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(9),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(9),
+          borderSide: BorderSide(color: ws.withValues(alpha: 0.6)),
+        ),
+      ),
+      onSubmitted: (value) async {
+        // Ctrl+Enter keeps the field focused for chaining entries; plain
+        // Enter drops focus once the task is added.
+        final chain = HardwareKeyboard.instance.isControlPressed;
+        _addController.clear();
+        await s.addTask(value);
+        if (!mounted) return;
+        if (chain) {
+          _addFocus.requestFocus();
+        } else {
+          _addFocus.unfocus();
+        }
+      },
     );
 
     return Padding(
@@ -1862,21 +1939,21 @@ class _WidgetShellState extends State<WidgetShell>
             t,
             ws,
             TaskRow(
-            key: key,
-            task: t,
-            accent: ws,
-            onComplete: () => s.completeTask(t),
-            onDelete: () => s.deleteTask(t),
-            onFocus: () => _startFocus(t),
-            onSetReminder: (at) => s.setReminder(t, at),
-            onPark: (anchor) => _parkTask(t, anchor),
-            // Only ever drawn on a task that *is* planned, where it doubles as
-            // the mark saying so - the list is otherwise unchanged by planning.
-            onUnplan: () => s.setTaskEvent(t, null),
-            onOpenAttachments: () => _openAttachments(t),
-            onSetPriority: (high) => s.setPriority(t, high),
-            onOpen: () => _openTask(t),
-            attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
+              key: key,
+              task: t,
+              accent: ws,
+              onComplete: () => s.completeTask(t),
+              onDelete: () => s.deleteTask(t),
+              onFocus: () => _startFocus(t),
+              onSetReminder: (at) => s.setReminder(t, at),
+              onPark: (anchor) => _parkTask(t, anchor),
+              // Only ever drawn on a task that *is* planned, where it doubles as
+              // the mark saying so - the list is otherwise unchanged by planning.
+              onUnplan: () => s.setTaskEvent(t, null),
+              onOpenAttachments: () => _openAttachments(t),
+              onSetPriority: (high) => s.setPriority(t, high),
+              onOpen: () => _openTask(t),
+              attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
               dragHandle: ReorderableDragStartListener(
                 index: i,
                 child: const Padding(
@@ -1972,7 +2049,10 @@ class _WidgetShellState extends State<WidgetShell>
                           ),
                           Text(
                             _formatWhen(t.completedAt),
-                            style: const TextStyle(fontSize: 10.5, color: T.muted),
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              color: T.muted,
+                            ),
                           ),
                         ],
                       ),
@@ -1989,8 +2069,18 @@ class _WidgetShellState extends State<WidgetShell>
     final d = DateTime.tryParse(iso);
     if (d == null) return '';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final hh = d.hour.toString().padLeft(2, '0');
     final mm = d.minute.toString().padLeft(2, '0');
@@ -2018,10 +2108,7 @@ class _WidgetShellState extends State<WidgetShell>
             children: [
               // Exactly the box the flight lands on, so the tile does not shift
               // sideways when it hands back to normal layout.
-              NudgeBob(
-                active: s.nudgeEnabled,
-                child: _tile(t.text, ws, 20),
-              ),
+              NudgeBob(active: s.nudgeEnabled, child: _tile(t.text, ws, 20)),
               const SizedBox(height: 22),
 
               // Parking a thought without leaving focus. Above the buttons, so
@@ -2042,15 +2129,18 @@ class _WidgetShellState extends State<WidgetShell>
                             filled: true,
                             fillColor: T.surface,
                             contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 9),
+                              horizontal: 10,
+                              vertical: 9,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(9),
                               borderSide: BorderSide.none,
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(9),
-                              borderSide:
-                                  BorderSide(color: ws.withValues(alpha: 0.6)),
+                              borderSide: BorderSide(
+                                color: ws.withValues(alpha: 0.6),
+                              ),
                             ),
                           ),
                           onSubmitted: (_) => _submitFocusThought(),

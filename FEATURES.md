@@ -370,6 +370,29 @@ Three tiers, none of which need an account, an API key, or a licence:
   free-standing calendar takes its events. A workspace calendar cannot be
   deleted on its own — the workspace is the way to do that.
 
+## Importing calendar files
+
+- **Import .ics** from the calendar's tune menu. Reads what other applications
+  produce - a mail client's invite, a booking confirmation, a train ticket -
+  and adds the events to a calendar you pick.
+- **Nothing is written until you say so.** The events are listed with their
+  times, you choose the destination calendar (defaulting to the current
+  workspace's own), and only then are they saved. An import that happened
+  silently into whichever calendar was in front of you is the sort of thing
+  discovered three weeks later.
+- An imported block is an **ordinary event** in every respect - no "imported"
+  flag, no separate handling. Location and description come across as the
+  event's description.
+- **A repeating event is imported once**, and both the list and the resulting
+  description say so. The series cannot be stored, and importing one occurrence
+  while saying nothing would be the version of this you find out about late.
+- Handles what real producers actually emit: folded long lines, escaped commas
+  and newlines, all-day dates with their exclusive end, `DURATION` instead of an
+  end time, quoted `TZID` parameters, and both CRLF and LF. A malformed event in
+  a file of five costs that one event, not the import.
+- Times written as UTC are converted; times written without a zone keep their
+  reading, which is what a printed ticket means.
+
 ## History
 
 - **"Done recently" view** — "History" in the ▾ views menu on the workspace bar

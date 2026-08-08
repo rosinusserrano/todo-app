@@ -9,7 +9,30 @@ work that is about to happen.
 
 ## In progress
 
-*Nothing queued.*
+### Receiving a calendar invite from the share sheet
+
+The reader and the import are built and shipped (see FEATURES.md): `sync/ics.dart`
+parses what other apps produce, and **Calendar -> tune menu -> Import .ics...**
+brings events in on every platform today. What is *not* built is the phone half
+- being offered in another app's "add to calendar" share sheet - because it is
+the one part that cannot be done in Dart:
+
+- **Android.** An `<intent-filter>` on the main activity for `ACTION_VIEW` and
+  `ACTION_SEND` with `text/calendar`, plus Kotlin to read the incoming
+  `content://` URI and hand the bytes to Dart over a `MethodChannel`. Doable and
+  testable on a device; roughly an afternoon.
+- **iOS.** Needs `CFBundleDocumentTypes` for `com.apple.ical.ics` *and* a Share
+  Extension target, which has to be created in Xcode - it is a second binary
+  with its own bundle id and entitlements, not a file that can be written from
+  a terminal.
+
+Deliberately **not** half-done: registering the intent filters without the
+native glue would put the app in the share sheet where it would then do
+nothing, which is worse than not appearing at all.
+
+The parse, the confirmation dialog and the write are already shared, so both
+platforms are a second *way in* rather than a second implementation - each has
+only to end in `parseIcs` + `showImportIcs`.
 
 ## Shipped
 

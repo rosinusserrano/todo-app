@@ -48,6 +48,7 @@ class CalendarView extends StatelessWidget {
     required this.onCreate,
     required this.onNewCalendar,
     required this.onEditCalendar,
+    required this.onImportIcs,
     this.onPlanTask,
   });
 
@@ -65,14 +66,27 @@ class CalendarView extends StatelessWidget {
   final VoidCallback onNewCalendar;
   final void Function(Calendar) onEditCalendar;
 
+  /// Bring events in from an .ics file another application produced.
+  final VoidCallback onImportIcs;
+
   /// A task was dragged out of the list beside the calendar and dropped on a
   /// block. Only wired up when the two really are side by side - see
   /// [Layout.splitsCalendar] - because there is nothing to drag from otherwise.
   final void Function(CalendarEvent, Task)? onPlanTask;
 
   static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   String get _title {
@@ -158,6 +172,7 @@ class CalendarView extends StatelessWidget {
           onToggleBlocking: _toggleBlocking,
           onNewCalendar: onNewCalendar,
           onEditCalendar: onEditCalendar,
+          onImportIcs: onImportIcs,
         ),
         if (block != null)
           _BlockStrip(
@@ -327,7 +342,10 @@ class _BlockChip extends StatelessWidget {
                 Container(
                   width: 7,
                   height: 7,
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -369,6 +387,7 @@ class _Header extends StatelessWidget {
     required this.onToggleBlocking,
     required this.onNewCalendar,
     required this.onEditCalendar,
+    required this.onImportIcs,
   });
 
   final String title;
@@ -398,6 +417,7 @@ class _Header extends StatelessWidget {
   final VoidCallback onToggleBlocking;
   final VoidCallback onNewCalendar;
   final void Function(Calendar) onEditCalendar;
+  final VoidCallback onImportIcs;
 
   @override
   Widget build(BuildContext context) {
@@ -479,6 +499,7 @@ class _Header extends StatelessWidget {
             onToggleHidden: onToggleHidden,
             onNewCalendar: onNewCalendar,
             onEditCalendar: onEditCalendar,
+            onImportIcs: onImportIcs,
           ),
         ],
       ),
@@ -548,8 +569,10 @@ class _ModeSwitch extends StatelessWidget {
                     color: selected ? T.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   child: Text(
                     m.name[0].toUpperCase(),
                     style: TextStyle(
@@ -578,6 +601,7 @@ class _FilterMenu extends StatelessWidget {
     required this.onToggleHidden,
     required this.onNewCalendar,
     required this.onEditCalendar,
+    required this.onImportIcs,
   });
 
   final CalendarScope scope;
@@ -589,6 +613,7 @@ class _FilterMenu extends StatelessWidget {
   final void Function(String) onToggleHidden;
   final VoidCallback onNewCalendar;
   final void Function(Calendar) onEditCalendar;
+  final VoidCallback onImportIcs;
 
   @override
   Widget build(BuildContext context) {
@@ -601,6 +626,8 @@ class _FilterMenu extends StatelessWidget {
           onScope(value);
         } else if (value == 'new') {
           onNewCalendar();
+        } else if (value == 'import') {
+          onImportIcs();
         } else if (value is String) {
           onToggleHidden(value);
         }
@@ -613,7 +640,9 @@ class _FilterMenu extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  scope == s ? Icons.radio_button_checked : Icons.circle_outlined,
+                  scope == s
+                      ? Icons.radio_button_checked
+                      : Icons.circle_outlined,
                   size: 13,
                   color: scope == s ? T.accent : T.muted,
                 ),
@@ -675,6 +704,17 @@ class _FilterMenu extends StatelessWidget {
               Icon(Icons.add, size: 14, color: T.muted),
               SizedBox(width: 8),
               Text('New calendar', style: TextStyle(fontSize: 12)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<Object>(
+          value: 'import',
+          height: 34,
+          child: Row(
+            children: [
+              Icon(Icons.file_download_outlined, size: 14, color: T.muted),
+              SizedBox(width: 8),
+              Text('Import .ics…', style: TextStyle(fontSize: 12)),
             ],
           ),
         ),

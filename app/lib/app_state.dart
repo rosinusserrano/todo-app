@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'journal_crypto.dart';
 import 'notifications.dart';
 import 'sync/attachment_store.dart';
+import 'sync/ics.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
 import 'theme.dart';
@@ -172,17 +173,18 @@ class AppState extends ChangeNotifier {
   bool get hasLiveSession => liveEvents.isNotEmpty;
 
   /// Everything planned into whatever is running, flattened.
-  List<Task> get sessionTaskList =>
-      [for (final e in liveEvents) ...?sessionTasks[e.uuid]];
+  List<Task> get sessionTaskList => [
+    for (final e in liveEvents) ...?sessionTasks[e.uuid],
+  ];
 
   /// What the banner is made of. Compared before and after a poll so that a
   /// tick which found nothing new does not rebuild the whole widget every 20
   /// seconds.
   String get _sessionSignature => [
-        for (final e in liveEvents)
-          '${e.uuid}:${e.endAt}:'
-              '${(sessionTasks[e.uuid] ?? const []).map((t) => t.uuid).join(',')}',
-      ].join('|');
+    for (final e in liveEvents)
+      '${e.uuid}:${e.endAt}:'
+          '${(sessionTasks[e.uuid] ?? const []).map((t) => t.uuid).join(',')}',
+  ].join('|');
 
   /// Reload the live blocks and their todos.
   ///
@@ -379,20 +381,22 @@ class AppState extends ChangeNotifier {
   }) async {
     final ws = currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
-    await _store.putTask(Task(
-      uuid: newId(),
-      workspaceUuid: ws,
-      text: text.trim(),
-      createdAt: nowStamp(),
-      sortOrder: await _store.nextSortOrder(ws),
-      notes: notes.trim(),
-      priority: priority,
-      remindAt: remindAt == null ? null : reminderStamp(remindAt),
-      // Meaningless without something to count from, so it follows the
-      // reminder - the same rule saveTaskDetails applies.
-      recur: remindAt == null ? null : recur,
-      updatedAt: nowStamp(),
-    ));
+    await _store.putTask(
+      Task(
+        uuid: newId(),
+        workspaceUuid: ws,
+        text: text.trim(),
+        createdAt: nowStamp(),
+        sortOrder: await _store.nextSortOrder(ws),
+        notes: notes.trim(),
+        priority: priority,
+        remindAt: remindAt == null ? null : reminderStamp(remindAt),
+        // Meaningless without something to count from, so it follows the
+        // reminder - the same rule saveTaskDetails applies.
+        recur: remindAt == null ? null : recur,
+        updatedAt: nowStamp(),
+      ),
+    );
     await refreshTasks();
     _mutated();
   }
@@ -413,19 +417,21 @@ class AppState extends ChangeNotifier {
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    await _store.putTask(t.copyWith(
-      text: trimmed,
-      notes: notes.trim(),
-      priority: priority,
-      remindAt: remindAt == null ? null : reminderStamp(remindAt),
-      clearReminder: remindAt == null,
-      // A recurrence with nothing to count from would never produce a second
-      // occurrence, so clearing the reminder clears the rule with it rather
-      // than leaving a rule that silently does nothing.
-      recur: remindAt == null ? null : recur,
-      clearRecur: recur == null || remindAt == null,
-      updatedAt: nowStamp(),
-    ));
+    await _store.putTask(
+      t.copyWith(
+        text: trimmed,
+        notes: notes.trim(),
+        priority: priority,
+        remindAt: remindAt == null ? null : reminderStamp(remindAt),
+        clearReminder: remindAt == null,
+        // A recurrence with nothing to count from would never produce a second
+        // occurrence, so clearing the reminder clears the rule with it rather
+        // than leaving a rule that silently does nothing.
+        recur: remindAt == null ? null : recur,
+        clearRecur: recur == null || remindAt == null,
+        updatedAt: nowStamp(),
+      ),
+    );
     await refreshTasks();
     _mutated();
   }
@@ -436,10 +442,9 @@ class AppState extends ChangeNotifier {
   /// the user's, set by dragging, and a flag that quietly jumped a row to the
   /// top would be a second sort fighting the first.
   Future<void> setPriority(Task t, bool high) async {
-    await _store.putTask(t.copyWith(
-      priority: high ? Task.priorityHigh : 0,
-      updatedAt: nowStamp(),
-    ));
+    await _store.putTask(
+      t.copyWith(priority: high ? Task.priorityHigh : 0, updatedAt: nowStamp()),
+    );
     await refreshTasks();
     _mutated();
   }
@@ -457,7 +462,11 @@ class AppState extends ChangeNotifier {
   /// copies of a standup nobody attended.
   Future<void> completeTask(Task t) async {
     await _store.putTask(
-      t.copyWith(completedAt: nowStamp(), inProgress: false, updatedAt: nowStamp()),
+      t.copyWith(
+        completedAt: nowStamp(),
+        inProgress: false,
+        updatedAt: nowStamp(),
+      ),
     );
 
     final next = t.nextOccurrence();
@@ -529,15 +538,17 @@ class AppState extends ChangeNotifier {
   Future<void> addTaskForEvent(CalendarEvent e, String text) async {
     final ws = workspaceForEvent(e) ?? currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
-    await _store.putTask(Task(
-      uuid: newId(),
-      workspaceUuid: ws,
-      text: text.trim(),
-      createdAt: nowStamp(),
-      sortOrder: await _store.nextSortOrder(ws),
-      eventUuid: e.uuid,
-      updatedAt: nowStamp(),
-    ));
+    await _store.putTask(
+      Task(
+        uuid: newId(),
+        workspaceUuid: ws,
+        text: text.trim(),
+        createdAt: nowStamp(),
+        sortOrder: await _store.nextSortOrder(ws),
+        eventUuid: e.uuid,
+        updatedAt: nowStamp(),
+      ),
+    );
     await refreshTasks();
     _mutated();
   }
@@ -551,8 +562,8 @@ class AppState extends ChangeNotifier {
   /// their own [Task.eventUuid]; they are not filtered out, because the list is
   /// how they get *unplanned* again.
   Future<List<Task>> plannableTasks(CalendarEvent e) async {
-    final ws = calendarsByUuid[e.calendarUuid]?.workspaceUuid ??
-        currentWorkspaceUuid;
+    final ws =
+        calendarsByUuid[e.calendarUuid]?.workspaceUuid ?? currentWorkspaceUuid;
     if (ws == null) return [];
     return _store.activeTasks(ws);
   }
@@ -676,11 +687,13 @@ class AppState extends ChangeNotifier {
   /// Parking drops focus: focus mode is for the thing you are doing now, and
   /// shelving it is the opposite claim.
   Future<void> parkTask(Task t, String groupUuid) async {
-    await _store.putTask(t.copyWith(
-      groupUuid: groupUuid,
-      inProgress: false,
-      updatedAt: nowStamp(),
-    ));
+    await _store.putTask(
+      t.copyWith(
+        groupUuid: groupUuid,
+        inProgress: false,
+        updatedAt: nowStamp(),
+      ),
+    );
     if (focusTask?.uuid == t.uuid) focusTask = null;
     await refreshTasks();
     _mutated();
@@ -690,11 +703,13 @@ class AppState extends ChangeNotifier {
   /// sort_order happens to land it.
   Future<void> unparkTask(Task t) async {
     final ws = t.workspaceUuid;
-    await _store.putTask(t.copyWith(
-      clearGroup: true,
-      sortOrder: await _store.nextSortOrder(ws),
-      updatedAt: nowStamp(),
-    ));
+    await _store.putTask(
+      t.copyWith(
+        clearGroup: true,
+        sortOrder: await _store.nextSortOrder(ws),
+        updatedAt: nowStamp(),
+      ),
+    );
     await refreshTasks();
     _mutated();
   }
@@ -809,12 +824,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> addThought(String text) async {
     if (text.trim().isEmpty) return;
-    await _store.putThought(SideThought(
-      uuid: newId(),
-      text: text.trim(),
-      createdAt: nowStamp(),
-      updatedAt: nowStamp(),
-    ));
+    await _store.putThought(
+      SideThought(
+        uuid: newId(),
+        text: text.trim(),
+        createdAt: nowStamp(),
+        updatedAt: nowStamp(),
+      ),
+    );
     await refreshThoughts();
     _mutated();
   }
@@ -867,12 +884,14 @@ class AppState extends ChangeNotifier {
     await c.setup(password);
     for (final e in await _store.allJournalEntries()) {
       if (e.encrypted) continue;
-      await _store.putJournal(e.copyWith(
-        title: await c.encrypt(e.title),
-        text: await c.encrypt(e.text),
-        encrypted: true,
-        updatedAt: nowStamp(),
-      ));
+      await _store.putJournal(
+        e.copyWith(
+          title: await c.encrypt(e.title),
+          text: await c.encrypt(e.text),
+          encrypted: true,
+          updatedAt: nowStamp(),
+        ),
+      );
     }
     await refreshJournal();
     _mutated();
@@ -887,12 +906,14 @@ class AppState extends ChangeNotifier {
     for (final e in await _store.allJournalEntries()) {
       if (!e.encrypted) continue;
       try {
-        await _store.putJournal(e.copyWith(
-          title: e.title.isEmpty ? '' : await c.decrypt(e.title),
-          text: await c.decrypt(e.text),
-          encrypted: false,
-          updatedAt: nowStamp(),
-        ));
+        await _store.putJournal(
+          e.copyWith(
+            title: e.title.isEmpty ? '' : await c.decrypt(e.title),
+            text: await c.decrypt(e.text),
+            encrypted: false,
+            updatedAt: nowStamp(),
+          ),
+        );
       } catch (_) {
         // A foreign row this key cannot read is left encrypted; there is
         // nothing to decrypt it to.
@@ -947,11 +968,13 @@ class AppState extends ChangeNotifier {
       // encrypted row and stays locked.
       if (c != null && c.isUnlocked) {
         try {
-          items.add(JournalItem(
-            entry: e,
-            title: e.title.isEmpty ? '' : await c.decrypt(e.title),
-            body: await c.decrypt(e.text),
-          ));
+          items.add(
+            JournalItem(
+              entry: e,
+              title: e.title.isEmpty ? '' : await c.decrypt(e.title),
+              body: await c.decrypt(e.text),
+            ),
+          );
           continue;
         } catch (_) {
           // Wrong key for this row - fall through to locked.
@@ -973,15 +996,17 @@ class AppState extends ChangeNotifier {
     if (title.trim().isEmpty && body.trim().isEmpty) return;
     final (t, b, enc) = await _encodeFields(title.trim(), body.trim());
     final now = nowStamp();
-    await _store.putJournal(JournalEntry(
-      uuid: newId(),
-      workspaceUuid: ws,
-      title: t,
-      text: b,
-      encrypted: enc,
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await _store.putJournal(
+      JournalEntry(
+        uuid: newId(),
+        workspaceUuid: ws,
+        title: t,
+        text: b,
+        encrypted: enc,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
     await refreshJournal();
     _mutated();
   }
@@ -989,26 +1014,35 @@ class AppState extends ChangeNotifier {
   /// Rewrite an entry. Its [JournalEntry.createdAt] stays put - the log records
   /// when the thing was written, not when it was later edited. Clearing both
   /// fields deletes it. A locked entry cannot be edited (it cannot be read).
-  Future<void> editJournalEntry(JournalItem item, String title, String body) async {
+  Future<void> editJournalEntry(
+    JournalItem item,
+    String title,
+    String body,
+  ) async {
     if (item.locked || journalLocked) return;
     if (title.trim().isEmpty && body.trim().isEmpty) {
       await deleteJournalEntry(item);
       return;
     }
     final (t, b, enc) = await _encodeFields(title.trim(), body.trim());
-    await _store.putJournal(item.entry.copyWith(
-      title: t,
-      text: b,
-      encrypted: enc,
-      updatedAt: nowStamp(),
-    ));
+    await _store.putJournal(
+      item.entry.copyWith(
+        title: t,
+        text: b,
+        encrypted: enc,
+        updatedAt: nowStamp(),
+      ),
+    );
     await refreshJournal();
     _mutated();
   }
 
   /// Encrypt the two fields when the vault is open, or hand them back plaintext.
   /// Returns the stored title, stored body, and whether they are ciphertext.
-  Future<(String, String, bool)> _encodeFields(String title, String body) async {
+  Future<(String, String, bool)> _encodeFields(
+    String title,
+    String body,
+  ) async {
     final c = journalCrypto;
     if (c == null || !c.isUnlocked) return (title, body, false);
     return (await c.encrypt(title), await c.encrypt(body), true);
@@ -1072,8 +1106,8 @@ class AppState extends ChangeNotifier {
   }
 
   Map<String, Calendar> get calendarsByUuid => {
-        for (final c in calendars) c.uuid: c,
-      };
+    for (final c in calendars) c.uuid: c,
+  };
 
   /// The calendar time-block mode drags onto, or null when the mode is off.
   ///
@@ -1144,14 +1178,18 @@ class AppState extends ChangeNotifier {
 
   /// The half-open window the current mode needs, in local time.
   (DateTime, DateTime) get calendarRange {
-    final a = DateTime(calendarAnchor.year, calendarAnchor.month, calendarAnchor.day);
+    final a = DateTime(
+      calendarAnchor.year,
+      calendarAnchor.month,
+      calendarAnchor.day,
+    );
     return switch (calendarMode) {
       CalendarViewMode.day => (a, a.add(const Duration(days: 1))),
-      CalendarViewMode.week => (startOfWeek(a), startOfWeek(a).add(const Duration(days: 7))),
-      CalendarViewMode.year => (
-          DateTime(a.year),
-          DateTime(a.year + 1),
-        ),
+      CalendarViewMode.week => (
+        startOfWeek(a),
+        startOfWeek(a).add(const Duration(days: 7)),
+      ),
+      CalendarViewMode.year => (DateTime(a.year), DateTime(a.year + 1)),
     };
   }
 
@@ -1173,8 +1211,7 @@ class AppState extends ChangeNotifier {
       orElse: () => CalendarScope.workspace,
     );
     final hidden = await _store.setting(_kCalendarHidden) ?? '';
-    hiddenCalendars =
-        hidden.split(',').where((s) => s.isNotEmpty).toSet();
+    hiddenCalendars = hidden.split(',').where((s) => s.isNotEmpty).toSet();
     final block = await _store.setting(_kCalendarBlock) ?? '';
     timeBlockCalendarUuid = block.isEmpty ? null : block;
   }
@@ -1377,13 +1414,50 @@ class AppState extends ChangeNotifier {
     return row;
   }
 
+  /// Add events read out of an .ics file to [calendarUuid].
+  ///
+  /// Goes through [saveEvent] rather than writing rows directly, so an imported
+  /// block is an ordinary event in every respect - same validation, same
+  /// notification reschedule, same sync. There is deliberately no "imported"
+  /// flag: a block that behaved differently from one you dragged would be a
+  /// second kind of event to reason about for no gain.
+  ///
+  /// The description carries the location and a note when the source was
+  /// recurring, because only the first occurrence comes across and silently
+  /// importing one of a series is the kind of thing that is discovered late.
+  Future<int> importIcsEvents(
+    List<IcsEvent> events, {
+    required String calendarUuid,
+  }) async {
+    var added = 0;
+    for (final e in events) {
+      final notes = [
+        if (e.location.isNotEmpty) e.location,
+        if (e.description.isNotEmpty) e.description,
+        if (e.recurring) 'Repeats — only this occurrence was imported.',
+      ].join('\n\n');
+
+      final row = await saveEvent(
+        calendarUuid: calendarUuid,
+        title: e.summary,
+        description: notes,
+        start: e.start,
+        end: e.end,
+      );
+      if (row != null) added++;
+    }
+    return added;
+  }
+
   Future<void> deleteEvent(CalendarEvent e) async {
     final stamp = nowStamp();
     // The attachments go with it, for the same reason a deleted task's do: a
     // row pointing at an event that no longer exists is unreachable, and its
     // bytes would never be collected.
     for (final a in await _store.eventAttachments(e.uuid)) {
-      await _store.putAttachment(a.copyWith(deletedAt: stamp, updatedAt: stamp));
+      await _store.putAttachment(
+        a.copyWith(deletedAt: stamp, updatedAt: stamp),
+      );
     }
     // The tasks do *not* go with it - they are still things to do, they have
     // simply lost the time that was set aside for them. Only the pointer goes.

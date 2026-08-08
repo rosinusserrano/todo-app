@@ -50,30 +50,44 @@ registration, which is the hard half — they just have no bearing on these two.
 - [ ] **Recurring reminders** ("every weekday at 09:00"). Schema v12, and the
       three edits on both sides.
       A recurrence is a rule, so store the rule: one nullable `recur` column on
-      `tasks`, with **`remind_at` keeping its exact present meaning — the next
-      time this nags.** That is what makes the change small: `ReminderService`,
-      `describeReminder`, the overdue styling and `NotificationService` all go
-      on reading one instant and need no changes. The only new behaviour is
-      advancing `remind_at` when it fires. The alternative — generating a row
-      per occurrence — puts a hundred rows through sync for one weekly nag.
-      **The advance must be computed from the stored `remind_at` and the rule,
-      never from `now`.** Advancing is a write, so it syncs, and two devices
-      that both notice the same due reminder will both do it; from the stored
-      value the rule is deterministic and last-edit-wins converges on the same
-      next occurrence, while from `now` the two devices compute different
-      answers and the reminder drifts by however far apart they polled.
-      On mobile, `NotificationService` must hand the OS the next several
-      occurrences rather than one: a suspended phone runs no timers, so nothing
-      is there to advance the rule between fires.
-      **Open question to settle before building:** what checking off a
-      recurring task means. History is `completed_at` on the same row, so a
-      task cannot both re-arm and appear in History without a second row. The
-      cheap answer is that completing it ends the recurrence — but "every
-      weekday at 09:00" is exactly the kind of task you complete daily, which
-      suggests the opposite. Decide this first; it is the difference between a
-      column and a table. → `sync/local_store.dart`, `sync/models.dart`,
-      `reminders.dart`, `notifications.dart`, `ui/reminder_menu.dart`,
-      `server/db.js`.
+      `tasks`. `remind_at` keeps its exact present meaning — the next time this
+      nags — so `ReminderService`, `describeReminder`, the overdue styling and
+      `NotificationService` all go on reading one instant and need no changes.
+
+      **Checking one off completes it and spawns the next occurrence as a new
+      row.** This was the open question and it is settled: an occurrence is a
+      todo in its own right (today's standup is not yesterday's), so History
+      needs no changes at all — the completed row lands there by having a
+      `completed_at` like every other finished task, and the new row carries
+      the rule and the next instant. The alternative, re-arming the same row
+      and logging completions separately, means a second table and a History
+      that is a union of two sources; "what did I finish" would have two
+      answers, which is the shape this codebase keeps refusing.
+
+      **The new row's uuid must be derived, not generated** — from the series
+      and the occurrence instant. Spawning is a write, so it syncs, and two
+      devices that both see the completion will both spawn; generated ids make
+      those two different rows that sync can only keep as siblings, which is
+      exactly how one account ended up with seven "Tasks" workspaces (see
+      `_foldSeededDefaults` and `Calendar.forWorkspace` — same rule, third
+      instance). Derived, they are one row and the second spawn merges.
+
+      **Compute the next instant from the completed row's `remind_at` and the
+      rule, never from `now`**, for the same convergence reason and because
+      completing Tuesday's 09:00 task at 14:00 must still schedule Wednesday
+      09:00.
+
+      Spawn on *completion*, not on fire: an unchecked recurring task then sits
+      overdue as one row instead of piling up thirty copies of a standup nobody
+      attended.
+
+      A series needs its own id (`series_uuid`, or the rule travels with each
+      row) so that "stop reminding me" can reach the future rather than just
+      this occurrence. On mobile, `NotificationService` should hand the OS the
+      next several occurrences — a suspended phone runs no timers and nothing
+      is there to spawn the next row between fires. →
+      `sync/local_store.dart`, `sync/models.dart`, `app_state.dart`,
+      `notifications.dart`, `ui/reminder_menu.dart`, `server/db.js`.
 
 ## Shipped
 

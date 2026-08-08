@@ -4,6 +4,7 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
+import 'dart:async' show unawaited;
 import 'dart:convert' show utf8;
 import 'dart:io' show File, Platform;
 
@@ -813,7 +814,28 @@ class _WidgetShellState extends State<WidgetShell>
     super.dispose();
   }
 
-  void _onState() => setState(() {});
+  void _onState() {
+    setState(() {});
+    // A merge from sync can tombstone the block this sheet is about, and a
+    // remote delete never runs the local delete path - so nothing else would
+    // notice. Left open, its add field writes tasks whose event_uuid points at
+    // a dead row: they stay on the list but can never turn up in a session, and
+    // _releaseEventTasks will never reach them because the delete happened
+    // elsewhere.
+    if (_sublist != null) unawaited(_dropSublistIfGone());
+  }
+
+  /// Close the sublist if its block no longer exists.
+  Future<void> _dropSublistIfGone() async {
+    final open = _sublist;
+    if (open == null) return;
+
+    final live = await s.store.eventByUuid(open.uuid);
+    // Re-checked after the await: the sheet may have been closed or replaced
+    // while the lookup was in flight.
+    if (!mounted || _sublist?.uuid != open.uuid) return;
+    if (live == null || live.isDeleted) _closeSublist();
+  }
 
   // ------------------------------------------------------------ close guard
 

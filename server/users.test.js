@@ -47,16 +47,16 @@ function task(uuid, text, updated_at, extra = {}) {
 
 const req = (auth) => ({ get: () => auth });
 
-test('an issued token resolves to its own user', () => {
+test('an issued token resolves to its own user', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const { token } = issueToken(db, alice.id, 'phone');
 
   assert.equal(resolveToken(db, token).userId, alice.id);
-  assert.equal(identify(req(`Bearer ${token}`), { db }), alice.id);
+  assert.equal(await identify(req(`Bearer ${token}`), { db }), alice.id);
 });
 
-test('the token itself is never stored, only its hash', () => {
+test('the token itself is never stored, only its hash', async () => {
   const db = freshDb();
   const bob = createUser(db, 'Bob');
   const { token } = issueToken(db, bob.id, 'laptop');
@@ -71,7 +71,7 @@ test('the token itself is never stored, only its hash', () => {
   }
 });
 
-test('two users on one server never see each other\'s rows', () => {
+test('two users on one server never see each other\'s rows', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const bob = createUser(db, 'Bob');
@@ -86,7 +86,7 @@ test('two users on one server never see each other\'s rows', () => {
   assert.deepEqual(forBob.changes.tasks.map((t) => t.uuid), ['t-b']);
 });
 
-test('the same uuid can exist for two users without colliding', () => {
+test('the same uuid can exist for two users without colliding', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const bob = createUser(db, 'Bob');
@@ -102,7 +102,7 @@ test('the same uuid can exist for two users without colliding', () => {
   assert.equal(sync(db, bob.id, 0, {}).changes.tasks[0].text, 'bob');
 });
 
-test('one user focusing a task does not clear another user\'s focus', () => {
+test('one user focusing a task does not clear another user\'s focus', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const bob = createUser(db, 'Bob');
@@ -120,7 +120,7 @@ test('one user focusing a task does not clear another user\'s focus', () => {
   assert.equal(sync(db, bob.id, 0, {}).changes.tasks[0].in_progress, 1);
 });
 
-test('a user\'s cursor does not move when someone else writes', () => {
+test('a user\'s cursor does not move when someone else writes', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const bob = createUser(db, 'Bob');
@@ -139,7 +139,7 @@ test('a user\'s cursor does not move when someone else writes', () => {
   assert.equal(sync(db, alice.id, cursor, {}).changes.tasks.length, 0);
 });
 
-test('a cursor still catches the user\'s own later writes', () => {
+test('a cursor still catches the user\'s own later writes', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const bob = createUser(db, 'Bob');
@@ -158,7 +158,7 @@ test('a cursor still catches the user\'s own later writes', () => {
   assert.ok(second.cursor > first.cursor);
 });
 
-test('a revoked token stops working, and takes only itself down', () => {
+test('a revoked token stops working, and takes only itself down', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const phone = issueToken(db, alice.id, 'phone');
@@ -166,7 +166,7 @@ test('a revoked token stops working, and takes only itself down', () => {
 
   assert.equal(revokeToken(db, phone.id), true);
   assert.equal(resolveToken(db, phone.token), null);
-  assert.throws(() => identify(req(`Bearer ${phone.token}`), { db }), AuthError);
+  await assert.rejects(() => identify(req(`Bearer ${phone.token}`), { db }), AuthError);
   // The user's other device is unaffected - revoking is per token, which is the
   // point of issuing one per device.
   assert.equal(resolveToken(db, laptop.token).userId, alice.id);
@@ -176,7 +176,7 @@ test('a revoked token stops working, and takes only itself down', () => {
   assert.equal(revokeToken(db, phone.id), false);
 });
 
-test('a revoked token cannot be resurrected by the bootstrap secret path', () => {
+test('a revoked token cannot be resurrected by the bootstrap secret path', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const { token, id } = issueToken(db, alice.id, 'phone');
@@ -185,10 +185,10 @@ test('a revoked token cannot be resurrected by the bootstrap secret path', () =>
   // identify() has no "or compare against the configured secret" fallback, so
   // there is no branch that could accept a token the table has revoked.
   adoptBootstrapSecret(db, 'the-owners-secret');
-  assert.throws(() => identify(req(`Bearer ${token}`), { db }), AuthError);
+  await assert.rejects(() => identify(req(`Bearer ${token}`), { db }), AuthError);
 });
 
-test('the bootstrap secret is adopted as the local user, once', () => {
+test('the bootstrap secret is adopted as the local user, once', async () => {
   const db = freshDb();
 
   // A pre-multi-user server's rows are already user_id 'local'.
@@ -197,27 +197,27 @@ test('the bootstrap secret is adopted as the local user, once', () => {
   adoptBootstrapSecret(db, 'old-secret');
   adoptBootstrapSecret(db, 'old-secret');
 
-  assert.equal(identify(req('Bearer old-secret'), { db }), LAN_USER);
+  assert.equal(await identify(req('Bearer old-secret'), { db }), LAN_USER);
   assert.equal(listTokens(db, LAN_USER).length, 1, 'restarting must not pile up tokens');
   assert.equal(sync(db, LAN_USER, 0, {}).changes.tasks[0].text, 'from before tokens');
 });
 
-test('changing the bootstrap secret retires the previous one', () => {
+test('changing the bootstrap secret retires the previous one', async () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'old-secret');
   const device = issueToken(db, LAN_USER, 'phone');
 
   adoptBootstrapSecret(db, 'new-secret');
 
-  assert.equal(identify(req('Bearer new-secret'), { db }), LAN_USER);
+  assert.equal(await identify(req('Bearer new-secret'), { db }), LAN_USER);
   // Otherwise "I changed TODO_SYNC_SECRET" would leave the old one opening the
   // door, which is the opposite of what changing it means.
-  assert.throws(() => identify(req('Bearer old-secret'), { db }), AuthError);
+  await assert.rejects(() => identify(req('Bearer old-secret'), { db }), AuthError);
   // Only the secret rotates. A token handed to a device is not collateral.
   assert.equal(resolveToken(db, device.token).userId, LAN_USER);
 });
 
-test('the owner and a new user coexist on a server that predates users', () => {
+test('the owner and a new user coexist on a server that predates users', async () => {
   const db = freshDb();
 
   // Existing data, existing secret.
@@ -227,18 +227,18 @@ test('the owner and a new user coexist on a server that predates users', () => {
   // The new arrival.
   const alice = createUser(db, 'Alice');
   const { token } = issueToken(db, alice.id, 'phone');
-  sync(db, identify(req(`Bearer ${token}`), { db }), 0, {
+  sync(db, await identify(req(`Bearer ${token}`), { db }), 0, {
     tasks: [task('t-new', 'alice\'s task', '2026-08-03T10:00:00+02:00')],
   });
 
-  const owner = sync(db, identify(req('Bearer owner-secret'), { db }), 0, {});
+  const owner = sync(db, await identify(req('Bearer owner-secret'), { db }), 0, {});
   assert.deepEqual(owner.changes.tasks.map((t) => t.uuid), ['t-old']);
 
   const users = listUsers(db).map((u) => u.id);
   assert.deepEqual(users.sort(), [LAN_USER, alice.id].sort());
 });
 
-test('a fresh account starts empty rather than inheriting anything', () => {
+test('a fresh account starts empty rather than inheriting anything', async () => {
   const db = freshDb();
   sync(db, LAN_USER, 0, {
     tasks: [task('t-old', 'owner', '2026-01-01T09:00:00Z')],
@@ -262,14 +262,14 @@ test('a fresh account starts empty rather than inheriting anything', () => {
   }
 });
 
-test('issuing a token for an unknown user is refused', () => {
+test('issuing a token for an unknown user is refused', async () => {
   const db = freshDb();
   // Otherwise a typo in `--user` would mint a working token for an account
   // nobody can ever administer, holding rows no listing shows.
   assert.throws(() => issueToken(db, 'nobody-0000', 'phone'), /no such user/);
 });
 
-test('whoever holds the bootstrap secret is the admin', () => {
+test('whoever holds the bootstrap secret is the admin', async () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'owner-secret');
 
@@ -280,7 +280,7 @@ test('whoever holds the bootstrap secret is the admin', () => {
   assert.equal(isAdmin(db, createUser(db, 'Alice').id), false);
 });
 
-test('a local user created before admin existed gains it on the next start', () => {
+test('a local user created before admin existed gains it on the next start', async () => {
   const db = freshDb();
   // The shape the first multi-user build left behind: a local user, no admin.
   db.prepare('UPDATE users SET is_admin = 0 WHERE id = ?').run(
@@ -292,7 +292,7 @@ test('a local user created before admin existed gains it on the next start', () 
   assert.equal(isAdmin(db, LAN_USER), true, 'a restart must not leave the server admin-less');
 });
 
-test('admin can be granted and dropped, but never to nobody', () => {
+test('admin can be granted and dropped, but never to nobody', async () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'owner-secret');
   const alice = createUser(db, 'Alice');
@@ -309,7 +309,7 @@ test('admin can be granted and dropped, but never to nobody', () => {
   assert.equal(isAdmin(db, alice.id), true);
 });
 
-test('deleting a user takes their rows with them', () => {
+test('deleting a user takes their rows with them', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const bob = createUser(db, 'Bob');
@@ -343,7 +343,7 @@ test('deleting a user takes their rows with them', () => {
   assert.equal(sync(db, bob.id, 0, {}).changes.tasks[0].text, 'bob');
 });
 
-test('a deleted user\'s token stops working immediately', () => {
+test('a deleted user\'s token stops working immediately', async () => {
   const db = freshDb();
   const alice = createUser(db, 'Alice');
   const { token } = issueToken(db, alice.id, 'phone');
@@ -352,10 +352,10 @@ test('a deleted user\'s token stops working immediately', () => {
   // Not merely "their data is gone" - the credential must not still resolve,
   // or the next sync would silently recreate the account from its own rows.
   assert.equal(resolveToken(db, token), null);
-  assert.throws(() => identify(req(`Bearer ${token}`), { db }), AuthError);
+  await assert.rejects(() => identify(req(`Bearer ${token}`), { db }), AuthError);
 });
 
-test('user ids are unique even for the same label', () => {
+test('user ids are unique even for the same label', async () => {
   const db = freshDb();
   const first = createUser(db, 'Alice');
   const second = createUser(db, 'Alice');

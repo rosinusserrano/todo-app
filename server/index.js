@@ -17,6 +17,7 @@ import { networkInterfaces } from 'node:os';
 import { openDb, purgeUser, sync, userCursor, TABLES } from './db.js';
 import { adminOnly, middleware } from './auth.js';
 import { DB_PATH, HOST, PORT, loadSecret } from './config.js';
+import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
   adoptBootstrapSecret,
   createUser,
@@ -35,6 +36,16 @@ const db = openDb(DB_PATH);
 // see users.js. This is what keeps every device set up before multi-user
 // working, and pointing at the same rows: they already carry user_id 'local'.
 adoptBootstrapSecret(db, SECRET);
+
+// Single sign-on, when TODO_OIDC_ISSUER names a provider. Null otherwise, and
+// null is what keeps identify() on the tokens table alone - the feature is off
+// unless it was configured, rather than off unless it was disabled.
+const OIDC_CONFIG = oidcConfigFromEnv();
+const oidc = OIDC_CONFIG ? new OidcVerifier(OIDC_CONFIG) : null;
+
+// Every route that authenticates shares one config object, so a route cannot be
+// added that quietly authenticates against a different set of rules.
+const auth = { db, oidc };
 
 const app = express();
 app.use(express.json({ limit: '8mb' }));
@@ -97,7 +108,31 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'todo-widget-sync', version: 1 });
 });
 
-app.post('/api/sync', middleware({ db }), (req, res, next) => {
+// Unauthenticated, and deliberately: a client has to know *whether* to offer
+// "Sign in with SSO" before it has any credential to present. Everything here
+// is already public - the issuer and client id are in every login URL, and the
+// endpoints come from the provider's own published discovery document.
+app.get('/api/auth/config', async (_req, res) => {
+  if (!oidc) return res.json({ mode: 'token' });
+
+  try {
+    const doc = await oidc.discover();
+    res.json({
+      mode: 'oidc',
+      issuer: oidc.config.issuer,
+      client_id: oidc.config.clientId,
+      device_authorization_endpoint: doc.device_authorization_endpoint ?? null,
+      token_endpoint: doc.token_endpoint ?? null,
+    });
+  } catch (err) {
+    // The server is up, SSO is configured, and the provider is not answering.
+    // Saying so is more useful than falling back to 'token', which would have
+    // the client quietly ask for a password-equivalent it should not need.
+    res.status(503).json({ mode: 'oidc', error: String(err.message ?? err) });
+  }
+});
+
+app.post('/api/sync', middleware(auth), (req, res, next) => {
   const problem = validatePayload(req.body);
   if (problem) return res.status(400).json({ error: problem });
 
@@ -112,7 +147,7 @@ app.post('/api/sync', middleware({ db }), (req, res, next) => {
 // Cheap way for a client to ask "is there anything new?" without uploading.
 // Scoped to the caller: a global counter would move whenever *another* user
 // wrote, and every client would sync on a poll with nothing to fetch.
-app.get('/api/cursor', middleware({ db }), (req, res) => {
+app.get('/api/cursor', middleware(auth), (req, res) => {
   res.json({ cursor: userCursor(db, req.userId) });
 });
 
@@ -121,7 +156,7 @@ app.get('/api/cursor', middleware({ db }), (req, res) => {
 // tasks into the wrong account. `admin` is what makes the app show the user
 // management panel at all, so an ordinary account never sees a door it cannot
 // open (the routes below still check for themselves - this only hides the UI).
-app.get('/api/me', middleware({ db }), (req, res) => {
+app.get('/api/me', middleware(auth), (req, res) => {
   const user = getUser(db, req.userId);
   res.json({
     user: req.userId,
@@ -137,7 +172,7 @@ app.get('/api/me', middleware({ db }), (req, res) => {
 // that is already syncing, so there is no extra credential to steal or leak. The
 // CLI stays for the case the panel cannot help with - no admin token to hand.
 
-const admin = [middleware({ db }), adminOnly({ db })];
+const admin = [middleware(auth), adminOnly(auth)];
 
 /// Labels end up in listings and in a user id; keep them sane rather than
 /// letting a 4KB "name" through into every future console line.

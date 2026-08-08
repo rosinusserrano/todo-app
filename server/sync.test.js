@@ -35,7 +35,7 @@ function task(uuid, text, updated_at, extra = {}) {
   };
 }
 
-test('a pushed row comes back on a fresh pull', () => {
+test('a pushed row comes back on a fresh pull', async () => {
   const db = freshDb();
   const { cursor, changes } = sync(db, USER, 0, {
     tasks: [task('t1', 'buy milk', '2026-07-21T10:00:00+02:00')],
@@ -50,7 +50,7 @@ test('a pushed row comes back on a fresh pull', () => {
   assert.equal(second.changes.tasks.length, 1);
 });
 
-test('later updated_at wins; earlier is ignored', () => {
+test('later updated_at wins; earlier is ignored', async () => {
   const db = freshDb();
   sync(db, USER, 0, { tasks: [task('t1', 'original', '2026-07-21T10:00:00+02:00')] });
 
@@ -65,7 +65,7 @@ test('later updated_at wins; earlier is ignored', () => {
   assert.equal(state.changes.tasks[0].text, 'newer');
 });
 
-test('re-pushing an unchanged row does not bump the cursor', () => {
+test('re-pushing an unchanged row does not bump the cursor', async () => {
   const db = freshDb();
   const row = task('t1', 'stable', '2026-07-21T10:00:00+02:00');
   sync(db, USER, 0, { tasks: [row] });
@@ -75,7 +75,7 @@ test('re-pushing an unchanged row does not bump the cursor', () => {
   assert.equal(currentSeq(db), before, 'identical row should be a no-op');
 });
 
-test('deletes propagate as tombstones, not disappearances', () => {
+test('deletes propagate as tombstones, not disappearances', async () => {
   const db = freshDb();
   sync(db, USER, 0, { tasks: [task('t1', 'doomed', '2026-07-21T10:00:00+02:00')] });
   const afterCreate = currentSeq(db);
@@ -96,7 +96,7 @@ test('deletes propagate as tombstones, not disappearances', () => {
   assert.equal(peer.changes.tasks[0].deleted_at, '2026-07-21T12:00:00+02:00');
 });
 
-test('incremental pull returns only what changed since the cursor', () => {
+test('incremental pull returns only what changed since the cursor', async () => {
   const db = freshDb();
   const first = sync(db, USER, 0, {
     tasks: [task('t1', 'one', '2026-07-21T10:00:00+02:00')],
@@ -110,7 +110,7 @@ test('incremental pull returns only what changed since the cursor', () => {
   assert.deepEqual(uuids, ['t2'], 't1 was already known to this client');
 });
 
-test('in_progress stays globally exclusive across a two-device conflict', () => {
+test('in_progress stays globally exclusive across a two-device conflict', async () => {
   const db = freshDb();
 
   // Both devices focused a different task while offline, and both rows are
@@ -129,7 +129,7 @@ test('in_progress stays globally exclusive across a two-device conflict', () => 
   assert.equal(focused[0].uuid, 't2', 'the most recently focused task wins');
 });
 
-test('workspaces and side thoughts round-trip independently', () => {
+test('workspaces and side thoughts round-trip independently', async () => {
   const db = freshDb();
   const { changes } = sync(db, USER, 0, {
     workspaces: [
@@ -157,7 +157,7 @@ test('workspaces and side thoughts round-trip independently', () => {
   assert.equal(changes.side_thoughts[0].text, 'look into flutter');
 });
 
-test('a reminder set on one device reaches the others', () => {
+test('a reminder set on one device reaches the others', async () => {
   const db = freshDb();
 
   sync(db, USER, 0, {
@@ -172,7 +172,7 @@ test('a reminder set on one device reaches the others', () => {
   assert.equal(changes.tasks[0].remind_at, '2026-07-21T14:00:00.000Z');
 });
 
-test('clearing a reminder propagates as a null, not a stale value', () => {
+test('clearing a reminder propagates as a null, not a stale value', async () => {
   const db = freshDb();
 
   sync(db, USER, 0, {
@@ -195,7 +195,7 @@ test('clearing a reminder propagates as a null, not a stale value', () => {
   assert.equal(changes.tasks[0].remind_at, null);
 });
 
-test('a server database predating reminders gains the column', () => {
+test('a server database predating reminders gains the column', async () => {
   // openDb() on an existing file only runs CREATE TABLE IF NOT EXISTS, so
   // without an explicit migration the column would never appear and every
   // task push would fail.
@@ -242,7 +242,7 @@ test('a server database predating reminders gains the column', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('a parked group and its membership sync together', () => {
+test('a parked group and its membership sync together', async () => {
   const db = freshDb();
 
   sync(db, USER, 0, {
@@ -275,7 +275,7 @@ test('a parked group and its membership sync together', () => {
   assert.equal(changes.tasks[0].group_uuid, 'g-1');
 });
 
-test('unparking propagates as a null group, not a stale one', () => {
+test('unparking propagates as a null group, not a stale one', async () => {
   const db = freshDb();
 
   sync(db, USER, 0, {
@@ -296,7 +296,7 @@ test('unparking propagates as a null group, not a stale one', () => {
   assert.equal(changes.tasks[0].group_uuid, null);
 });
 
-test('a server database predating parked groups gains the table and column', () => {
+test('a server database predating parked groups gains the table and column', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -340,7 +340,7 @@ test('a server database predating parked groups gains the table and column', () 
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('attachment metadata syncs, and the bytes are not the server\'s problem', () => {
+test('attachment metadata syncs, and the bytes are not the server\'s problem', async () => {
   const db = freshDb();
 
   const { changes } = sync(db, USER, 0, {
@@ -367,7 +367,7 @@ test('attachment metadata syncs, and the bytes are not the server\'s problem', (
   assert.ok(!('data' in changes.attachments[0]));
 });
 
-test('a removed attachment propagates as a tombstone', () => {
+test('a removed attachment propagates as a tombstone', async () => {
   const db = freshDb();
   const row = (updated_at, deleted_at) => ({
     uuid: 'a-1',
@@ -388,7 +388,7 @@ test('a removed attachment propagates as a tombstone', () => {
   assert.equal(changes.attachments[0].deleted_at, '2026-07-21T11:00:00+02:00');
 });
 
-test('a server database predating attachments gains the table', () => {
+test('a server database predating attachments gains the table', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -436,7 +436,7 @@ test('a server database predating attachments gains the table', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('journal entries round-trip title and body as opaque ciphertext', () => {
+test('journal entries round-trip title and body as opaque ciphertext', async () => {
   const db = freshDb();
 
   // When encrypted, the client sends AES-GCM blobs and the encrypted flag; the
@@ -466,7 +466,7 @@ test('journal entries round-trip title and body as opaque ciphertext', () => {
   assert.equal(changes.journal_entries[0].workspace_uuid, 'ws-1');
 });
 
-test('a plaintext journal entry round-trips with encrypted = 0', () => {
+test('a plaintext journal entry round-trips with encrypted = 0', async () => {
   const db = freshDb();
   const { changes } = sync(db, USER, 0, {
     journal_entries: [
@@ -486,7 +486,7 @@ test('a plaintext journal entry round-trips with encrypted = 0', () => {
   assert.equal(changes.journal_entries[0].text, 'a plain body');
 });
 
-test('editing a journal entry wins by updated_at, keeping created_at', () => {
+test('editing a journal entry wins by updated_at, keeping created_at', async () => {
   const db = freshDb();
   const entry = (text, updated_at) => ({
     uuid: 'j-1',
@@ -507,7 +507,7 @@ test('editing a journal entry wins by updated_at, keeping created_at', () => {
   assert.equal(changes.journal_entries[0].created_at, '2026-07-23T14:00:00+02:00');
 });
 
-test('a deleted journal entry propagates as a tombstone', () => {
+test('a deleted journal entry propagates as a tombstone', async () => {
   const db = freshDb();
   const row = (updated_at, deleted_at) => ({
     uuid: 'j-1',
@@ -526,7 +526,7 @@ test('a deleted journal entry propagates as a tombstone', () => {
   assert.equal(changes.journal_entries[0].deleted_at, '2026-07-23T15:00:00+02:00');
 });
 
-test('a server database predating the journal gains the table', () => {
+test('a server database predating the journal gains the table', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -574,7 +574,7 @@ test('a server database predating the journal gains the table', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('a server database with a title-less journal gains the column', () => {
+test('a server database with a title-less journal gains the column', async () => {
   // A server that first synced a journal in the v5 era has the table but no
   // title column; openDb must add it, or every titled push would fail.
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
@@ -624,7 +624,7 @@ test('a server database with a title-less journal gains the column', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('calendars and events round-trip, including the null workspace', () => {
+test('calendars and events round-trip, including the null workspace', async () => {
   const db = freshDb();
 
   sync(db, USER, 0, {
@@ -688,7 +688,7 @@ test('calendars and events round-trip, including the null workspace', () => {
   db.close();
 });
 
-test('an event moved on one device wins by updated_at', () => {
+test('an event moved on one device wins by updated_at', async () => {
   const db = freshDb();
   const event = (start, updated_at) => ({
     uuid: 'e-1',
@@ -717,7 +717,7 @@ test('an event moved on one device wins by updated_at', () => {
   db.close();
 });
 
-test('a deleted event propagates as a tombstone', () => {
+test('a deleted event propagates as a tombstone', async () => {
   const db = freshDb();
   const row = (updated_at, deleted_at) => ({
     uuid: 'e-1',
@@ -745,7 +745,7 @@ test('a deleted event propagates as a tombstone', () => {
   db.close();
 });
 
-test('a server database predating the calendar gains its tables and column', () => {
+test('a server database predating the calendar gains its tables and column', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -812,7 +812,7 @@ test('a server database predating the calendar gains its tables and column', () 
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('a server database predating planned todos gains tasks.event_uuid', () => {
+test('a server database predating planned todos gains tasks.event_uuid', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -872,7 +872,7 @@ test('a server database predating planned todos gains tasks.event_uuid', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('a server database predating notes gains tasks.notes and tasks.priority', () => {
+test('a server database predating notes gains tasks.notes and tasks.priority', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -937,7 +937,7 @@ test('a server database predating notes gains tasks.notes and tasks.priority', (
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('a server database predating recurrence gains tasks.recur', () => {
+test('a server database predating recurrence gains tasks.recur', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
   const path = join(dir, 'sync.db');
 
@@ -1005,18 +1005,18 @@ test('a server database predating recurrence gains tasks.recur', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('auth rejects a missing, malformed or wrong token', () => {
+test('auth rejects a missing, malformed or wrong token', async () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'correct-horse');
   const config = { db };
   const req = (auth) => ({ get: () => auth });
 
-  assert.throws(() => identify(req(undefined), config), AuthError);
-  assert.throws(() => identify(req('correct-horse'), config), AuthError, 'needs Bearer prefix');
-  assert.throws(() => identify(req('Bearer wrong'), config), AuthError);
-  assert.throws(() => identify(req('Bearer correct-hors'), config), AuthError);
+  await assert.rejects(() => identify(req(undefined), config), AuthError);
+  await assert.rejects(() => identify(req('correct-horse'), config), AuthError, 'needs Bearer prefix');
+  await assert.rejects(() => identify(req('Bearer wrong'), config), AuthError);
+  await assert.rejects(() => identify(req('Bearer correct-hors'), config), AuthError);
 
   // The bootstrap secret authenticates as the same user every pre-multi-user
   // row was written by, so an existing setup keeps its data.
-  assert.equal(identify(req('Bearer correct-horse'), config), LAN_USER);
+  assert.equal(await identify(req('Bearer correct-horse'), config), LAN_USER);
 });

@@ -52,12 +52,34 @@ export function initUsers(db) {
   // Same reason db.js has addColumn: CREATE TABLE IF NOT EXISTS does nothing to
   // a table that already exists, so a server that ran the first multi-user
   // build has `users` without `is_admin` and would reject every query naming it.
-  const hasAdmin = db
-    .prepare(`SELECT 1 FROM pragma_table_info('users') WHERE name = 'is_admin'`)
-    .get();
-  if (!hasAdmin) {
+  const column = (name) =>
+    db.prepare(`SELECT 1 FROM pragma_table_info('users') WHERE name = ?`).get(name);
+
+  if (!column('is_admin')) {
     db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
   }
+  // The single sign-on identity this account is, or null for a token-only
+  // account. Nullable rather than a second table: an account has at most one
+  // provider identity, and a join for one column would be a join for nothing.
+  if (!column('oidc_sub')) {
+    db.exec(`ALTER TABLE users ADD COLUMN oidc_sub TEXT`);
+  }
+  // Locally blocked. This exists *because* of SSO: a device token is revoked by
+  // deleting it from the tokens table, but an SSO token is minted by Keycloak
+  // and this server cannot un-issue one. Without a local block, "revoked is
+  // revoked" - the property the tokens table was built around - would stop
+  // holding the moment SSO was switched on.
+  if (!column('blocked_at')) {
+    db.exec(`ALTER TABLE users ADD COLUMN blocked_at TEXT`);
+  }
+
+  // Two accounts claiming one provider identity would make "who is this" a
+  // question with two answers. Partial, so the token-only accounts (which all
+  // have a null sub) do not collide with each other.
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_sub
+      ON users (oidc_sub) WHERE oidc_sub IS NOT NULL
+  `);
 }
 
 function now() {
@@ -97,6 +119,52 @@ export function ensureUser(db, id, label, { admin = false } = {}) {
 export function createUser(db, label, { admin = false } = {}) {
   const id = newUserId(db, label);
   return ensureUser(db, id, label, { admin });
+}
+
+/** True when an operator has locked this account out locally. */
+export function isBlocked(db, userId) {
+  const user = getUser(db, userId);
+  return !!user && !!user.blocked_at;
+}
+
+/**
+ * Block or unblock an account.
+ *
+ * The only way to cut off an SSO identity from this end - see the blocked_at
+ * comment in initUsers. Blocking does not delete anything, so unblocking
+ * restores the account and its rows intact.
+ */
+export function setBlocked(db, userId, on) {
+  if (!getUser(db, userId)) throw new Error(`no such user: ${userId}`);
+  db.prepare('UPDATE users SET blocked_at = ? WHERE id = ?').run(on ? now() : null, userId);
+  return getUser(db, userId);
+}
+
+/**
+ * The account for a provider identity, created on first sight.
+ *
+ * Keyed on `sub`, never on email: an address changing hands in the directory
+ * must not hand over the account with it. The label is refreshed on every
+ * login so a rename in Keycloak shows up here, and the admin role is applied
+ * the same way - the directory is the authority on both while SSO is on.
+ *
+ * Auto-provisioning is what makes "log in with the company account" work
+ * without an invite step. If that is not wanted, the answer is to restrict who
+ * can reach the client in Keycloak, which is where that policy belongs.
+ */
+export function userForOidc(db, sub, label, { admin = false } = {}) {
+  const existing = db.prepare('SELECT * FROM users WHERE oidc_sub = ?').get(sub);
+  if (existing) {
+    db.prepare('UPDATE users SET label = ?, is_admin = ? WHERE id = ?')
+      .run(label, admin ? 1 : 0, existing.id);
+    return getUser(db, existing.id);
+  }
+
+  const id = newUserId(db, label);
+  db.prepare(
+    'INSERT INTO users (id, label, is_admin, oidc_sub, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, label, admin ? 1 : 0, sub, now());
+  return getUser(db, id);
 }
 
 export function isAdmin(db, userId) {

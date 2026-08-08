@@ -119,6 +119,26 @@ State flags rather than separate tables:
   `clear` flag for either. `priority` is an integer rather than a boolean
   because a second level is the obvious next request and a second column could
   disagree with the first after a merge.
+- `recur` on a task is the repeat rule (v12), null for a one-off, and it carries
+  the **period only** — the time of day is `remind_at`'s, which keeps its exact
+  meaning of "the next time this nags". That is what kept the change small:
+  `ReminderService`, `describeReminder`, the overdue styling and
+  `NotificationService` all still read one instant and needed no changes.
+  Completing a recurring task **spawns the next occurrence as a new row**
+  (`Task.nextOccurrence`, called from `AppState.completeTask`) rather than
+  re-arming this one, so History needed no changes either — the finished row
+  lands there by having a `completed_at` like any other. Two things about it are
+  load-bearing:
+  - **The successor's uuid is derived** (uuid v5 over the parent's id and the
+    occurrence instant), not generated. Spawning happens on a write, writes
+    sync, so two devices that both see a completion both spawn; generated ids
+    would make those siblings. Third instance of the rule, after
+    `_foldSeededDefaults` and `Calendar.forWorkspace`.
+  - **`Recur.next` is calendar arithmetic in local time**, not `Duration`
+    addition. Adding 24 hours to an instant moves a 09:00 alarm to 08:00 across
+    a DST boundary; building the next `DateTime` from its parts keeps the
+    reading. Month-length overflow clamps rather than normalising, or a monthly
+    task on the 31st would quietly move to the 1st.
 - `event_uuid` on a task is the **planned-into-a-block** pointer, and it follows
   `group_uuid`'s shape for the same reasons — except that it does **not** take
   the row off `activeTasks`. Planning says *when*, not "put this away"; a plan

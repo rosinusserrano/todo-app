@@ -20,7 +20,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # build number after the + is separate and only ever counts up, across version
 # changes too - iOS and Android reject an upload whose build number is not
 # higher than the last one, whatever the version says.
-version: 0.17.0+1
+version: 0.18.0+2
 
 environment:
   sdk: ^3.12.2

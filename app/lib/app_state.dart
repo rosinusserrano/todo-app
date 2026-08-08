@@ -375,6 +375,7 @@ class AppState extends ChangeNotifier {
     String notes = '',
     int priority = 0,
     DateTime? remindAt,
+    String? recur,
   }) async {
     final ws = currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
@@ -387,6 +388,9 @@ class AppState extends ChangeNotifier {
       notes: notes.trim(),
       priority: priority,
       remindAt: remindAt == null ? null : reminderStamp(remindAt),
+      // Meaningless without something to count from, so it follows the
+      // reminder - the same rule saveTaskDetails applies.
+      recur: remindAt == null ? null : recur,
       updatedAt: nowStamp(),
     ));
     await refreshTasks();
@@ -405,6 +409,7 @@ class AppState extends ChangeNotifier {
     required String notes,
     required int priority,
     DateTime? remindAt,
+    String? recur,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -414,6 +419,11 @@ class AppState extends ChangeNotifier {
       priority: priority,
       remindAt: remindAt == null ? null : reminderStamp(remindAt),
       clearReminder: remindAt == null,
+      // A recurrence with nothing to count from would never produce a second
+      // occurrence, so clearing the reminder clears the rule with it rather
+      // than leaving a rule that silently does nothing.
+      recur: remindAt == null ? null : recur,
+      clearRecur: recur == null || remindAt == null,
       updatedAt: nowStamp(),
     ));
     await refreshTasks();
@@ -435,10 +445,24 @@ class AppState extends ChangeNotifier {
   }
 
   /// Check off: keeps the row and stamps completed_at, so it shows in history.
+  /// Check a task off. A recurring one also lays down its successor.
+  ///
+  /// The completed row is completed like any other - it goes to History by
+  /// having a `completed_at`, which is why recurrence needed no changes there -
+  /// and the next occurrence is a *new* row with a derived uuid. See
+  /// [Task.nextOccurrence] for why the id is derived rather than generated.
+  ///
+  /// Spawned on completion rather than when the reminder fires: an unchecked
+  /// recurring task then sits overdue as one row instead of piling up thirty
+  /// copies of a standup nobody attended.
   Future<void> completeTask(Task t) async {
     await _store.putTask(
       t.copyWith(completedAt: nowStamp(), inProgress: false, updatedAt: nowStamp()),
     );
+
+    final next = t.nextOccurrence();
+    if (next != null) await _store.putTask(next);
+
     if (focusTask?.uuid == t.uuid) focusTask = null;
     await refreshTasks();
     _mutated();

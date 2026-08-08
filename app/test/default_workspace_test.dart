@@ -88,6 +88,7 @@ void main() {
       // v11 added notes and priority, which the migration would collide on.
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
       await store.raw.setVersion(8);
       await store.close();
       return path;
@@ -229,6 +230,7 @@ void main() {
       // v11 added notes and priority, which the migration would collide on.
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
       await store.raw.setVersion(8);
       await store.close();
 

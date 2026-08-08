@@ -1750,6 +1750,7 @@ class _WidgetShellState extends State<WidgetShell>
       notes: draft.notes,
       priority: draft.priority,
       remindAt: draft.remindAt,
+      recur: draft.recur,
     );
   }
 
@@ -1763,6 +1764,7 @@ class _WidgetShellState extends State<WidgetShell>
       notes: draft.notes,
       priority: draft.priority,
       remindAt: draft.remindAt,
+      recur: draft.recur,
     );
   }
 

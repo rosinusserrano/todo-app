@@ -253,6 +253,7 @@ void main() {
     // collides with the columns _create already made.
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
     await store.raw.setVersion(3);
     await store.close();
 

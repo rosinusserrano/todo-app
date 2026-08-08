@@ -47,6 +47,82 @@ int compareStamps(String a, String b) {
   return pa.toUtc().compareTo(pb.toUtc());
 }
 
+/// How a task repeats.
+///
+/// A small closed vocabulary rather than an RRULE: this is a todo widget, and
+/// "every second Tuesday except in August" is a calendar's problem. The rule
+/// carries the *period* only - the time of day is [Task.remindAt]'s, so there
+/// is one place a recurring reminder's clock is stored and it is the same place
+/// a one-off's is.
+class Recur {
+  static const daily = 'daily';
+  static const weekdays = 'weekdays';
+  static const weekly = 'weekly';
+  static const monthly = 'monthly';
+  static const yearly = 'yearly';
+
+  static const rules = [daily, weekdays, weekly, monthly, yearly];
+
+  static const labels = {
+    daily: 'Every day',
+    weekdays: 'Every weekday',
+    weekly: 'Every week',
+    monthly: 'Every month',
+    yearly: 'Every year',
+  };
+
+  static String label(String rule) => labels[rule] ?? rule;
+
+  /// The occurrence after [from] under [rule], or null if the rule is unknown.
+  ///
+  /// **Calendar arithmetic, not duration arithmetic, and in local time.** A
+  /// reminder is set at a wall-clock time - "every day at 09:00" - and adding
+  /// `Duration(days: 1)` to an instant shifts that reading by an hour across a
+  /// DST boundary, so a daily 09:00 alarm would drift to 08:00 for half the
+  /// year. Building the next DateTime from its parts keeps the reading and lets
+  /// Dart normalise the overflow (month 13 becomes January).
+  ///
+  /// Day-of-month overflow clamps the same way: `DateTime(2026, 2, 31)`
+  /// normalises to 3 March, which is not what "monthly" means to anyone with a
+  /// task on the 31st, so [monthly] pulls it back to the last day of the target
+  /// month instead.
+  static DateTime? next(DateTime from, String rule) {
+    final l = from.toLocal();
+    DateTime at(int year, int month, int day) =>
+        DateTime(year, month, day, l.hour, l.minute, l.second);
+
+    switch (rule) {
+      case daily:
+        return at(l.year, l.month, l.day + 1);
+
+      case weekdays:
+        // Friday, Saturday and Sunday all land on the following Monday.
+        var d = at(l.year, l.month, l.day + 1);
+        while (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday) {
+          d = at(d.year, d.month, d.day + 1);
+        }
+        return d;
+
+      case weekly:
+        return at(l.year, l.month, l.day + 7);
+
+      case monthly:
+        final lastDay = DateTime(l.year, l.month + 2, 0).day;
+        return at(l.year, l.month + 1, l.day > lastDay ? lastDay : l.day);
+
+      case yearly:
+        // 29 February in a common year becomes the 28th, for the same reason.
+        final lastDay = DateTime(l.year + 1, l.month + 1, 0).day;
+        return at(l.year + 1, l.month, l.day > lastDay ? lastDay : l.day);
+    }
+    return null;
+  }
+
+  /// Namespace for [Task.nextOccurrence]'s derived uuids. A fixed constant, so
+  /// two devices deriving the same occurrence agree.
+  static const occurrenceNamespace = '6f9a1c2e-4d3b-5a7f-8e10-2b6c4d9f1a35';
+}
+
 abstract class SyncRow {
   String get uuid;
   String get updatedAt;
@@ -253,6 +329,22 @@ class Task implements SyncRow {
   /// silences all the others.
   final String? remindAt;
 
+  /// How this task repeats, or null for a one-off. One of [Recur.rules].
+  ///
+  /// The rule is the *period* only - the time of day comes from [remindAt],
+  /// which keeps its exact meaning of "the next time this nags". That is what
+  /// makes recurrence cheap: ReminderService, describeReminder, the overdue
+  /// styling and NotificationService all go on reading one instant and needed
+  /// no changes for this.
+  ///
+  /// Completing a recurring task spawns the next occurrence as a *new row*
+  /// rather than re-arming this one - see [nextOccurrence]. An occurrence is a
+  /// todo in its own right, so the completed row lands in History by having a
+  /// `completed_at` like any other, and History needed no changes either.
+  /// Re-arming and logging completions separately would mean a second table
+  /// and two answers to "what did I finish".
+  final String? recur;
+
   /// The [ParkedGroup] this task is shelved in, or null for a task on the
   /// current list. One nullable column rather than a second table: a parked
   /// task is the same row with the same history, just not on today's list, and
@@ -308,6 +400,7 @@ class Task implements SyncRow {
     this.sortOrder = 0,
     this.inProgress = false,
     this.remindAt,
+    this.recur,
     this.groupUuid,
     this.eventUuid,
     this.notes = '',
@@ -344,6 +437,54 @@ class Task implements SyncRow {
   @override
   bool get isDeleted => deletedAt != null;
 
+  bool get isRecurring => recur != null;
+
+  /// The occurrence that follows this one, or null when this task does not
+  /// recur, has no reminder to count from, or carries a rule this build does
+  /// not know (a newer device's, arrived by sync).
+  ///
+  /// **The uuid is derived, never generated.** Spawning happens on completion,
+  /// completion is a write, and a write syncs - so two devices that both see
+  /// the same task completed will both spawn its successor. With a generated
+  /// id those are two rows that sync can only keep as siblings, which is how
+  /// one account collected seven "Tasks" workspaces; derived from the parent
+  /// and the occurrence instant, both devices produce the same row and the
+  /// second spawn merges into the first. Same rule as [Calendar.forWorkspace]
+  /// and [LocalStore.defaultWorkspaceUuid].
+  ///
+  /// Only the uuid has to agree. `created_at` and `updated_at` are each
+  /// device's own clock, and last-write-wins settles them.
+  ///
+  /// The next occurrence is deliberately **not** planned into this one's block
+  /// ([eventUuid] is dropped): a block of time is a specific moment, so
+  /// inheriting it would plan next week's task into last week's afternoon.
+  Task? nextOccurrence() {
+    final rule = recur;
+    final from = remindAtTime;
+    if (rule == null || from == null) return null;
+
+    final at = Recur.next(from, rule);
+    if (at == null) return null;
+
+    final stamp = reminderStamp(at);
+    final now = nowStamp();
+    return Task(
+      uuid: _uuid.v5(Recur.occurrenceNamespace, '$uuid:$stamp'),
+      workspaceUuid: workspaceUuid,
+      text: text,
+      createdAt: now,
+      sortOrder: sortOrder,
+      remindAt: stamp,
+      recur: rule,
+      // A recurring task parked in a group stays parked; that is a statement
+      // about where it lives, not about this occurrence.
+      groupUuid: groupUuid,
+      notes: notes,
+      priority: priority,
+      updatedAt: now,
+    );
+  }
+
   Task copyWith({
     String? workspaceUuid,
     String? text,
@@ -351,6 +492,7 @@ class Task implements SyncRow {
     int? sortOrder,
     bool? inProgress,
     String? remindAt,
+    String? recur,
     String? groupUuid,
     String? eventUuid,
     String? notes,
@@ -360,6 +502,7 @@ class Task implements SyncRow {
     bool clearCompleted = false,
     bool clearDeleted = false,
     bool clearReminder = false,
+    bool clearRecur = false,
     bool clearGroup = false,
     bool clearEvent = false,
   }) =>
@@ -372,6 +515,7 @@ class Task implements SyncRow {
         sortOrder: sortOrder ?? this.sortOrder,
         inProgress: inProgress ?? this.inProgress,
         remindAt: clearReminder ? null : (remindAt ?? this.remindAt),
+        recur: clearRecur ? null : (recur ?? this.recur),
         groupUuid: clearGroup ? null : (groupUuid ?? this.groupUuid),
         eventUuid: clearEvent ? null : (eventUuid ?? this.eventUuid),
         // No "clear" flag for these two: the empty string and 0 *are* the
@@ -392,6 +536,7 @@ class Task implements SyncRow {
         'sort_order': sortOrder,
         'in_progress': inProgress ? 1 : 0,
         'remind_at': remindAt,
+        'recur': recur,
         'group_uuid': groupUuid,
         'event_uuid': eventUuid,
         'notes': notes,
@@ -409,6 +554,7 @@ class Task implements SyncRow {
         sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
         inProgress: ((m['in_progress'] as num?)?.toInt() ?? 0) != 0,
         remindAt: m['remind_at'] as String?,
+        recur: m['recur'] as String?,
         groupUuid: m['group_uuid'] as String?,
         eventUuid: m['event_uuid'] as String?,
         // Null-tolerant: a row that arrived from a server still carrying the

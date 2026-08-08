@@ -937,6 +937,74 @@ test('a server database predating notes gains tasks.notes and tasks.priority', (
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('a server database predating recurrence gains tasks.recur', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  // Tasks as they stood before one could repeat.
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      remind_at      TEXT,
+      group_uuid     TEXT,
+      event_uuid     TEXT,
+      notes          TEXT NOT NULL DEFAULT '',
+      priority       INTEGER NOT NULL DEFAULT 0,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('t-old', 'local', 'ws-1', 'a one-off', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  // Without the ALTER this is "no column named recur", and it fails for every
+  // task push rather than only for the ones that repeat.
+  const { changes } = sync(db, USER, 0, {
+    tasks: [
+      {
+        uuid: 't-standup',
+        workspace_uuid: 'ws-1',
+        text: 'stand-up',
+        created_at: '2026-08-08T09:00:00+02:00',
+        completed_at: null,
+        sort_order: 0,
+        in_progress: 0,
+        remind_at: '2026-08-09T07:00:00.000Z',
+        group_uuid: null,
+        event_uuid: null,
+        notes: '',
+        priority: 0,
+        recur: 'weekdays',
+        updated_at: '2026-08-08T09:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const byUuid = Object.fromEntries(changes.tasks.map((t) => [t.uuid, t]));
+  // The rule is carried, not interpreted - the server never computes an
+  // occurrence, it only has to not lose the column.
+  assert.equal(byUuid['t-standup'].recur, 'weekdays');
+  // The row that was already there survives, meaning a one-off.
+  assert.equal(byUuid['t-old'].text, 'a one-off');
+  assert.equal(byUuid['t-old'].recur, null);
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('auth rejects a missing, malformed or wrong token', () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'correct-horse');

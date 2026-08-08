@@ -186,6 +186,31 @@ Three tiers, none of which need an account, an API key, or a licence:
 - **Arm one** — the 🔔 on a task offers a few horizons: in 10 minutes, in 1
   hour, in 3 hours, this evening (18:00), tomorrow (09:00). Times already past
   are not offered, so a reminder can never be set into the past.
+- **Or pick an exact date and time** — the last item on the same menu, and a
+  *Pick…* chip in the task composer. A month grid you can page through, day
+  selected with a tap, and the time either typed or taken from a chip (09:00,
+  12:00, 14:00, 18:00, 21:00). It opens on the reminder that is already armed
+  rather than on today, defaults to the next round hour rather than to this
+  minute, and refuses a time in the past with a visible reason instead of a
+  dead button. It is the same month grid the year view draws, so the two can
+  never disagree about where a month starts.
+- **Repeat it** — *Every day / weekday / week / month / year*, in the composer,
+  offered once a reminder is set (a rule with nothing to count from would never
+  produce a second occurrence). Checking a recurring task off does two things:
+  the one you finished goes to History like any other completed task, and the
+  next occurrence appears on the list, armed for the next time the rule comes
+  round. An occurrence is a todo in its own right, which is what lets a daily
+  task both be *done today* and *still due tomorrow*.
+  - The next one is laid down when you **check the last one off**, not when the
+    reminder fires — so a recurring task you have been ignoring sits there as
+    one overdue row rather than thirty copies.
+  - "Every day at 09:00" stays at 09:00 across a daylight-saving change: the
+    next occurrence is worked out in wall-clock terms, not by adding 24 hours.
+  - A monthly task on the 31st lands on the 30th, or the 28th, rather than
+    sliding into the next month. Same for the 29th of February, yearly.
+  - Turning it off is *Once* in the composer, which stops the series — there is
+    only ever one occurrence in front of you, so there is nothing else to
+    cancel.
 - **Always visible once set** — an armed bell stays on the row without hovering
   (it is state the task is carrying, not an action offered on demand), and its
   tooltip says when: "in 26m", "tomorrow 09:00".
@@ -646,6 +671,30 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
+- **0.18.0** — **Reminders that say when, and keep saying it.** Two changes,
+  both about a reminder being able to express what you meant.
+  **An exact date and time**, from the foot of the reminder menu or the *Pick…*
+  chip in the composer. This was in the backlog for a long time behind the
+  objection that a date picker wants roughly this whole 340px window — which
+  the calendar had already disproved, since the year view draws one to three
+  month grids side by side in it. So the picker uses *that* grid, lifted into
+  one place both now share: a second month grid that disagreed with the first
+  about where a month starts would be a bug nobody would think to look for.
+  **Recurring reminders** — every day, weekday, week, month or year. Checking
+  one off completes that row into History and lays down the next occurrence as
+  a new task, because an occurrence is a todo in its own right; that is what
+  lets a daily task be done today and still due tomorrow without History having
+  to learn anything new. The successor's id is *derived* from the one before it
+  and the moment it is due, so two devices that both see the completion produce
+  the same row instead of two. Wall-clock arithmetic, so 09:00 stays 09:00
+  across a daylight-saving change, and a monthly task on the 31st clamps to the
+  end of a shorter month rather than sliding into the next one.
+  Adds `recur` to `tasks` (schema v12; client and server both migrate in
+  place).
+  Also fixes three things found reviewing 0.17.0: Ctrl+Enter in the task
+  composer never fired, Sound and Settings opened *underneath* an open sublist,
+  and tapping the "Now" tile of a block with nothing planned into it could
+  switch workspace and then open nothing.
 - **0.17.0** — **The list and the calendar, pointed at each other.** Six
   changes, five of them on the seam between the two.
   **The calendar opens beside the task list** on a window past ~810px instead of

@@ -83,6 +83,10 @@ function init(db) {
       -- been updated yet keeps pushing rows this table accepts.
       notes          TEXT NOT NULL DEFAULT '',
       priority       INTEGER NOT NULL DEFAULT 0,
+      -- How the task repeats, null for a one-off. The period only: the time of
+      -- day is remind_at's. Unconstrained here for the same reason event_uuid
+      -- is - the server does not interpret the rule, it carries it.
+      recur          TEXT,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
@@ -223,6 +227,8 @@ function init(db) {
   // has the table but not the columns, and would reject every task push.
   addColumn(db, 'tasks', 'notes', "TEXT NOT NULL DEFAULT ''");
   addColumn(db, 'tasks', 'priority', 'INTEGER NOT NULL DEFAULT 0');
+  // Recurrence. Nullable, and null is what every pre-v12 row means: a one-off.
+  addColumn(db, 'tasks', 'recur', 'TEXT');
   // A server that first synced a journal before entries had titles has the
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -268,6 +274,7 @@ export const TABLES = {
     'event_uuid',
     'notes',
     'priority',
+    'recur',
   ],
   attachments: [
     'task_uuid',

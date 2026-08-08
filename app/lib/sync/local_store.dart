@@ -80,7 +80,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 11,
+        version: 12,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -168,6 +168,13 @@ class LocalStore {
           "ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
       await db.execute(
           'ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0');
+    }
+    if (from < 12) {
+      // Recurrence. Nullable, and null is exactly what every existing row
+      // means: a one-off. No backfill, and nothing else to migrate - the rule
+      // is the only new state, because the next occurrence is a new row rather
+      // than a second set of columns on this one.
+      await db.execute('ALTER TABLE tasks ADD COLUMN recur TEXT');
     }
   }
 
@@ -420,6 +427,7 @@ class LocalStore {
         sort_order     INTEGER NOT NULL DEFAULT 0,
         in_progress    INTEGER NOT NULL DEFAULT 0,
         remind_at      TEXT,
+        recur          TEXT,
         group_uuid     TEXT,
         event_uuid     TEXT,
         notes          TEXT NOT NULL DEFAULT '',

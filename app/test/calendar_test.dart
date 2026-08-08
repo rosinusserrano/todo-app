@@ -1026,6 +1026,7 @@ void main() {
     // Nor notes/priority, which arrived in v11.
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
     await store.raw.execute('DROP TABLE calendars');
     await store.raw.execute('DROP TABLE calendar_events');
     await store.raw.execute('DROP TABLE attachments');

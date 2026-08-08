@@ -33,6 +33,7 @@ class TaskDraft {
     required this.notes,
     required this.priority,
     required this.remindAt,
+    required this.recur,
   });
 
   final String text;
@@ -42,6 +43,11 @@ class TaskDraft {
   /// Null is "no reminder", which on an existing task means clear the one it
   /// has - see AppState.saveTaskDetails.
   final DateTime? remindAt;
+
+  /// One of [Recur.rules], or null for a task that happens once. Only
+  /// meaningful alongside [remindAt] - there is nothing to repeat from
+  /// otherwise, which AppState.saveTaskDetails enforces.
+  final String? recur;
 }
 
 /// [existing] null composes a new task; otherwise the same form edits that one.
@@ -77,6 +83,7 @@ class _ComposerDialogState extends State<_ComposerDialog> {
 
   late int _priority = widget.existing?.priority ?? 0;
   late DateTime? _remindAt = widget.existing?.remindAtTime;
+  late String? _recur = widget.existing?.recur;
 
   /// The presets are relative to *now*, and "now" has to be the same instant
   /// for the whole life of the dialog or the chip labels drift under the
@@ -100,6 +107,7 @@ class _ComposerDialogState extends State<_ComposerDialog> {
         notes: _notes.text.trim(),
         priority: _priority,
         remindAt: _remindAt,
+        recur: _recur,
       ),
     );
   }
@@ -228,6 +236,37 @@ class _ComposerDialogState extends State<_ComposerDialog> {
                     ),
                   ],
                 ),
+                // Only offered once there is a reminder to repeat from. A rule
+                // with nothing to count from produces no second occurrence, so
+                // showing it would be offering a setting that does nothing.
+                if (_remindAt != null) ...[
+                  const SizedBox(height: 14),
+                  const _Label('Repeats'),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ChoiceChip(
+                        label: const Text(
+                          'Once',
+                          style: TextStyle(fontSize: 11.5),
+                        ),
+                        selected: _recur == null,
+                        onSelected: (_) => setState(() => _recur = null),
+                      ),
+                      for (final r in Recur.rules)
+                        ChoiceChip(
+                          label: Text(
+                            Recur.label(r),
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected: _recur == r,
+                          onSelected: (_) => setState(() => _recur = r),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

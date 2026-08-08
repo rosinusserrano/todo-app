@@ -631,11 +631,12 @@ simply stretched.
 
 ## Ideas / backlog (not built yet)
 
+Wishes with no design behind them yet. Once one has a shape, it moves to
+`ROADMAP.md` and leaves this list — **arbitrary date/time and recurring
+reminders are both there now**, queued for 0.18.0.
+
 - Light theme / theme toggle.
 - Configurable shortcut combinations (currently fixed at Ctrl+Alt+T / Ctrl+Alt+H).
-- Reminders at an arbitrary date/time — currently presets only, because a
-  Material date picker is about as wide as the whole widget.
-- Recurring reminders ("every weekday at 09:00").
 - **Syncing attachment bytes.** Needs a second channel beside the JSON sync —
   `PUT/GET /blob/:sha256`, content-addressed, plus an upload/download queue with
   its own retry and progress. The metadata layer is built for it already: the

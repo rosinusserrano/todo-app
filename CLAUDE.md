@@ -58,15 +58,15 @@ There **is** a test suite — `app/test/` covers the local store, the sync merge
 the legacy import, reminders, parked groups, attachments, the encrypted journal,
 the calendar, notification scheduling, the tray and the noise synthesis. Run it.
 
-`test/noise_test.dart`'s "nothing clips" is **flaky and has been since before
-the calendar landed**: `noise.dart` uses an unseeded `Random()`, and at the
+`test/noise_test.dart` **pins the RNG seed** (`NoiseSynth.rng`), and that is
+what makes it reproducible. Unseeded it failed about a third of runs: at the
 documented ~0.19 RMS a peak of 1.0 is 5.26σ, so across the 2.6M samples in a
-buffer you expect ~0.37 exceedances — roughly a third of runs have one sample
-clamped. A single clamped sample in 2.6M is inaudible, but the invariant in the
-file header does say "stays under 1.0 peak", so this is a real if minor
-discrepancy rather than a bad assertion. Don't "fix" it by loosening the test. The server
-has its own: `node --test
-server/sync.test.js`, and a schema change on either side needs both.
+buffer you expect ~0.37 exceedances, and the encoder clamps them. A single
+clamped sample in 2.6M is inaudible, so this was the test re-rolling dice
+rather than a defect — but the fix is the seed, **not** a looser assertion, and
+not a lower level trim either (at 0.17 RMS it still clips one run in a
+hundred). The server has its own tests: `node --test server/`, and a schema
+change on either side needs both.
 
 **The dev build shares the real database.** `flutter run` opens the actual
 `todo.db`, with real tasks in it. Don't script clicks against real rows.

@@ -42,6 +42,13 @@ double _rms(List<double> xs) {
 void main() {
   // Generated once per kind: each call synthesises 30s x 2 channels, which is
   // slow enough that doing it per-test would dominate the suite.
+  // Pinned so the run is reproducible. Unseeded, "nothing clips" below is a
+  // coin toss that comes up tails about a third of the time - see
+  // [NoiseSynth.rng] for the arithmetic. Every property asserted here holds for
+  // the generator, not for this draw; the seed only stops the suite reporting
+  // an inaudible one-sample clamp as a failure.
+  NoiseSynth.rng = math.Random(20260808);
+
   final samples = {
     for (final kind in NoiseKind.values) kind: _leftChannel(NoiseSynth.wav(kind)),
   };

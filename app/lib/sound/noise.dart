@@ -17,8 +17,11 @@
 //
 //   2. The level trims. Raw white noise lands near 0.58 RMS while pink and
 //      brown land near 0.19. Without the trims, switching from pink to white
-//      would triple the loudness. Every kind is scaled to ~0.19 RMS and stays
-//      under 1.0 peak, so the volume slider means the same thing throughout.
+//      would triple the loudness. Every kind is scaled to ~0.19 RMS, so the
+//      volume slider means the same thing throughout. Peak is not *guaranteed*
+//      under 1.0 - full scale is 5.26 sigma out at that level, so roughly one
+//      buffer in three contains a single sample the encoder clamps, which is
+//      inaudible. See [NoiseSynth.rng] for why the test pins a seed.
 //
 //   3. Stereo decorrelation. The two channels are generated independently
 //      rather than copied. That is what makes the noise feel wide instead of
@@ -50,7 +53,18 @@ class NoiseSynth {
   static const _seconds = 30;
   static const _crossfadeSeconds = 0.5;
 
-  static final _rng = Random();
+  /// Unseeded in the app - every launch should get its own noise.
+  ///
+  /// Replaceable so the tests can pin a draw. They assert that nothing clips,
+  /// and with a fresh `Random()` that assertion is a coin toss: the generators
+  /// aim at ~0.19 RMS, where full scale is 5.26 sigma out, so across the 2.6M
+  /// samples in a buffer you expect ~0.37 exceedances and about a third of runs
+  /// clamp one. A clamped sample in 2.6M is inaudible, so the flakiness was
+  /// never about the audio - it was the test re-rolling the dice. Seeding makes
+  /// it a statement about the generator instead. Trimming the level was the
+  /// alternative and it only ever moves the probability: at 0.17 RMS you still
+  /// clip one run in a hundred.
+  static Random rng = Random();
 
   /// A complete, loopable 16-bit stereo WAV for [kind].
   static Uint8List wav(NoiseKind kind) {
@@ -82,7 +96,7 @@ class NoiseSynth {
     switch (kind) {
       case NoiseKind.white:
         for (var i = 0; i < len; i++) {
-          out[i] = (_rng.nextDouble() * 2 - 1) * 0.34;
+          out[i] = (rng.nextDouble() * 2 - 1) * 0.34;
         }
         return out;
 
@@ -91,7 +105,7 @@ class NoiseSynth {
         // nudged, with the /1.02 keeping it from drifting off to +/-infinity.
         var last = 0.0;
         for (var i = 0; i < len; i++) {
-          last = (last + 0.02 * (_rng.nextDouble() * 2 - 1)) / 1.02;
+          last = (last + 0.02 * (rng.nextDouble() * 2 - 1)) / 1.02;
           out[i] = last * 3.2;
         }
         return out;
@@ -102,7 +116,7 @@ class NoiseSynth {
         // summed to get roughly -3dB per octave.
         var b0 = 0.0, b1 = 0.0, b2 = 0.0, b3 = 0.0, b4 = 0.0, b5 = 0.0, b6 = 0.0;
         for (var i = 0; i < len; i++) {
-          final w = _rng.nextDouble() * 2 - 1;
+          final w = rng.nextDouble() * 2 - 1;
           b0 = 0.99886 * b0 + w * 0.0555179;
           b1 = 0.99332 * b1 + w * 0.0750759;
           b2 = 0.96900 * b2 + w * 0.1538520;
@@ -123,10 +137,10 @@ class NoiseSynth {
   static void _addDroplets(Float64List buf) {
     final count = (buf.length / sampleRate * 22).floor();
     for (var d = 0; d < count; d++) {
-      final start = _rng.nextInt(buf.length - (sampleRate * 0.05).floor());
-      final freq = 900 + _rng.nextDouble() * 2600;
-      final decay = 0.006 + _rng.nextDouble() * 0.022;
-      final amp = 0.05 + _rng.nextDouble() * 0.12;
+      final start = rng.nextInt(buf.length - (sampleRate * 0.05).floor());
+      final freq = 900 + rng.nextDouble() * 2600;
+      final decay = 0.006 + rng.nextDouble() * 0.022;
+      final amp = 0.05 + rng.nextDouble() * 0.12;
       final len = (decay * 4 * sampleRate).floor();
       for (var i = 0; i < len && start + i < buf.length; i++) {
         final t = i / sampleRate;

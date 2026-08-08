@@ -22,7 +22,9 @@ import 'package:flutter/material.dart';
 import '../startup.dart';
 import '../sync/sync_client.dart';
 import '../sync/sync_service.dart';
+import '../sync/oidc_client.dart';
 import '../theme.dart';
+import 'sso_sign_in.dart';
 import 'server_users_view.dart';
 import 'title_bar.dart';
 
@@ -50,6 +52,11 @@ class SettingsSheet extends StatefulWidget {
 class _SettingsSheetState extends State<SettingsSheet> {
   late final _url = TextEditingController(text: widget.sync.baseUrl ?? '');
   late final _token = TextEditingController(text: widget.sync.token ?? '');
+
+  /// How the configured server wants to authenticate, once it has been asked.
+  /// Null until then, which shows the token field - the right default, because
+  /// that is what every server that does not answer means.
+  AuthConfig? _authConfig;
 
   String? _testMessage;
   bool _testOk = false;
@@ -113,7 +120,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
       _testMessage = null;
     });
 
-    final client = SyncClient(baseUrl: base.toString(), token: _token.text.trim());
+    final client = SyncClient(
+      baseUrl: base.toString(),
+      token: _token.text.trim(),
+    );
     final result = await client.checkReachable();
     client.dispose();
     if (!mounted) return;
@@ -136,11 +146,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   Color _statusColor() => switch (widget.sync.status) {
-        SyncStatus.ok => const Color(0xFF7EE3A1),
-        SyncStatus.error => const Color(0xFFFFCF6C),
-        SyncStatus.blocked => T.danger,
-        _ => T.muted,
-      };
+    SyncStatus.ok => const Color(0xFF7EE3A1),
+    SyncStatus.error => const Color(0xFFFFCF6C),
+    SyncStatus.blocked => T.danger,
+    _ => T.muted,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +170,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
             bottom: Radius.circular(T.radius),
           ),
           boxShadow: const [
-            BoxShadow(color: Color(0x73000000), blurRadius: 30, offset: Offset(0, -10)),
+            BoxShadow(
+              color: Color(0x73000000),
+              blurRadius: 30,
+              offset: Offset(0, -10),
+            ),
           ],
         ),
         child: Column(
@@ -217,16 +231,99 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  /// Ask the server how it wants to be logged in to.
+  ///
+  /// Only after the address is entered, and never blocking: a server that does
+  /// not answer just leaves the token field on screen, which is what an older
+  /// server means anyway.
+  Future<void> _checkAuthMode() async {
+    final base = SyncClient.parseBase(_url.text);
+    if (base == null) return;
+
+    final config = await AuthConfig.discover(base.toString());
+    if (!mounted) return;
+    setState(() => _authConfig = config);
+  }
+
+  Future<void> _signIn() async {
+    final config = _authConfig;
+    if (config == null || !config.usable) return;
+
+    final tokens = await showSsoSignIn(context, config);
+    if (tokens == null || !mounted) return;
+
+    // The address has to be saved before the session is, or the sync that
+    // starts on the back of signing in has nowhere to go.
+    await widget.sync.configure(_url.text, '');
+    await widget.sync.signedIn(config, tokens);
+    if (!mounted) return;
+    setState(() => _token.text = '');
+  }
+
+  Widget _tokenField() => TextField(
+    controller: _token,
+    style: const TextStyle(fontSize: 13),
+    obscureText: true,
+    decoration: const InputDecoration(labelText: 'Token', isDense: true),
+  );
+
+  Widget _ssoBlock() {
+    final config = _authConfig!;
+    final signedIn = widget.sync.isSignedInWithSso;
+
+    if (config.error != null) {
+      // SSO is configured but the provider is not answering. Falling back to
+      // the token field here would send the user looking for a credential they
+      // are not supposed to need.
+      return Text(
+        'The server uses single sign-on but cannot reach its provider right '
+        'now. Try again in a moment.',
+        style: const TextStyle(fontSize: 11.5, color: T.danger, height: 1.4),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            signedIn
+                ? 'Signed in as ${widget.sync.identity?.label ?? 'this account'}.'
+                : 'Not signed in.',
+            style: const TextStyle(fontSize: 12, color: T.muted),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (signedIn)
+          TextButton(
+            onPressed: () async {
+              await widget.sync.signOut();
+              if (mounted) setState(() {});
+            },
+            child: const Text('Sign out', style: TextStyle(fontSize: 12.5)),
+          )
+        else
+          FilledButton(
+            onPressed: config.usable ? _signIn : null,
+            child: const Text('Sign in', style: TextStyle(fontSize: 12.5)),
+          ),
+      ],
+    );
+  }
+
   Widget _settingsBody() {
     final sync = widget.sync;
+    final sso = _authConfig?.isOidc ?? false;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
       children: [
-        const Text(
-          'Run `npm run server` on any machine, then enter the address and '
-          'token it prints. Everything stays on your own hardware.',
-          style: TextStyle(fontSize: 11.5, color: T.muted, height: 1.4),
+        Text(
+          sso
+              ? 'This server uses single sign-on. Sign in and it keeps itself '
+                    'signed in from then on.'
+              : 'Run `npm run server` on any machine, then enter the address '
+                    'and token it prints. Everything stays on your own hardware.',
+          style: const TextStyle(fontSize: 11.5, color: T.muted, height: 1.4),
         ),
         const SizedBox(height: 14),
         TextField(
@@ -237,17 +334,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
             hintText: '192.168.2.184:8787',
             isDense: true,
           ),
+          // Checked when the field loses focus rather than per keystroke: this
+          // is a network call, and half an address is not one.
+          onSubmitted: (_) => _checkAuthMode(),
+          onTapOutside: (_) => _checkAuthMode(),
         ),
         const SizedBox(height: 10),
-        TextField(
-          controller: _token,
-          style: const TextStyle(fontSize: 13),
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Token',
-            isDense: true,
-          ),
-        ),
+        if (sso) _ssoBlock() else _tokenField(),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -285,7 +378,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         const SizedBox(height: 10),
         Row(
           children: [
-            TextButton(onPressed: _busy ? null : _test, child: const Text('Test')),
+            TextButton(
+              onPressed: _busy ? null : _test,
+              child: const Text('Test'),
+            ),
             const Spacer(),
             FilledButton(
               onPressed: _busy ? null : _saveAndSync,
@@ -309,8 +405,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Row(
             children: [
               const Expanded(
-                child: Text('People on this server',
-                    style: TextStyle(fontSize: 12.5)),
+                child: Text(
+                  'People on this server',
+                  style: TextStyle(fontSize: 12.5),
+                ),
               ),
               TextButton(
                 onPressed: () => setState(() => _showUsers = true),
@@ -332,7 +430,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Row(
             children: [
               const Expanded(
-                child: Text('Start with Windows', style: TextStyle(fontSize: 12.5)),
+                child: Text(
+                  'Start with Windows',
+                  style: TextStyle(fontSize: 12.5),
+                ),
               ),
               Switch(value: _launchAtStartup, onChanged: _setStartup),
             ],

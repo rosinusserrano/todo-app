@@ -27,6 +27,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'local_store.dart';
+import 'oidc_client.dart';
 import 'sync_client.dart';
 
 enum SyncStatus {
@@ -50,6 +51,15 @@ enum SyncStatus {
 const kServerUrl = 'sync:server-url';
 const kServerToken = 'sync:token';
 
+/// The single sign-on session, when there is one. Device-local by nature - a
+/// refresh token is this device's credential, and syncing it would hand every
+/// other device the ability to mint access tokens as you.
+const kOidcRefresh = 'sync:oidc-refresh';
+const kOidcAccess = 'sync:oidc-access';
+const kOidcExpires = 'sync:oidc-expires';
+const kOidcClientId = 'sync:oidc-client-id';
+const kOidcTokenEndpoint = 'sync:oidc-token-endpoint';
+
 class SyncService extends ChangeNotifier {
   SyncService(this._store, {this.onChangesApplied});
 
@@ -66,6 +76,15 @@ class SyncService extends ChangeNotifier {
 
   String? baseUrl;
   String? token;
+
+  /// The signed-in SSO session, or null when this device uses a device token.
+  ///
+  /// When set it *supersedes* [token]: the access token it holds is short-lived
+  /// and refreshed on demand, so the bearer is asked for per request rather
+  /// than read from storage.
+  OidcSession? oidcSession;
+
+  bool get isSignedInWithSso => oidcSession != null;
 
   /// Which account this token belongs to, once a sync has succeeded and the
   /// server has been asked. Null on an older server, or before the first sync.
@@ -93,11 +112,29 @@ class SyncService extends ChangeNotifier {
   /// that went out, so another pass is needed once this one lands.
   bool _dirtyAgain = false;
 
-  bool get isConfigured => (baseUrl?.isNotEmpty ?? false) && (token?.isNotEmpty ?? false);
+  bool get isConfigured =>
+      (baseUrl?.isNotEmpty ?? false) &&
+      ((token?.isNotEmpty ?? false) || oidcSession != null);
+
+  /// The bearer for the next request.
+  ///
+  /// Returns null when an SSO session exists but could not be refreshed, which
+  /// is a state the caller has to surface rather than retry: the refresh token
+  /// is spent and only a fresh sign-in fixes it.
+  Future<String?> _bearer() async {
+    final session = oidcSession;
+    if (session == null) return token;
+    try {
+      return await session.accessToken();
+    } on OidcAuthException {
+      return null;
+    }
+  }
 
   Future<void> load() async {
     baseUrl = await _store.setting(kServerUrl);
     token = await _store.setting(kServerToken);
+    await _restoreSso();
     status = isConfigured ? SyncStatus.idle : SyncStatus.off;
     await refreshPending();
     notifyListeners();
@@ -105,6 +142,95 @@ class SyncService extends ChangeNotifier {
       _startPolling();
       unawaited(syncNow());
     }
+  }
+
+  /// Rebuild the SSO session from what was stored, if anything was.
+  ///
+  /// The provider's endpoints are stored with the tokens rather than rediscovered
+  /// here, so a device that starts offline can still refresh the moment the
+  /// network comes back - and so a sync server that is briefly down does not
+  /// cost the session it is not involved in.
+  Future<void> _restoreSso() async {
+    final refresh = await _store.setting(kOidcRefresh);
+    final tokenEndpoint = await _store.setting(kOidcTokenEndpoint);
+    if (refresh == null || refresh.isEmpty || tokenEndpoint == null) return;
+
+    final expires = DateTime.tryParse(await _store.setting(kOidcExpires) ?? '');
+    adoptSso(
+      AuthConfig(
+        mode: 'oidc',
+        clientId: await _store.setting(kOidcClientId),
+        tokenEndpoint: tokenEndpoint,
+        deviceEndpoint: null,
+      ),
+      OidcTokens(
+        accessToken: await _store.setting(kOidcAccess) ?? '',
+        refreshToken: refresh,
+        // Absent or unparseable means "assume stale", which costs one refresh
+        // and is the safe direction to be wrong in.
+        expiresAt: expires ?? DateTime.fromMillisecondsSinceEpoch(0),
+      ),
+    );
+  }
+
+  /// Take a completed sign-in and start using it.
+  void adoptSso(AuthConfig config, OidcTokens tokens) {
+    oidcSession = OidcSession(
+      client: OidcClient(config: config),
+      tokens: tokens,
+      save: (t) => _persistSso(config, t),
+    );
+  }
+
+  Future<void> _persistSso(AuthConfig config, OidcTokens tokens) async {
+    await _store.setSetting(kOidcAccess, tokens.accessToken);
+    await _store.setSetting(kOidcRefresh, tokens.refreshToken ?? '');
+    await _store.setSetting(kOidcExpires, tokens.expiresAt.toIso8601String());
+    await _store.setSetting(kOidcClientId, config.clientId ?? '');
+    await _store.setSetting(kOidcTokenEndpoint, config.tokenEndpoint ?? '');
+  }
+
+  /// Finish a sign-in: adopt the tokens, store them, and start syncing.
+  Future<void> signedIn(AuthConfig config, OidcTokens tokens) async {
+    adoptSso(config, tokens);
+    await _persistSso(config, tokens);
+
+    // A pasted device token and an SSO session are alternatives, not layers.
+    // Leaving the old one behind would mean signing out silently fell back to
+    // an account the user thought they had stopped using.
+    token = '';
+    await _store.setSetting(kServerToken, '');
+
+    identity = null;
+    status = isConfigured ? SyncStatus.idle : SyncStatus.off;
+    message = null;
+    notifyListeners();
+
+    _stopPolling();
+    if (isConfigured) {
+      _startPolling();
+      unawaited(syncNow());
+    }
+  }
+
+  /// Forget the SSO session. Local data is untouched - this is a credential
+  /// being dropped, not an account being left.
+  Future<void> signOut() async {
+    oidcSession = null;
+    for (final key in [
+      kOidcAccess,
+      kOidcRefresh,
+      kOidcExpires,
+      kOidcClientId,
+      kOidcTokenEndpoint,
+    ]) {
+      await _store.setSetting(key, '');
+    }
+    identity = null;
+    status = isConfigured ? SyncStatus.idle : SyncStatus.off;
+    message = null;
+    _stopPolling();
+    notifyListeners();
   }
 
   /// Re-count the rows waiting to go out.
@@ -145,6 +271,12 @@ class SyncService extends ChangeNotifier {
     token = tokenValue.trim();
     await _store.setSetting(kServerUrl, baseUrl!);
     await _store.setSetting(kServerToken, token!);
+
+    // Pasting a device token replaces an SSO session rather than sitting
+    // behind it - see signedIn() for the same rule in the other direction.
+    if (token!.isNotEmpty && oidcSession != null) {
+      await signOut();
+    }
 
     // A different token is a different account, so who we are is now unknown
     // rather than what it was a moment ago.
@@ -195,7 +327,18 @@ class SyncService extends ChangeNotifier {
     status = SyncStatus.syncing;
     notifyListeners();
 
-    final client = SyncClient(baseUrl: baseUrl!, token: token!);
+    final bearer = await _bearer();
+    if (bearer == null || bearer.isEmpty) {
+      // Blocked rather than error: no amount of retrying mints a new token, and
+      // the status is what tells the settings sheet to offer signing in again.
+      status = SyncStatus.blocked;
+      message = 'Signed out. Sign in again to resume syncing.';
+      _inFlight = false;
+      notifyListeners();
+      return;
+    }
+
+    final client = SyncClient(baseUrl: baseUrl!, token: bearer);
     SyncResult result;
     try {
       result = await client.syncOnce(_store);
@@ -244,11 +387,11 @@ class SyncService extends ChangeNotifier {
       SyncStatus.off => 'No server configured.',
       SyncStatus.idle => 'Waiting for first sync.$queued',
       SyncStatus.syncing => 'Syncing…',
-      SyncStatus.ok => lastSynced == null
-          ? 'Synced.'
-          : 'Last synced ${_ago(lastSynced!)}.',
+      SyncStatus.ok =>
+        lastSynced == null ? 'Synced.' : 'Last synced ${_ago(lastSynced!)}.',
       SyncStatus.error => '${message ?? 'Sync failed.'}$queued',
-      SyncStatus.blocked => '${message ?? 'Check the address and token.'}$queued',
+      SyncStatus.blocked =>
+        '${message ?? 'Check the address and token.'}$queued',
     };
   }
 

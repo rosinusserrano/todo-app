@@ -771,4 +771,100 @@ void main() {
       expect(calls, isEmpty);
     });
   });
+
+  group('priority and notes', () {
+    test('flagging a task does not move it in the list', () async {
+      final s = await freshState();
+      await s.addTask('first');
+      await s.addTask('second');
+      await s.addTask('third');
+
+      final second = s.tasks[1];
+      await s.setPriority(second, true);
+
+      // The order of this list is the user's, set by dragging. A flag that
+      // quietly promoted a row would be a second sort fighting the first.
+      expect(s.tasks.map((t) => t.text).toList(), ['first', 'second', 'third']);
+      expect(s.tasks[1].isHighPriority, isTrue);
+    });
+
+    test('the composer fields are written in one edit', () async {
+      final s = await freshState();
+      await s.addTask('draft');
+      final t = s.tasks.single;
+      final at = DateTime.now().add(const Duration(hours: 2));
+
+      await s.saveTaskDetails(
+        t,
+        text: 'file the accounts',
+        notes: 'portal login is in the password manager',
+        priority: Task.priorityHigh,
+        remindAt: at,
+      );
+
+      final saved = s.tasks.single;
+      expect(saved.uuid, t.uuid);
+      expect(saved.text, 'file the accounts');
+      expect(saved.notes, 'portal login is in the password manager');
+      expect(saved.isHighPriority, isTrue);
+      expect(saved.remindAt, isNotNull);
+
+      // A null reminder clears the armed one - that is what the composer's
+      // "No reminder" chip means, and there is no separate clear call.
+      await s.saveTaskDetails(
+        saved,
+        text: saved.text,
+        notes: '',
+        priority: 0,
+        remindAt: null,
+      );
+      expect(s.tasks.single.remindAt, isNull);
+      expect(s.tasks.single.hasNotes, isFalse);
+    });
+
+    testWidgets('a flagged row shows the flag without being hovered',
+        (tester) async {
+      Widget row(int priority) => MaterialApp(
+            home: Scaffold(
+              body: TaskRow(
+                task: Task(
+                  uuid: 't1',
+                  workspaceUuid: 'ws',
+                  text: 'urgent thing',
+                  priority: priority,
+                  createdAt: nowStamp(),
+                  updatedAt: nowStamp(),
+                ),
+                accent: T.accent,
+                onComplete: () async {},
+                onDelete: () async {},
+                onFocus: () {},
+                onSetPriority: (_) async {},
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(row(Task.priorityHigh));
+      await tester.pumpAndSettle();
+      final flagged = tester.widget<AnimatedOpacity>(
+        find.ancestor(
+          of: find.byIcon(Icons.flag_rounded),
+          matching: find.byType(AnimatedOpacity),
+        ),
+      );
+      expect(flagged.opacity, 1);
+
+      // An unflagged one keeps the control in the layout but hides it, the
+      // same way the rest of the row's actions behave.
+      await tester.pumpWidget(row(0));
+      await tester.pumpAndSettle();
+      final plain = tester.widget<AnimatedOpacity>(
+        find.ancestor(
+          of: find.byIcon(Icons.outlined_flag_rounded),
+          matching: find.byType(AnimatedOpacity),
+        ),
+      );
+      expect(plain.opacity, 0);
+    });
+  });
 }

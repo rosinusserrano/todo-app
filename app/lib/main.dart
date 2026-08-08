@@ -33,6 +33,7 @@ import 'tray.dart';
 import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
 import 'ui/calendar/calendar_view.dart';
+import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
 import 'ui/calendar/time_grid.dart' show hhmm;
 import 'ui/footer.dart';
@@ -42,6 +43,8 @@ import 'ui/parked_panel.dart';
 import 'ui/session_view.dart';
 import 'ui/settings_sheet.dart';
 import 'ui/sound_sheet.dart';
+import 'ui/task_composer.dart';
+import 'ui/sublist_sheet.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/workspace_bar.dart';
@@ -228,6 +231,13 @@ class _WidgetShellState extends State<WidgetShell>
   /// dragged. See settings_sheet.dart.
   bool _settingsOpen = false;
 
+  /// The block whose sublist is open, and what that sheet is showing. Loaded
+  /// rather than read off [AppState.sessionTasks]: the sheet is also reachable
+  /// from a block that is not running, where there is no session to read.
+  CalendarEvent? _sublist;
+  List<Task> _sublistPlanned = [];
+  List<Task> _sublistCandidates = [];
+
   /// One key per visible row, so a row can be measured for the hero flight.
   final _rowKeys = <String, GlobalKey>{};
 
@@ -336,8 +346,66 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.focusTask != null) _exitFocus();
     _closeSound();
     _closeSettings();
+    _closeSublist();
     await s.toggleCalendar();
   }
+
+  // ---------------------------------------------------------- block sublists
+
+  /// Open the list belonging to one block of time.
+  ///
+  /// Switches to the block's workspace on the way in. A block names a workspace
+  /// through its calendar, and writing that block's todos while looking at some
+  /// other workspace's list is how a todo ends up in the wrong one - the tasks
+  /// the sheet offers to plan in are that workspace's, so the list underneath
+  /// has to be the same list.
+  Future<void> _openSublist(CalendarEvent e) async {
+    _closeSound();
+    _closeSettings();
+    if (s.focusTask != null) await _exitFocus();
+    if (!mounted) return;
+
+    final ws = s.workspaceForEvent(e);
+    if (ws != null && ws != s.currentWorkspaceUuid) {
+      await s.selectWorkspace(ws);
+      if (!mounted) return;
+    }
+
+    setState(() => _sublist = e);
+    await _loadSublist();
+  }
+
+  /// Reload what the sheet shows. Called after every write from it rather than
+  /// leaning on the state's notify, because the sheet's two lists are a
+  /// different question than "what is on the current list".
+  Future<void> _loadSublist() async {
+    final e = _sublist;
+    if (e == null) return;
+    final planned = await s.tasksForEvent(e.uuid);
+    final candidates = await s.plannableTasks(e);
+    // A second sheet may have been opened while these were in flight.
+    if (!mounted || _sublist?.uuid != e.uuid) return;
+    setState(() {
+      _sublistPlanned = planned;
+      _sublistCandidates = candidates;
+    });
+  }
+
+  void _closeSublist() {
+    if (_sublist == null) return;
+    setState(() {
+      _sublist = null;
+      _sublistPlanned = [];
+      _sublistCandidates = [];
+    });
+  }
+
+  /// The line under a block's title, wherever one is shown on its own: whose
+  /// calendar it is and when it runs.
+  String _describeEvent(CalendarEvent e) => [
+        if (_calendarNameForEvent(e).isNotEmpty) _calendarNameForEvent(e),
+        '${hhmm(e.start)}–${hhmm(e.end)}',
+      ].join(' · ');
 
   Future<void> _createEvent(DateTime start, DateTime end) async {
     final calendars = s.visibleCalendars;
@@ -388,7 +456,101 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
+  /// A plain click on a block: read it, and choose from there.
+  ///
+  /// This used to open the edit form outright, which answered the rarer of the
+  /// two reasons for clicking - most clicks are asking when it ends, what is in
+  /// it, whether the file is on it - and put a form full of live fields one
+  /// stray keystroke from changing something nobody meant to touch.
   Future<void> _openEvent(CalendarEvent event) async {
+    final action = await showEventDetails(
+      context,
+      event: event,
+      calendarName: _calendarNameForEvent(event),
+      color: s.colorForEvent(event),
+      loadTasks: () => s.tasksForEvent(event.uuid),
+      loadAttachments: () => s.eventAttachments(event),
+    );
+    if (action == null || !mounted) return;
+    await _runEventAction(event, action);
+  }
+
+  /// Right-click, or long-press on a phone. The same three things the details
+  /// card offers, without having to open it first - which is the whole point of
+  /// a context menu: it is for when you already know what you want to do.
+  Future<void> _eventMenu(CalendarEvent event, Offset at) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+
+    final action = await showMenu<EventAction?>(
+      context: context,
+      color: T.bgSolid,
+      position: RelativeRect.fromLTRB(
+        at.dx,
+        at.dy,
+        overlay.size.width - at.dx,
+        overlay.size.height - at.dy,
+      ),
+      items: [
+        PopupMenuItem(
+          value: null,
+          height: 36,
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, size: 15, color: T.muted),
+              const SizedBox(width: 9),
+              Text(
+                event.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: T.muted),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        _menuItem(EventAction.edit, Icons.edit_outlined, 'Edit'),
+        _menuItem(EventAction.plan, Icons.playlist_add_rounded, 'Todos…'),
+        _menuItem(EventAction.delete, Icons.delete_outline, 'Delete',
+            color: T.danger),
+      ],
+    );
+    if (action == null || !mounted) return;
+    await _runEventAction(event, action);
+  }
+
+  PopupMenuItem<EventAction?> _menuItem(
+    EventAction action,
+    IconData icon,
+    String label, {
+    Color color = T.text,
+  }) {
+    return PopupMenuItem<EventAction?>(
+      value: action,
+      height: 36,
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color == T.text ? T.muted : color),
+          const SizedBox(width: 9),
+          Text(label, style: TextStyle(fontSize: 12.5, color: color)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runEventAction(CalendarEvent event, EventAction action) async {
+    switch (action) {
+      case EventAction.edit:
+        await _editEvent(event);
+      case EventAction.plan:
+        await _openSublist(event);
+      case EventAction.delete:
+        await s.deleteEvent(event);
+    }
+  }
+
+  Future<void> _editEvent(CalendarEvent event) async {
     final calendars = s.calendars;
     if (calendars.isEmpty) return;
 
@@ -538,6 +700,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (!mounted) return false;
     _closeSound();
     _closeSettings();
+    _closeSublist();
     if (leaveFocus && s.focusTask != null) await _exitFocus();
     return mounted;
   }
@@ -655,6 +818,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (!mounted) return;
     _closeSound();
     _closeSettings();
+    _closeSublist();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
     _flashBlocked();
@@ -843,6 +1007,8 @@ class _WidgetShellState extends State<WidgetShell>
             _closeSettings();
           } else if (_soundOpen) {
             _closeSound();
+          } else if (_sublist != null) {
+            _closeSublist();
           } else if (_focusThoughtOpen) {
             _closeFocusThought();
           } else if (s.focusTask != null) {
@@ -927,6 +1093,32 @@ class _WidgetShellState extends State<WidgetShell>
             startup: isDesktop && StartupSetting.supported ? _startup : null,
           ),
 
+        // Above the focus overlay for the same reason the sound sheet is: it
+        // is opened from the tile that sits over the list, and it is about the
+        // block you are in rather than about the task you are on.
+        if (_sublist != null)
+          SublistSheet(
+            event: _sublist!,
+            subtitle: _describeEvent(_sublist!),
+            color: s.colorForEvent(_sublist!),
+            accent: ws,
+            planned: _sublistPlanned,
+            candidates: _sublistCandidates,
+            onAdd: (text) async {
+              await s.addTaskForEvent(_sublist!, text);
+              await _loadSublist();
+            },
+            onPlan: (t, into) async {
+              await s.setTaskEvent(t, into ? _sublist!.uuid : null);
+              await _loadSublist();
+            },
+            onComplete: (t) async {
+              await s.completeTask(t);
+              await _loadSublist();
+            },
+            onClose: _closeSublist,
+          ),
+
         // Above everything, so the window stays draggable and closable during
         // focus mode and with the sheet open.
         Positioned(
@@ -1001,6 +1193,30 @@ class _WidgetShellState extends State<WidgetShell>
     s.toggleSession();
   }
 
+  /// The tile above the list was pressed.
+  ///
+  /// Two things happen that a plain toggle would not do. It **switches to the
+  /// block's workspace** first, because the tile is the one control in the app
+  /// that talks about a workspace other than the one on screen - opening its
+  /// todos beside a different workspace's list is how you plan into the wrong
+  /// one. And when nothing is planned into the block it deliberately does *not*
+  /// open the session view: that view's whole body would be the sentence the
+  /// tile just said. The list stays, and the tile's own "Sublist" button is the
+  /// way to answer it.
+  Future<void> _openSession() async {
+    if (_clearOverlays()) return;
+    final first = s.liveEvents.isEmpty ? null : s.liveEvents.first;
+    if (first != null) {
+      final ws = s.workspaceForEvent(first);
+      if (ws != null && ws != s.currentWorkspaceUuid) {
+        await s.selectWorkspace(ws);
+        if (!mounted) return;
+      }
+    }
+    if (s.sessionTaskList.isEmpty) return;
+    s.toggleSession();
+  }
+
   /// The name to print beside a live block. Empty when its calendar is not
   /// known here, which the session view then leaves out of the line rather than
   /// printing a blank field.
@@ -1034,6 +1250,10 @@ class _WidgetShellState extends State<WidgetShell>
     }
     if (_soundOpen) {
       _closeSound();
+      return true;
+    }
+    if (_sublist != null) {
+      _closeSublist();
       return true;
     }
     if (s.focusTask != null) {
@@ -1070,20 +1290,17 @@ class _WidgetShellState extends State<WidgetShell>
     // The calendar replaces the whole body, workspace bar and footer included:
     // it spans workspaces, so a workspace tab above it would be saying
     // something the grid underneath does not agree with.
+    //
+    // Given room for both (Layout.splitsCalendar) it stops replacing anything
+    // and opens beside the list instead - which is the one arrangement in which
+    // a task can be dragged onto a block, because both ends of that gesture
+    // have to be on screen at once.
     if (s.showCalendar) {
+      if (_layout.splitsCalendar) return _splitCalendar(ws);
       return Column(
         children: [
           const SizedBox(height: TitleBar.height),
-          Expanded(
-            child: CalendarView(
-              state: s,
-              onClose: _toggleCalendar,
-              onOpenEvent: _openEvent,
-              onCreate: _createEvent,
-              onNewCalendar: () => _editCalendar(null),
-              onEditCalendar: (c) => _editCalendar(c),
-            ),
-          ),
+          Expanded(child: _calendar()),
         ],
       );
     }
@@ -1093,22 +1310,7 @@ class _WidgetShellState extends State<WidgetShell>
     // workspace list and the views are on screen instead of behind a press.
     final middle = Column(
       children: [
-        if (!_layout.hasRail)
-          WorkspaceBar(
-            workspaces: s.workspaces,
-            currentUuid: s.currentWorkspaceUuid,
-            accent: ws,
-            onSelect: (w) => _switchWorkspace(w),
-            onEdit: (w) => _editWorkspace(w),
-            onCreate: () => _editWorkspace(null),
-            onOpenNotes: _toggleJournal,
-            onOpenParked: _toggleParked,
-            onOpenHistory: _toggleHistory,
-            parkedReviewDue: s.groupsDueForReview.isNotEmpty,
-            // The menu holds three of the four, and lighting its ▾ for a view
-            // it does not contain would point at the wrong control.
-            openView: _openView == WorkspaceView.thoughts ? null : _openView,
-          ),
+        if (!_layout.hasRail) _workspaceBar(ws),
         if (s.hasLiveSession && !s.showSession) _sessionBanner(),
         Expanded(child: _contentArea(ws)),
       ],
@@ -1143,17 +1345,109 @@ class _WidgetShellState extends State<WidgetShell>
                 )
               : middle,
         ),
-        // Outside the rail, spanning the whole width: the pressure meter is
-        // about the pile, not about the workspace you happen to be in.
-        ThoughtFooter(
-          key: _footerKey,
-          thoughts: s.thoughts,
-          workspaceColor: ws,
-          blockedMessage: _blockedMessage,
-          onAdd: s.addThought,
-          listOpen: s.showThoughts,
-          onToggleList: s.toggleThoughts,
+        _footer(ws),
+      ],
+    );
+  }
+
+  /// Outside the rail and outside the split, spanning the whole width: the
+  /// pressure meter is about the pile, not about the workspace - or the view -
+  /// you happen to be in.
+  Widget _footer(Color ws) => ThoughtFooter(
+        key: _footerKey,
+        thoughts: s.thoughts,
+        workspaceColor: ws,
+        blockedMessage: _blockedMessage,
+        onAdd: s.addThought,
+        listOpen: s.showThoughts,
+        onToggleList: s.toggleThoughts,
+      );
+
+  Widget _workspaceBar(Color ws) => WorkspaceBar(
+        workspaces: s.workspaces,
+        currentUuid: s.currentWorkspaceUuid,
+        accent: ws,
+        onSelect: (w) => _switchWorkspace(w),
+        onEdit: (w) => _editWorkspace(w),
+        onCreate: () => _editWorkspace(null),
+        onOpenNotes: _toggleJournal,
+        onOpenParked: _toggleParked,
+        onOpenHistory: _toggleHistory,
+        parkedReviewDue: s.groupsDueForReview.isNotEmpty,
+        // The menu holds three of the four, and lighting its ▾ for a view it
+        // does not contain would point at the wrong control.
+        openView: _openView == WorkspaceView.thoughts ? null : _openView,
+      );
+
+  /// The calendar, wherever it is drawn.
+  ///
+  /// It publishes its **own** [LayoutScope]: beside the list it gets a fraction
+  /// of the window, and every question the views ask about whether they fit -
+  /// the week grid's fallback to the agenda, the year's column count - has to
+  /// be about the box the calendar actually got, not about the window.
+  Widget _calendar() {
+    return LayoutBuilder(
+      builder: (context, constraints) => LayoutScope(
+        layout: Layout(constraints.biggest),
+        child: CalendarView(
+          state: s,
+          onClose: _toggleCalendar,
+          onOpenEvent: _openEvent,
+          onEventMenu: _eventMenu,
+          onCreate: _createEvent,
+          onNewCalendar: () => _editCalendar(null),
+          onEditCalendar: (c) => _editCalendar(c),
+          // Only where there is a list beside it to drag out of.
+          onPlanTask: _layout.splitsCalendar
+              ? (event, task) => s.setTaskEvent(task, event.uuid)
+              : null,
         ),
+      ),
+    );
+  }
+
+  /// The calendar and the list, side by side.
+  ///
+  /// The workspace bar goes *inside* the left pane rather than across the top,
+  /// which is the honest place for it here: it names the workspace whose list
+  /// that pane is showing, and the calendar beside it can be showing every
+  /// workspace at once. The rail is deliberately not used even when the window
+  /// is wide enough for one - rail plus pane plus a legible grid needs a metre
+  /// of desk, and the bar is the same navigation with the popups on.
+  ///
+  /// The footer still spans both, because the pile of side thoughts is neither
+  /// half's business.
+  Widget _splitCalendar(Color ws) {
+    return Column(
+      children: [
+        const SizedBox(height: TitleBar.height),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: Layout.calendarTaskPaneWidth,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => LayoutScope(
+                    layout: Layout(constraints.biggest),
+                    child: Column(
+                      children: [
+                        _workspaceBar(ws),
+                        if (s.hasLiveSession && !s.showSession)
+                          _sessionBanner(),
+                        Expanded(child: _stackedContent(ws)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const VerticalDivider(
+                  width: 1, thickness: 1, color: Color(0x14FFFFFF)),
+              Expanded(child: _calendar()),
+            ],
+          ),
+        ),
+        _footer(ws),
       ],
     );
   }
@@ -1178,12 +1472,16 @@ class _WidgetShellState extends State<WidgetShell>
     final color = s.colorForEvent(first);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      // The gap above belongs to the banner, not to the workspace bar: the bar
+      // is drawn on every screen and this is not, so padding on the bar would
+      // be a hole in the layout whenever no block is running. At phone width
+      // the tab and the tile are otherwise touching.
+      padding: const EdgeInsets.fromLTRB(10, 7, 10, 5),
       child: Material(
         color: Color.lerp(T.bgSolid, color, 0.22),
         borderRadius: BorderRadius.circular(9),
         child: InkWell(
-          onTap: _toggleSession,
+          onTap: _openSession,
           borderRadius: BorderRadius.circular(9),
           child: Container(
             decoration: BoxDecoration(
@@ -1219,7 +1517,16 @@ class _WidgetShellState extends State<WidgetShell>
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, size: 16, color: T.muted),
+                // With something planned, the tile is a way in to that list.
+                // With nothing planned there is no list yet, so the tile offers
+                // to start one instead of pointing at an empty view.
+                if (left == 0)
+                  _SublistButton(
+                    color: color,
+                    onTap: () => _openSublist(first),
+                  )
+                else
+                  const Icon(Icons.chevron_right, size: 16, color: T.muted),
               ],
             ),
           ),
@@ -1250,16 +1557,7 @@ class _WidgetShellState extends State<WidgetShell>
     final secondary = _secondaryView(ws);
     if (secondary == null) return _taskColumn(ws);
 
-    if (!_layout.splitsContent) {
-      // One at a time, and the add field stays above whatever is showing: a
-      // task can be captured without first closing the panel you are reading.
-      return Column(
-        children: [
-          _addField(ws),
-          Expanded(child: secondary),
-        ],
-      );
-    }
+    if (!_layout.splitsContent) return _stackedContent(ws);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1267,6 +1565,21 @@ class _WidgetShellState extends State<WidgetShell>
         Expanded(flex: 5, child: _taskColumn(ws)),
         const VerticalDivider(width: 1, thickness: 1, color: Color(0x14FFFFFF)),
         Expanded(flex: 4, child: secondary),
+      ],
+    );
+  }
+
+  /// One view at a time, with the add field above whatever is showing: a task
+  /// can be captured without first closing the panel you are reading. This is
+  /// what a narrow window gets, and what the left pane of the split calendar
+  /// gets - it is 340px wide by construction, so it is the narrow case.
+  Widget _stackedContent(Color ws) {
+    final secondary = _secondaryView(ws);
+    if (secondary == null) return _taskColumn(ws);
+    return Column(
+      children: [
+        _addField(ws),
+        Expanded(child: secondary),
       ],
     );
   }
@@ -1324,6 +1637,7 @@ class _WidgetShellState extends State<WidgetShell>
         onDelete: s.deleteTask,
         onFocus: (t) => _startFocus(t),
         onUnplan: (t) => s.setTaskEvent(t, null),
+        onCreateSublist: _openSublist,
         onBack: _toggleSession,
       );
     }
@@ -1353,6 +1667,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (blobs == null) return;
     _closeSound();
     _closeSettings();
+    _closeSublist();
     await showAttachments(
       context,
       task: t,
@@ -1393,10 +1708,44 @@ class _WidgetShellState extends State<WidgetShell>
     await s.parkTask(t, groupUuid);
   }
 
+  // ------------------------------------------------------------- composer
+
+  /// The long form, from the add field. Ctrl+D and the ⤢ both land here.
+  ///
+  /// Whatever has been typed is carried over as the title - a shortcut that
+  /// cost you the line you had already written would not be worth pressing -
+  /// and the field is only cleared once the composer actually produced a task,
+  /// so cancelling leaves the quick path exactly as it was.
+  Future<void> _openComposer() async {
+    final draft = await showTaskComposer(
+      context,
+      initialText: _addController.text.trim(),
+    );
+    if (draft == null || !mounted) return;
+    _addController.clear();
+    await s.addTask(
+      draft.text,
+      notes: draft.notes,
+      priority: draft.priority,
+      remindAt: draft.remindAt,
+    );
+  }
+
+  /// The same form on a task that already exists, opened from its own text.
+  Future<void> _openTask(Task t) async {
+    final draft = await showTaskComposer(context, existing: t);
+    if (draft == null || !mounted) return;
+    await s.saveTaskDetails(
+      t,
+      text: draft.text,
+      notes: draft.notes,
+      priority: draft.priority,
+      remindAt: draft.remindAt,
+    );
+  }
+
   Widget _addField(Color ws) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-      child: TextField(
+    final field = TextField(
         controller: _addController,
         focusNode: _addFocus,
         style: const TextStyle(fontSize: 13),
@@ -1405,6 +1754,19 @@ class _WidgetShellState extends State<WidgetShell>
           hintText: 'Add a task…',
           filled: true,
           fillColor: T.surface,
+          // The shortcut, made visible - and the only way in on a phone, which
+          // has no Ctrl to hold.
+          suffixIcon: Tooltip(
+            message: 'More: notes, priority, reminder (Ctrl+D)',
+            child: InkWell(
+              onTap: _openComposer,
+              borderRadius: BorderRadius.circular(6),
+              child: const Icon(Icons.open_in_full_rounded,
+                  size: 14, color: T.muted),
+            ),
+          ),
+          suffixIconConstraints:
+              const BoxConstraints(minWidth: 34, minHeight: 30),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           border: OutlineInputBorder(
@@ -1429,6 +1791,19 @@ class _WidgetShellState extends State<WidgetShell>
             _addFocus.unfocus();
           }
         },
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+      // The shortcut is bound around the field rather than globally: Ctrl+D is
+      // only unambiguous while the caret is in here, and a global binding would
+      // fire from inside the journal editor or a note.
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyD, control: true):
+              _openComposer,
+        },
+        child: field,
       ),
     );
   }
@@ -1459,7 +1834,10 @@ class _WidgetShellState extends State<WidgetShell>
         final key = _rowKeys.putIfAbsent(t.uuid, () => GlobalKey());
         return KeyedSubtree(
           key: ValueKey(t.uuid),
-          child: TaskRow(
+          child: _plannable(
+            t,
+            ws,
+            TaskRow(
             key: key,
             task: t,
             accent: ws,
@@ -1472,17 +1850,67 @@ class _WidgetShellState extends State<WidgetShell>
             // the mark saying so - the list is otherwise unchanged by planning.
             onUnplan: () => s.setTaskEvent(t, null),
             onOpenAttachments: () => _openAttachments(t),
+            onSetPriority: (high) => s.setPriority(t, high),
+            onOpen: () => _openTask(t),
             attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
-            dragHandle: ReorderableDragStartListener(
-              index: i,
-              child: const Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.drag_indicator, size: 14, color: T.muted),
+              dragHandle: ReorderableDragStartListener(
+                index: i,
+                child: const Padding(
+                  padding: EdgeInsets.only(right: 4),
+                  child: Icon(Icons.drag_indicator, size: 14, color: T.muted),
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  /// A row that can be dragged onto a calendar block, when there is a calendar
+  /// beside it to drop onto - otherwise the row itself, untouched.
+  ///
+  /// `affinity: horizontal` is what keeps this out of the list's way: a
+  /// vertical drag still scrolls and the ≡ handle still reorders, while a drag
+  /// *towards the calendar* is the one gesture that means "plan this". Nothing
+  /// here fires on a phone, where the two are never side by side.
+  Widget _plannable(Task t, Color ws, Widget row) {
+    if (!s.showCalendar || !_layout.splitsCalendar) return row;
+    return Draggable<Task>(
+      data: t,
+      affinity: Axis.horizontal,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: _dragFeedback(t, ws),
+      childWhenDragging: Opacity(opacity: 0.35, child: row),
+      child: row,
+    );
+  }
+
+  /// What follows the pointer: the task's own title, small, in the workspace
+  /// colour. A ghost of the whole row would be 340px of widget dragged across
+  /// a grid it is about to cover.
+  Widget _dragFeedback(Task t, Color ws) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 220),
+        margin: const EdgeInsets.only(left: 10, top: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Color.lerp(T.bgSolid, ws, 0.4),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: ws.withValues(alpha: 0.7)),
+          boxShadow: const [
+            BoxShadow(color: Color(0x66000000), blurRadius: 12),
+          ],
+        ),
+        child: Text(
+          t.text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12, color: T.text),
+        ),
+      ),
     );
   }
 
@@ -1746,6 +2174,50 @@ class _WidgetShellState extends State<WidgetShell>
       uuid: existing?.uuid,
       name: result.name,
       color: result.color,
+    );
+  }
+}
+
+/// "Sublist" on the live-block tile: the way to give a block a list when it has
+/// none. A labelled button rather than a bare ＋ because it is the one control
+/// on that tile whose meaning is not obvious from the tile itself, and it is
+/// only ever drawn in the case where the tile has nothing else to offer.
+class _SublistButton extends StatelessWidget {
+  const _SublistButton({required this.color, required this.onTap});
+
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Give this block a list of its own',
+      child: Material(
+        color: color.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(7),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(7),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(7, 4, 8, 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.playlist_add_rounded, size: 14, color: color),
+                const SizedBox(width: 4),
+                const Text(
+                  'Sublist',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: T.text,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

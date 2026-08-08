@@ -249,6 +249,10 @@ void main() {
     // refuses to drop a column an index is built on.
     await store.raw.execute('DROP INDEX idx_tasks_event');
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
+    // ...and no notes or priority (v11), or the migration that adds them
+    // collides with the columns _create already made.
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
     await store.raw.setVersion(3);
     await store.close();
 

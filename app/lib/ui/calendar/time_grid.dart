@@ -59,7 +59,9 @@ class TimeGridView extends StatefulWidget {
     required this.hasAttachment,
     required this.taskCountFor,
     required this.onOpenEvent,
+    required this.onEventMenu,
     required this.onCreate,
+    this.onPlanTask,
     this.blockTitle,
     this.blockColor,
   });
@@ -77,6 +79,18 @@ class TimeGridView extends StatefulWidget {
   final int Function(CalendarEvent) taskCountFor;
 
   final void Function(CalendarEvent) onOpenEvent;
+
+  /// The actions menu for one block, at the point it was asked for: right-click
+  /// on a desktop, long-press on a phone. The long press is free to mean this
+  /// even though long-press-then-drag is how touch *creates* a block, because
+  /// the create gesture sits below the blocks in the stack and never sees a
+  /// press that landed on one.
+  final void Function(CalendarEvent, Offset globalPosition) onEventMenu;
+
+  /// A task was dragged out of the list beside the grid and dropped on a block.
+  /// Null when there is no list beside it, which is every window narrower than
+  /// [Layout.calendarSplitMinWidth].
+  final void Function(CalendarEvent, Task)? onPlanTask;
 
   /// A drag finished. The editor opens prefilled with this span - unless time
   /// block mode is on, in which case the caller saves it outright.
@@ -228,6 +242,7 @@ class _TimeGridViewState extends State<TimeGridView> {
                 events: spanning,
                 colorFor: widget.colorFor,
                 onOpen: widget.onOpenEvent,
+                onMenu: widget.onEventMenu,
                 gutter: _gutter,
                 compact: _compact,
               ),
@@ -244,6 +259,8 @@ class _TimeGridViewState extends State<TimeGridView> {
                     hasAttachment: widget.hasAttachment,
                     taskCountFor: widget.taskCountFor,
                     onOpenEvent: widget.onOpenEvent,
+                    onEventMenu: widget.onEventMenu,
+                    onPlanTask: widget.onPlanTask,
                     onDragBegin: _begin,
                     onDragExtend: _extend,
                     onDragCommit: _commit,
@@ -288,6 +305,8 @@ class _GridBody extends StatelessWidget {
     required this.hasAttachment,
     required this.taskCountFor,
     required this.onOpenEvent,
+    required this.onEventMenu,
+    required this.onPlanTask,
     required this.onDragBegin,
     required this.onDragExtend,
     required this.onDragCommit,
@@ -304,6 +323,8 @@ class _GridBody extends StatelessWidget {
   final bool Function(CalendarEvent) hasAttachment;
   final int Function(CalendarEvent) taskCountFor;
   final void Function(CalendarEvent) onOpenEvent;
+  final void Function(CalendarEvent, Offset) onEventMenu;
+  final void Function(CalendarEvent, Task)? onPlanTask;
 
   /// The create-by-dragging gesture, in the grid's own coordinates.
   final void Function(Offset) onDragBegin;
@@ -432,6 +453,10 @@ class _GridBody extends StatelessWidget {
               hasAttachment: hasAttachment(p.event),
               taskCount: taskCountFor(p.event),
               onTap: () => onOpenEvent(p.event),
+              onMenu: (at) => onEventMenu(p.event, at),
+              onDropTask: onPlanTask == null
+                  ? null
+                  : (task) => onPlanTask!(p.event, task),
               // Two events side by side in a phone column are ~22px each, so
               // the blob's own ornament goes by its slot, not by the day's.
               compact: compact || slotWidth < kCompactColumn,
@@ -526,6 +551,8 @@ class EventBlock extends StatelessWidget {
     required this.color,
     required this.hasAttachment,
     required this.onTap,
+    this.onMenu,
+    this.onDropTask,
     this.taskCount = 0,
     this.compact = false,
   });
@@ -534,6 +561,15 @@ class EventBlock extends StatelessWidget {
   final Color color;
   final bool hasAttachment;
   final VoidCallback onTap;
+
+  /// Right-click or long-press, at the point it happened. Optional so a block
+  /// can be drawn somewhere that has no actions to offer.
+  final void Function(Offset globalPosition)? onMenu;
+
+  /// A task was dropped on this block: plan it into it. Null wherever there is
+  /// no task list to drag from - which is every window too narrow to show the
+  /// two side by side, and so also every phone.
+  final void Function(Task)? onDropTask;
 
   /// Open todos planned into this block. Drawn as a bare number beside the
   /// paperclip: at this size a labelled badge would cost the title its width.
@@ -547,7 +583,7 @@ class EventBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final blob = Padding(
       padding: const EdgeInsets.only(right: 1, bottom: 1),
       child: Material(
         color: Color.lerp(T.bgSolid, color, 0.34),
@@ -614,6 +650,81 @@ class EventBlock extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    return EventMenuArea(
+      onMenu: onMenu,
+      child: TaskDropTarget(onDrop: onDropTask, color: color, child: blob),
+    );
+  }
+}
+
+/// Accepts a task dragged out of the list beside the calendar, and says so
+/// while it is over the block.
+///
+/// The highlight is the whole feedback: a drop that plans a task changes the
+/// count on the blob and nothing else, which is too quiet to be the only thing
+/// that happens when you let go of something.
+class TaskDropTarget extends StatelessWidget {
+  const TaskDropTarget({
+    super.key,
+    required this.onDrop,
+    required this.color,
+    required this.child,
+  });
+
+  final void Function(Task)? onDrop;
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final drop = onDrop;
+    if (drop == null) return child;
+
+    return DragTarget<Task>(
+      onAcceptWithDetails: (d) => drop(d.data),
+      builder: (context, candidates, _) {
+        if (candidates.isEmpty) return child;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: color, width: 1.5),
+            boxShadow: [
+              BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 8),
+            ],
+          ),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+/// Right-click (desktop) and long-press (touch) on an event, both reported with
+/// the point they happened at so the menu can open there.
+///
+/// An ancestor of the block's own [InkWell] rather than a replacement for it:
+/// the tap keeps its ripple, and a long press still beats it in the gesture
+/// arena, because a long press claims the pointer at its threshold while a tap
+/// can only win on pointer-up.
+class EventMenuArea extends StatelessWidget {
+  const EventMenuArea({super.key, required this.onMenu, required this.child});
+
+  final void Function(Offset globalPosition)? onMenu;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final menu = onMenu;
+    if (menu == null) return child;
+    return GestureDetector(
+      // Only where the child was actually hit: the wrapper is often bigger
+      // than the coloured blob inside it.
+      behavior: HitTestBehavior.deferToChild,
+      onSecondaryTapUp: (d) => menu(d.globalPosition),
+      onLongPressStart: (d) => menu(d.globalPosition),
+      child: child,
     );
   }
 }
@@ -842,6 +953,7 @@ class _SpanBand extends StatelessWidget {
     required this.events,
     required this.colorFor,
     required this.onOpen,
+    required this.onMenu,
     required this.gutter,
     required this.compact,
   });
@@ -850,6 +962,7 @@ class _SpanBand extends StatelessWidget {
   final List<CalendarEvent> events;
   final Color Function(CalendarEvent) colorFor;
   final void Function(CalendarEvent) onOpen;
+  final void Function(CalendarEvent, Offset) onMenu;
   final double gutter;
   final bool compact;
 
@@ -897,6 +1010,7 @@ class _SpanBand extends StatelessWidget {
                       showStart: !compact && !e.start.isBefore(days.first),
                       showEnd: !compact && !e.end.isAfter(last),
                       onTap: () => onOpen(e),
+                      onMenu: (at) => onMenu(e, at),
                     ),
                   );
                 }(),
@@ -915,6 +1029,7 @@ class _SpanBar extends StatelessWidget {
     required this.showStart,
     required this.showEnd,
     required this.onTap,
+    required this.onMenu,
   });
 
   final CalendarEvent event;
@@ -922,9 +1037,17 @@ class _SpanBar extends StatelessWidget {
   final bool showStart;
   final bool showEnd;
   final VoidCallback onTap;
+  final void Function(Offset globalPosition) onMenu;
 
   @override
   Widget build(BuildContext context) {
+    return EventMenuArea(
+      onMenu: onMenu,
+      child: _bar(),
+    );
+  }
+
+  Widget _bar() {
     return Material(
       color: Color.lerp(T.bgSolid, color, 0.42),
       borderRadius: BorderRadius.circular(3),

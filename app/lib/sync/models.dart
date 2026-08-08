@@ -275,10 +275,29 @@ class Task implements SyncRow {
   /// planning a week a way to lose things.
   final String? eventUuid;
 
+  /// The long form: everything that did not fit on the line. Empty for the vast
+  /// majority of tasks, which is why it is a column on the row rather than a
+  /// table of its own - a nullable-by-convention text field costs an empty
+  /// string per task, where a second table would cost a join, a migration, a
+  /// sync entry and a garbage-collection rule.
+  final String notes;
+
+  /// How loudly this one is asking. `0` is an ordinary task and
+  /// [priorityHigh] is a flagged one.
+  ///
+  /// An integer rather than a boolean because "urgent above high" is the
+  /// obvious next request, and answering it with a second column would leave
+  /// two flags that can disagree after a merge. The UI offers two values; the
+  /// column can carry more without another migration.
+  final int priority;
+
   @override
   final String updatedAt;
   @override
   final String? deletedAt;
+
+  /// The one flagged level the UI currently sets.
+  static const priorityHigh = 1;
 
   const Task({
     required this.uuid,
@@ -291,6 +310,8 @@ class Task implements SyncRow {
     this.remindAt,
     this.groupUuid,
     this.eventUuid,
+    this.notes = '',
+    this.priority = 0,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -300,6 +321,10 @@ class Task implements SyncRow {
   bool get isParked => groupUuid != null;
 
   bool get isPlanned => eventUuid != null;
+
+  bool get hasNotes => notes.trim().isNotEmpty;
+
+  bool get isHighPriority => priority >= priorityHigh;
 
   /// Local time, for display. The stored value is UTC - see [reminderStamp].
   DateTime? get remindAtTime {
@@ -328,6 +353,8 @@ class Task implements SyncRow {
     String? remindAt,
     String? groupUuid,
     String? eventUuid,
+    String? notes,
+    int? priority,
     String? updatedAt,
     String? deletedAt,
     bool clearCompleted = false,
@@ -347,6 +374,10 @@ class Task implements SyncRow {
         remindAt: clearReminder ? null : (remindAt ?? this.remindAt),
         groupUuid: clearGroup ? null : (groupUuid ?? this.groupUuid),
         eventUuid: clearEvent ? null : (eventUuid ?? this.eventUuid),
+        // No "clear" flag for these two: the empty string and 0 *are* the
+        // cleared values, so passing them says it outright.
+        notes: notes ?? this.notes,
+        priority: priority ?? this.priority,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
       );
@@ -363,6 +394,8 @@ class Task implements SyncRow {
         'remind_at': remindAt,
         'group_uuid': groupUuid,
         'event_uuid': eventUuid,
+        'notes': notes,
+        'priority': priority,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -378,6 +411,10 @@ class Task implements SyncRow {
         remindAt: m['remind_at'] as String?,
         groupUuid: m['group_uuid'] as String?,
         eventUuid: m['event_uuid'] as String?,
+        // Null-tolerant: a row that arrived from a server still carrying the
+        // pre-v11 column list has neither of these.
+        notes: (m['notes'] as String?) ?? '',
+        priority: (m['priority'] as num?)?.toInt() ?? 0,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );

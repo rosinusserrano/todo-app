@@ -774,6 +774,7 @@ void main() {
             hasAttachment: (_) => false,
             taskCountFor: (_) => 0,
             onOpenEvent: (e) => opened.add(e.uuid),
+            onEventMenu: (_, _) {},
             onCreate: (start, _) => created.add(start),
           ),
         ),
@@ -793,6 +794,96 @@ void main() {
 
       expect(created, hasLength(1));
       expect(opened, ['e1']);
+    });
+
+    testWidgets('a task dragged onto a block is planned into it',
+        (tester) async {
+      // The gesture only exists where both halves are on screen at once, so
+      // the test builds that arrangement: a list on the left, the grid on the
+      // right, and a drag from one to the other.
+      await tester.binding.setSurfaceSize(const Size(700, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final planned = <String>[];
+      final task = Task(
+        uuid: 't1',
+        workspaceUuid: 'ws',
+        text: 'write the summary',
+        createdAt: nowStamp(),
+        updatedAt: nowStamp(),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              SizedBox(
+                width: 180,
+                child: Draggable<Task>(
+                  data: task,
+                  feedback: const SizedBox(width: 40, height: 20),
+                  child: const Text('write the summary'),
+                ),
+              ),
+              Expanded(
+                child: TimeGridView(
+                  days: [day],
+                  events: [
+                    event('e1', day.add(const Duration(hours: 9)),
+                        day.add(const Duration(hours: 10))),
+                  ],
+                  colorFor: (_) => T.accent,
+                  hasAttachment: (_) => false,
+                  taskCountFor: (_) => 0,
+                  onOpenEvent: (_) {},
+                  onEventMenu: (_, _) {},
+                  onCreate: (_, _) {},
+                  onPlanTask: (e, t) => planned.add('${e.uuid}:${t.uuid}'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ));
+
+      final gesture =
+          await tester.startGesture(tester.getCenter(find.text('write the summary')));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveTo(tester.getCenter(find.byType(EventBlock)));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(planned, ['e1:t1']);
+    });
+
+    testWidgets('a block only takes a drop where there is a list to drag from',
+        (tester) async {
+      // Without onPlanTask there is no DragTarget at all, which is what keeps
+      // a phone's grid free of a gesture it can never receive.
+      await tester.binding.setSurfaceSize(const Size(400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: [day],
+            events: [
+              event('e1', day.add(const Duration(hours: 9)),
+                  day.add(const Duration(hours: 10))),
+            ],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => false,
+            taskCountFor: (_) => 0,
+            onOpenEvent: (_) {},
+            onEventMenu: (_, _) {},
+            onCreate: (_, _) {},
+          ),
+        ),
+      ));
+
+      expect(find.byType(EventBlock), findsOneWidget);
+      expect(find.byType(DragTarget<Task>), findsNothing);
     });
 
     testWidgets('a phone-width week is seven real columns', (tester) async {
@@ -817,6 +908,7 @@ void main() {
             hasAttachment: (_) => true,
             taskCountFor: (_) => 2,
             onOpenEvent: (_) {},
+            onEventMenu: (_, _) {},
             onCreate: (_, _) {},
           ),
         ),
@@ -856,6 +948,7 @@ void main() {
             hasAttachment: (_) => false,
             taskCountFor: (_) => 0,
             onOpenEvent: (_) {},
+            onEventMenu: (_, _) {},
             onCreate: (start, _) => created.add(start),
           ),
         ),
@@ -930,6 +1023,9 @@ void main() {
     // to drop a column an index is built on.
     await store.raw.execute('DROP INDEX idx_tasks_event');
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
+    // Nor notes/priority, which arrived in v11.
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
     await store.raw.execute('DROP TABLE calendars');
     await store.raw.execute('DROP TABLE calendar_events');
     await store.raw.execute('DROP TABLE attachments');

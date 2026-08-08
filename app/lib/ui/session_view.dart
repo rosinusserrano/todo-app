@@ -36,6 +36,7 @@ class SessionView extends StatelessWidget {
     required this.onDelete,
     required this.onFocus,
     required this.onUnplan,
+    required this.onCreateSublist,
     required this.onBack,
   });
 
@@ -62,6 +63,11 @@ class SessionView extends StatelessWidget {
   /// the way out from where you actually notice it does not belong.
   final Future<void> Function(Task) onUnplan;
 
+  /// Start (or add to) the block's own list. Offered on a block with nothing in
+  /// it, where the alternative is a paragraph telling the user to go and find
+  /// the event in the calendar.
+  final void Function(CalendarEvent) onCreateSublist;
+
   final VoidCallback onBack;
 
   @override
@@ -85,6 +91,7 @@ class SessionView extends StatelessWidget {
                   onDelete: onDelete,
                   onFocus: onFocus,
                   onUnplan: onUnplan,
+                  onCreateSublist: () => onCreateSublist(e),
                 ),
             ],
           ),
@@ -105,6 +112,7 @@ class _Block extends StatelessWidget {
     required this.onDelete,
     required this.onFocus,
     required this.onUnplan,
+    required this.onCreateSublist,
   });
 
   final CalendarEvent event;
@@ -116,6 +124,7 @@ class _Block extends StatelessWidget {
   final Future<void> Function(Task) onDelete;
   final void Function(Task) onFocus;
   final Future<void> Function(Task) onUnplan;
+  final VoidCallback onCreateSublist;
 
   /// "38 min left", or "1 h 12 min left".
   ///
@@ -175,12 +184,34 @@ class _Block extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           if (tasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(6, 6, 6, 2),
-              child: Text(
-                'Nothing planned into this block. Open the event in the '
-                'calendar to pick todos for it.',
-                style: TextStyle(fontSize: 11, color: T.muted, height: 1.35),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Nothing planned into this block.',
+                    style: TextStyle(fontSize: 11, color: T.muted, height: 1.35),
+                  ),
+                  const SizedBox(height: 4),
+                  // The way to fix that, right where the problem is stated.
+                  // Sending the user off to find the event in the calendar was
+                  // three navigations away from the thing they are looking at.
+                  TextButton.icon(
+                    onPressed: onCreateSublist,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: Icon(Icons.playlist_add_rounded,
+                        size: 15, color: color),
+                    label: Text(
+                      'Create a sublist',
+                      style: TextStyle(fontSize: 11.5, color: color),
+                    ),
+                  ),
+                ],
               ),
             )
           else

@@ -80,7 +80,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 10,
+        version: 11,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -158,6 +158,16 @@ class LocalStore {
       // task is simply "not planned into anything".
       await db.execute('ALTER TABLE tasks ADD COLUMN event_uuid TEXT');
       await db.execute(_tasksEventIndex);
+    }
+    if (from < 11) {
+      // The long form, and the flag. Both NOT NULL with a default that is
+      // exactly what every existing row means: no notes, ordinary priority.
+      // One step for the two of them - they landed together, and a second
+      // migration for a second column would be a second thing to test.
+      await db.execute(
+          "ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          'ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0');
     }
   }
 
@@ -412,6 +422,8 @@ class LocalStore {
         remind_at      TEXT,
         group_uuid     TEXT,
         event_uuid     TEXT,
+        notes          TEXT NOT NULL DEFAULT '',
+        priority       INTEGER NOT NULL DEFAULT 0,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,
         dirty          INTEGER NOT NULL DEFAULT 1

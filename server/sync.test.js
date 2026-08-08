@@ -872,6 +872,71 @@ test('a server database predating planned todos gains tasks.event_uuid', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('a server database predating notes gains tasks.notes and tasks.priority', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  // Tasks as they stood before a task could carry a paragraph or a flag.
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      remind_at      TEXT,
+      group_uuid     TEXT,
+      event_uuid     TEXT,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, seq)
+    VALUES ('t-old', 'local', 'ws-1', 'from before', '2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  // Without the two ALTERs this is "no column named notes", and it fails for
+  // every task push rather than only for the ones carrying notes.
+  const { changes } = sync(db, USER, 0, {
+    tasks: [
+      {
+        uuid: 't-detailed',
+        workspace_uuid: 'ws-1',
+        text: 'file the accounts',
+        created_at: '2026-07-30T10:00:00+02:00',
+        completed_at: null,
+        sort_order: 0,
+        in_progress: 0,
+        remind_at: null,
+        group_uuid: null,
+        event_uuid: null,
+        notes: 'portal login is in the password manager',
+        priority: 1,
+        updated_at: '2026-07-30T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const byUuid = Object.fromEntries(changes.tasks.map((t) => [t.uuid, t]));
+  assert.equal(byUuid['t-detailed'].notes, 'portal login is in the password manager');
+  assert.equal(byUuid['t-detailed'].priority, 1);
+  // The row that was already there survives, with the defaults from the ALTER.
+  assert.equal(byUuid['t-old'].text, 'from before');
+  assert.equal(byUuid['t-old'].notes, '');
+  assert.equal(byUuid['t-old'].priority, 0);
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('auth rejects a missing, malformed or wrong token', () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'correct-horse');

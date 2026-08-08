@@ -13,6 +13,22 @@ Newest changes are noted in the changelog at the bottom.
 - **Park a task** — the 📥 on hover shelves it in a parked group (see below),
   taking it off the current list without deleting it.
 - **Attach a document** — the 📎 on hover; see Attachments.
+- **The long form — Ctrl+D, or the ⤢ in the add field.** Opens a bigger
+  composer for the task that needs more than a line: **notes**, a **priority
+  flag** and a **reminder**, all set before it ever reaches the list. Whatever
+  you had already typed comes across as the title and the caret lands straight
+  in the notes box, so the shortcut never costs you the line you were writing.
+  Cancelling leaves the quick field exactly as it was.
+- **Notes stay readable.** A task carrying notes previews their first line under
+  its title, and clicking the title reopens the composer on that task. A note
+  you can only write is a note you will not write.
+- **High priority** — the ⚑ on hover flags a task: a red bar down its leading
+  edge and a red border, so it reads as urgent from across the room. The bar is
+  a separate channel from the overdue-reminder red and the focus tint, so a task
+  can be flagged, overdue *and* in progress without any of the three hiding
+  another. Flagging deliberately **does not reorder the list** — that order is
+  yours, set by dragging, and a flag that jumped a row to the top would be a
+  second sort fighting the first.
 
 ## Attachments
 
@@ -218,6 +234,15 @@ Three tiers, none of which need an account, an API key, or a licence:
     to scroll the day, which is the only way to reach the rest of it.
   - Creating only happens on **empty** grid. A click or press on an existing
     event opens that event and nothing else.
+- **Click an entry to read it; right-click for what to do with it.** A plain
+  click opens a **details card** — when it runs and for how long, its calendar,
+  its reminder rule, the description, what is planned into it and what is
+  attached — with *Edit*, *Todos* and *Delete* named on it. Clicking used to
+  open the edit form outright, which answered the rarer of the two reasons for
+  clicking and put a form full of live fields one keystroke away from changing
+  something nobody meant to touch. **Right-click** (or **long-press** on a
+  phone) skips the card and offers the same actions directly. Both work on the
+  hour grid, on the multi-day band and in the agenda.
 - **Time-block mode** (⚡ in the header) is for laying out a whole week at once.
   Pick a calendar once from the strip of chips that appears under the header, and
   from then on every drag saves an event straight away, titled after that
@@ -241,12 +266,25 @@ Three tiers, none of which need an account, an API key, or a licence:
   elsewhere says so rather than being hidden. Deleting the block releases its
   todos — they are still things to do, they have only lost the time set aside
   for them.
+- **A block can have a list of its own — "Sublist".** Rather than only choosing
+  among tasks you already have, you can write a block's todos straight into it:
+  the sheet has an add field at the top ("print the slides") and folds the rest
+  of the workspace's open list underneath, one tap each to take one in. It is
+  reached from the "Now" tile when the running block is empty, from the session
+  view, and from *Todos* in an event's right-click menu. Nothing new is stored —
+  a sublist is simply the tasks pointing at that block.
 - **"Now" — the session view.** While a block is running, a banner appears above
   the task list saying what it is, when it ends and how much is left on it.
   Opening it shows **only** the todos planned into that block, with a live
   countdown — the payoff for planning a week, and the answer to "what am I meant
   to be doing right now" without going to look for it. Check them off, or ▶ one
   into focus mode, from there.
+  - **The tile switches workspace with you.** A block names a workspace through
+    its calendar, and it is the one control in the app that talks about a
+    workspace other than the one on screen — so pressing it takes you there,
+    rather than showing that block's todos beside a different list.
+  - If the running block has **nothing** planned into it, the tile does not open
+    an empty view; it stays on your list and offers **Sublist** instead.
   - There is no permanent button for it because for most of the day there is no
     answer: the way in appears when a block starts and the view hands the
     content area back when the last one ends. Esc closes it like the other
@@ -273,6 +311,16 @@ Three tiers, none of which need an account, an API key, or a licence:
   minutes ahead while Work warns you an hour ahead — because that is the level
   the answer actually varies at. Any single event can override its calendar,
   including down to silence.
+- **On a big window the calendar opens *beside* the list, and you can drag onto
+  it.** Past about 810px wide the calendar stops replacing the window: the task
+  list keeps the left-hand column (with its workspace bar and its add field) and
+  the calendar takes the rest. **Drag a task onto a block** to plan it into that
+  block — the block lights up as you come over it, and letting go is the same
+  thing ticking it in the event editor does, reached from where you are actually
+  looking at the task. Dragging *down* still scrolls the list and the ≡ handle
+  still reorders it; only a drag towards the calendar means "plan this". Like
+  every other adaptation here this is a size, not a mode — there is nothing to
+  switch on, and below that width the calendar behaves exactly as it always has.
 - **The calendar fits the window you have.** Opening it never moves or resizes
   the widget. Instead the views change shape:
   - The **week stays a week** — seven real columns you can drag on — right down
@@ -454,6 +502,13 @@ simply stretched.
   pending side thoughts and the parked-review dot where you can see them.
   Clicking a workspace switches to it, clicking the one you are on edits it —
   exactly the tab's behaviour. Narrow the window and the bar comes back.
+- **~810px — the calendar stops covering the tasks.** It opens beside the list
+  rather than taking the window, which is also the only arrangement in which a
+  task can be dragged onto a block (both ends of that gesture have to be on
+  screen at once). The threshold is the list at its design width plus a week
+  grid whose seven columns are still roomy — neither half is squeezed to make
+  room for the other. The calendar half measures *itself*, so the week's shape
+  is decided by the space the calendar actually got rather than by the window.
 - **~900px — the panels stop covering the tasks.** Notes, Parked, History and
   the thoughts pile open *beside* the task list instead of replacing it, so
   reviewing what you parked no longer costs you sight of what you are meant to
@@ -590,6 +645,33 @@ simply stretched.
 
 ## Changelog
 
+- **0.17.0** — **The list and the calendar, pointed at each other.** Six
+  changes, five of them on the seam between the two.
+  **The calendar opens beside the task list** on a window past ~810px instead of
+  taking it over, and a task can be **dragged straight onto a block** to plan it
+  into that block. Not a mode: it is a threshold like every other adaptation
+  here, and a drag towards the calendar is the one gesture that means "plan
+  this" — dragging down still scrolls, the ≡ handle still reorders.
+  **Clicking a calendar entry now reads it** rather than opening the edit form:
+  a details card saying when it runs, for how long, whose calendar it is on,
+  what is planned into it and what is attached, with Edit / Todos / Delete named
+  on it. **Right-click, or long-press on a phone**, skips the card and offers
+  those directly — on the grid, the multi-day band and the agenda alike.
+  **A block can be given a list of its own.** The "Now" tile switches to the
+  block's workspace when you press it, and when the running block has nothing in
+  it the tile offers **Sublist** instead of opening an empty view: an add field
+  for todos that only exist because of that block, with the rest of the
+  workspace's list folded underneath, one tap each to take one in.
+  **Ctrl+D opens the long form of a task** — notes, a priority flag and a
+  reminder in one place, carrying over whatever was already typed and landing
+  the caret in the notes box. The ⤢ in the add field is the same door for a
+  phone. Notes preview under the task's title and clicking the title reopens the
+  form, so they are readable rather than write-only.
+  **High priority**: ⚑ on a row flags it, drawn as a red bar down the leading
+  edge plus a red border — a separate channel from the overdue red and the focus
+  tint, so a task can be all three at once. It does not reorder anything.
+  Adds `notes` and `priority` to `tasks` (schema v11; client and server both
+  migrate in place).
 - **0.16.1** — **The week is a week on a phone too.** It used to fall back to
   the stacked agenda at anything under ~470px, which is every phone — so an
   iPhone never saw the actual grid. The grid now has a compact shape (narrow

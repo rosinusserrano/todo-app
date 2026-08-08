@@ -26,7 +26,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'theme.dart';
-import 'ui/calendar/time_grid.dart' show kGutterCompact;
+import 'ui/calendar/time_grid.dart' show kGutter, kGutterCompact;
 
 @immutable
 class Layout {
@@ -93,6 +93,35 @@ class Layout {
   /// narrow is drawn with the narrow gutter, so the roomy one would be
   /// measuring space the grid was never going to spend.
   bool get weekGridFits => (width - kGutterCompact) / 7 >= minDayColumn;
+
+  /// A day column drawn at the *roomy* geometry - a title, its times and the
+  /// marks on a blob. This is the number [minDayColumn] used to be, before the
+  /// compact grid gave a phone a narrower one to be measured against.
+  static const roomyDayColumn = 62.0;
+
+  /// Past this the calendar stops replacing the whole window and opens beside
+  /// the task list, which is where a task can be dragged onto a block.
+  ///
+  /// Worked backwards from contents like the rest: the task column at its
+  /// design width, plus a week grid whose seven columns are still roomy, plus
+  /// the divider between them. Below it nothing changes - the calendar takes
+  /// the window, as it always has.
+  static const calendarSplitMinWidth =
+      calendarTaskPaneWidth + kGutter + 7 * roomyDayColumn + 1;
+
+  /// The task list's share when the two are side by side.
+  ///
+  /// Fixed rather than proportional: the list was drawn against
+  /// [T.designWidth] and gains nothing from being wider (see [taskColumnMax]),
+  /// while the grid gains a legible day per [roomyDayColumn]. Every extra pixel
+  /// is therefore worth more to the calendar.
+  static const calendarTaskPaneWidth = T.designWidth;
+
+  /// Height as well as width, for the same reason the rail is gated on it: a
+  /// short window makes both halves scroll, and two scrolling halves are worse
+  /// than the one full-window view they replaced.
+  bool get splitsCalendar =>
+      width >= calendarSplitMinWidth && height >= railMinHeight;
 
   /// A month tile wants this much to keep two-digit day numbers legible, and
   /// the 8px the year view puts between tiles.

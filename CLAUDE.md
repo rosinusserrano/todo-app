@@ -113,6 +113,12 @@ State flags rather than separate tables:
   `parked_groups` row, and shelved rows are excluded from `activeTasks`,
   `inProgressTask` and the reminder sweep. One nullable column rather than a
   second table, so parking keeps the row's uuid, history and reminder.
+- `notes` and `priority` on a task are the two columns v11 added. Both are NOT
+  NULL with a default that *is* what every older row means (`''` and `0`), so
+  there is no third "unset" state to reason about and `copyWith` needs no
+  `clear` flag for either. `priority` is an integer rather than a boolean
+  because a second level is the obvious next request and a second column could
+  disagree with the first after a merge.
 - `event_uuid` on a task is the **planned-into-a-block** pointer, and it follows
   `group_uuid`'s shape for the same reasons — except that it does **not** take
   the row off `activeTasks`. Planning says *when*, not "put this away"; a plan
@@ -185,7 +191,8 @@ fixtures** — they will otherwise either collide on something `_create` already
 made, or fail in a later step that alters a table the fixture never created.
 A rolled-back fixture has to give the *column* back too (`DROP INDEX` first;
 SQLite refuses to drop a column an index is built on — see the v10 `event_uuid`
-lines in `attachments_test`, `calendar_test` and `default_workspace_test`), and
+and v11 `notes` / `priority` lines in `attachments_test`, `calendar_test` and
+`default_workspace_test`), and
 a hand-built one has to contain every table a later step touches, which is why
 `journal_test` carries `_v9Tasks` and `_v4Attachments` as scaffolding.
 
@@ -226,6 +233,19 @@ time on one. The rules that are not obvious from the schema:
   menu, because it can show every workspace at once. `_toggleCalendar` used to
   resize the window to 920×640 and centre it on the way in; it does **not** any
   more — see `layout.dart` below, and don't put it back.
+- Past `Layout.splitsCalendar` it replaces nothing: `_splitCalendar` puts the
+  task pane (workspace bar, banner, add field, list) beside it. Both halves get
+  their **own `LayoutScope`**, measured by a `LayoutBuilder` — the week's
+  fallback and the year's column count must answer for the box the calendar
+  actually got, not for the window. That split is also the only place
+  `onPlanTask` is non-null, so the drop targets simply do not exist anywhere a
+  task cannot be dragged from.
+- **A click on a block reads it** (`showEventDetails`), and right-click /
+  long-press is the actions menu (`_eventMenu`); `_editEvent` is the form that
+  used to be what a click did. The long press is safe to take *because* the
+  create-drag listener sits below the blocks in the grid's `Stack` — the same
+  arrangement documented above is what makes both gestures possible on one
+  widget.
 - The week has two renderings and the mode has only one meaning: `TimeGridView`
   when `Layout.weekGridFits`, `AgendaView` when it does not. Day always uses the
   grid (one column fits anywhere) and the year reflows on its own, so this is
@@ -484,8 +504,9 @@ Notes for changing it:
 
 - The thresholds are worked backwards from **contents**, and the tests assert
   them that way: `weekGridFits` is "seven columns of at least `minDayColumn`",
-  not a round number. Keep new ones in the same shape or `test/layout_test.dart`
-  has nothing to check them against.
+  not a round number, and `calendarSplitMinWidth` is "the task pane at its
+  design width plus a week grid at `roomyDayColumn`". Keep new ones in the same
+  shape or `test/layout_test.dart` has nothing to check them against.
 - Where a view has a compact shape, the threshold is measured against **that**
   shape. `minDayColumn` is 40 rather than 62 because the narrow week is drawn
   with the compact grid geometry; measuring the compact case against the roomy

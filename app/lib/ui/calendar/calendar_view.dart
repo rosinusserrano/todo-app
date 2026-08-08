@@ -44,17 +44,31 @@ class CalendarView extends StatelessWidget {
     required this.state,
     required this.onClose,
     required this.onOpenEvent,
+    required this.onEventMenu,
     required this.onCreate,
     required this.onNewCalendar,
     required this.onEditCalendar,
+    this.onPlanTask,
   });
 
   final AppState state;
   final VoidCallback onClose;
+
+  /// A plain click: the details card. Editing is named on it rather than being
+  /// what a click does, because most clicks on a block are asking a question.
   final void Function(CalendarEvent) onOpenEvent;
+
+  /// Right-click or long-press: the actions menu, at that point.
+  final void Function(CalendarEvent, Offset globalPosition) onEventMenu;
+
   final void Function(DateTime start, DateTime end) onCreate;
   final VoidCallback onNewCalendar;
   final void Function(Calendar) onEditCalendar;
+
+  /// A task was dragged out of the list beside the calendar and dropped on a
+  /// block. Only wired up when the two really are side by side - see
+  /// [Layout.splitsCalendar] - because there is nothing to drag from otherwise.
+  final void Function(CalendarEvent, Task)? onPlanTask;
 
   static const _months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -184,8 +198,10 @@ class CalendarView extends StatelessWidget {
         hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
         taskCountFor: (e) => state.eventTaskCounts[e.uuid] ?? 0,
         onOpenEvent: onOpenEvent,
+        onEventMenu: onEventMenu,
         onCreate: onCreate,
         onPickDay: _openDay,
+        onPlanTask: onPlanTask,
       );
     }
 
@@ -197,7 +213,9 @@ class CalendarView extends StatelessWidget {
       hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
       taskCountFor: (e) => state.eventTaskCounts[e.uuid] ?? 0,
       onOpenEvent: onOpenEvent,
+      onEventMenu: onEventMenu,
       onCreate: onCreate,
+      onPlanTask: onPlanTask,
       // What the drag is about to become. In block mode the editor never opens,
       // so the draft is the only chance to see what is being saved.
       blockTitle: block == null ? null : state.calendarName(block),

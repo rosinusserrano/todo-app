@@ -18,7 +18,8 @@ import 'package:todo_widget/layout.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
 import 'package:todo_widget/ui/calendar/agenda_view.dart';
-import 'package:todo_widget/ui/calendar/time_grid.dart' show kGutterCompact;
+import 'package:todo_widget/ui/calendar/time_grid.dart'
+    show kGutter, kGutterCompact;
 import 'package:todo_widget/ui/calendar/year_view.dart';
 import 'package:todo_widget/ui/workspace_bar.dart' show WorkspaceView;
 import 'package:todo_widget/ui/workspace_rail.dart';
@@ -105,6 +106,46 @@ void main() {
       expect(Layout.splitMinWidth, greaterThan(Layout.railMinWidth));
       expect(const Layout(Size(700, 800)).splitsContent, isFalse);
       expect(const Layout(Size(1000, 800)).splitsContent, isTrue);
+    });
+  });
+
+  group('the calendar opens beside the list only when both fit', () {
+    test('the threshold is the list at its design width plus a roomy week', () {
+      // Worked backwards from contents like the rest: nothing is allowed to be
+      // squeezed to make room for the other half.
+      const at = Layout(Size(Layout.calendarSplitMinWidth, 800));
+      expect(at.splitsCalendar, isTrue);
+
+      final grid = Layout.calendarSplitMinWidth - Layout.calendarTaskPaneWidth;
+      expect(grid, greaterThanOrEqualTo(kGutter + 7 * Layout.roomyDayColumn));
+      // And the pane really is the width the list was drawn against.
+      expect(Layout.calendarTaskPaneWidth, T.designWidth);
+    });
+
+    test('the design window still gets the calendar, full width', () {
+      // Nothing is taken away by being narrow: below the threshold the
+      // calendar simply takes the whole window, as it always has.
+      expect(design.splitsCalendar, isFalse);
+      expect(const Layout(Size(760, 800)).splitsCalendar, isFalse);
+    });
+
+    test('a wide but short window does not split either', () {
+      // Two halves that both scroll are worse than one view that does.
+      expect(const Layout(Size(1400, 300)).splitsCalendar, isFalse);
+      expect(const Layout(Size(1400, 800)).splitsCalendar, isTrue);
+    });
+
+    test('the calendar half is measured on its own, not on the window', () {
+      // The pane's Layout is what decides the week's shape - a 900px window
+      // splits into a 340 list and a 559 calendar, and it is the 559 that has
+      // to answer "does the grid fit".
+      const window = Layout(Size(900, 800));
+      expect(window.splitsCalendar, isTrue);
+      final pane = Layout(
+        Size(window.width - Layout.calendarTaskPaneWidth - 1, window.height),
+      );
+      expect(pane.weekGridFits, isTrue);
+      expect(pane.width, lessThan(window.width));
     });
   });
 
@@ -196,6 +237,7 @@ void main() {
               hasAttachment: (_) => false,
               taskCountFor: (_) => 0,
               onOpenEvent: (_) {},
+              onEventMenu: (_, _) {},
               onCreate: (_, _) {},
               onPickDay: (_) {},
             ),
@@ -254,6 +296,7 @@ void main() {
               hasAttachment: (_) => false,
               taskCountFor: (_) => 0,
               onOpenEvent: (_) {},
+              onEventMenu: (_, _) {},
               onCreate: (start, _) => created = start,
               onPickDay: (_) {},
             ),

@@ -256,6 +256,30 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  test('notes and priority default to empty and survive a round trip',
+      () async {
+    final store = await freshStore();
+    await store.putTask(sampleTask('t1', 'file the accounts', nowStamp()));
+
+    final fresh = (await store.activeTasks('ws-1')).single;
+    // The defaults are what every task written before v11 means, so they have
+    // to be the values a task written without them gets too.
+    expect(fresh.notes, '');
+    expect(fresh.priority, 0);
+    expect(fresh.isHighPriority, isFalse);
+
+    await store.putTask(fresh.copyWith(
+      notes: 'the portal login is in the password manager',
+      priority: Task.priorityHigh,
+    ));
+
+    final back = (await store.activeTasks('ws-1')).single;
+    expect(back.notes, 'the portal login is in the password manager');
+    expect(back.isHighPriority, isTrue);
+    expect(back.hasNotes, isTrue);
+    await store.close();
+  });
+
   test('timestamps compare as instants, not strings, across offsets', () {
     // 09:00+02:00 is 07:00Z, which is *earlier* than 08:00Z despite sorting
     // later as a plain string. A phone changing timezone hits exactly this.

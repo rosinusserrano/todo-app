@@ -85,6 +85,9 @@ void main() {
       // which SQLite will not let the column be dropped under) has to go too.
       await store.raw.execute('DROP INDEX idx_tasks_event');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
+      // v11 added notes and priority, which the migration would collide on.
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
       await store.raw.setVersion(8);
       await store.close();
       return path;
@@ -223,6 +226,9 @@ void main() {
       // version does.
       await store.raw.execute('DROP INDEX idx_tasks_event');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
+      // v11 added notes and priority, which the migration would collide on.
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
       await store.raw.setVersion(8);
       await store.close();
 

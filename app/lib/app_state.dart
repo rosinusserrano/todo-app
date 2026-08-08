@@ -367,7 +367,15 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> addTask(String text) async {
+  /// Add a task. The extras all default to what the one-line add field means,
+  /// so the quick path stays `addTask(text)` and the composer is the same call
+  /// with more of it filled in.
+  Future<void> addTask(
+    String text, {
+    String notes = '',
+    int priority = 0,
+    DateTime? remindAt,
+  }) async {
     final ws = currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
     await _store.putTask(Task(
@@ -376,6 +384,50 @@ class AppState extends ChangeNotifier {
       text: text.trim(),
       createdAt: nowStamp(),
       sortOrder: await _store.nextSortOrder(ws),
+      notes: notes.trim(),
+      priority: priority,
+      remindAt: remindAt == null ? null : reminderStamp(remindAt),
+      updatedAt: nowStamp(),
+    ));
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Rewrite everything the composer owns, in one write.
+  ///
+  /// One call rather than a setter per field: the composer hands back a whole
+  /// task, and four writes would be four rows on the sync queue and four
+  /// rebuilds of the list for one edit. A null [remindAt] clears the reminder,
+  /// which is what the composer's "no reminder" chip means.
+  Future<void> saveTaskDetails(
+    Task t, {
+    required String text,
+    required String notes,
+    required int priority,
+    DateTime? remindAt,
+  }) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    await _store.putTask(t.copyWith(
+      text: trimmed,
+      notes: notes.trim(),
+      priority: priority,
+      remindAt: remindAt == null ? null : reminderStamp(remindAt),
+      clearReminder: remindAt == null,
+      updatedAt: nowStamp(),
+    ));
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Flag or unflag a task from its row.
+  ///
+  /// Note this does **not** touch [Task.sortOrder]: the order of the list is
+  /// the user's, set by dragging, and a flag that quietly jumped a row to the
+  /// top would be a second sort fighting the first.
+  Future<void> setPriority(Task t, bool high) async {
+    await _store.putTask(t.copyWith(
+      priority: high ? Task.priorityHigh : 0,
       updatedAt: nowStamp(),
     ));
     await refreshTasks();
@@ -429,6 +481,39 @@ class AppState extends ChangeNotifier {
           ? t.copyWith(clearEvent: true, updatedAt: nowStamp())
           : t.copyWith(eventUuid: eventUuid, updatedAt: nowStamp()),
     );
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Which workspace a block belongs to, or null for one on a standalone
+  /// calendar (which belongs to no workspace by design).
+  ///
+  /// Reads [calendarsByUuid], which is populated even on a run where the
+  /// calendar view was never opened - [refreshSessions] loads the calendars as
+  /// soon as anything is live, because a block has to know whose it is.
+  String? workspaceForEvent(CalendarEvent e) =>
+      calendarsByUuid[e.calendarUuid]?.workspaceUuid;
+
+  /// Capture a todo straight into a block of time.
+  ///
+  /// The workspace comes from the *block's* calendar rather than from whatever
+  /// list happens to be on screen: a session can be running on a calendar you
+  /// are not currently looking at, and a todo written into that block belongs
+  /// with the rest of that workspace's work. A standalone calendar has no
+  /// workspace, so there the current one is the only sensible answer - the same
+  /// guess [plannableTasks] makes.
+  Future<void> addTaskForEvent(CalendarEvent e, String text) async {
+    final ws = workspaceForEvent(e) ?? currentWorkspaceUuid;
+    if (ws == null || text.trim().isEmpty) return;
+    await _store.putTask(Task(
+      uuid: newId(),
+      workspaceUuid: ws,
+      text: text.trim(),
+      createdAt: nowStamp(),
+      sortOrder: await _store.nextSortOrder(ws),
+      eventUuid: e.uuid,
+      updatedAt: nowStamp(),
+    ));
     await refreshTasks();
     _mutated();
   }

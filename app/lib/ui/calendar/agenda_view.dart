@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../sync/models.dart';
 import '../../theme.dart';
-import 'time_grid.dart' show hhmm;
+import 'time_grid.dart' show EventMenuArea, TaskDropTarget, hhmm;
 
 class AgendaView extends StatelessWidget {
   const AgendaView({
@@ -30,8 +30,10 @@ class AgendaView extends StatelessWidget {
     required this.hasAttachment,
     required this.taskCountFor,
     required this.onOpenEvent,
+    required this.onEventMenu,
     required this.onCreate,
     required this.onPickDay,
+    this.onPlanTask,
   });
 
   /// The days on screen, each at local midnight.
@@ -44,10 +46,20 @@ class AgendaView extends StatelessWidget {
   /// Open todos planned into an event, shown as a count on its row.
   final int Function(CalendarEvent) taskCountFor;
   final void Function(CalendarEvent) onOpenEvent;
+
+  /// Right-click / long-press on a row, at the point it happened - the same
+  /// actions menu the grid's blocks offer, because "a click means one thing
+  /// here and another there" is worse than either behaviour on its own.
+  final void Function(CalendarEvent, Offset globalPosition) onEventMenu;
+
   final void Function(DateTime start, DateTime end) onCreate;
 
   /// Drilling into one day's grid, which is where dragging a span out lives.
   final void Function(DateTime) onPickDay;
+
+  /// A task dropped onto a row from the list beside it. Null when there is no
+  /// list beside it - see [Layout.splitsCalendar].
+  final void Function(CalendarEvent, Task)? onPlanTask;
 
   static const _names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -110,6 +122,10 @@ class AgendaView extends StatelessWidget {
                   hasAttachment: hasAttachment(e),
                   taskCount: taskCountFor(e),
                   onTap: () => onOpenEvent(e),
+                  onMenu: (at) => onEventMenu(e, at),
+                  onDropTask: onPlanTask == null
+                      ? null
+                      : (task) => onPlanTask!(e, task),
                 ),
             ],
           ),
@@ -194,6 +210,8 @@ class _AgendaRow extends StatelessWidget {
     required this.hasAttachment,
     required this.taskCount,
     required this.onTap,
+    required this.onMenu,
+    required this.onDropTask,
   });
 
   final CalendarEvent event;
@@ -202,6 +220,8 @@ class _AgendaRow extends StatelessWidget {
   final bool hasAttachment;
   final int taskCount;
   final VoidCallback onTap;
+  final void Function(Offset globalPosition) onMenu;
+  final void Function(Task)? onDropTask;
 
   /// What to print in the time column.
   ///
@@ -222,6 +242,13 @@ class _AgendaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return EventMenuArea(
+      onMenu: onMenu,
+      child: TaskDropTarget(onDrop: onDropTask, color: color, child: _row()),
+    );
+  }
+
+  Widget _row() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Material(

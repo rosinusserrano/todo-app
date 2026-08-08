@@ -78,6 +78,11 @@ function init(db) {
       -- unconstrained: the merge writes whatever the push carried, and the
       -- event it names may legitimately arrive in a later push than the task.
       event_uuid     TEXT,
+      -- The long form of the task, and how loudly it is asking. Both carry a
+      -- default that is what every pre-v11 row means, so a client that has not
+      -- been updated yet keeps pushing rows this table accepts.
+      notes          TEXT NOT NULL DEFAULT '',
+      priority       INTEGER NOT NULL DEFAULT 0,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
@@ -214,6 +219,10 @@ function init(db) {
   // predates it has the table but not the column, and would reject every task
   // push without this.
   addColumn(db, 'tasks', 'event_uuid', 'TEXT');
+  // Notes and the priority flag arrived together. A server that predates them
+  // has the table but not the columns, and would reject every task push.
+  addColumn(db, 'tasks', 'notes', "TEXT NOT NULL DEFAULT ''");
+  addColumn(db, 'tasks', 'priority', 'INTEGER NOT NULL DEFAULT 0');
   // A server that first synced a journal before entries had titles has the
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -257,6 +266,8 @@ export const TABLES = {
     'remind_at',
     'group_uuid',
     'event_uuid',
+    'notes',
+    'priority',
   ],
   attachments: [
     'task_uuid',

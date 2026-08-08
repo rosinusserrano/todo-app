@@ -7,6 +7,7 @@
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -19,6 +20,7 @@ import 'package:todo_widget/sync/local_store.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
 import 'package:todo_widget/ui/panel_header.dart';
+import 'package:todo_widget/ui/task_composer.dart';
 import 'package:todo_widget/ui/task_row.dart';
 import 'package:todo_widget/ui/title_bar.dart';
 import 'package:todo_widget/ui/workspace_bar.dart';
@@ -865,6 +867,42 @@ void main() {
         ),
       );
       expect(plain.opacity, 0);
+    });
+
+    testWidgets('Ctrl+Enter saves from the notes box', (tester) async {
+      // The regression: the shortcut used to be bound around the Save button
+      // only, and CallbackShortcuts sees just its own subtree - so the one
+      // place the shortcut exists for, the autofocused notes field, could not
+      // reach it. It fired only after tabbing onto Save, where plain Enter
+      // already saves and the binding is redundant.
+      TaskDraft? saved;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async => saved = await showTaskComposer(
+                context,
+                initialText: 'file the accounts',
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      // Typing here is also what puts focus in the notes field, which is where
+      // autofocus already left it.
+      await tester.enterText(find.byType(TextField).last, 'portal login');
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(saved?.text, 'file the accounts');
+      expect(saved?.notes, 'portal login');
     });
   });
 }

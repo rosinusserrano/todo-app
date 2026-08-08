@@ -61,10 +61,7 @@ Future<TaskDraft?> showTaskComposer(
 }
 
 class _ComposerDialog extends StatefulWidget {
-  const _ComposerDialog({
-    required this.existing,
-    required this.initialText,
-  });
+  const _ComposerDialog({required this.existing, required this.initialText});
 
   final Task? existing;
   final String initialText;
@@ -115,109 +112,120 @@ class _ComposerDialogState extends State<_ComposerDialog> {
     final armedIsPreset =
         _remindAt != null && presets.any((p) => p.at == _remindAt);
 
-    return AlertDialog(
-      backgroundColor: T.bgSolid,
-      title: Text(
-        widget.existing == null ? 'New task' : 'Task',
-        style: const TextStyle(fontSize: 15),
-      ),
-      content: SizedBox(
-        width: 340,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: _title,
-                style: const TextStyle(fontSize: 13.5),
-                decoration: const InputDecoration(hintText: 'What is it?'),
-                textInputAction: TextInputAction.next,
-              ),
-              const SizedBox(height: 12),
-              // Autofocus lands here, which is the whole point of the shortcut:
-              // the title is either already typed or is the thing the one-line
-              // field would have captured on its own.
-              TextField(
-                controller: _notes,
-                autofocus: true,
-                minLines: 4,
-                maxLines: 10,
-                style: const TextStyle(fontSize: 12.5, height: 1.35),
-                decoration: const InputDecoration(
-                  hintText: 'Notes — links, the address, what "done" means…',
+    // Ctrl+Enter saves from inside the notes box, where a plain Enter is a new
+    // line and has to stay one.
+    //
+    // This wraps the *whole* dialog rather than the Save button, and has to:
+    // CallbackShortcuts builds a Focus node that only sees key events bubbling
+    // up from its own subtree. Around the button it never fired, because the
+    // primary focus is the autofocused notes field over in `content:` - a
+    // sibling branch - so the only way to reach it was to tab onto Save, where
+    // a plain Enter already saves.
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, control: true): _save,
+      },
+      child: AlertDialog(
+        backgroundColor: T.bgSolid,
+        title: Text(
+          widget.existing == null ? 'New task' : 'Task',
+          style: const TextStyle(fontSize: 15),
+        ),
+        content: SizedBox(
+          width: 340,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _title,
+                  style: const TextStyle(fontSize: 13.5),
+                  decoration: const InputDecoration(hintText: 'What is it?'),
+                  textInputAction: TextInputAction.next,
                 ),
-              ),
-              const SizedBox(height: 14),
-              const _Label('Priority'),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  _Flag(
-                    on: _priority >= Task.priorityHigh,
-                    onTap: () => setState(() =>
-                        _priority = _priority >= Task.priorityHigh
+                const SizedBox(height: 12),
+                // Autofocus lands here, which is the whole point of the shortcut:
+                // the title is either already typed or is the thing the one-line
+                // field would have captured on its own.
+                TextField(
+                  controller: _notes,
+                  autofocus: true,
+                  minLines: 4,
+                  maxLines: 10,
+                  style: const TextStyle(fontSize: 12.5, height: 1.35),
+                  decoration: const InputDecoration(
+                    hintText: 'Notes — links, the address, what "done" means…',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const _Label('Priority'),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _Flag(
+                      on: _priority >= Task.priorityHigh,
+                      onTap: () => setState(
+                        () => _priority = _priority >= Task.priorityHigh
                             ? 0
-                            : Task.priorityHigh),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              const _Label('Remind me'),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  ChoiceChip(
-                    label: const Text('No reminder',
-                        style: TextStyle(fontSize: 11.5)),
-                    selected: _remindAt == null,
-                    onSelected: (_) => setState(() => _remindAt = null),
-                  ),
-                  if (_remindAt != null && !armedIsPreset)
-                    ChoiceChip(
-                      label: Text(
-                        describeReminder(_remindAt!, _openedAt),
-                        style: const TextStyle(fontSize: 11.5),
+                            : Task.priorityHigh,
                       ),
-                      selected: true,
-                      onSelected: (_) {},
                     ),
-                  for (final p in presets)
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const _Label('Remind me'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
                     ChoiceChip(
-                      label:
-                          Text(p.label, style: const TextStyle(fontSize: 11.5)),
-                      selected: _remindAt == p.at,
-                      onSelected: (_) => setState(() => _remindAt = p.at),
+                      label: const Text(
+                        'No reminder',
+                        style: TextStyle(fontSize: 11.5),
+                      ),
+                      selected: _remindAt == null,
+                      onSelected: (_) => setState(() => _remindAt = null),
                     ),
-                ],
-              ),
-            ],
+                    if (_remindAt != null && !armedIsPreset)
+                      ChoiceChip(
+                        label: Text(
+                          describeReminder(_remindAt!, _openedAt),
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                        selected: true,
+                        onSelected: (_) {},
+                      ),
+                    for (final p in presets)
+                      ChoiceChip(
+                        label: Text(
+                          p.label,
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                        selected: _remindAt == p.at,
+                        onSelected: (_) => setState(() => _remindAt = p.at),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
-        ),
-        // Ctrl+Enter saves from inside the notes box, where a plain Enter is a
-        // new line and has to stay one.
-        CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.enter, control: true):
-                _save,
-          },
-          child: FilledButton(
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+          ),
+          FilledButton(
             onPressed: _save,
             child: Text(
               widget.existing == null ? 'Add' : 'Save',
               style: const TextStyle(fontSize: 12.5),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

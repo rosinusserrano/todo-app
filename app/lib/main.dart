@@ -765,7 +765,14 @@ class _WidgetShellState extends State<WidgetShell>
   /// elsewhere.
   late final _taskbar = TaskbarTransport(widget.sound);
 
-  void _toggleSound() => setState(() => _soundOpen = !_soundOpen);
+  /// Closes the sublist first: it is added to the shell's `Stack` *after* this
+  /// sheet, so opening one behind it would leave ♪ toggling a panel nobody can
+  /// see - and the Esc ladder, which checks [_soundOpen] first, would then
+  /// spend a press closing it.
+  void _toggleSound() {
+    _closeSublist();
+    setState(() => _soundOpen = !_soundOpen);
+  }
 
   void _closeSound() {
     if (_soundOpen) setState(() => _soundOpen = false);
@@ -1206,14 +1213,26 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _openSession() async {
     if (_clearOverlays()) return;
     final first = s.liveEvents.isEmpty ? null : s.liveEvents.first;
-    if (first != null) {
-      final ws = s.workspaceForEvent(first);
-      if (ws != null && ws != s.currentWorkspaceUuid) {
-        await s.selectWorkspace(ws);
-        if (!mounted) return;
-      }
+    if (first == null) return;
+
+    // Nothing planned into the running block: hand over to the sublist, which
+    // is what the tile's own Sublist button does and what this feature's answer
+    // to "nothing planned" is meant to be.
+    //
+    // Checked *before* the workspace switch below, and it has to be: the tile
+    // body is a full-width tap target while the button covers only its right
+    // end, so returning here after switching meant a tap could replace the
+    // whole list with another workspace's and then open nothing, with no
+    // visible cause and nothing on the tile to undo it. ([sessionTaskList] is
+    // derived from the live events, not from the current workspace, so it reads
+    // the same either side of the switch.) _openSublist does its own switch.
+    if (s.sessionTaskList.isEmpty) return _openSublist(first);
+
+    final ws = s.workspaceForEvent(first);
+    if (ws != null && ws != s.currentWorkspaceUuid) {
+      await s.selectWorkspace(ws);
+      if (!mounted) return;
     }
-    if (s.sessionTaskList.isEmpty) return;
     s.toggleSession();
   }
 
@@ -1265,6 +1284,9 @@ class _WidgetShellState extends State<WidgetShell>
 
   Future<void> _openSettings() async {
     _closeSound();
+    // Same reason as _toggleSound: this sheet is below the sublist in the
+    // Stack, so it has to take the sublist down rather than open under it.
+    _closeSublist();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
     setState(() => _settingsOpen = !_settingsOpen);

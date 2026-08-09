@@ -1,15 +1,23 @@
 // The "sign in with SSO" dialog.
 //
-// The whole visible half of the device grant: a short code, somewhere to type
-// it, and a spinner until the provider says it has been approved. The user may
-// well approve it on a different device entirely, which is the point of this
-// flow and the reason nothing here waits on a redirect.
+// The visible half of the device grant. The browser is opened *for* the user,
+// at the provider's `verification_uri_complete` - the URL with the code already
+// in it - so the experience is the ordinary one: your identity provider's own
+// login page, Google or otherwise, then a single "grant access" confirmation.
+// Nobody types a code unless something went wrong.
+//
+// The code is still shown, and still selectable, because it is the fallback
+// that makes this flow worth having: a machine with no usable browser, a
+// launcher that silently fails, or simply wanting to approve it on your phone
+// instead. The dialog keeps polling either way, so approval anywhere finishes
+// the sign-in here.
 //
 // A dialog rather than a sheet, like the composer and the pickers: modal by
 // nature, and over in the time it takes to approve something in a browser.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../sync/oidc_client.dart';
 import '../theme.dart';
@@ -42,6 +50,10 @@ class _SignInDialogState extends State<_SignInDialog> {
   bool _cancelled = false;
   bool _copied = false;
 
+  /// Whether the browser was opened for them. False means they have to use the
+  /// code, and the wording changes to say so rather than claiming otherwise.
+  bool _opened = false;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +76,9 @@ class _SignInDialogState extends State<_SignInDialog> {
       if (!mounted) return;
       setState(() => _code = code);
 
+      // Straight to the provider, before the poll starts waiting.
+      await _open(code);
+
       final tokens = await client.awaitApproval(
         code,
         cancelled: () => _cancelled,
@@ -76,6 +91,20 @@ class _SignInDialogState extends State<_SignInDialog> {
     } catch (e) {
       if (!mounted || _cancelled) return;
       setState(() => _error = 'Could not reach the sign-in provider. $e');
+    }
+  }
+
+  /// Send them to the provider. Never throws: a launcher that fails is a
+  /// fallback to the code on screen, not an error - the sign-in is still live.
+  Future<void> _open(DeviceCode code) async {
+    try {
+      final ok = await launchUrl(
+        Uri.parse(code.bestUri),
+        mode: LaunchMode.externalApplication,
+      );
+      if (mounted) setState(() => _opened = ok);
+    } catch (_) {
+      if (mounted) setState(() => _opened = false);
     }
   }
 
@@ -101,14 +130,25 @@ class _SignInDialogState extends State<_SignInDialog> {
           },
           child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
         ),
-        if (_code != null && _error == null)
-          FilledButton(
+        if (_code != null && _error == null) ...[
+          TextButton(
             onPressed: _copyLink,
             child: Text(
               _copied ? 'Copied' : 'Copy link',
               style: const TextStyle(fontSize: 12.5),
             ),
           ),
+          // The primary action once the browser is already open is to open it
+          // again - the window may have been dismissed, or landed behind this
+          // always-on-top one.
+          FilledButton(
+            onPressed: () => _open(_code!),
+            child: Text(
+              _opened ? 'Open again' : 'Open browser',
+              style: const TextStyle(fontSize: 12.5),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -140,10 +180,13 @@ class _SignInDialogState extends State<_SignInDialog> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Open this address in a browser — on this device or any other — and '
-          'enter the code:',
-          style: TextStyle(fontSize: 12, color: T.muted, height: 1.4),
+        Text(
+          _opened
+              ? 'Finish signing in in your browser. It should be open already '
+                    '— check that the code below matches.'
+              : 'Your browser did not open. Go to this address on any device '
+                    'and enter the code:',
+          style: const TextStyle(fontSize: 12, color: T.muted, height: 1.4),
         ),
         const SizedBox(height: 12),
         SelectableText(

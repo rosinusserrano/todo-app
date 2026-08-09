@@ -58,6 +58,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// that is what every server that does not answer means.
   AuthConfig? _authConfig;
 
+  /// A Connect in flight, and why the last one failed. Both drive the button
+  /// and the line under it; neither is worth persisting.
+  bool _checking = false;
+  String? _connectError;
+
   String? _testMessage;
   bool _testOk = false;
   bool _busy = false;
@@ -238,11 +243,54 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// server means anyway.
   Future<void> _checkAuthMode() async {
     final base = SyncClient.parseBase(_url.text);
-    if (base == null) return;
+    if (base == null) {
+      setState(() {
+        _authConfig = null;
+        _connectError =
+            'Enter an address like todo.example.com or '
+            '192.168.2.184:8787';
+      });
+      return;
+    }
+
+    setState(() {
+      _checking = true;
+      _connectError = null;
+    });
+
+    // Reachability first, and separately, so a wrong address reports itself as
+    // a wrong address. AuthConfig.discover deliberately never throws - it
+    // reports 'token' for anything it cannot read, which for an older server is
+    // the right answer and for an unreachable one is a misleading one.
+    final client = SyncClient(baseUrl: base.toString(), token: '');
+    final reachable = await client.checkReachable();
+    client.dispose();
+    if (!mounted) return;
+
+    if (reachable is SyncFailed) {
+      setState(() {
+        _checking = false;
+        _authConfig = null;
+        _connectError = reachable.message;
+      });
+      return;
+    }
 
     final config = await AuthConfig.discover(base.toString());
     if (!mounted) return;
-    setState(() => _authConfig = config);
+    setState(() {
+      _checking = false;
+      _authConfig = config;
+      // The server has SSO but its provider is not answering. Saying so beats
+      // showing a Sign in button that cannot work.
+      _connectError = config.isOidc && !config.usable
+          ? 'This server uses single sign-on, but its provider is not '
+                'responding. Try again in a moment.'
+          : null;
+    });
+
+    // A server that wants a token, with one already saved, is ready to go.
+    if (!config.isOidc && _token.text.trim().isNotEmpty) await _saveAndSync();
   }
 
   Future<void> _signIn() async {
@@ -282,65 +330,126 @@ class _SettingsSheetState extends State<SettingsSheet> {
       );
     }
 
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            signedIn
-                ? 'Signed in as ${widget.sync.identity?.label ?? 'this account'}.'
-                : 'Not signed in.',
-            style: const TextStyle(fontSize: 12, color: T.muted),
+    if (signedIn) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Signed in as ${widget.sync.identity?.label ?? 'this account'}.',
+              style: const TextStyle(fontSize: 12, color: T.muted),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        if (signedIn)
+          const SizedBox(width: 8),
           TextButton(
             onPressed: () async {
               await widget.sync.signOut();
               if (mounted) setState(() {});
             },
             child: const Text('Sign out', style: TextStyle(fontSize: 12.5)),
-          )
-        else
-          FilledButton(
-            onPressed: config.usable ? _signIn : null,
-            child: const Text('Sign in', style: TextStyle(fontSize: 12.5)),
           ),
+        ],
+      );
+    }
+
+    // Full width and on its own, because at this point it is the only thing to
+    // do on this screen. The old layout put it at the end of a row next to a
+    // token field, which read as the alternative to the token rather than as
+    // the way in.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: config.usable ? _signIn : null,
+          icon: const Icon(Icons.login_rounded, size: 16),
+          label: const Text(
+            'Sign in with your account',
+            style: TextStyle(fontSize: 12.5),
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Opens your browser. Your account is created the first time you '
+          'sign in.',
+          style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.35),
+        ),
       ],
     );
   }
 
   Widget _settingsBody() {
     final sync = widget.sync;
-    final sso = _authConfig?.isOidc ?? false;
+    final config = _authConfig;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
       children: [
-        Text(
-          sso
-              ? 'This server uses single sign-on. Sign in and it keeps itself '
-                    'signed in from then on.'
-              : 'Run `npm run server` on any machine, then enter the address '
-                    'and token it prints. Everything stays on your own hardware.',
-          style: const TextStyle(fontSize: 11.5, color: T.muted, height: 1.4),
-        ),
+        Text(switch (config?.mode) {
+          'oidc' =>
+            'This server signs you in with your own account. '
+                'Nobody has to issue you anything.',
+          'token' =>
+            'Enter the token the server printed. Everything stays '
+                'on your own hardware.',
+          // Before Connect has been pressed there is nothing to say about a
+          // server we have not spoken to yet, so this describes the step in
+          // front of them rather than guessing at the one after it.
+          _ =>
+            'Sync keeps your devices in step through a server you run. '
+                'Enter its address to see how it wants you to sign in.',
+        }, style: const TextStyle(fontSize: 11.5, color: T.muted, height: 1.4)),
         const SizedBox(height: 14),
-        TextField(
-          controller: _url,
-          style: const TextStyle(fontSize: 13),
-          decoration: const InputDecoration(
-            labelText: 'Server address',
-            hintText: '192.168.2.184:8787',
-            isDense: true,
-          ),
-          // Checked when the field loses focus rather than per keystroke: this
-          // is a network call, and half an address is not one.
-          onSubmitted: (_) => _checkAuthMode(),
-          onTapOutside: (_) => _checkAuthMode(),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _url,
+                style: const TextStyle(fontSize: 13),
+                decoration: const InputDecoration(
+                  labelText: 'Server address',
+                  hintText: 'todo.example.com',
+                  isDense: true,
+                ),
+                // Editing invalidates what the last address told us: leaving
+                // the old answer on screen would offer SSO for a server that
+                // may not have it, or a token field for one that does.
+                onChanged: (_) {
+                  if (_authConfig != null) setState(() => _authConfig = null);
+                },
+                onSubmitted: (_) => _checkAuthMode(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // An explicit step, not a blur handler. Asking the server how to
+            // log in is a network call with a visible result, so it gets a
+            // button you can press again when it fails.
+            FilledButton(
+              onPressed: _checking ? null : _checkAuthMode,
+              child: Text(
+                _checking ? '…' : 'Connect',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
+          ],
         ),
+        if (_connectError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _connectError!,
+            style: const TextStyle(
+              fontSize: 11.5,
+              color: T.danger,
+              height: 1.4,
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
-        if (sso) _ssoBlock() else _tokenField(),
+        if (config == null)
+          const SizedBox.shrink()
+        else if (config.isOidc)
+          _ssoBlock()
+        else
+          _tokenField(),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -383,9 +492,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
               child: const Text('Test'),
             ),
             const Spacer(),
+            // In SSO mode the credential is the session, not anything in a
+            // field, so this only ever saves the address - and saying "Save &
+            // sync" there would imply it had stored something it had not.
             FilledButton(
               onPressed: _busy ? null : _saveAndSync,
-              child: const Text('Save & sync'),
+              child: Text(
+                (_authConfig?.isOidc ?? false) ? 'Save address' : 'Save & sync',
+              ),
             ),
           ],
         ),

@@ -61,6 +61,7 @@ dependencies:
   crypto: ^3.0.7
   cryptography: ^2.9.0
   windows_taskbar: ^1.1.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

@@ -149,13 +149,17 @@ authenticate, and a revoked token is genuinely revoked.
 
 In the app: **title bar → ⚙ Settings → Sync**.
 
-1. **Server address** — `192.168.2.184:8787`, or `https://todo.example.com`.
-   The scheme is optional and defaults to `http://` for a bare host:port.
-2. **Token** — what the server printed, or what `npm run token -- add` gave
-   you. With Keycloak configured, use **Sign in** instead (below).
-3. **Test** — checks reachability *without* the token, so a wrong address
-   reports itself as a wrong address rather than as an auth failure.
-4. **Save** — syncing starts immediately in the background.
+1. **Server address** — `todo.example.com`, or `192.168.2.184:8787`. The scheme
+   is optional and defaults to `http://` for a bare host:port.
+2. **Connect** — the app asks the server how it wants you to sign in, and shows
+   the right thing next. A wrong address reports itself as a wrong address here
+   rather than later as an auth failure.
+3. Then either:
+   - **Sign in with your account** — if the server uses SSO. Your browser
+     opens at your own login page; approve it and the app takes over. Nobody
+     has to issue you anything.
+   - **Token** — if it does not. Paste what the server printed, then
+     **Save & sync**.
 
 The UI never waits on sync. Conflicts resolve last-edit-wins per row, and the
 offline queue is just the `dirty` column, so a crash or an unreachable server
@@ -164,11 +168,21 @@ rows are waiting.
 
 ### Signing in with Keycloak (SSO)
 
-If the server is configured with `TODO_OIDC_ISSUER`, Settings → Sync offers
-**Sign in with SSO** instead of a pasted token. It uses the OAuth 2.0 Device
-Authorization Grant: the app shows a short code and a URL, you approve it in a
-browser (on any device), and the app takes it from there — refreshing the token
-on its own from then on.
+If the server is configured with `TODO_OIDC_ISSUER`, pressing **Connect**
+replaces the token field with **Sign in with your account**. Pressing it opens
+your browser at your identity provider's own login page — Google, or whatever
+the realm brokers — and after you approve, the app picks the session up and
+refreshes it on its own from then on.
+
+**No token has to be issued for a new person.** Their account on the sync
+server is created the first time they sign in. The admin's only job is running
+the server and deciding, in Keycloak, who is allowed to reach it.
+
+Under the hood it is the OAuth 2.0 Device Authorization Grant, which is why the
+dialog also shows a short code: the browser is opened for you at a URL that
+already contains it, but if the browser cannot be opened — or you would rather
+approve on your phone — the code is the way to do that, and the app keeps
+waiting either way.
 
 Your Keycloak client needs to be **public** with **OAuth 2.0 Device
 Authorization Grant** enabled. Full setup in

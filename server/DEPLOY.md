@@ -183,9 +183,13 @@ once, and the CLI refuses rather than silently moving it.
 
 ### 5. Sign in from the app
 
-**Settings → Sync → Sign in with SSO.** The app shows a short code and a URL,
-you approve it in a browser on any device, and it takes over from there,
-refreshing on its own.
+**Settings → Sync**, enter the address, press **Connect**, then **Sign in with
+your account**. The browser opens at your login page; approve it and the app
+takes over, refreshing on its own.
+
+New people need nothing from you: their account is created the first time they
+sign in. Who is *allowed* to sign in is a Keycloak question — see the note under
+"Logging in with Google".
 
 ### Logging in on more than one device
 

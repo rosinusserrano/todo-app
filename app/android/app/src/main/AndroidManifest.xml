@@ -71,5 +71,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Opening the single-sign-on page in a browser. Required from
+             Android 11 (API 30): package visibility is filtered by default, so
+             without this the app cannot see that any browser exists and
+             launchUrl returns false rather than throwing - which would show
+             the "your browser did not open" fallback on a device that has
+             three of them. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

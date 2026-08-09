@@ -169,7 +169,8 @@ Link first:
 ```sh
 # The <sub> is the user's ID in the Keycloak admin console:
 #   Users -> the person -> the "ID" field (a UUID).
-sudo -u todosync TODO_SYNC_DB=/var/lib/todo-sync/sync.db   node /opt/todo-sync/server/tokens.js link local 8f14e45f-ce4a-...
+sudo -u todosync TODO_SYNC_DB=/var/lib/todo-sync/sync.db \
+  node /opt/todo-sync/server/tokens.js link local 8f14e45f-ce4a-...
 ```
 
 Now signing in with that Keycloak user lands on the account your data is

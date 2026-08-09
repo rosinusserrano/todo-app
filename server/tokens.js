@@ -24,8 +24,10 @@ import {
   issueToken,
   listTokens,
   listUsers,
+  linkOidc,
   revokeToken,
   setAdmin,
+  unlinkOidc,
 } from './users.js';
 
 const USAGE = `
@@ -35,6 +37,13 @@ Usage:
   npm run token -- list                        users, tokens and last use
   npm run token -- revoke <token-id>           stop a token working
   npm run token -- admin <user-id> [on|off]    grant or drop server admin
+  npm run token -- link <user-id> <sub>        attach a Keycloak identity
+  npm run token -- unlink <user-id>            detach it again
+
+"link" is how an existing account moves onto single sign-on. Without it the
+first SSO login creates a NEW, empty account: correct, and useless if your
+tasks are in the old one. The <sub> is the user's ID in the Keycloak admin
+console (Users -> the person -> ID).
 
 The token is shown once, when it is issued: only its hash is stored. If one is
 lost, revoke it and issue another.
@@ -130,6 +139,37 @@ function cmdAdmin(db, args) {
   }
 }
 
+function cmdLink(db, args) {
+  const [userId, sub] = args;
+  if (!userId || !sub) {
+    fail('Usage: npm run token -- link <user-id> <keycloak-sub>');
+  }
+  try {
+    const user = linkOidc(db, userId, sub);
+    console.log(
+      `${user.label} (${user.id}) is now the account for that Keycloak user.
+` +
+        `Signing in with it lands on this account and its existing data.`,
+    );
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
+function cmdUnlink(db, args) {
+  const [userId] = args;
+  if (!userId) fail('Which user? See: npm run token -- list');
+  try {
+    const user = unlinkOidc(db, userId);
+    console.log(
+      `${user.label} (${user.id}) is no longer reachable by single sign-on. ` +
+        `Its rows and device tokens are untouched.`,
+    );
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
 const [command, ...args] = process.argv.slice(2);
 const db = openDb(DB_PATH);
 
@@ -145,6 +185,12 @@ switch (command) {
     break;
   case 'admin':
     cmdAdmin(db, args);
+    break;
+  case 'link':
+    cmdLink(db, args);
+    break;
+  case 'unlink':
+    cmdUnlink(db, args);
     break;
   default:
     console.log(USAGE);

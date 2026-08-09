@@ -158,11 +158,57 @@ returns 503, the server is up but cannot reach Keycloak — check the issuer URL
 first; it must match the `iss` claim **exactly**, including the `/realms/<name>`
 part.
 
-### 4. Sign in from the app
+### 4. Move your existing account onto SSO — do this before signing in
+
+If the server has been running on the bootstrap secret, all your rows belong to
+the user `local`. The first SSO login would find no account for that Keycloak
+identity, create a **new, empty one**, and correctly show you nothing.
+
+Link first:
+
+```sh
+# The <sub> is the user's ID in the Keycloak admin console:
+#   Users -> the person -> the "ID" field (a UUID).
+sudo -u todosync TODO_SYNC_DB=/var/lib/todo-sync/sync.db   node /opt/todo-sync/server/tokens.js link local 8f14e45f-ce4a-...
+```
+
+Now signing in with that Keycloak user lands on the account your data is
+already in. `unlink <user-id>` detaches it again; both leave rows and device
+tokens untouched.
+
+If you already signed in and got a stray empty account, `unlink` it (or delete
+it) and then link `local` — the identity cannot be attached to two accounts at
+once, and the CLI refuses rather than silently moving it.
+
+### 5. Sign in from the app
 
 **Settings → Sync → Sign in with SSO.** The app shows a short code and a URL,
 you approve it in a browser on any device, and it takes over from there,
 refreshing on its own.
+
+### Logging in on more than one device
+
+Expected, and the point of the whole thing: sign in on Windows and on the phone
+as the same Keycloak user and both land on the same account with the same
+tasks. Each device runs its own sign-in and holds its own tokens — those are
+per-device credentials — but the account is chosen by the `sub` claim, which is
+the same person's regardless of which device or which browser approved it.
+
+Signing out on one device does not touch the others.
+
+### Logging in with Google
+
+If your realm brokers Google (or any other identity provider), nothing here
+changes. The sync server only ever talks to Keycloak and only ever reads
+Keycloak's own `sub`, which is stable no matter how the person authenticated to
+Keycloak. Everyone who logs in that way gets their own account on the sync
+server automatically.
+
+Worth knowing: that means **anyone who can authenticate to the `todo-widget`
+client gets an account**. If your Keycloak allows self-registration through
+Google, so does your sync server. Restrict it in Keycloak — client-level
+authorization, a required role, or an identity-provider mapper — which is where
+that policy belongs.
 
 ### How accounts map
 

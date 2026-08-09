@@ -13,7 +13,16 @@ import Database from 'better-sqlite3';
 
 import { OidcVerifier, OidcError, looksLikeJwt, oidcConfigFromEnv, claimsAreAdmin } from './oidc.js';
 import { identify, AuthError } from './auth.js';
-import { initUsers, setBlocked, userForOidc, isAdmin } from './users.js';
+import {
+  ensureUser,
+  initUsers,
+  isAdmin,
+  linkOidc,
+  setBlocked,
+  unlinkOidc,
+  userForOidc,
+} from './users.js';
+import { openDb, sync } from './db.js';
 
 const ISSUER = 'https://kc.example.test/realms/home';
 const CLIENT = 'todo-widget';
@@ -237,6 +246,12 @@ function freshDb() {
   return db;
 }
 
+/// A database with the sync tables as well, for the tests that push rows
+/// through rather than only exercising the identity mapping.
+function freshSyncDb() {
+  return openDb(':memory:');
+}
+
 function req(authorization) {
   return { get: (name) => (name.toLowerCase() === 'authorization' ? authorization : undefined) };
 }
@@ -332,6 +347,105 @@ test('device tokens still work alongside SSO', async () => {
   const { token } = issueToken(db, user.id, 'laptop');
 
   assert.equal(await identify(req(`Bearer ${token}`), { db, oidc }), user.id);
+});
+
+test('two devices signing in as one person share one account', async () => {
+  // The thing that has to work: Windows and iOS, same Keycloak user, same
+  // tasks. Each device runs its own device-grant sign-in and holds its own
+  // tokens, so these are genuinely two independent credentials - the account
+  // is the same only because `sub` is.
+  const db = freshDb();
+  const oidc = verifier();
+  const sub = 'kc-one-person';
+
+  const windows = await identify(
+    req(`Bearer ${makeToken({ sub, azp: CLIENT })}`),
+    { db, oidc },
+  );
+  const iphone = await identify(
+    req(`Bearer ${makeToken({ sub, azp: CLIENT })}`),
+    { db, oidc },
+  );
+
+  assert.equal(windows, iphone);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
+});
+
+test('a task pushed from one device comes back on the other', async () => {
+  // End to end through the actual sync, not just the id mapping: the partition
+  // is by user_id, so proving both devices resolve to one id is only half of it.
+  const db = freshSyncDb();
+  const oidc = verifier();
+  const sub = 'kc-sync-across';
+
+  const fromWindows = await identify(req(`Bearer ${makeToken({ sub })}`), { db, oidc });
+  sync(db, fromWindows, 0, {
+    tasks: [
+      {
+        uuid: 't-1',
+        workspace_uuid: 'ws-1',
+        text: 'written on the desktop',
+        created_at: '2026-08-09T09:00:00Z',
+        completed_at: null,
+        sort_order: 0,
+        in_progress: 0,
+        updated_at: '2026-08-09T09:00:00Z',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const fromPhone = await identify(req(`Bearer ${makeToken({ sub })}`), { db, oidc });
+  const { changes } = sync(db, fromPhone, 0, {});
+  assert.equal(changes.tasks.length, 1);
+  assert.equal(changes.tasks[0].text, 'written on the desktop');
+});
+
+test('linking moves an existing account onto SSO instead of stranding it', async () => {
+  // The migration that matters for a server that has been running on the
+  // bootstrap secret: without the link, the first SSO login is a brand new,
+  // empty account and years of tasks are still sitting under `local`.
+  const db = freshSyncDb();
+  const oidc = verifier();
+  const sub = 'kc-the-owner';
+
+  ensureUser(db, 'local', 'The owner');
+  sync(db, 'local', 0, {
+    tasks: [
+      {
+        uuid: 't-old',
+        workspace_uuid: 'ws-1',
+        text: 'from before SSO',
+        created_at: '2026-01-01T09:00:00Z',
+        completed_at: null,
+        sort_order: 0,
+        in_progress: 0,
+        updated_at: '2026-01-01T09:00:00Z',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  linkOidc(db, 'local', sub);
+
+  const who = await identify(req(`Bearer ${makeToken({ sub })}`), { db, oidc });
+  assert.equal(who, 'local', 'signing in lands on the account with the data');
+
+  const { changes } = sync(db, who, 0, {});
+  assert.equal(changes.tasks[0].text, 'from before SSO');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
+});
+
+test('linking refuses to steal an identity from another account', () => {
+  const db = freshDb();
+  ensureUser(db, 'alice', 'Alice');
+  ensureUser(db, 'bob', 'Bob');
+  linkOidc(db, 'alice', 'sub-shared');
+
+  assert.throws(() => linkOidc(db, 'bob', 'sub-shared'), /already linked/);
+  // Unlinking frees it, which is the documented way out of a stray account.
+  unlinkOidc(db, 'alice');
+  assert.equal(linkOidc(db, 'bob', 'sub-shared').id, 'bob');
 });
 
 test('userForOidc refuses to let two accounts claim one identity', () => {

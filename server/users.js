@@ -167,6 +167,43 @@ export function userForOidc(db, sub, label, { admin = false } = {}) {
   return getUser(db, id);
 }
 
+/**
+ * Attach a provider identity to an account that already exists.
+ *
+ * The migration path onto SSO, and without it there is not one. A server that
+ * has been running on the bootstrap secret has all its rows under `local`; the
+ * first single-sign-on login would find no account for that `sub`, create a
+ * fresh one, and present an empty todo list to somebody who has years of
+ * tasks - correctly, and uselessly. Linking first means that login resolves to
+ * the account the data is already in.
+ *
+ * Refuses rather than steals: a `sub` already attached elsewhere is somebody's
+ * identity, and silently moving it would sign them into another person's
+ * account.
+ */
+export function linkOidc(db, userId, sub) {
+  const user = getUser(db, userId);
+  if (!user) throw new Error(`no such user: ${userId}`);
+
+  const holder = db.prepare('SELECT * FROM users WHERE oidc_sub = ?').get(sub);
+  if (holder && holder.id !== userId) {
+    throw new Error(
+      `that identity is already linked to ${holder.label} (${holder.id}). ` +
+        `Unlink or delete that account first.`,
+    );
+  }
+
+  db.prepare('UPDATE users SET oidc_sub = ? WHERE id = ?').run(sub, userId);
+  return getUser(db, userId);
+}
+
+/** Detach a provider identity, leaving the account and its rows alone. */
+export function unlinkOidc(db, userId) {
+  if (!getUser(db, userId)) throw new Error(`no such user: ${userId}`);
+  db.prepare('UPDATE users SET oidc_sub = NULL WHERE id = ?').run(userId);
+  return getUser(db, userId);
+}
+
 export function isAdmin(db, userId) {
   const user = getUser(db, userId);
   return !!user && user.is_admin === 1;

@@ -283,7 +283,23 @@ function lanAddresses() {
     return 3;
   };
 
-  return Object.values(networkInterfaces())
+  // Enumerating interfaces is a *sandboxed* syscall, not a safe one: it needs
+  // AF_NETLINK, and the installed unit restricts address families to AF_INET
+  // and AF_INET6 - so on a hardened deployment this throws EAFNOSUPPORT. The
+  // unit now allows it, but this catch stays regardless, because the only thing
+  // downstream of this list is a line of console output telling somebody which
+  // address to type. A cosmetic banner must never be the reason the server does
+  // not come up, and it was: the listen callback throwing crashed the process
+  // *after* the port was already bound, so systemd restarted it into the same
+  // crash forever.
+  let interfaces;
+  try {
+    interfaces = networkInterfaces();
+  } catch {
+    return [];
+  }
+
+  return Object.values(interfaces)
     .flat()
     .filter((n) => n && n.family === 'IPv4' && !n.internal)
     .map((n) => n.address)

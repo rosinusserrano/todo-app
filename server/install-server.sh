@@ -167,7 +167,11 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictAddressFamilies=AF_INET AF_INET6
+# AF_NETLINK is not a network the server can speak to - it is how Linux answers
+# "which interfaces does this machine have", which the startup banner asks when
+# bound to anything other than loopback. Without it os.networkInterfaces()
+# throws EAFNOSUPPORT.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=false

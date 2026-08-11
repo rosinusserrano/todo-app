@@ -120,7 +120,7 @@ All optional:
 | `TODO_SYNC_PORT` | `8787` | Port to listen on |
 | `TODO_SYNC_HOST` | `0.0.0.0` | Set `127.0.0.1` to refuse LAN clients |
 | `TODO_SYNC_DB` | `server/data/sync.db` | Database file |
-| `TODO_SYNC_SECRET` | generated into `server/data/secret.txt` | Bootstrap token |
+| `TODO_SYNC_SECRET` | generated into `secret.txt` beside the database | Bootstrap token |
 | `TODO_OIDC_ISSUER` | — | Keycloak realm URL; enables SSO (see below) |
 | `TODO_OIDC_CLIENT_ID` | `todo-widget` | The public client devices log in with |
 | `TODO_OIDC_ADMIN_ROLE` | `todo-admin` | Realm role granting admin |

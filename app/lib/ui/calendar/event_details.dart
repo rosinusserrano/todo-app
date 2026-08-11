@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../sync/models.dart';
 import '../../theme.dart';
+import '../markdown_text.dart';
 import 'time_grid.dart' show hhmm;
 
 /// What the user asked for on the way out. Null (the dialog dismissed) is
@@ -193,7 +194,11 @@ class _DetailsDialogState extends State<_DetailsDialog> {
               ),
               if (e.description.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Text(
+                // Markdown, like a task's notes. This card is already the
+                // read-only half of the read/write split described above, so
+                // there is no editor to toggle into - Edit is one of the four
+                // named ways out.
+                MarkdownText(
                   e.description,
                   style: const TextStyle(
                       fontSize: 12.5, color: T.text, height: 1.35),

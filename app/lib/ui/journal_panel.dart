@@ -14,13 +14,30 @@
 //
 // The editor takes over the whole pane (an in-app editor, not a separate OS
 // window): pick or create an entry and the list is replaced by a title field, a
-// body field, and Cancel / Save. Esc backs out of the editor before the journal.
+// body field, and Cancel / Save.
+//
+// Entries are Markdown (see markdown_text.dart), which puts a third state
+// between the list and the editor: **reading**. Picking an existing entry
+// renders it; the pencil turns it back into the two fields. A new entry skips
+// straight to the fields, because there is nothing to read yet. So Esc walks
+// back down a ladder rather than out of one door - editor to reader, reader to
+// list, list to the tasks - and each rung is where you just came from.
+//
+// Three shortcuts, all in the editor, all of them about not reaching for the
+// mouse mid-sentence:
+//
+//   Ctrl+Enter    title to body, because Enter in a one-line field does nothing
+//                 and Tab is taken by focus traversal.
+//   Ctrl+S        save and read what you wrote - the same thing Save does.
+//   Ctrl+Alt+S    save and go back to the list, for when the entry is finished
+//                 rather than being re-read.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../theme.dart';
+import 'markdown_text.dart';
 import 'panel_header.dart';
 
 class JournalView extends StatefulWidget {
@@ -51,9 +68,13 @@ class JournalView extends StatefulWidget {
   final VoidCallback onLock;
   final Future<void> Function() onRemovePassword;
 
-  /// [existing] null means a new entry.
-  final Future<void> Function(String title, String body, JournalItem? existing)
-      onSave;
+  /// [existing] null means a new entry. Returns the entry as saved - the panel
+  /// needs the uuid a *new* one was given, or the second Ctrl+S in a sitting
+  /// would write a second row instead of rewriting the first. Null means
+  /// nothing was saved (an empty entry, or one cleared to nothing, which
+  /// deletes).
+  final Future<JournalItem?> Function(
+      String title, String body, JournalItem? existing) onSave;
   final Future<void> Function(JournalItem) onDelete;
 
   /// Back to the task list, from the list state's header.
@@ -68,8 +89,20 @@ class _JournalViewState extends State<JournalView> {
   final _confirm = TextEditingController();
   final _title = TextEditingController();
   final _body = TextEditingController();
+  final _titleFocus = FocusNode();
+  final _bodyFocus = FocusNode();
+
+  /// The pane's own node, so the reader can hold focus.
+  ///
+  /// The editor never needed one: a text field inside it takes primary focus
+  /// and every key event bubbles up through here on its way out. The reader has
+  /// no field, so without this the pane is not on the focus path at all and Esc
+  /// falls through to the shell - which closes the whole journal, skipping the
+  /// list rung the ladder exists for.
+  final _paneFocus = FocusNode(debugLabel: 'journal pane');
 
   bool _editorOpen = false;
+  bool _reading = false;
   bool _settingUp = false; // reachable "set a password" screen
   JournalItem? _editing;
   String? _error;
@@ -81,7 +114,18 @@ class _JournalViewState extends State<JournalView> {
     _confirm.dispose();
     _title.dispose();
     _body.dispose();
+    _titleFocus.dispose();
+    _bodyFocus.dispose();
+    _paneFocus.dispose();
     super.dispose();
+  }
+
+  /// Put the keyboard on the pane itself. The state it is being asked for is
+  /// built by the setState that calls this, so the request waits for the frame.
+  void _focusPane() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _paneFocus.requestFocus();
+    });
   }
 
   // --------------------------------------------------------------- lock flow
@@ -152,35 +196,72 @@ class _JournalViewState extends State<JournalView> {
 
   // ------------------------------------------------------------- editor flow
 
+  /// A blank entry has nothing to read, so it opens in the fields.
   void _openNew() {
     _title.clear();
     _body.clear();
     setState(() {
       _editing = null;
       _editorOpen = true;
+      _reading = false;
     });
   }
 
+  /// Picking one from the list *reads* it.
   void _openExisting(JournalItem item) {
     if (item.locked) return; // cannot be read here, so cannot be opened
     _title.text = item.title;
     _body.text = item.body;
     setState(() {
       _editing = item;
+      _editorOpen = false;
+      _reading = true;
+    });
+    _focusPane();
+  }
+
+  /// The pencil, from the reader.
+  void _edit() {
+    setState(() {
       _editorOpen = true;
+      _reading = false;
     });
   }
 
-  void _closeEditor() => setState(() => _editorOpen = false);
+  /// Back one rung: out of the editor to whatever it was opened from. A new
+  /// entry was opened from the list and has nothing to fall back to.
+  void _closeEditor() {
+    setState(() {
+      _editorOpen = false;
+      _reading = _editing != null;
+    });
+    if (_reading) _focusPane();
+  }
 
-  Future<void> _save() async {
+  void _closeReader() => setState(() {
+        _reading = false;
+        _editing = null;
+      });
+
+  /// [toList] is Ctrl+Alt+S; otherwise this is Ctrl+S and the Save button, and
+  /// lands on the rendered entry.
+  ///
+  /// The saved item is adopted as [_editing] whatever it was before, which is
+  /// what makes a new entry editable again without leaving the pane: after this
+  /// there is a row behind the text on screen. A null back means nothing was
+  /// written (an entry cleared to nothing deletes), so there is nothing to read
+  /// and the list is the only honest place to be.
+  Future<void> _save({bool toList = false}) async {
     setState(() => _busy = true);
-    await widget.onSave(_title.text, _body.text, _editing);
+    final saved = await widget.onSave(_title.text, _body.text, _editing);
     if (!mounted) return;
     setState(() {
       _busy = false;
+      _editing = saved;
       _editorOpen = false;
+      _reading = saved != null && !toList;
     });
+    if (_reading) _focusPane();
   }
 
   Future<void> _deleteEditing() async {
@@ -194,7 +275,9 @@ class _JournalViewState extends State<JournalView> {
     if (!mounted) return;
     setState(() {
       _busy = false;
+      _editing = null;
       _editorOpen = false;
+      _reading = false;
     });
   }
 
@@ -202,14 +285,26 @@ class _JournalViewState extends State<JournalView> {
 
   @override
   Widget build(BuildContext context) {
-    // Intercept Esc so it backs out of the editor (or the set-password screen)
-    // before the shell uses it to close the whole journal.
+    // Intercept Esc so it backs down one rung - out of the editor, then out of
+    // the reader - before the shell uses it to close the whole journal.
+    //
+    // The editor's three shortcuts live here rather than on the fields: Ctrl+S
+    // has to work with the caret in either field, and a CallbackShortcuts
+    // around one of them only ever sees that one (the same thing the composer's
+    // Ctrl+Enter comment in task_composer.dart is about).
     return Focus(
+      focusNode: _paneFocus,
       onKeyEvent: (node, event) {
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.escape) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+
+        if (key == LogicalKeyboardKey.escape) {
           if (_editorOpen) {
             _closeEditor();
+            return KeyEventResult.handled;
+          }
+          if (_reading) {
+            _closeReader();
             return KeyEventResult.handled;
           }
           if (_settingUp) {
@@ -219,6 +314,20 @@ class _JournalViewState extends State<JournalView> {
             });
             return KeyEventResult.handled;
           }
+          return KeyEventResult.ignored;
+        }
+
+        if (!_editorOpen || _busy) return KeyEventResult.ignored;
+        final ctrl = HardwareKeyboard.instance.isControlPressed;
+        if (!ctrl) return KeyEventResult.ignored;
+
+        if (key == LogicalKeyboardKey.enter) {
+          _bodyFocus.requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.keyS) {
+          _save(toList: HardwareKeyboard.instance.isAltPressed);
+          return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
       },
@@ -230,6 +339,7 @@ class _JournalViewState extends State<JournalView> {
     if (widget.locked) return _gate(setup: false);
     if (_settingUp) return _gate(setup: true);
     if (_editorOpen) return _editor();
+    if (_reading) return _reader();
     return _list();
   }
 
@@ -387,6 +497,60 @@ class _JournalViewState extends State<JournalView> {
     );
   }
 
+  // ----------------------------------------------------------------- reader
+
+  /// An entry as it reads. The text comes from the same controllers the editor
+  /// writes into rather than from [_editing], so what is on screen after a save
+  /// is exactly what was saved - no second lookup that could disagree with it,
+  /// and nothing to re-resolve when the list is rebuilt underneath.
+  Widget _reader() {
+    final untitled = _title.text.trim().isEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PanelHeader(
+          title: 'Notes',
+          onBack: _closeReader,
+          backTooltip: 'Back to the list (Esc)',
+          actions: [
+            _iconButton(Icons.edit_outlined, 'Edit', _edit),
+            if (_editing != null)
+              _iconButton(Icons.delete_outline, 'Delete',
+                  _busy ? () {} : _deleteEditing),
+          ],
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  untitled ? 'Untitled' : _title.text.trim(),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: untitled ? T.muted : T.text,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // The body is a handle too, the same way a task's rendered
+                // notes are: the obvious thing to do to something you are
+                // reading and want to change is to touch it.
+                MarkdownText(
+                  _body.text,
+                  style: const TextStyle(
+                      fontSize: 13, color: T.text, height: 1.4),
+                  onTapText: _edit,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // ----------------------------------------------------------------- editor
 
   Widget _editor() {
@@ -397,7 +561,11 @@ class _JournalViewState extends State<JournalView> {
         children: [
           TextField(
             controller: _title,
-            autofocus: true,
+            focusNode: _titleFocus,
+            // The caret starts in the title on a new entry and in the body on
+            // one being revised: the title of an existing entry is the part
+            // that is already right.
+            autofocus: _editing == null,
             style: const TextStyle(fontSize: 14, color: T.text),
             decoration: const InputDecoration(
               isDense: true,
@@ -405,11 +573,17 @@ class _JournalViewState extends State<JournalView> {
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(vertical: 6),
             ),
+            // Enter in a one-line field does nothing, so it may as well do the
+            // obvious thing. Ctrl+Enter does it too, from either field.
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _bodyFocus.requestFocus(),
           ),
           const Divider(height: 8, thickness: 0.5, color: T.surfaceHover),
           Expanded(
             child: TextField(
               controller: _body,
+              focusNode: _bodyFocus,
+              autofocus: _editing != null,
               expands: true,
               maxLines: null,
               minLines: null,
@@ -417,7 +591,7 @@ class _JournalViewState extends State<JournalView> {
               style: const TextStyle(fontSize: 13, color: T.text, height: 1.4),
               decoration: const InputDecoration(
                 isDense: true,
-                hintText: '',
+                hintText: 'Markdown, if you want it.',
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 6),
               ),
@@ -432,15 +606,18 @@ class _JournalViewState extends State<JournalView> {
               const Spacer(),
               _textAction('Cancel', _busy ? null : _closeEditor),
               const SizedBox(width: 4),
-              FilledButton(
-                onPressed: _busy ? null : _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: T.surfaceHover,
-                  foregroundColor: T.text,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              Tooltip(
+                message: 'Save (Ctrl+S) · Save and close (Ctrl+Alt+S)',
+                child: FilledButton(
+                  onPressed: _busy ? null : () => _save(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: T.surfaceHover,
+                    foregroundColor: T.text,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  child: const Text('Save'),
                 ),
-                child: const Text('Save'),
               ),
             ],
           ),

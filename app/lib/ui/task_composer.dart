@@ -10,6 +10,13 @@
 // It lands in the notes box, not the title: the title is either already there
 // or is the one thing the quick field would have done anyway.
 //
+// The notes are Markdown (see markdown_text.dart), so the box has two states.
+// It opens *read-first* on a task that already has notes and edit-first on one
+// that does not - which is the same rule stated twice: show the editor exactly
+// when there is nothing to read. That is what keeps the Ctrl+D flow intact,
+// since a task being composed has no notes yet and so still lands in a field
+// with the caret in it.
+//
 // A dialog rather than a sheet, unlike Settings and the sublist. The rule in
 // main.dart is about things that live on screen while you work *around* them -
 // a sheet leaves the title bar reachable so the window can still be dragged and
@@ -22,6 +29,7 @@ import 'package:flutter/services.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
+import 'markdown_text.dart';
 import 'reminder_menu.dart';
 import 'reminder_picker.dart';
 
@@ -85,16 +93,33 @@ class _ComposerDialogState extends State<_ComposerDialog> {
   late DateTime? _remindAt = widget.existing?.remindAtTime;
   late String? _recur = widget.existing?.recur;
 
+  /// Read-first exactly when there is something to read. See the header.
+  late bool _editingNotes = (widget.existing?.notes ?? '').trim().isEmpty;
+
   /// The presets are relative to *now*, and "now" has to be the same instant
   /// for the whole life of the dialog or the chip labels drift under the
   /// selection they made.
   final _openedAt = DateTime.now();
 
+  final _notesFocus = FocusNode();
+
   @override
   void dispose() {
     _title.dispose();
     _notes.dispose();
+    _notesFocus.dispose();
     super.dispose();
+  }
+
+  /// Into the raw text, with the caret in it. The field does not exist until
+  /// this setState has been built, so the focus cannot be requested until
+  /// after the frame.
+  void _editNotes() {
+    if (_editingNotes) return;
+    setState(() => _editingNotes = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _notesFocus.requestFocus();
+    });
   }
 
   void _save() {
@@ -154,19 +179,7 @@ class _ComposerDialogState extends State<_ComposerDialog> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 12),
-                // Autofocus lands here, which is the whole point of the shortcut:
-                // the title is either already typed or is the thing the one-line
-                // field would have captured on its own.
-                TextField(
-                  controller: _notes,
-                  autofocus: true,
-                  minLines: 4,
-                  maxLines: 10,
-                  style: const TextStyle(fontSize: 12.5, height: 1.35),
-                  decoration: const InputDecoration(
-                    hintText: 'Notes — links, the address, what "done" means…',
-                  ),
-                ),
+                _notesBox(),
                 const SizedBox(height: 14),
                 const _Label('Priority'),
                 const SizedBox(height: 6),
@@ -285,6 +298,91 @@ class _ComposerDialogState extends State<_ComposerDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  /// The notes field and its rendered form, with one control between them.
+  ///
+  /// The toggle sits *under* the box rather than over its corner: notes start
+  /// at the top-left of that box, and a control floating there would land on
+  /// the first word of every note that has one.
+  Widget _notesBox() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_editingNotes)
+          // Autofocus lands here, which is the whole point of Ctrl+D: the title
+          // is either already typed or is the thing the one-line field would
+          // have captured on its own. A task opened for re-reading starts in
+          // the other state, so this only fires where the caret is wanted.
+          TextField(
+            controller: _notes,
+            focusNode: _notesFocus,
+            autofocus: true,
+            minLines: 4,
+            maxLines: 10,
+            style: const TextStyle(fontSize: 12.5, height: 1.35),
+            decoration: const InputDecoration(
+              hintText: 'Notes — Markdown, links, what "done" means…',
+            ),
+          )
+        else
+          InkWell(
+            onTap: _editNotes,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 64),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                color: T.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: MarkdownText(
+                _notes.text,
+                style: const TextStyle(
+                    fontSize: 12.5, height: 1.35, color: T.text),
+                // The body is as good a handle as the toggle. Links inside it
+                // still open rather than switching to the editor - MarkdownBody
+                // hands a tap on a link to onTapLink instead of this.
+                onTapText: _editNotes,
+              ),
+            ),
+          ),
+        // Only offered once there is something to render. A "Preview" on an
+        // empty note is a control that does nothing.
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _notes,
+          builder: (context, value, _) {
+            if (value.text.trim().isEmpty) return const SizedBox(height: 4);
+            return Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _editingNotes
+                    ? setState(() => _editingNotes = false)
+                    : _editNotes(),
+                icon: Icon(
+                  _editingNotes
+                      ? Icons.visibility_outlined
+                      : Icons.edit_outlined,
+                  size: 14,
+                ),
+                label: Text(
+                  _editingNotes ? 'Preview' : 'Edit',
+                  style: const TextStyle(fontSize: 11.5),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: T.muted,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

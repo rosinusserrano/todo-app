@@ -256,6 +256,40 @@ void main() {
       await s.store.close();
     });
 
+    // What the pane reads after a save, and - for a new entry - the only way it
+    // learns the uuid it must edit rather than duplicate next time.
+    test('adding hands back the entry it wrote', () async {
+      final s = await unlockedState();
+      final saved = await s.addJournalEntry('Trip', 'leaves at nine');
+      expect(saved, isNotNull);
+      expect(saved!.uuid, s.journal.single.uuid);
+      expect(saved.title, 'Trip');
+      await s.store.close();
+    });
+
+    test('adding nothing hands back nothing', () async {
+      final s = await unlockedState();
+      expect(await s.addJournalEntry('  ', '  '), isNull);
+      await s.store.close();
+    });
+
+    test('editing hands back the entry as it now reads', () async {
+      final s = await unlockedState();
+      final before = await addEntry(s, 'draft', 'first pass');
+      final after = await s.editJournalEntry(before, 'draft', 'second pass');
+      expect(after, isNotNull);
+      expect(after!.uuid, before.uuid);
+      expect(after.body, 'second pass');
+      await s.store.close();
+    });
+
+    test('editing to empty deletes, and so hands back nothing', () async {
+      final s = await unlockedState();
+      final item = await addEntry(s, 'ephemeral', 'on reflection, no');
+      expect(await s.editJournalEntry(item, '', ''), isNull);
+      await s.store.close();
+    });
+
     test('editing changes content but keeps the row and its timestamp',
         () async {
       final s = await unlockedState();

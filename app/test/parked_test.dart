@@ -109,6 +109,71 @@ void main() {
     await s.store.close();
   });
 
+  // Activating a whole shelf: unparkGroup. The shelf survives, unlike
+  // deleteGroup, and only the open rows move.
+  test('activating a group empties it onto the list and keeps the group',
+      () async {
+    final s = await freshState();
+    final a = await addTask(s, 'read the spec');
+    final b = await addTask(s, 'draft the reply');
+    final g = await s.saveGroup(title: 'Backlog', reviewEveryDays: 30);
+    await s.parkTask(a, g!.uuid);
+    await s.parkTask(b, g.uuid);
+
+    expect(await s.unparkGroup(g), 2);
+
+    expect(s.tasks.map((t) => t.text), ['read the spec', 'draft the reply']);
+    expect(s.parked[g.uuid] ?? const [], isEmpty);
+    expect(s.groups.single.uuid, g.uuid, reason: 'the shelf stays');
+    await s.store.close();
+  });
+
+  test('activating a group appends, in the order the shelf held them',
+      () async {
+    final s = await freshState();
+    final keep = await addTask(s, 'already on the list');
+    final first = await addTask(s, 'shelved first');
+    final second = await addTask(s, 'shelved second');
+    final g = await s.saveGroup(title: 'Backlog', reviewEveryDays: 30);
+    await s.parkTask(first, g!.uuid);
+    await s.parkTask(second, g.uuid);
+
+    await s.unparkGroup(g);
+
+    expect(s.tasks.map((t) => t.text),
+        [keep.text, 'shelved first', 'shelved second']);
+    await s.store.close();
+  });
+
+  // allTasksInGroup returns completed rows too - deleting a group has to
+  // release those as well - so this is the one caller that has to filter.
+  test('activating a group leaves its checked-off tasks checked off', () async {
+    final s = await freshState();
+    final open = await addTask(s, 'still to do');
+    final done = await addTask(s, 'done while shelved');
+    final g = await s.saveGroup(title: 'Backlog', reviewEveryDays: 30);
+    await s.parkTask(open, g!.uuid);
+    await s.parkTask(done, g.uuid);
+    await s.completeTask(s.parked[g.uuid]!.firstWhere((t) => t.uuid == done.uuid));
+
+    expect(await s.unparkGroup(g), 1);
+
+    expect(s.tasks.map((t) => t.text), ['still to do']);
+    final all = await s.store.allTasksInWorkspace(open.workspaceUuid);
+    final finished = all.firstWhere((t) => t.uuid == done.uuid);
+    expect(finished.completedAt, isNotNull);
+    expect(finished.groupUuid, g.uuid, reason: 'it was never unparked');
+    await s.store.close();
+  });
+
+  test('activating an empty group does nothing and says so', () async {
+    final s = await freshState();
+    final g = await s.saveGroup(title: 'Backlog', reviewEveryDays: 30);
+    expect(await s.unparkGroup(g!), 0);
+    expect(s.groups.single.uuid, g.uuid);
+    await s.store.close();
+  });
+
   test('deleting a group releases its tasks instead of taking them down',
       () async {
     final s = await freshState();

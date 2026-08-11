@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 
 import '../../sync/models.dart';
 import '../../theme.dart';
+import '../task_drag.dart';
 
 /// Height of one hour of the grid. Everything vertical is derived from this.
 const double kHourHeight = 44;
@@ -655,48 +656,6 @@ class EventBlock extends StatelessWidget {
     return EventMenuArea(
       onMenu: onMenu,
       child: TaskDropTarget(onDrop: onDropTask, color: color, child: blob),
-    );
-  }
-}
-
-/// Accepts a task dragged out of the list beside the calendar, and says so
-/// while it is over the block.
-///
-/// The highlight is the whole feedback: a drop that plans a task changes the
-/// count on the blob and nothing else, which is too quiet to be the only thing
-/// that happens when you let go of something.
-class TaskDropTarget extends StatelessWidget {
-  const TaskDropTarget({
-    super.key,
-    required this.onDrop,
-    required this.color,
-    required this.child,
-  });
-
-  final void Function(Task)? onDrop;
-  final Color color;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final drop = onDrop;
-    if (drop == null) return child;
-
-    return DragTarget<Task>(
-      onAcceptWithDetails: (d) => drop(d.data),
-      builder: (context, candidates, _) {
-        if (candidates.isEmpty) return child;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: color, width: 1.5),
-            boxShadow: [
-              BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 8),
-            ],
-          ),
-          child: child,
-        );
-      },
     );
   }
 }

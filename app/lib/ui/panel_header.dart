@@ -20,6 +20,7 @@ class PanelHeader extends StatelessWidget {
     required this.title,
     required this.onBack,
     this.actions = const [],
+    this.backTooltip = 'Back to tasks (Esc)',
   });
 
   final String title;
@@ -27,6 +28,12 @@ class PanelHeader extends StatelessWidget {
   /// Back to the task list. Esc does the same thing, and the tooltip says so -
   /// the shortcut should not have to be discovered separately.
   final VoidCallback onBack;
+
+  /// What Esc and the arrow actually do here. Overridden where this bar is one
+  /// rung of a ladder rather than the way out of a view - the journal's reader
+  /// backs out to its own list, and saying "back to tasks" there would be
+  /// wrong about both the arrow and the key.
+  final String backTooltip;
 
   /// Trailing controls belonging to the view itself (new group, new note).
   final List<Widget> actions;
@@ -40,7 +47,7 @@ class PanelHeader extends StatelessWidget {
       child: Row(
         children: [
           Tooltip(
-            message: 'Back to tasks (Esc)',
+            message: backTooltip,
             child: InkWell(
               onTap: onBack,
               borderRadius: BorderRadius.circular(6),

@@ -19,7 +19,9 @@ import 'package:flutter/material.dart';
 
 import '../../sync/models.dart';
 import '../../theme.dart';
-import 'time_grid.dart' show EventMenuArea, TaskDropTarget, hhmm;
+import '../markdown_text.dart';
+import '../task_drag.dart';
+import 'time_grid.dart' show EventMenuArea, hhmm;
 
 class AgendaView extends StatelessWidget {
   const AgendaView({
@@ -294,7 +296,12 @@ class _AgendaRow extends StatelessWidget {
                       ),
                       if (event.description.isNotEmpty)
                         Text(
-                          event.description,
+                          // Two lines on a list row is a preview, not the
+                          // description - so it gets the same flattening the
+                          // notes line under a task title gets, rather than a
+                          // renderer whose first job would be to lay out a
+                          // heading in 20px.
+                          markdownPlainText(event.description),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

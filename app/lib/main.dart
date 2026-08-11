@@ -49,6 +49,7 @@ import 'ui/session_view.dart';
 import 'ui/settings_sheet.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/task_composer.dart';
+import 'ui/task_drag.dart';
 import 'ui/sublist_sheet.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
@@ -279,9 +280,53 @@ class _WidgetShellState extends State<WidgetShell>
   late final ReminderService _reminders = ReminderService(
     s.store,
     onDue: _onRemindersDue,
-    // A block starting writes nothing, so only the clock can notice it.
-    onTick: s.refreshSessions,
+    onTick: _onTick,
   );
+
+  /// The one poll. Two things need a clock and neither writes anything a
+  /// listener could hang off:
+  ///
+  ///   - a time block *starting*, which is why [AppState.refreshSessions] is
+  ///     driven from here rather than from a write path;
+  ///   - the window quietly losing always-on-top, which nothing reports at all.
+  ///
+  /// One timer rather than two to keep in step, for the same reason `onTick`
+  /// exists at all.
+  Future<void> _onTick() async {
+    await s.refreshSessions();
+    await _ensurePinned();
+  }
+
+  /// Put the window back on top if Windows has taken it off.
+  ///
+  /// Always-on-top is a *style bit* (`WS_EX_TOPMOST`), and it is not ours alone
+  /// to hold: another application going full screen makes Windows strip it from
+  /// everyone else, and nothing puts it back when that application exits. The
+  /// widget was set topmost once, in `main()`, so from then on it was simply an
+  /// ordinary window that happened to still say "pinned" - the symptom being a
+  /// widget that falls behind everything after something like Photo Viewer has
+  /// been open, and stays there.
+  ///
+  /// So the pin is re-asserted rather than set: [_pinned] is the *intent*, and
+  /// this is what makes the intent survive. It reads the bit first and only
+  /// writes when the two disagree - `setAlwaysOnTop` maps to a `SetWindowPos`
+  /// that also activates, so calling it unconditionally on a 20-second timer
+  /// would raise the window every time round.
+  Future<void> _ensurePinned() async {
+    if (!isDesktop || !_pinned) return;
+    try {
+      if (await windowManager.isAlwaysOnTop()) return;
+      await windowManager.setAlwaysOnTop(true);
+    } catch (_) {
+      // Losing the pin is a nuisance; a throw from a timer would be worse.
+    }
+  }
+
+  /// Clicking back onto the widget repairs the pin immediately rather than at
+  /// the next tick. Free of the activation concern above: the window is already
+  /// the active one by the time this runs.
+  @override
+  void onWindowFocus() => _ensurePinned();
 
   _Focus _phase = _Focus.none;
   Rect? _fromRect;
@@ -1738,6 +1783,10 @@ class _WidgetShellState extends State<WidgetShell>
         onEditGroup: _editGroup,
         onCreateGroup: () => _editGroup(null),
         onBack: _toggleParked,
+        onActivateGroup: s.unparkGroup,
+        // Only where there is a list beside it to drag out of - the same rule
+        // the calendar's onPlanTask follows, for the same reason.
+        onPark: _layout.splitsContent ? (g, t) => s.parkTask(t, g.uuid) : null,
       );
     }
     if (s.showSession) {
@@ -1990,50 +2039,31 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
-  /// A row that can be dragged onto a calendar block, when there is a calendar
-  /// beside it to drop onto - otherwise the row itself, untouched.
+  /// A row that can be dragged onto whatever is open beside the list - a
+  /// calendar block ("do this then") or a parked group ("not now") - or the row
+  /// itself, untouched, when there is nothing beside it.
+  ///
+  /// One `Draggable` for both, because the drag is one gesture: what it means
+  /// is decided by where it is let go, and the two targets can never be on
+  /// screen at once (the calendar replaces the content area the parked panel
+  /// lives in). Whether it is offered at all is a question about *layout*,
+  /// which is why it is answered here rather than in either panel.
   ///
   /// `affinity: horizontal` is what keeps this out of the list's way: a
   /// vertical drag still scrolls and the ≡ handle still reorders, while a drag
-  /// *towards the calendar* is the one gesture that means "plan this". Nothing
-  /// here fires on a phone, where the two are never side by side.
+  /// *sideways* is the one gesture that means "put this over there". Nothing
+  /// here fires on a phone, where nothing is ever side by side.
   Widget _plannable(Task t, Color ws, Widget row) {
-    if (!s.showCalendar || !_layout.splitsCalendar) return row;
+    final toCalendar = s.showCalendar && _layout.splitsCalendar;
+    final toGroup = s.showParked && _layout.splitsContent;
+    if (!toCalendar && !toGroup) return row;
     return Draggable<Task>(
       data: t,
       affinity: Axis.horizontal,
       dragAnchorStrategy: pointerDragAnchorStrategy,
-      feedback: _dragFeedback(t, ws),
+      feedback: TaskDragFeedback(task: t, accent: ws),
       childWhenDragging: Opacity(opacity: 0.35, child: row),
       child: row,
-    );
-  }
-
-  /// What follows the pointer: the task's own title, small, in the workspace
-  /// colour. A ghost of the whole row would be 340px of widget dragged across
-  /// a grid it is about to cover.
-  Widget _dragFeedback(Task t, Color ws) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 220),
-        margin: const EdgeInsets.only(left: 10, top: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: Color.lerp(T.bgSolid, ws, 0.4),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: ws.withValues(alpha: 0.7)),
-          boxShadow: const [
-            BoxShadow(color: Color(0x66000000), blurRadius: 12),
-          ],
-        ),
-        child: Text(
-          t.text,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, color: T.text),
-        ),
-      ),
     );
   }
 

@@ -758,6 +758,41 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
+  /// Everything open on one shelf, back onto the list at the bottom, in the
+  /// order it was shelved. The shelf itself stays.
+  ///
+  /// This is [deleteGroup] without the tombstone, and the two are deliberately
+  /// different things: emptying a backlog is not the same as deciding you no
+  /// longer keep a backlog. It is also [unparkTask] N times, except that the
+  /// sort orders are handed out in one pass - asking the store for the next one
+  /// per task would work, but only because each write moves the maximum.
+  ///
+  /// **Open tasks only.** [LocalStore.allTasksInGroup] returns completed rows
+  /// too, because a group being deleted has to release those as well; putting
+  /// them on the active list would be un-finishing work nobody asked to reopen.
+  ///
+  /// Returns how many moved, which is what the confirmation counted.
+  Future<int> unparkGroup(ParkedGroup g) async {
+    final ws = currentWorkspaceUuid;
+    if (ws == null) return 0;
+    final tasks = (await _store.allTasksInGroup(g.uuid))
+        .where((t) => t.completedAt == null)
+        .toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    if (tasks.isEmpty) return 0;
+
+    var order = await _store.nextSortOrder(ws);
+    final stamp = nowStamp();
+    for (final t in tasks) {
+      await _store.putTask(
+        t.copyWith(clearGroup: true, sortOrder: order++, updatedAt: stamp),
+      );
+    }
+    await refreshTasks();
+    _mutated();
+    return tasks.length;
+  }
+
   /// Removes the shelf, not what was on it: everything it held comes back onto
   /// the current list. Deleting a group is a statement about the grouping, and
   /// silently taking a dozen tasks down with it would be the kind of loss this
@@ -990,15 +1025,21 @@ class AppState extends ChangeNotifier {
   /// Encrypted only if a password is set and the vault is open; plaintext
   /// otherwise. An entry with neither a title nor a body is dropped rather than
   /// logging an empty stamp.
-  Future<void> addJournalEntry(String title, String body) async {
+  ///
+  /// Returns what was written, or null if nothing was. The panel needs it: it
+  /// shows the *rendered* entry after a save, and a second edit from there has
+  /// to go back to the same row rather than write a new one - which it can only
+  /// do if it learns the uuid this call minted.
+  Future<JournalItem?> addJournalEntry(String title, String body) async {
     final ws = currentWorkspaceUuid;
-    if (ws == null || journalLocked) return;
-    if (title.trim().isEmpty && body.trim().isEmpty) return;
+    if (ws == null || journalLocked) return null;
+    if (title.trim().isEmpty && body.trim().isEmpty) return null;
     final (t, b, enc) = await _encodeFields(title.trim(), body.trim());
     final now = nowStamp();
+    final uuid = newId();
     await _store.putJournal(
       JournalEntry(
-        uuid: newId(),
+        uuid: uuid,
         workspaceUuid: ws,
         title: t,
         text: b,
@@ -1009,20 +1050,34 @@ class AppState extends ChangeNotifier {
     );
     await refreshJournal();
     _mutated();
+    return journalItem(uuid);
+  }
+
+  /// The loaded entry with this uuid, or null if it is not in [journal] - it
+  /// was deleted, or belongs to another workspace, or the vault was locked
+  /// between the write and the lookup.
+  JournalItem? journalItem(String uuid) {
+    for (final item in journal) {
+      if (item.uuid == uuid) return item;
+    }
+    return null;
   }
 
   /// Rewrite an entry. Its [JournalEntry.createdAt] stays put - the log records
   /// when the thing was written, not when it was later edited. Clearing both
   /// fields deletes it. A locked entry cannot be edited (it cannot be read).
-  Future<void> editJournalEntry(
+  ///
+  /// Returns the entry as it now reads, or null when the edit deleted it or was
+  /// refused - see [addJournalEntry] for why the caller wants it back.
+  Future<JournalItem?> editJournalEntry(
     JournalItem item,
     String title,
     String body,
   ) async {
-    if (item.locked || journalLocked) return;
+    if (item.locked || journalLocked) return null;
     if (title.trim().isEmpty && body.trim().isEmpty) {
       await deleteJournalEntry(item);
-      return;
+      return null;
     }
     final (t, b, enc) = await _encodeFields(title.trim(), body.trim());
     await _store.putJournal(
@@ -1035,6 +1090,7 @@ class AppState extends ChangeNotifier {
     );
     await refreshJournal();
     _mutated();
+    return journalItem(item.uuid);
   }
 
   /// Encrypt the two fields when the vault is open, or hand them back plaintext.

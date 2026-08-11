@@ -12,12 +12,25 @@
 // Groups collapse. On a 340x480 window three shelves of ten items each is a
 // scroll with no shape to it, so only the ones you open take up room, and an
 // overdue group opens itself.
+//
+// Tasks move in and out of a shelf both ways round, and the two directions are
+// deliberately not symmetrical:
+//
+//   - **Out** is a button, always: ↗ on a row puts one task back on the list,
+//     ↗ on a group header puts the whole shelf back (behind a confirmation -
+//     that one can move a dozen rows at once and there is no undo).
+//   - **In** by dragging works only when the list is actually beside this panel
+//     ([Layout.splitsContent]). Otherwise there is nothing on screen to drag
+//     from, and the 📥 on a task row - which opens the same shelves as a menu -
+//     is the way in that works at every size. No size takes a feature away; a
+//     shortcut that needs two things visible at once needs them visible.
 
 import 'package:flutter/material.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
 import 'panel_header.dart';
+import 'task_drag.dart';
 
 class ParkedPanel extends StatefulWidget {
   const ParkedPanel({
@@ -31,6 +44,8 @@ class ParkedPanel extends StatefulWidget {
     required this.onEditGroup,
     required this.onCreateGroup,
     required this.onBack,
+    required this.onActivateGroup,
+    this.onPark,
   });
 
   final List<ParkedGroup> groups;
@@ -43,6 +58,14 @@ class ParkedPanel extends StatefulWidget {
   final void Function(ParkedGroup) onEditGroup;
   final VoidCallback onCreateGroup;
   final VoidCallback onBack;
+
+  /// Put every open task on this shelf back onto the list. Already confirmed by
+  /// the time this is called.
+  final Future<void> Function(ParkedGroup) onActivateGroup;
+
+  /// A task dragged out of the list beside this panel and dropped on a group.
+  /// Null when there is no list beside it - see the header.
+  final Future<void> Function(ParkedGroup, Task)? onPark;
 
   @override
   State<ParkedPanel> createState() => _ParkedPanelState();
@@ -138,10 +161,70 @@ class _ParkedPanelState extends State<ParkedPanel>
             onComplete: widget.onComplete,
             onReviewed: () => widget.onReviewed(g),
             onEdit: () => widget.onEditGroup(g),
+            onActivate: () => _activate(g),
+            onDrop: widget.onPark == null ? null : (t) => _park(g, t),
           ),
       ],
     );
   }
+
+  /// A dropped task lands on the shelf and the shelf **opens**.
+  ///
+  /// The highlight under the pointer says where it is going; nothing would say
+  /// where it went. On a collapsed group the only other visible change is a
+  /// count going up by one, which is exactly the too-quiet ending
+  /// [TaskDropTarget] exists to avoid.
+  Future<void> _park(ParkedGroup g, Task t) async {
+    setState(() => _open.add(g.uuid));
+    await widget.onPark!(g, t);
+  }
+
+  /// The whole shelf back onto the list, once. Confirmed first: this can move a
+  /// dozen rows in one press and there is nothing to undo it with.
+  Future<void> _activate(ParkedGroup g) async {
+    final tasks = widget.parked[g.uuid] ?? const <Task>[];
+    if (tasks.isEmpty) return;
+    final yes = await _confirmActivate(context, g, tasks.length);
+    if (!yes) return;
+    await widget.onActivateGroup(g);
+  }
+}
+
+/// "All of these, now" - said before it happens rather than reported after.
+///
+/// A dialog, not a sheet: modal by nature and gone in seconds, which is the
+/// case the sheet rule in main.dart carves out.
+Future<bool> _confirmActivate(
+  BuildContext context,
+  ParkedGroup group,
+  int count,
+) async {
+  final answer = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: T.bgSolid,
+      title: const Text('Activate this group?', style: TextStyle(fontSize: 15)),
+      content: Text(
+        count == 1
+            ? 'The one todo in "${group.title}" will be put onto the active '
+                'todo list.'
+            : 'All $count todos in "${group.title}" will be put onto the '
+                'active todo list.',
+        style: const TextStyle(fontSize: 12.5, color: T.muted, height: 1.4),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Activate'),
+        ),
+      ],
+    ),
+  );
+  return answer ?? false;
 }
 
 class _Group extends StatelessWidget {
@@ -155,6 +238,8 @@ class _Group extends StatelessWidget {
     required this.onComplete,
     required this.onReviewed,
     required this.onEdit,
+    required this.onActivate,
+    required this.onDrop,
   });
 
   final ParkedGroup group;
@@ -166,14 +251,36 @@ class _Group extends StatelessWidget {
   final Future<void> Function(Task) onComplete;
   final VoidCallback onReviewed;
   final VoidCallback onEdit;
+  final VoidCallback onActivate;
+
+  /// Null where nothing can be dragged onto it.
+  final void Function(Task)? onDrop;
 
   @override
   Widget build(BuildContext context) {
     final due = group.isReviewDue();
     final tint = due ? T.complementary(accent) : accent;
 
+    // The whole card, collapsed or not, is the target. Aiming at a group's
+    // *contents* would mean an empty or closed shelf had nothing to hit, and
+    // those are the ones a task is most likely being put away into.
+    //
+    // The gap between cards is a Padding out here rather than a margin on the
+    // Container, so the highlight is drawn around the card and not around the
+    // card plus six pixels of nothing.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: TaskDropTarget(
+        onDrop: onDrop,
+        color: accent,
+        radius: 9,
+        child: _card(due, tint),
+      ),
+    );
+  }
+
+  Widget _card(bool due, Color tint) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: T.surface,
         borderRadius: BorderRadius.circular(9),
@@ -224,6 +331,29 @@ class _Group extends StatelessWidget {
                       fontWeight: due ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
+                  // The same ↗ a single parked row carries, meaning the same
+                  // thing one level up. Offered only when there is something to
+                  // move: on an empty shelf it would be a control that opens a
+                  // dialog to do nothing.
+                  if (tasks.isNotEmpty)
+                    Tooltip(
+                      message: tasks.length == 1
+                          ? 'Put it back onto the list'
+                          : 'Put all ${tasks.length} back onto the list',
+                      child: InkWell(
+                        onTap: onActivate,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 2),
+                          child: Icon(
+                            Icons.north_east_rounded,
+                            size: 15,
+                            color: accent,
+                          ),
+                        ),
+                      ),
+                    ),
                   InkWell(
                     onTap: onEdit,
                     borderRadius: BorderRadius.circular(6),

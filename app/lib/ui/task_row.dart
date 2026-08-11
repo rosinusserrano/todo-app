@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
+import 'markdown_text.dart';
 import 'reminder_menu.dart';
 
 class TaskRow extends StatefulWidget {
@@ -325,8 +326,10 @@ class _TaskText extends StatelessWidget {
             child: Text(
               // One line of it, whitespace flattened - a note written as a
               // paragraph would otherwise preview as its first six words and a
-              // ragged newline.
-              task.notes.replaceAll(RegExp(r'\s+'), ' ').trim(),
+              // ragged newline. Rendered down from Markdown rather than shown
+              // raw: a note that opens with a heading previewed as "## Trip",
+              // which spends the one line on punctuation.
+              markdownPlainText(task.notes),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 10.5, color: T.muted, height: 1.25),

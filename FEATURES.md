@@ -22,6 +22,11 @@ Newest changes are noted in the changelog at the bottom.
 - **Notes stay readable.** A task carrying notes previews their first line under
   its title, and clicking the title reopens the composer on that task. A note
   you can only write is a note you will not write.
+- **Notes are Markdown, and open rendered.** Reopening a task that already has
+  notes shows them formatted, with an *Edit* toggle (or a tap on the text) back
+  to the raw source; a task with no notes yet opens straight into the field, so
+  Ctrl+D still puts the caret where you were about to type. See **Markdown &
+  maths**.
 - **High priority** — the ⚑ on hover flags a task: a red bar down its leading
   edge and a red border, so it reads as urgent from across the room. The bar is
   a separate channel from the overdue-reminder red and the focus tint, so a task
@@ -29,6 +34,42 @@ Newest changes are noted in the changelog at the bottom.
   another. Flagging deliberately **does not reorder the list** — that order is
   yours, set by dragging, and a flag that jumped a row to the top would be a
   second sort fighting the first.
+
+## Markdown & maths
+
+Every long-form field in the app is **Markdown** — a task's notes, a journal
+entry's body, and a calendar event's description. One dialect, one renderer,
+three places.
+
+- **The dialect is GitHub Flavored Markdown**, the one you already know:
+  headings, **bold**, *italic*, ~~strikethrough~~, links, bullet and numbered
+  lists, `- [x]` task lists, tables, block quotes, `code` spans and fenced code
+  blocks, horizontal rules. Picking an existing dialect rather than inventing
+  one is the point — notes get pasted in from somewhere else at least as often
+  as they get typed here.
+- **Maths, GitHub's way.** `$…$` for a formula in a sentence, `$$…$$` or a
+  ```` ```math ```` fence for one on a line of its own, rendered as real LaTeX.
+  `$\pi r^2$` comes out set, not quoted.
+- **Money is safe.** "it costs $5, or $7 with tax" stays text: a `$` delimiter
+  may not sit against a space, and a closing `$` may not be followed by a digit.
+  `\$` is always a literal dollar. This matters because switching maths on
+  re-reads notes that were written before it existed.
+- **A formula with a typo in it shows what you typed**, in red, rather than
+  vanishing or throwing. Notes are written in passing and half of them are wrong
+  for a minute.
+- **Read first, then edit.** Notes and journal entries open *rendered*, with a
+  pencil (or a tap on the text) to get at the source; a calendar event's details
+  card was already read-only, so its description simply renders. Nothing is a
+  split-screen preview — this window is 340×480 by design, and half of it is not
+  enough for either pane.
+- **A single newline is a line break**, unlike strict Markdown, which folds it
+  into a space. These are notes: a stack of bare lines is written far more often
+  than a paragraph is wrapped by hand.
+- **Previews are flattened, not rendered** — the notes line under a task title
+  and an event's description in the agenda show the *text* of the Markdown on
+  one line, so a note that opens with a heading previews as its words rather
+  than as `## Trip`.
+- **Links open in your browser** on a click, from any of the three surfaces.
 
 ## Attachments
 
@@ -71,8 +112,23 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   the "← Parked" header, press Esc, or pick "Parked" again to go back.
 - **Park a task** — the 📥 on a task row opens a picker of this workspace's
   groups, plus "New group…", which creates one and parks straight into it.
-- **Unpark** — ↗ on a parked task puts it back at the *bottom* of the current
+- **Or drag it there.** When the window is wide enough that the parked panel
+  sits *beside* the list rather than replacing it, a task can be dragged
+  sideways out of the list and dropped on a group. The group lights up while the
+  task is over it and opens when the task lands, so you can see where it went
+  rather than watching a count tick up on a closed shelf. Any group is a target,
+  open or collapsed or empty — the collapsed ones are exactly what you are most
+  likely putting something away into. A vertical drag still scrolls and the ≡
+  handle still reorders; only a drag *towards the panel* means "put this away".
+  Narrower windows keep the 📥 picker, which works at every size.
+- **Unpark one** — ↗ on a parked task puts it back at the *bottom* of the current
   list. ✓ checks it off from where it sits, straight into history.
+- **Unpark the whole shelf** — ↗ on a group header puts everything on it back
+  onto the list, in the order the shelf held it. **It asks first** — "All 7
+  todos in "Backlog" will be put onto the active todo list" — because one press
+  can move a dozen rows and there is nothing to undo it with. The group itself
+  stays: emptying a backlog is not the same as deciding you no longer keep one.
+  Anything checked off while it sat on the shelf stays checked off.
 - **Parking is a move, not a copy** — the same row keeps its uuid, its history
   and its reminder. Parking the task you are focused on drops focus, since
   shelving something is the opposite claim to working on it.
@@ -281,7 +337,8 @@ Three tiers, none of which need an account, an API key, or a licence:
 - **An event is** a title (required), plus an optional description, an optional
   attachment, todos planned into it, and a start and end. Its blob on the grid
   shows the title, the first lines of the description, a count of its open
-  todos, and a paperclip if a file is attached.
+  todos, and a paperclip if a file is attached. The description is **Markdown**
+  and renders as such on the details card (see **Markdown & maths**).
 - **Plan todos into a block.** Open a saved event and tick tasks from the
   workspace's open list — planning is choosing among things you have already
   decided to do, so there is nothing to type. A planned task **stays on the
@@ -424,10 +481,24 @@ at the screen gives nothing away) and its lock is **opt-in**.
   synced states stay honest: a device without the password shows an encrypted
   row as a **Locked** placeholder rather than garbage, and can still keep its own
   plaintext notes.
-- **Title + body editor** — creating or opening an entry replaces the list with
-  a plain full-pane editor: a title line, a body area, and **Cancel / Save**
-  (plus **Delete** when editing). Esc backs out of the editor first, then the
-  journal.
+- **Title + body editor** — creating an entry replaces the list with a plain
+  full-pane editor: a title line, a body area, and **Cancel / Save** (plus
+  **Delete** when editing).
+- **Opening an entry reads it.** Picking one from the list renders its body as
+  Markdown (see **Markdown & maths**) under its title; the ✎ in the header, or a
+  tap on the text, turns it back into the two fields. A *new* entry skips
+  straight to the fields, because there is nothing to read yet. Esc walks back
+  down the same ladder it walked up — editor → reader → list → tasks.
+- **Keys, for writing without reaching for the mouse:**
+  - **Ctrl+Enter** — from the title down to the body. (Enter does the same, and
+    Tab is left to ordinary focus traversal.)
+  - **Ctrl+S** — save and read what you just wrote. The **Save** button does
+    this too.
+  - **Ctrl+Alt+S** — save and go back to the list, for an entry that is finished
+    rather than one you want to re-read.
+
+  Saving an entry emptied of both fields deletes it, so those keys land on the
+  list rather than on a rendering of nothing.
 - **Timestamped, newest-first** — the list shows each entry's title and a plain
   "Jul 20, 14:32" stamp. Editing changes the words but **not the timestamp** —
   the log records when a thing was written, not when it was later edited. Saving
@@ -485,7 +556,15 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **Frameless, always-on-top widget** — small (340×480), transparent rounded
   corners, acrylic/blur background. A Sticky-Notes-style replacement.
 - **Drag** anywhere on the title bar to move it.
-- **Pin toggle** (📌) — turn always-on-top on/off.
+- **Pin toggle** (📌) — turn always-on-top on/off. The pin is *held*, not just
+  set once: always-on-top is a Windows style bit that other applications can
+  take away — one of them going full screen makes Windows strip it from every
+  other window, and nothing puts it back when that application quits. So the
+  widget re-asserts it whenever it notices the bit missing (on the same 20-second
+  poll the reminders use, and immediately when you click back onto the widget).
+  Without that, closing something like Windows Photo Viewer left the widget an
+  ordinary window that still called itself pinned, and it stayed behind
+  everything until the app was restarted.
 - **Minimize** (—).
 - **Close guard** (✕ / Alt+F4) — the window *refuses to close* while any task or
   side thought remains, so you're forced to move everything into your real
@@ -694,6 +773,59 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
+- **0.20.0** — **The pin stays pinned.** Always-on-top is a Windows style bit
+  (`WS_EX_TOPMOST`) and it was set exactly once, at startup — but it is not ours
+  alone to hold: another application going full screen makes Windows strip it
+  from everyone else, and nothing restores it when that application exits.
+  Closing Windows Photo Viewer therefore left the widget an ordinary window that
+  still said "pinned", behind everything, until the app was restarted. It is now
+  *re-asserted* rather than set: the reminder poll already had a clock, so it
+  checks the bit and puts it back when it has gone, and clicking onto the widget
+  repairs it at once instead of up to twenty seconds later. Read before written,
+  because the underlying `SetWindowPos` also activates the window and doing that
+  every twenty seconds would be its own bug.
+  **Tasks move onto a shelf and off it again without a menu.**
+  With the window wide enough for the parked panel to sit *beside* the list
+  (`Layout.splitsContent`), a task can be **dragged out of the list onto a
+  group** — the same gesture, and the same drag source, that already plans a
+  task into a calendar block, which is why there is now one `Draggable` and one
+  `TaskDropTarget` between them rather than a second copy of each. The group
+  lights up under the pointer and **opens when the task lands**: on a collapsed
+  shelf the only other visible change is a count going up by one, which is too
+  quiet an ending for a gesture. Narrower windows are unchanged and keep the 📥
+  picker — no size takes a feature away, but a shortcut that needs two things on
+  screen at once needs them on screen.
+  Going the other way, **↗ on a group header puts the whole shelf back onto the
+  list**, behind a confirmation that names the count: one press moving a dozen
+  rows with nothing to undo it is exactly the case a modal is for. The shelf
+  survives (that is what makes it different from deleting the group, which also
+  releases its tasks), the order it held is preserved, and anything checked off
+  while parked stays checked off. The per-task ↗ is unchanged.
+- **0.19.0** — **Markdown, with maths, wherever there is more than a line to
+  write**: a task's notes, a journal entry's body, a calendar event's
+  description. The dialect is **GitHub Flavored Markdown** including its maths —
+  `$…$` inline, `$$…$$` and ```` ```math ```` on their own, rendered as real
+  LaTeX. Deliberately not a dialect of our own: notes arrive pasted from
+  somewhere else as often as they are typed here, and the useful property is
+  that they already look right when they land. The `$` rules are pandoc's, so
+  "it costs $5, or $7 with tax" is still money and every note written before
+  today reads the same as it did.
+  Rendering something that was only ever a text field needs somewhere to put it,
+  and the answer is a **read state** rather than a split preview — half of a
+  340×480 window is not enough for either pane. Notes and journal entries now
+  *open rendered* and take a pencil (or a tap on the text) to edit; something
+  with nothing in it yet still opens straight into the field, so Ctrl+D and the
+  ✎ both put the caret exactly where they used to. The event details card was
+  already the read-only half of a read/write split, so its description simply
+  renders.
+  The journal's editor also grew the keys it was missing: **Ctrl+Enter** from
+  the title to the body, **Ctrl+S** to save and read, **Ctrl+Alt+S** to save and
+  go back to the list. Esc now walks back down a ladder — editor, reader, list,
+  tasks — instead of out of one door.
+  Previews stay previews: the notes line under a task title and an event's
+  description in the agenda are *flattened* to their words, so a note that opens
+  with a heading no longer previews as `## Trip`. No schema change — this is
+  entirely how the text already in the database is drawn.
 - **0.18.0** — **Reminders that say when, and keep saying it.** Two changes,
   both about a reminder being able to express what you meant.
   **An exact date and time**, from the foot of the reminder menu or the *Pick…*

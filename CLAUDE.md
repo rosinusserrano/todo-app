@@ -56,7 +56,9 @@ data.
 
 There **is** a test suite — `app/test/` covers the local store, the sync merge,
 the legacy import, reminders, parked groups, attachments, the encrypted journal,
-the calendar, notification scheduling, the tray and the noise synthesis. Run it.
+the calendar, notification scheduling, the tray, the Markdown dialect, the
+journal pane's states and shortcuts, the parked panel's drag and activate, and
+the noise synthesis. Run it.
 
 `test/noise_test.dart` **pins the RNG seed** (`NoiseSynth.rng`), and that is
 what makes it reproducible. Unseeded it failed about a third of runs: at the
@@ -184,8 +186,24 @@ not locked) for the UI. The salt/verifier are device-local `settings`
 the same password. Entries sort on `created_at` (newest first); an edit moves
 only `updated_at`. Deleting a workspace cascades to its journal (raw rows, no key
 needed). `ui/journal_panel.dart` → `JournalView` owns the plaintext/setup/unlock/
-list/editor states and intercepts Esc to back out of the editor before the shell
-closes the pane.
+list/**reader**/editor states and intercepts Esc to walk back down that ladder
+before the shell closes the pane. Two things there are load-bearing:
+
+- **The reader renders from the editor's controllers**, not from `_editing`. What
+  is on screen after a save is then exactly what was saved, with no second
+  lookup that could disagree and nothing to re-resolve when `items` is rebuilt
+  underneath.
+- **`onSave` hands the saved item back**, which is why `AppState.addJournalEntry`
+  and `editJournalEntry` return a `JournalItem?` rather than void. The panel
+  adopts it as `_editing`, so a second Ctrl+S in one sitting rewrites the row the
+  first one minted instead of writing a sibling. Null means nothing was saved
+  (an entry cleared to nothing deletes), and the list is then the only honest
+  place to land.
+- The pane owns a `FocusNode` of its own. The editor never needed one — a text
+  field inside it takes primary focus and key events bubble up through the
+  `Focus` on their way out — but the reader has no field, so without it the pane
+  is not on the focus path and Esc falls straight through to the shell, skipping
+  the list rung. `test/journal_panel_test.dart` pins that rung.
 
 **Per-workspace views live on the workspace bar, not the title bar.** Notes,
 Parked and History are opened from the ▾ `_ViewsMenu` in `ui/workspace_bar.dart`
@@ -322,6 +340,75 @@ time on one. The rules that are not obvious from the schema:
   with blanks. A month needs four to six depending on where its 1st falls, and
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it
   adaptive again to save a row of pixels.
+
+### Dragging a task somewhere (`app/lib/ui/task_drag.dart`)
+
+There are two things a task can be dragged onto — a calendar block ("do this
+then") and a parked group ("not now") — and they are **one gesture with one
+piece of feedback**, so `TaskDropTarget` and `TaskDragFeedback` live in a
+neutral file. `TaskDropTarget` used to be in `calendar/time_grid.dart`; the
+parked panel importing the calendar to get at a drop target was the wrong shape
+of dependency, and a second copy would have been worse.
+
+- **The drag *source* stays in `main.dart`** (`_plannable`), because whether a
+  row can be dragged at all is a question about *layout* — there has to be
+  something beside the list to drop onto — and the shell is what knows the
+  layout. One `Draggable` covers both targets: what the drag means is decided by
+  where it is let go, and the two can never be on screen at once (the calendar
+  replaces the content area the parked panel lives in).
+- **`affinity: Axis.horizontal`** is what keeps it out of the list's way: a
+  vertical drag still scrolls and the ≡ handle still reorders.
+- **A null `onDrop` makes the target its child and nothing more.** That is how a
+  panel with no list beside it simply has no drop targets, rather than inert ones
+  — the same shape as the calendar's `onPlanTask`.
+- **The whole parked-group card is the target, collapsed or not**, and a drop
+  *opens* the group. Aiming at a group's contents would leave an empty or closed
+  shelf nothing to hit, and those are the ones something is most likely being put
+  away into; opening it is the only visible confirmation the task landed, since
+  otherwise a closed shelf just shows a bigger number.
+
+`AppState.unparkGroup` is the reverse and is deliberately **not** `deleteGroup`:
+same release loop, no tombstone, because emptying a backlog is not the same as
+deciding you no longer keep one. It filters to open tasks — `allTasksInGroup`
+returns completed rows too, since a group being *deleted* has to release those
+as well — and hands out sort orders in one pass. `test/parked_test.dart` and
+`test/parked_panel_test.dart` split the two halves: what the move does to the
+database, and the gestures that ask for it.
+
+### Markdown and maths (`app/lib/ui/markdown_text.dart`)
+
+Every long-form field renders through **one** widget, `MarkdownText`, differing
+only in the base `TextStyle` it is handed: a task's `notes`, a journal entry's
+body, a calendar event's `description`. The style sheet is *derived* from that
+base rather than written per surface, for the same reason `UiScale` exists
+instead of a mobile fork of every padding.
+
+The dialect is GFM plus GitHub's maths, built on `flutter_markdown_plus` +
+`markdown` + `flutter_math_fork`. Nothing about it is stored — this is a
+rendering layer over text that was already in the database, so there is no
+schema change and no migration.
+
+- **The custom syntaxes go first** in `markdownExtensions`. Both parsers
+  evaluate what the `md.Document` was handed ahead of their own standard set,
+  and both orderings matter: ```` ```math ```` has to be seen before the ordinary
+  fenced-code syntax claims it, and `$…$` before the escape syntax eats the `\$`
+  of an escaped dollar.
+- **The `$…$` rule is pandoc's**: no whitespace against a delimiter, and no digit
+  after the closing one. That is what keeps "it costs $5, or $7 with tax" out of
+  the maths renderer — and it is not a nicety, because switching this on re-parses
+  every note anyone had already written. `test/markdown_test.dart` pins it.
+- **`_MathBlockSyntax` returns a `p` wrapping the `math` element**, never a bare
+  block-level one. `isBlockElement()` is a property of the *builder*, not of the
+  element, so making the standalone form a real block would have made every
+  inline `$x$` a block too.
+- **A preview flattens, it does not render.** `markdownPlainText` walks the
+  parsed tree — that is what makes `**done** by 5` preview as "done by 5" without
+  a pile of regexes each getting one case right. Used by the notes line under a
+  task title and by the agenda's description line, neither of which has room to
+  lay out a heading.
+- `softLineBreak: true`, unlike strict Markdown. These are notes; a stack of bare
+  lines is written far more often than a paragraph is wrapped by hand.
+- Not selectable, deliberately: selection fights the tap that opens the editor.
 
 ### Attachments: rows sync, bytes don't
 
@@ -463,6 +550,16 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
 
 - `TitleBar` is the drag handle, via `DragToMoveArea`. It must **not** wrap the
   buttons themselves or it swallows their clicks.
+- **Always-on-top is re-asserted, not set.** `WS_EX_TOPMOST` is not ours alone
+  to hold — another application going full screen makes Windows strip it from
+  every other window, and nothing restores it when that application exits, so a
+  pin set once in `main()` silently stopped being true (closing Windows Photo
+  Viewer was the reproducible case). `_ensurePinned` on the shell runs from the
+  reminder poll and from `onWindowFocus`; `_pinned` is the **intent**, the style
+  bit is the fact, and the two are reconciled. It **reads before it writes**:
+  `window_manager`'s `setAlwaysOnTop` is a `SetWindowPos` without
+  `SWP_NOACTIVATE`, so calling it unconditionally on a 20-second timer would
+  raise and activate the window every time round.
 - **Anything long-lived that covers the content area is a sheet in the shell's
   `Stack`, never a `showDialog` route.** A modal route's barrier covers the
   whole window — including the title bar — so an open dialog leaves the window

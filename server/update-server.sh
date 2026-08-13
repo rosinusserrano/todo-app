@@ -6,7 +6,7 @@
 #
 # install-server.sh sets a deployment up; this is the one you run afterwards,
 # every time. It does the same file dance in the same order and nothing else:
-# pull, stop, back up, copy, install deps, start, check.
+# pull, stop, back up (and verify it), copy, install deps, start, check.
 #
 # ---------------------------------------------------------------------------
 # What this does NOT have to do, and why
@@ -91,15 +91,45 @@ if [[ -f "$DB" ]]; then
   STAMP="$(date +%Y%m%d-%H%M%S)"
   SNAPSHOT="$BACKUP_DIR/sync-$STAMP.db"
   say "Backing up to $SNAPSHOT"
-  if command -v sqlite3 >/dev/null 2>&1; then
+
+  # **One self-contained file**, always. This used to `cp` the three WAL files
+  # side by side when sqlite3 was missing, and that was a trap rather than a
+  # backup: this database runs in WAL mode and does not checkpoint on its own,
+  # so `sync.db` was 4KB of header while `sync.db-wal` held all 3MB of real
+  # data. The snapshot .db on its own did not even have the tables in it - and
+  # the restore line this script prints copies exactly that one file back. A
+  # backup you cannot restore from is worse than none, because you rely on it.
+  #
+  # better-sqlite3's `.backup()` runs SQLite's online backup API, which walks
+  # the *logical* contents and so folds the WAL in. It needs no new package:
+  # it is the server's own dependency, sitting in $INSTALL_DIR/node_modules,
+  # and a machine where it is missing is a machine where the server cannot run.
+  if node -e '
+      const Database = require(process.argv[1] + "/node_modules/better-sqlite3");
+      const db = new Database(process.argv[2], { readonly: true });
+      db.backup(process.argv[3])
+        .then(() => { db.close(); process.exit(0); })
+        .catch((e) => { console.error(String(e)); process.exit(1); });
+    ' "$INSTALL_DIR" "$DB" "$SNAPSHOT"; then
+    :
+  elif command -v sqlite3 >/dev/null 2>&1; then
+    warn "node backup failed; falling back to the sqlite3 CLI."
     sqlite3 "$DB" ".backup '$SNAPSHOT'"
   else
-    warn "sqlite3 not installed; copying the db, wal and shm instead."
-    warn "  (sudo apt install sqlite3 gives a proper snapshot next time.)"
-    cp "$DB" "$SNAPSHOT"
-    [[ -f "$DB-wal" ]] && cp "$DB-wal" "$SNAPSHOT-wal"
-    [[ -f "$DB-shm" ]] && cp "$DB-shm" "$SNAPSHOT-shm"
+    die "Could not take a consistent backup, and refusing to update without one.
+     Install sqlite3 (sudo apt install sqlite3) and run this again."
   fi
+
+  # Prove it before trusting it. A snapshot that opens but has no tables is
+  # exactly the failure this whole block exists to prevent, so it is worth the
+  # one query it costs to find out now rather than during a restore.
+  ROWS="$(node -e '
+      const Database = require(process.argv[1] + "/node_modules/better-sqlite3");
+      const db = new Database(process.argv[2], { readonly: true });
+      process.stdout.write(String(db.prepare("SELECT COUNT(*) n FROM tasks").get().n));
+    ' "$INSTALL_DIR" "$SNAPSHOT" 2>/dev/null || echo "")"
+  [[ -n "$ROWS" ]] || die "The snapshot is not a readable database. Aborting."
+  echo "  snapshot holds $ROWS task rows"
   chown -R "$APP_USER:$APP_USER" "$BACKUP_DIR"
   chmod 700 "$BACKUP_DIR"
 
@@ -200,9 +230,14 @@ cat <<EOF
 
   Logs      sudo journalctl -u $SERVICE -f
   Backups   $BACKUP_DIR
-  Restore   sudo systemctl stop $SERVICE \\
-              && sudo -u $APP_USER cp $BACKUP_DIR/<snapshot>.db $DB \\
-              && sudo systemctl start $SERVICE
+  Restore   sudo systemctl stop $SERVICE
+            sudo -u $APP_USER cp $BACKUP_DIR/<snapshot>.db $DB
+            sudo -u $APP_USER rm -f $DB-wal $DB-shm
+            sudo systemctl start $SERVICE
+
+            The rm is not optional. A restored .db next to the *old* write-ahead
+            log is not the database you restored - SQLite replays that log over
+            the top of it, and you get the state you were trying to get rid of.
 
   If instant sync still does not reach your devices, it is the reverse proxy:
   Caddy needs 'flush_interval -1' inside the reverse_proxy block. See DEPLOY.md.

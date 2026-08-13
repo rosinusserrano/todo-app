@@ -205,6 +205,27 @@ before the shell closes the pane. Two things there are load-bearing:
   is not on the focus path and Esc falls straight through to the shell, skipping
   the list rung. `test/journal_panel_test.dart` pins that rung.
 
+**On touch those views are a bottom bar instead** (`ui/view_bar.dart`), and the
+workspace bar's ▾ is hidden — two doors to the same four views, one of them at
+the far end of the phone from the hand, is one too many. `kBarViews` is the
+order, and **`_swipeView` in `main.dart` reads that same list**, so the bar and
+the swipe cannot disagree about what is next to what. The swipe is safe to claim
+because the only other horizontal gesture in the list is the task `Draggable`,
+which exists only when there is something beside the list to drop onto — a
+window far wider than any phone. Note `_selectView` is a *destination* while the
+▾ menu's entries are *toggles*: tapping Notes must land on Notes whatever was
+showing, and a swipe that toggled would go backwards half the time.
+
+Two things take the whole screen on touch and both are about what is
+*incidentally* on display: `ThoughtSheet` (`ui/thought_sheet.dart`), because a
+phone is held in front of people and the inline capture field left every task in
+the workspace visible behind the keyboard; and an open journal entry, via
+`_noteTakesScreen`, which hides the workspace bar, the view bar and the footer.
+`JournalView` reports that through `onEntryOpen` rather than the shell inferring
+it — `showJournal` says the pane is open, not which rung of its ladder you are
+on. That callback is deferred to after the frame, because the shell reacts with
+`setState` and doing that from inside another widget's build is a crash.
+
 **Per-workspace views live on the workspace bar, not the title bar.** Notes,
 Parked and History are opened from the ▾ `_ViewsMenu` in `ui/workspace_bar.dart`
 (they are about the current workspace); the title bar (`ui/title_bar.dart`) is
@@ -336,6 +357,34 @@ time on one. The rules that are not obvious from the schema:
   `event_uuid` is a supported state — the task is still on the list, it just
   never turns up in a session. Same shape as the attachment-row-without-bytes
   case, minus the sweep, because nothing is leaked by it.
+- **The toolbar is two rows on touch, one everywhere else.** As a single Row it
+  had to fit a back arrow, two steppers, the date, Today, the bolt, a three-way
+  mode switch and a filter menu across 390pt — it "fitted" by giving the title
+  whatever was left, which was six characters, so the one label saying *where
+  you are* showed as "Au…". Splitting it puts where-you-are on one line and the
+  controls on another and makes every target finger-sized out of the same
+  change. `_IconBtn`, `_ModeSwitch` and `_FilterMenu` take optional sizes; null
+  keeps the compact desktop shape.
+- **A horizontal swipe switches D/W/Y** (`_stepMode`), clamped rather than
+  wrapped. Safe to claim because the grid's own gestures are a vertical scroll
+  and a *long-press*-then-drag to create — creating is split by input device
+  precisely so a one-finger drag can still scroll, which leaves a plain
+  horizontal fling belonging to nobody.
+- **Quick add holds blocks before writing them** (`AppState.pendingBlocks`).
+  Tapping the grid with the bolt on places an adjustable hour; nothing reaches
+  the database until the mode ends. They are deliberately not stored and not
+  synced — an unfinished thought about Tuesday is not something another device
+  should receive — which also means they do not survive the app closing, the
+  right trade for something whose whole life is one sitting. **There is one
+  commit rule and every exit uses it**: `commitPendingBlocks()` runs from the
+  bolt going off, from `_stepMode`, and from `_toggleCalendar`. Some exits
+  committing and others discarding is how a user loses an afternoon's planning.
+  It clears the list *before* awaiting the writes, so a missing target drops
+  them instead of retrying forever. On the block itself: tap removes (nothing is
+  written yet, so a mis-tap costs one tap), long-press-drag moves (a plain drag
+  would make the grid unscrollable wherever a block sat), and the bottom grip
+  resizes on a plain vertical drag — safe without the long press because the
+  deepest recogniser in the arena beats the scrollable above it.
 - The year view's month tiles are **always six week rows** (`_weekRows`), padded
   with blanks. A month needs four to six depending on where its 1st falls, and
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it
@@ -477,6 +526,13 @@ slow archive.org lookup from landing after the user moved on.
   reporting) are honoured there.
 - Synthesis runs on a background isolate via `compute` — on the main isolate it
   drops frames.
+- **iOS needs two things to keep playing with the screen off, and one alone does
+  nothing.** `UIBackgroundModes: audio` in `Info.plist` *permits* background
+  playback; the `AVAudioSession` category set in `AppDelegate.swift` is what
+  *asks* for it. Without the category the default is `.soloAmbient`, which the
+  lock switch silences. The category is only set, never activated — activation is
+  what interrupts other apps' audio, and libmpv does it when a source actually
+  starts, so launching the widget does not stop your music.
 
 ### Sync
 
@@ -488,6 +544,71 @@ that's the `onChangesApplied` callback wired up in `main()`.
 The offline queue is not a queue — it's the `dirty` column, which is why it
 survives a crash and needs no replay log. `pendingCount()` counts it and
 `describe()` surfaces it, so an unreachable server reads as queued, not lost.
+
+**`dirty` means "*a* server accepted this row", not "*this* server did."** That
+distinction cost 187 rows once: the sync database was rebuilt, every local row
+was already clean from the old one, so the client pushed nothing and the new
+server only ever received what happened to be edited afterwards. Both sides were
+internally consistent and permanently different, and a second device set up
+against the new server pulled the fragment and looked correct. Two signals now
+catch it, and they are separate because either can fire without the other:
+
+- **The cursor going backwards** (`SyncClient.syncOnce`). On a given server a
+  user's cursor only grows — `seq` is monotonic and rows are tombstoned, not
+  deleted — so an answer below what we sent is proof this is a different
+  database. Note `purgeUser` is the one thing that legitimately resets it, and a
+  re-arm is the right response there too.
+- **A fingerprint of address + account** (`kServerFingerprint`, checked in
+  `SyncService._reconcileFingerprint` right after `whoAmI`). Catches the swaps a
+  cursor cannot see: a different token at the same address, or a move to a
+  server that happens to be further along.
+
+Either re-arms every row via `LocalStore.markAllDirty()`. **A needless re-arm is
+free and that is what makes this safe to be aggressive about** — `mergeRow` gives
+ties to the incumbent, so an in-sync database writes nothing server-side, burns
+no `seq`, and re-broadcasts nothing. An absent fingerprint therefore re-arms too:
+a database that has never been checked cannot be distinguished from one that has
+been diverging for a month, and proving it costs one request.
+
+### Instant sync is a hint, not a channel
+
+`server/events.js` holds an SSE connection per running device, keyed by user, and
+`POST /api/sync` broadcasts to that user's *other* devices whenever the merge
+actually wrote something (`sync()` returns `merged` for exactly this; the route
+strips it from the response). `ChangeStream` on the client turns a hint into a
+`syncNow()`.
+
+**Nothing about the data travels down it.** That is the whole design constraint:
+rows enter the database through `SyncClient.syncOnce` and nowhere else, so there
+is still one merge, one conflict rule and one tombstone path. Consequences worth
+keeping:
+
+- **A dropped hint costs latency, nothing else** — the 60s poll is still running.
+  That is why there is no acknowledgement, no replay and no per-connection
+  cursor; none of it would ever earn its keep.
+- The hint's payload carries a cursor and `ChangeStream` **deliberately ignores
+  it**. It arrived outside the transaction that produced it; the sync it triggers
+  computes its own.
+- `onHint` calls `syncNow`, **not** `scheduleSync`. The 2s debounce exists to
+  coalesce *our own* typing, and a hint means the rows are already on the server —
+  debouncing it would add back the latency this exists to remove.
+- **A 404 turns the feature off for good** (`supported`), rather than retrying an
+  older server every two seconds forever. A 401/403 likewise stops: reconnecting
+  never mints a credential.
+- `X-Device-Id` is how a push avoids coming back to its own author. It is not a
+  credential and is not trusted for anything — the bearer token already
+  established *who* — so the worst a wrong one does is cost its owner one
+  redundant sync.
+- `resume()` drops the stream outright. A suspended process holds a socket the
+  other end abandoned and cannot know it: no packet says so, and the watchdog
+  that would notice was frozen too.
+- **Behind a reverse proxy this needs one line** (`flush_interval -1` in Caddy,
+  `proxy_buffering off` in nginx) or the stream is buffered into uselessness —
+  see `server/DEPLOY.md`. It fails *soft*: without it, sync is exactly what it
+  was before, one minute slower.
+- `ChangeStream.stop()` sets `_connected` directly instead of going through
+  `_setConnected`. Firing `onStateChanged` from a teardown means calling
+  `notifyListeners` on a `SyncService` that may be half way through `dispose()`.
 
 `SyncService.resume()` is called from `didChangeAppLifecycleState` on the shell,
 and exists because a suspended phone runs no timers. It is **rate-limited on
@@ -560,6 +681,18 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   `window_manager`'s `setAlwaysOnTop` is a `SetWindowPos` without
   `SWP_NOACTIVATE`, so calling it unconditionally on a 20-second timer would
   raise and activate the window every time round.
+- **Sheets animate through `SheetTransition`** (`ui/sheet_transition.dart`),
+  which owns *how* a panel moves; each sheet still returns its own `Positioned`
+  and so owns *where* it sits. The child goes into a nested `Stack` precisely
+  because a `Positioned` is only legal as a direct child of one and still has to
+  be translatable. The exit is the part with machinery: a widget removed from
+  the tree cannot animate itself out, so the host caches the last child it built
+  and keeps showing it until the reverse finishes — which is also why the
+  builder is a callback. `SublistSheet` is built from `_sublist!`, and that goes
+  null the instant it closes. Its `AnimationController` is built in `initState`,
+  **not** as a `late final`: a sheet never opened never reads it from `build`,
+  so a lazy field is first touched by `dispose`, where `vsync: this` looks up
+  `TickerMode.of(context)` on a deactivated element and throws.
 - **Anything long-lived that covers the content area is a sheet in the shell's
   `Stack`, never a `showDialog` route.** A modal route's barrier covers the
   whole window — including the title bar — so an open dialog leaves the window
@@ -616,6 +749,20 @@ own. Two rules hold everything together and both are load-bearing:
 - **The design width is the floor, not the target.** Extra room buys more at
   once (a rail, a second pane), never a stretched copy of the same thing — hence
   `taskColumnMax` and `focusTileMax`.
+
+**`Layout.touch` is the one axis that is not a size**, and it is separate
+because the questions genuinely differ: every other getter asks *does it fit*,
+this asks *can it be reached at all*. A 340px desktop window and a 340pt phone
+lay out identically and still need different controls, because one has a hover
+state and a 3px pointer and the other has neither. It exists because pretending
+otherwise had already cost real function — every action on a task row was drawn
+behind `visible: _hovered`, so on a phone reminders, parking, focus and delete
+were not small, they were **absent**, and no width would ever have revealed
+them. It is a field on `Layout` (set from `!isDesktop`, default false) rather
+than a `Platform` check at the point of use, so there is one place to read, one
+to change, and a test can pump a touch layout on a desktop machine. `tapTarget`
+and `actionIcon` hang off it; 40 rather than Apple's 44 because the number is
+spent *inside* `UiScale`, whose smallest real-phone zoom is about 1.1.
 
 Notes for changing it:
 

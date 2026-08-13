@@ -49,6 +49,16 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- The concentration sounds are the point of playing them: they run while
+	     the phone is face down on the desk with the screen off. Without this,
+	     iOS suspends the app on lock and the audio stops a few seconds later.
+	     Paired with the AVAudioSession category set in AppDelegate.swift -
+	     the entitlement alone does nothing if the session is the default
+	     ambient one, which is silenced by the lock switch. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

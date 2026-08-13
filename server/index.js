@@ -15,6 +15,7 @@ import express from 'express';
 import { networkInterfaces } from 'node:os';
 
 import { openDb, purgeUser, sync, userCursor, TABLES } from './db.js';
+import { publish, subscribe } from './events.js';
 import { adminOnly, middleware } from './auth.js';
 import { DB_PATH, HOST, PORT, loadSecret } from './config.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
@@ -132,16 +133,53 @@ app.get('/api/auth/config', async (_req, res) => {
   }
 });
 
+/// Which device is talking, for excluding it from the broadcast its own push
+/// causes. Optional, untrusted and not a credential - the bearer token already
+/// established *who* this is, and the worst a wrong value can do is cost its
+/// owner one redundant sync. Length-capped so it cannot become a way to keep
+/// arbitrary strings in server memory.
+function deviceIdOf(req) {
+  const raw = req.get('x-device-id');
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed && trimmed.length <= 64 ? trimmed : null;
+}
+
 app.post('/api/sync', middleware(auth), (req, res, next) => {
   const problem = validatePayload(req.body);
   if (problem) return res.status(400).json({ error: problem });
 
   try {
-    const result = sync(db, req.userId, req.body.since ?? 0, req.body.changes ?? {});
+    const { merged, ...result } = sync(
+      db,
+      req.userId,
+      req.body.since ?? 0,
+      req.body.changes ?? {}
+    );
     res.json(result);
+
+    // After responding, and only when rows actually landed. The push that
+    // caused this is not waiting on the fan-out, and a hint is a courtesy: a
+    // client that misses one still polls, so nothing here is worth failing a
+    // sync over.
+    if (merged > 0) {
+      publish(req.userId, result.cursor, deviceIdOf(req));
+    }
   } catch (err) {
     next(err);
   }
+});
+
+// The live half of sync: an open stream that says "your account moved", so the
+// other devices do not have to wait for the next poll. See events.js - it
+// carries no rows, only a nudge to run the sync that would have happened
+// anyway, which is what keeps it from being a second way for data to arrive.
+//
+// Authenticated exactly like every other route. There is no query-parameter
+// token: an URL travels through proxy logs and browser history in a way an
+// Authorization header does not.
+app.get('/api/events', middleware(auth), (req, res) => {
+  subscribe(req.userId, deviceIdOf(req), res);
 });
 
 // Cheap way for a client to ask "is there anything new?" without uploading.

@@ -13,10 +13,12 @@
 // controls are dropped and only the title and the global controls remain.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../layout.dart';
 import '../theme.dart';
 
 class TitleBar extends StatelessWidget {
@@ -379,15 +381,24 @@ class _Btn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = tint ?? T.muted;
+    final layout = Layout.of(context);
+
+    // A square rather than a padded glyph, so the target is a number this
+    // widget states instead of one that falls out of an icon size plus 6.
+    // Capped at the bar's own height: these are the controls the calendar,
+    // sound and settings are opened from, and on a phone a 15px icon with 6px
+    // around it is a 27pt target that misses about a third of the time.
+    final side = math.min(layout.tapTarget, TitleBar.height);
 
     return Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(7),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: 15, color: color),
+        child: SizedBox(
+          width: side,
+          height: side,
+          child: Icon(icon, size: layout.actionIcon, color: color),
         ),
       ),
     );

@@ -943,6 +943,32 @@ class LocalStore {
     return out;
   }
 
+  /// Re-arm every row for upload, and report how many that was.
+  ///
+  /// `dirty` records that *a* server accepted a row, never *which* one. Point
+  /// the app at a rebuilt database, a restored backup or a different account
+  /// and every clean row is simultaneously "already sent" here and absent
+  /// there - so nothing ever pushes it again and the two sides quietly stay
+  /// different forever. This is the only way back out of that state.
+  ///
+  /// It is safe to call when it was not needed. The merge is last-write-wins
+  /// on `updated_at`, so a row the server holds a newer copy of is not
+  /// clobbered, and a row it holds at the same stamp is not even rewritten -
+  /// ties go to the incumbent (`mergeRow` in server/db.js), which means no new
+  /// `seq` and nothing re-broadcast to the other devices. A needless re-arm
+  /// therefore costs one larger request and changes nothing.
+  Future<int> markAllDirty() async {
+    var total = 0;
+    await _db.transaction((txn) async {
+      for (final table in _tables) {
+        // Tombstones included: a delete that never reached this server has to
+        // go out for exactly the same reason a live row does.
+        total += await txn.rawUpdate('UPDATE $table SET dirty = 1');
+      }
+    });
+    return total;
+  }
+
   /// How many local rows are still waiting to reach the server.
   ///
   /// Writes never block on the network, so a server that is off is

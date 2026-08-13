@@ -26,7 +26,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'change_stream.dart';
 import 'local_store.dart';
+import 'models.dart' show newId;
 import 'oidc_client.dart';
 import 'sync_client.dart';
 
@@ -50,6 +52,25 @@ enum SyncStatus {
 
 const kServerUrl = 'sync:server-url';
 const kServerToken = 'sync:token';
+
+/// Which server and account this database's `dirty` flags are relative to.
+///
+/// `dirty` only ever meant "*a* server has accepted this row". That is enough
+/// while there is one server for the life of an install, and silently wrong the
+/// moment there is not: repoint the app at a rebuilt database or a different
+/// account and every clean row is already-sent here and absent there, so it is
+/// never pushed again. This is the fact that makes the difference noticeable -
+/// when it stops matching, the flags mean nothing and everything is re-armed.
+///
+/// Device-local, like every other key here: it describes this copy of the
+/// database, not the todo list.
+const kServerFingerprint = 'sync:fingerprint';
+
+/// This device's name for itself on the event stream, minted once and kept.
+///
+/// Device-local by definition, and not a credential: the server uses it only to
+/// leave us out of the broadcast our own push caused.
+const kDeviceId = 'sync:device-id';
 
 /// The single sign-on session, when there is one. Device-local by nature - a
 /// refresh token is this device's credential, and syncing it would hand every
@@ -108,6 +129,20 @@ class SyncService extends ChangeNotifier {
   Timer? _debounceTimer;
   bool _inFlight = false;
 
+  /// The open connection the server pushes change hints down, when there is
+  /// one. Null until the first sync succeeds: there is no point holding a
+  /// stream open against an address or a token that has not been shown to work,
+  /// and a failed sync already says so in a way the user can act on.
+  ChangeStream? _stream;
+
+  /// This device's id on that stream. Read once at [load].
+  String? _deviceId;
+
+  /// Whether changes made elsewhere arrive immediately rather than on the next
+  /// poll. False is not a fault - it means the server predates the feature, or
+  /// the stream is between attempts - and the poll covers it either way.
+  bool get isLive => _stream?.connected ?? false;
+
   /// A local change arrived mid-sync. Its dirty rows were not in the payload
   /// that went out, so another pass is needed once this one lands.
   bool _dirtyAgain = false;
@@ -134,6 +169,7 @@ class SyncService extends ChangeNotifier {
   Future<void> load() async {
     baseUrl = await _store.setting(kServerUrl);
     token = await _store.setting(kServerToken);
+    _deviceId = await _loadDeviceId();
     await _restoreSso();
     status = isConfigured ? SyncStatus.idle : SyncStatus.off;
     await refreshPending();
@@ -207,6 +243,9 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
 
     _stopPolling();
+    // A different credential is a different connection; the open one is
+    // authenticated as whoever we just stopped being.
+    unawaited(_stopStream());
     if (isConfigured) {
       _startPolling();
       unawaited(syncNow());
@@ -230,6 +269,7 @@ class SyncService extends ChangeNotifier {
     status = isConfigured ? SyncStatus.idle : SyncStatus.off;
     message = null;
     _stopPolling();
+    unawaited(_stopStream());
     notifyListeners();
   }
 
@@ -242,6 +282,78 @@ class SyncService extends ChangeNotifier {
     if (count == pending) return;
     pending = count;
     notifyListeners();
+  }
+
+  /// Check the database's `dirty` flags still mean something on this server,
+  /// and re-arm every row if they do not. Returns whether it re-armed.
+  ///
+  /// Runs once per configuration, right after [identity] is answered, because
+  /// that is the one moment both halves of the fingerprint are known. Three
+  /// cases reach the re-arm, and all three want the same thing:
+  ///
+  ///   - **No fingerprint stored.** The database predates this check, so its
+  ///     flags were never tied to anything and there is no way to tell an
+  ///     in-sync copy from one that has been quietly diverging since the last
+  ///     server rebuild. Prove it once rather than assume.
+  ///   - **A different account.** Same address, another token: those rows have
+  ///     never been to this account at all.
+  ///   - **A different address.** A move, or a restore onto a new host.
+  ///
+  /// Proving it is cheap by design - see [LocalStore.markAllDirty] for why a
+  /// re-arm that turns out to be unnecessary writes nothing on the server.
+  Future<bool> _reconcileFingerprint() async {
+    final id = identity;
+    // An older server has no /api/me, and an unreachable one answers nothing.
+    // Neither is evidence of a change, and re-arming on "don't know" would do
+    // it on every launch against such a server.
+    if (id == null) return false;
+
+    final current = '$baseUrl|${id.user}';
+    final stored = await _store.setting(kServerFingerprint);
+    await _store.setSetting(kServerFingerprint, current);
+    if (stored == current) return false;
+
+    await _store.markAllDirty();
+    await refreshPending();
+    notifyListeners();
+    return true;
+  }
+
+  /// This device's id on the event stream, minting one the first time.
+  Future<String> _loadDeviceId() async {
+    final stored = await _store.setting(kDeviceId);
+    if (stored != null && stored.isNotEmpty) return stored;
+    final minted = newId();
+    await _store.setSetting(kDeviceId, minted);
+    return minted;
+  }
+
+  /// Open the change stream, if it should be open and is not.
+  ///
+  /// Called after a sync that worked, which is the cheapest possible proof that
+  /// the address and the credential are both good - so this never becomes a
+  /// second thing to debug when sync itself is misconfigured.
+  void _ensureStream() {
+    if (!isConfigured || _stream != null) return;
+
+    _stream = ChangeStream(
+      baseUrl: baseUrl!,
+      deviceId: _deviceId ?? '',
+      bearer: _bearer,
+      // Not scheduleSync: the debounce exists to coalesce *our own* rapid
+      // edits, and a hint means the rows are already on the server. Waiting
+      // two more seconds would be latency added to the exact thing this is
+      // here to remove. syncNow coalesces on its own - a hint arriving mid-sync
+      // sets _dirtyAgain rather than starting a second one.
+      onHint: () => unawaited(syncNow()),
+      onStateChanged: notifyListeners,
+    )..start();
+  }
+
+  Future<void> _stopStream() async {
+    final stream = _stream;
+    _stream = null;
+    await stream?.stop();
   }
 
   /// The app came back to the foreground.
@@ -260,6 +372,13 @@ class SyncService extends ChangeNotifier {
 
     final since = lastSynced;
     if (since != null && DateTime.now().difference(since) < _resumeGap) return;
+
+    // A process that was suspended holds a socket the other end has long since
+    // dropped, and it cannot know that: no packet arrives to say so, and the
+    // watchdog that would eventually notice was frozen too. Waking is the one
+    // moment we know for certain the connection is suspect, so drop it and let
+    // the sync below earn a fresh one.
+    unawaited(_stopStream());
 
     _startPolling();
     unawaited(syncNow());
@@ -287,6 +406,8 @@ class SyncService extends ChangeNotifier {
 
     // Settings changed, so a previously blocked config is worth retrying.
     _stopPolling();
+    // Including the stream: it may be open against the address we just left.
+    unawaited(_stopStream());
     if (isConfigured) _startPolling();
   }
 
@@ -338,7 +459,8 @@ class SyncService extends ChangeNotifier {
       return;
     }
 
-    final client = SyncClient(baseUrl: baseUrl!, token: bearer);
+    final client =
+        SyncClient(baseUrl: baseUrl!, token: bearer, deviceId: _deviceId);
     SyncResult result;
     try {
       result = await client.syncOnce(_store);
@@ -347,7 +469,12 @@ class SyncService extends ChangeNotifier {
       // a request made against a server that just refused us.
       if (result is SyncOk && identity == null) {
         identity = await client.whoAmI();
+        // Same pass, for the same reason: this is the one moment we know both
+        // which server answered and which account it called us.
+        if (await _reconcileFingerprint()) _dirtyAgain = true;
       }
+      // Rows the re-arm just flagged were not in the payload that went out.
+      if (result is SyncOk && result.rearmed) _dirtyAgain = true;
     } finally {
       client.dispose();
       _inFlight = false;
@@ -359,11 +486,19 @@ class SyncService extends ChangeNotifier {
         message = null;
         lastSynced = DateTime.now();
         if (applied > 0) await onChangesApplied?.call();
+        // The address and the credential have just been shown to work, which
+        // is the only precondition the stream has.
+        _ensureStream();
       case SyncFailed(message: final failure, transient: final canRetry):
         // A transient failure keeps polling; a blocked one stops until the
         // settings change, since a wrong token will not fix itself.
         status = canRetry ? SyncStatus.error : SyncStatus.blocked;
         message = failure;
+        // A credential the user has to fix is not something to hold a
+        // connection open through. A server that is merely down is: the stream
+        // has its own backoff, and reconnecting is how it notices the server
+        // came back.
+        if (!canRetry) unawaited(_stopStream());
     }
     await refreshPending();
     notifyListeners();
@@ -387,8 +522,12 @@ class SyncService extends ChangeNotifier {
       SyncStatus.off => 'No server configured.',
       SyncStatus.idle => 'Waiting for first sync.$queued',
       SyncStatus.syncing => 'Syncing…',
-      SyncStatus.ok =>
-        lastSynced == null ? 'Synced.' : 'Last synced ${_ago(lastSynced!)}.',
+      // "Live" is worth saying out loud: it is the difference between a change
+      // from the phone appearing now and appearing within the minute, and
+      // there is otherwise nothing on screen that would ever show it.
+      SyncStatus.ok => lastSynced == null
+          ? 'Synced.'
+          : 'Last synced ${_ago(lastSynced!)}.${isLive ? ' Live.' : ''}',
       SyncStatus.error => '${message ?? 'Sync failed.'}$queued',
       SyncStatus.blocked =>
         '${message ?? 'Check the address and token.'}$queued',
@@ -406,6 +545,7 @@ class SyncService extends ChangeNotifier {
   @override
   void dispose() {
     _stopPolling();
+    unawaited(_stopStream());
     _debounceTimer?.cancel();
     super.dispose();
   }

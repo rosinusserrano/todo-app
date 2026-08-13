@@ -19,7 +19,14 @@ class SyncOk extends SyncResult {
   final int cursor;
   final int applied;
   final int pushed;
-  const SyncOk(this.cursor, this.applied, this.pushed);
+
+  /// The server's history did not contain the cursor we sent it, so every local
+  /// row was re-armed for upload. See [SyncClient.syncOnce]; the caller's only
+  /// job is to sync again, since the rows this re-armed were not in the payload
+  /// that just went out.
+  final bool rearmed;
+
+  const SyncOk(this.cursor, this.applied, this.pushed, {this.rearmed = false});
 }
 
 class SyncFailed extends SyncResult {
@@ -65,11 +72,22 @@ class ServerIdentity {
 }
 
 class SyncClient {
-  SyncClient({required this.baseUrl, required this.token, http.Client? client})
-      : _http = client ?? http.Client();
+  SyncClient({
+    required this.baseUrl,
+    required this.token,
+    this.deviceId,
+    http.Client? client,
+  }) : _http = client ?? http.Client();
 
   final String baseUrl;
   final String token;
+
+  /// What this device calls itself, so a push does not come back to us as a
+  /// change hint on our own event stream. Null simply means the server cannot
+  /// tell us apart from a peer, which costs one redundant sync and nothing
+  /// else - see server/events.js.
+  final String? deviceId;
+
   final http.Client _http;
 
   static const _timeout = Duration(seconds: 15);
@@ -143,6 +161,7 @@ class SyncClient {
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
+              'X-Device-Id': ?deviceId,
             },
             body: jsonEncode({'since': since, 'changes': outgoing}),
           )
@@ -188,10 +207,26 @@ class SyncClient {
     await store.clearDirty(outgoing);
 
     final cursor = (body['cursor'] as num?)?.toInt() ?? since;
-    await store.setCursor(cursor);
-
     final applied = changes.values.fold<int>(0, (n, l) => n + l.length);
     final pushed = outgoing.values.fold<int>(0, (n, l) => n + l.length);
+
+    // A cursor that went *backwards* is proof this is not the database that
+    // issued the one we sent. On any given server a user's cursor only ever
+    // grows: `seq` is monotonic and rows are tombstoned rather than deleted, so
+    // MAX(seq) cannot fall. A lower answer means the database was rebuilt,
+    // restored from an older backup, or the account was purged and remade.
+    //
+    // That matters because `dirty` is relative to a history this server no
+    // longer has: our clean rows were accepted by the *old* database, so
+    // nothing would ever push them here and the gap would never close on its
+    // own. Re-arm everything and start the cursor over.
+    if (cursor < since) {
+      await store.markAllDirty();
+      await store.setCursor(0);
+      return SyncOk(0, applied, pushed, rearmed: true);
+    }
+
+    await store.setCursor(cursor);
     return SyncOk(cursor, applied, pushed);
   }
 

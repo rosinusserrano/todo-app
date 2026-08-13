@@ -1191,6 +1191,81 @@ class AppState extends ChangeNotifier {
 
   bool get timeBlocking => timeBlockCalendar != null;
 
+  // ------------------------------------------------------- pending blocks
+
+  /// Blocks placed in quick-add mode that have not been written yet.
+  ///
+  /// The point of the mode is laying out a week in one pass: tap, tap, tap,
+  /// adjust, done. Writing each tap straight to the database would make every
+  /// one of them a row that syncs, notifies and has to be deleted again if the
+  /// shape of the afternoon turns out wrong - so they are held here until the
+  /// mode ends, and only then written.
+  ///
+  /// Deliberately **not** in the database and deliberately not synced: an
+  /// unfinished thought about Tuesday is not something another device should
+  /// receive. That also means they do not survive the app closing, which is the
+  /// right trade for something whose whole life is one sitting.
+  ///
+  /// Absolute instants rather than day-plus-minutes, so a block keeps its
+  /// meaning when the view moves to another week underneath it.
+  final List<({DateTime start, DateTime end})> pendingBlocks = [];
+
+  /// The default a tap lays down. An hour is the unit people think in when
+  /// blocking out a day; anything shorter and every block needs adjusting.
+  static const pendingBlockLength = Duration(hours: 1);
+
+  void placePendingBlock(DateTime start, [DateTime? end]) {
+    pendingBlocks.add((start: start, end: end ?? start.add(pendingBlockLength)));
+    notifyListeners();
+  }
+
+  void adjustPendingBlock(int index, DateTime start, DateTime end) {
+    if (index < 0 || index >= pendingBlocks.length) return;
+    // A block dragged shorter than one snap is one you can no longer grab.
+    if (!end.isAfter(start)) return;
+    pendingBlocks[index] = (start: start, end: end);
+    notifyListeners();
+  }
+
+  void removePendingBlock(int index) {
+    if (index < 0 || index >= pendingBlocks.length) return;
+    pendingBlocks.removeAt(index);
+    notifyListeners();
+  }
+
+  /// Write everything placed, and clear.
+  ///
+  /// Called when the mode ends *however* it ends - the bolt going off, the view
+  /// changing, the calendar closing. One rule, so a block you placed is never
+  /// silently discarded by leaving in a way you did not think of.
+  ///
+  /// The title is the calendar's name, the same as a dragged block in this mode
+  /// gets: the calendar is the thing being filled in, so its name is what the
+  /// blocks are for.
+  Future<void> commitPendingBlocks() async {
+    if (pendingBlocks.isEmpty) return;
+    final target = timeBlockCalendar;
+    final placed = List.of(pendingBlocks);
+    pendingBlocks.clear();
+
+    // No target left - the calendar was unticked or deleted underneath the
+    // mode. Dropping them is the only honest answer, and clearing first means
+    // this cannot loop on a target it will never get.
+    if (target == null) {
+      notifyListeners();
+      return;
+    }
+
+    for (final block in placed) {
+      await saveEvent(
+        calendarUuid: target.uuid,
+        title: calendarName(target),
+        start: block.start,
+        end: block.end,
+      );
+    }
+  }
+
   /// Turn the mode on for one calendar, or off with null.
   ///
   /// Device-local like the other calendar prefs: which calendar you are filling

@@ -47,6 +47,24 @@ class T {
   /// which had to match the `slide-out` keyframe by hand.
   static const slideOutDur = Duration(milliseconds: 320);
 
+  /// How a panel that covers the content area arrives and leaves - Settings,
+  /// the sound sheet, the task composer.
+  ///
+  /// One pair for all of them, because they are the same gesture: something
+  /// slides over what you were doing and slides back off it. Two of them
+  /// animating at different speeds is the kind of difference nobody can name
+  /// and everybody notices.
+  ///
+  /// Shorter than [heroDur]: the focus flight is a thing *moving*, and the eye
+  /// wants to follow it. A sheet is a thing *appearing*, and waiting for it is
+  /// waiting.
+  static const sheetDur = Duration(milliseconds: 220);
+
+  /// Decelerating, so the panel arrives rather than stops. Same family as
+  /// [heroEase] with less overshoot in the tail - a sheet has an edge that
+  /// lines up with the window, and an eased-past-and-back edge reads as slop.
+  static const sheetEase = Cubic(0.2, 0.85, 0.3, 1);
+
   static const nudgeBobDur = Duration(milliseconds: 1150);
   static const nudgeBobDistance = 9.0;
 

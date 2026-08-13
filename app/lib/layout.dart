@@ -30,14 +30,63 @@ import 'ui/calendar/time_grid.dart' show kGutter, kGutterCompact;
 
 @immutable
 class Layout {
-  const Layout(this.size);
+  const Layout(this.size, {this.touch = false});
 
   /// The box the shell itself was given - *after* [UiScale], so a phone
   /// reports the size its layout actually runs at rather than its raw screen.
   final Size size;
 
+  /// Whether a fingertip is the pointer.
+  ///
+  /// **The one axis here that is not a size**, and it is separate because the
+  /// two questions genuinely are. Everything else on this class asks "does it
+  /// fit"; this asks "can it be reached at all", and the answers differ: a
+  /// 340px desktop window and a 340pt phone lay out identically and still need
+  /// different controls, because one of them has a hover state and a 3px
+  /// pointer and the other has neither.
+  ///
+  /// It exists because pretending otherwise had already cost real function -
+  /// every action on a task row was drawn behind `visible: _hovered`, which on
+  /// a phone meant reminders, parking, focus and delete were not small, they
+  /// were **absent**, and no width would ever have brought them back.
+  ///
+  /// It is a field rather than a `Platform` check at the point of use for the
+  /// same reason every threshold here is a getter: one place to read, one place
+  /// to change, and a test can pump a touch layout on a desktop machine. The
+  /// shell sets it from `!isDesktop`; the fallback is false, which is what
+  /// keeps a widget test of the desktop layout honest by default.
+  final bool touch;
+
   double get width => size.width;
   double get height => size.height;
+
+  // ------------------------------------------------------------ hit targets
+
+  /// The side of a square control, in layout units.
+  ///
+  /// 40 rather than the 44 Apple asks for, because this number is spent
+  /// *inside* [UiScale]: the phone zoom is `clamp(width / 340, 1, 1.28)`, so
+  /// the smallest zoom any real phone applies is about 1.1 (a 375pt device) and
+  /// 40 lands at 44pt or more on screen. Asking for 44 here would render at 48
+  /// and up, which on a 340-unit-wide layout is a bar of five buttons and no
+  /// room for what they are next to.
+  ///
+  /// Zero-ish on desktop is deliberate: a mouse hits a 16px icon exactly as
+  /// well as a 40px one, and the widget is 340px wide.
+  static const touchTargetSide = 40.0;
+  static const pointerTargetSide = 26.0;
+
+  double get tapTarget => touch ? touchTargetSide : pointerTargetSide;
+
+  /// Icon inside that target. The glyph grows with the target, or a 40px
+  /// button around a 14px icon reads as a mis-click waiting to happen.
+  double get actionIcon => touch ? 20.0 : 15.0;
+
+  /// Whether an action may be revealed by hovering.
+  ///
+  /// False on touch, and every hover-gated control has to ask - there is no
+  /// hover to reveal it, so "shown on hover" means "never shown".
+  bool get canHover => !touch;
 
   // ------------------------------------------------------------------- rail
 
@@ -153,10 +202,11 @@ class Layout {
       math.min(width - focusTileMargin * 2, focusTileMax);
 
   @override
-  bool operator ==(Object other) => other is Layout && other.size == size;
+  bool operator ==(Object other) =>
+      other is Layout && other.size == size && other.touch == touch;
 
   @override
-  int get hashCode => size.hashCode;
+  int get hashCode => Object.hash(size, touch);
 
   /// The layout the enclosing shell measured.
   ///

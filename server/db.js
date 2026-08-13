@@ -426,12 +426,21 @@ function enforceSingleInProgress(db, userId) {
  * write transaction closed, a concurrent write from another device could land
  * in between - it would get a seq below the cursor we return, and this client
  * would skip it forever.
+ *
+ * `merged` counts the rows this push actually wrote, which is what decides
+ * whether the user's other devices are told anything (see events.js). It is
+ * deliberately the count of *writes*, not of rows received: a device replaying
+ * an unchanged row merges nothing, and waking every other device for that would
+ * make the quietest client the noisiest. It is not part of the response - the
+ * route strips it - because it describes what the server did, not what the
+ * caller now has.
  */
 export function sync(db, userId, since, incoming) {
   const run = db.transaction(() => {
+    let merged = 0;
     for (const table of Object.keys(TABLES)) {
       for (const row of incoming[table] ?? []) {
-        mergeRow(db, table, userId, row);
+        if (mergeRow(db, table, userId, row)) merged++;
       }
     }
     enforceSingleInProgress(db, userId);
@@ -446,7 +455,7 @@ export function sync(db, userId, since, incoming) {
     // Computed inside the transaction, from the same rows just read, for the
     // same reason the pull is: a cursor read outside it could sit above a write
     // that this response did not carry.
-    return { cursor: userCursor(db, userId), changes };
+    return { cursor: userCursor(db, userId), changes, merged };
   });
 
   return run();

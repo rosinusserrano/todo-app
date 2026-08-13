@@ -60,7 +60,14 @@ job is two lines:
 
 ```caddyfile
 todo.example.com {
-    reverse_proxy 127.0.0.1:8787
+    reverse_proxy 127.0.0.1:8787 {
+        # Instant sync is an event stream on /api/events: a response that
+        # deliberately never ends. Caddy buffers proxied responses by default,
+        # which turns that into a response that never arrives — sync still
+        # works, it just silently falls back to polling once a minute.
+        # -1 means flush immediately.
+        flush_interval -1
+    }
 }
 ```
 
@@ -82,6 +89,15 @@ server {
 
         # Attachment metadata pushes can be chunky.
         client_max_body_size 16m;
+
+        # Instant sync (/api/events) is a response that never ends. Without
+        # these, nginx buffers it forever and the app quietly falls back to
+        # polling once a minute; the read timeout would then cut the
+        # connection between keep-alives.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_http_version 1.1;
+        proxy_read_timeout 1h;
     }
 }
 ```

@@ -28,6 +28,8 @@
 // rather than another section of the filter menu: the strip only exists while
 // the mode is on, and while it is on it is the answer to "what am I filling in".
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
@@ -133,6 +135,11 @@ class CalendarView extends StatelessWidget {
   /// for a fresh drag is the right one: the workspace you are in.
   Future<void> _toggleBlocking() async {
     if (state.timeBlocking) {
+      // Turning the bolt off is what *materialises* what was placed - the
+      // whole shape of the mode is "lay it out, look at it, then commit".
+      // Written before the target is cleared, because the blocks are titled
+      // after the calendar they were being placed on.
+      await state.commitPendingBlocks();
       await state.setTimeBlockCalendar(null);
       return;
     }
@@ -183,9 +190,46 @@ class CalendarView extends StatelessWidget {
             onPick: state.setTimeBlockCalendar,
             onOff: () => state.setTimeBlockCalendar(null),
           ),
-        Expanded(child: _grid(layout)),
+        Expanded(
+          // Swiping switches D/W/Y, the same gesture and the same reasoning as
+          // the swipe between Tasks/Notes/Parked/History: the segmented control
+          // says what there is, the swipe is the cheap way through it.
+          //
+          // Safe to claim on touch because the grid's own gestures are a
+          // *vertical* scroll and a **long-press**-then-drag to create (see
+          // time_grid.dart, where creating is split by input device precisely
+          // so a one-finger drag can still scroll). A plain horizontal fling
+          // belongs to nobody else.
+          child: layout.touch
+              ? GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragEnd: (d) {
+                    final v = d.primaryVelocity ?? 0;
+                    if (v.abs() < 220) return;
+                    _stepMode(v < 0 ? 1 : -1);
+                  },
+                  child: _grid(layout),
+                )
+              : _grid(layout),
+        ),
       ],
     );
+  }
+
+  /// One step along [CalendarViewMode.values]: day, week, year.
+  ///
+  /// Clamped rather than wrapped, for the same reason the view swipe is: a
+  /// three-way control that loops from the last back to the first is one you
+  /// cannot tell your position in without reading it.
+  void _stepMode(int direction) {
+    final at = CalendarViewMode.values.indexOf(state.calendarMode);
+    final next = at + direction;
+    if (next < 0 || next >= CalendarViewMode.values.length) return;
+    // Anything placed on the way out gets written - see the commit rule on
+    // AppState.commitPendingBlocks. Changing view is one of the ways the mode
+    // ends, and a block you laid down must not be lost by a swipe.
+    unawaited(state.commitPendingBlocks());
+    state.setCalendarMode(CalendarViewMode.values[next]);
   }
 
   /// The body for the current mode, at the current size.
@@ -235,6 +279,15 @@ class CalendarView extends StatelessWidget {
       // so the draft is the only chance to see what is being saved.
       blockTitle: block == null ? null : state.calendarName(block),
       blockColor: block == null ? null : state.calendarColor(block),
+      pending: state.pendingBlocks,
+      // Tap-to-place is touch only. With a mouse the drag already does this in
+      // one gesture, and a click that silently left a block behind would be a
+      // trap on a device where clicking empty space means nothing.
+      onPlacePending: block != null && layout.touch
+          ? (start, _) => state.placePendingBlock(start)
+          : null,
+      onAdjustPending: state.adjustPendingBlock,
+      onRemovePending: state.removePendingBlock,
     );
   }
 }
@@ -421,6 +474,31 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final layout = Layout.of(context);
+
+    // Two rows on touch, one everywhere else.
+    //
+    // Everything below used to be a single Row, and on a phone that Row had to
+    // fit a back arrow, two steppers, the month, Today, the bolt, a three-way
+    // mode switch and a filter menu across 390pt. It "fitted" by giving the
+    // title whatever was left, which was six characters - the month showed as
+    // "Au…", so the one label saying *where you are* was the thing squeezed
+    // out. Splitting it puts where-you-are on its own line and the controls on
+    // another, and both get finger-sized targets out of the same change.
+    if (layout.touch) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: _whereRow(layout)),
+            const SizedBox(height: 2),
+            Row(children: _controlsRow(layout)),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 2, 6, 4),
       child: Row(
@@ -505,6 +583,92 @@ class _Header extends StatelessWidget {
       ),
     );
   }
+
+  /// Where you are, and how to move: back out, step, the date, and Today.
+  ///
+  /// The title gets the whole middle of its own row, so the full "August 2026"
+  /// fits and Today can be the word rather than the icon it degraded to when
+  /// there was no room for either.
+  List<Widget> _whereRow(Layout layout) => [
+        _IconBtn(
+          icon: Icons.arrow_back_rounded,
+          tooltip: 'Back to tasks (Esc)',
+          onTap: onClose,
+          size: layout.tapTarget,
+          iconSize: layout.actionIcon,
+        ),
+        const Spacer(),
+        _IconBtn(
+          icon: Icons.chevron_left,
+          tooltip: 'Previous',
+          onTap: () => onStep(-1),
+          size: layout.tapTarget,
+          iconSize: layout.actionIcon,
+        ),
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: T.text,
+              ),
+            ),
+          ),
+        ),
+        _IconBtn(
+          icon: Icons.chevron_right,
+          tooltip: 'Next',
+          onTap: () => onStep(1),
+          size: layout.tapTarget,
+          iconSize: layout.actionIcon,
+        ),
+        const Spacer(),
+        TextButton(
+          onPressed: onToday,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: Size(0, layout.tapTarget),
+          ),
+          child: const Text('Today', style: TextStyle(fontSize: 12.5)),
+        ),
+      ];
+
+  /// What you are looking at: the quick-add bolt, the mode, and the filter.
+  List<Widget> _controlsRow(Layout layout) => [
+        _IconBtn(
+          icon: Icons.bolt,
+          tooltip: blocking
+              ? 'Quick add on – tap the grid to place blocks'
+              : 'Quick add: tap the grid to place blocks',
+          active: blocking,
+          onTap: onToggleBlocking,
+          size: layout.tapTarget,
+          iconSize: layout.actionIcon,
+        ),
+        const Spacer(),
+        _ModeSwitch(mode: mode, onMode: onMode, height: layout.tapTarget),
+        const Spacer(),
+        _FilterMenu(
+          scope: scope,
+          calendars: calendars,
+          hidden: hidden,
+          nameFor: nameFor,
+          colorFor: colorFor,
+          onScope: onScope,
+          onToggleHidden: onToggleHidden,
+          onNewCalendar: onNewCalendar,
+          onEditCalendar: onEditCalendar,
+          onImportIcs: onImportIcs,
+          size: layout.tapTarget,
+          iconSize: layout.actionIcon,
+        ),
+      ];
 }
 
 class _IconBtn extends StatelessWidget {
@@ -513,11 +677,18 @@ class _IconBtn extends StatelessWidget {
     required this.tooltip,
     required this.onTap,
     this.active = false,
+    this.size,
+    this.iconSize,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+
+  /// The square this occupies, when the caller has an opinion. Null keeps the
+  /// padded-glyph shape the single-row toolbar was drawn with.
+  final double? size;
+  final double? iconSize;
 
   /// A toggle that is currently on, drawn in the accent. The navigation buttons
   /// leave this alone - they do something rather than being in a state.
@@ -530,10 +701,18 @@ class _IconBtn extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Icon(icon, size: 16, color: active ? T.accent : T.muted),
-        ),
+        child: size == null
+            ? Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(icon,
+                    size: iconSize ?? 16, color: active ? T.accent : T.muted),
+              )
+            : SizedBox(
+                width: size,
+                height: size,
+                child: Icon(icon,
+                    size: iconSize ?? 16, color: active ? T.accent : T.muted),
+              ),
       ),
     );
   }
@@ -542,10 +721,19 @@ class _IconBtn extends StatelessWidget {
 /// D / W / Y. Three letters rather than a dropdown: switching view is the most
 /// frequent thing done up here, and a menu would put two taps behind it.
 class _ModeSwitch extends StatelessWidget {
-  const _ModeSwitch({required this.mode, required this.onMode});
+  const _ModeSwitch({
+    required this.mode,
+    required this.onMode,
+    this.height,
+  });
 
   final CalendarViewMode mode;
   final void Function(CalendarViewMode) onMode;
+
+  /// Full height of the control. Null keeps the compact desktop shape; on touch
+  /// each letter has to be a target rather than an 11pt glyph with 3px around
+  /// it, which is what the single-row bar gave it.
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
@@ -569,14 +757,19 @@ class _ModeSwitch extends StatelessWidget {
                     color: selected ? T.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
+                  alignment: Alignment.center,
+                  constraints: BoxConstraints(
+                    minWidth: height == null ? 0 : height! * 0.95,
+                    minHeight: height == null ? 0 : height! - 4,
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: height == null ? 8 : 4,
+                    vertical: height == null ? 3 : 0,
                   ),
                   child: Text(
                     m.name[0].toUpperCase(),
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: height == null ? 11 : 13,
                       fontWeight: FontWeight.w700,
                       color: selected ? T.bgSolid : T.muted,
                     ),
@@ -602,7 +795,13 @@ class _FilterMenu extends StatelessWidget {
     required this.onNewCalendar,
     required this.onEditCalendar,
     required this.onImportIcs,
+    this.size,
+    this.iconSize,
   });
+
+  /// Set on touch, where this has to be a real target rather than a 15px glyph.
+  final double? size;
+  final double? iconSize;
 
   final CalendarScope scope;
   final List<Calendar> calendars;
@@ -719,10 +918,16 @@ class _FilterMenu extends StatelessWidget {
           ),
         ),
       ],
-      child: const Padding(
-        padding: EdgeInsets.all(4),
-        child: Icon(Icons.tune, size: 15, color: T.muted),
-      ),
+      child: size == null
+          ? const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.tune, size: 15, color: T.muted),
+            )
+          : SizedBox(
+              width: size,
+              height: size,
+              child: Icon(Icons.tune, size: iconSize ?? 15, color: T.muted),
+            ),
     );
   }
 }

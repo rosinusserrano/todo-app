@@ -65,6 +65,10 @@ class TimeGridView extends StatefulWidget {
     this.onPlanTask,
     this.blockTitle,
     this.blockColor,
+    this.pending = const [],
+    this.onPlacePending,
+    this.onAdjustPending,
+    this.onRemovePending,
   });
 
   /// The columns, left to right, each at local midnight.
@@ -102,6 +106,18 @@ class TimeGridView extends StatefulWidget {
   /// mode nothing else ever shows what is about to be written.
   final String? blockTitle;
   final Color? blockColor;
+
+  /// Blocks placed in quick-add mode and not written yet. Empty unless the mode
+  /// is on; see AppState.pendingBlocks.
+  final List<({DateTime start, DateTime end})> pending;
+
+  /// Non-null exactly when quick-add is on **and** a tap should place a block -
+  /// which is touch only. With a mouse the drag already does this in one
+  /// gesture, and a click that silently left a block behind would be a trap.
+  final void Function(DateTime start, DateTime end)? onPlacePending;
+
+  final void Function(int index, DateTime start, DateTime end)? onAdjustPending;
+  final void Function(int index)? onRemovePending;
 
   @override
   State<TimeGridView> createState() => _TimeGridViewState();
@@ -179,6 +195,69 @@ class _TimeGridViewState extends State<TimeGridView> {
     );
     if (slot == null) return;
     setState(() => _draft = slot);
+  }
+
+  /// A tap on empty grid while quick-add is on: lay down an hour here.
+  ///
+  /// Placed rather than written - see AppState.pendingBlocks. Nothing reaches
+  /// the database until the mode ends, so this can be tapped freely and undone
+  /// by tapping the block again.
+  void _tapPlace(Offset local) {
+    final place = widget.onPlacePending;
+    if (place == null) return;
+    final slot = _pointToSlot(local);
+    if (slot == null) return;
+
+    final day = widget.days[slot.dayIndex];
+    final start = day.add(Duration(minutes: slot.lowMinutes));
+    place(start, start.add(const Duration(hours: 1)));
+  }
+
+  /// Turn a pending block into a position on this grid, or null when it falls
+  /// outside the days on screen.
+  ({int dayIndex, int fromMinutes, int toMinutes})? _placePending(
+    ({DateTime start, DateTime end}) block,
+  ) {
+    for (var i = 0; i < widget.days.length; i++) {
+      final day = widget.days[i];
+      final next = day.add(const Duration(days: 1));
+      if (!block.start.isBefore(day) && block.start.isBefore(next)) {
+        final from = block.start.difference(day).inMinutes;
+        // Clamped to the day it starts in: a block dragged across midnight is
+        // drawn to the bottom of its own column rather than silently moving.
+        final to = block.end.difference(day).inMinutes.clamp(from + 1, 24 * 60);
+        return (dayIndex: i, fromMinutes: from, toMinutes: to);
+      }
+    }
+    return null;
+  }
+
+  /// Move or resize a pending block by a gesture, snapped like everything else.
+  void _adjustPending(int index, {int? deltaMinutes, int? newEndMinutes}) {
+    final adjust = widget.onAdjustPending;
+    if (adjust == null || index >= widget.pending.length) return;
+    final block = widget.pending[index];
+
+    if (deltaMinutes != null) {
+      final snapped = (deltaMinutes / kSnapMinutes).round() * kSnapMinutes;
+      if (snapped == 0) return;
+      adjust(
+        index,
+        block.start.add(Duration(minutes: snapped)),
+        block.end.add(Duration(minutes: snapped)),
+      );
+      return;
+    }
+
+    if (newEndMinutes != null) {
+      final at = _placePending(block);
+      if (at == null) return;
+      final day = widget.days[at.dayIndex];
+      final snapped =
+          ((newEndMinutes / kSnapMinutes).round() * kSnapMinutes)
+              .clamp(at.fromMinutes + kSnapMinutes, 24 * 60);
+      adjust(index, block.start, day.add(Duration(minutes: snapped)));
+    }
   }
 
   void _commit() {
@@ -267,6 +346,14 @@ class _TimeGridViewState extends State<TimeGridView> {
                     onDragCommit: _commit,
                     blockTitle: widget.blockTitle,
                     blockColor: widget.blockColor,
+                    pending: widget.pending,
+                    placePending: _placePending,
+                    onTapPlace: widget.onPlacePending == null ? null : _tapPlace,
+                    onMovePending: (i, dy) =>
+                        _adjustPending(i, deltaMinutes: (dy / kHourHeight * 60).round()),
+                    onResizePending: (i, endY) =>
+                        _adjustPending(i, newEndMinutes: (endY / kHourHeight * 60).round()),
+                    onRemovePending: widget.onRemovePending,
                     gutter: _gutter,
                     compact: _compact,
                   ),
@@ -313,6 +400,12 @@ class _GridBody extends StatelessWidget {
     required this.onDragCommit,
     required this.blockTitle,
     required this.blockColor,
+    required this.pending,
+    required this.placePending,
+    required this.onTapPlace,
+    required this.onMovePending,
+    required this.onResizePending,
+    required this.onRemovePending,
     required this.gutter,
     required this.compact,
   });
@@ -334,6 +427,19 @@ class _GridBody extends StatelessWidget {
 
   final String? blockTitle;
   final Color? blockColor;
+
+  /// Blocks placed in quick-add mode, drawn over the events.
+  final List<({DateTime start, DateTime end})> pending;
+
+  /// Where one of them falls on this grid, or null when it is not on screen.
+  final ({int dayIndex, int fromMinutes, int toMinutes})? Function(
+      ({DateTime start, DateTime end})) placePending;
+
+  /// Null unless quick-add is on and a tap should place a block.
+  final void Function(Offset local)? onTapPlace;
+  final void Function(int index, double dy) onMovePending;
+  final void Function(int index, double endY) onResizePending;
+  final void Function(int index)? onRemovePending;
 
   /// The grid's geometry, decided once by the view above and passed down so
   /// every part of it - painter, labels, blocks - draws to the same one.
@@ -390,6 +496,11 @@ class _GridBody extends StatelessWidget {
                   onDragCommit();
                 },
                 child: GestureDetector(
+                  // A plain tap only means something in quick-add mode; the
+                  // rest of the time the grid's empty space is not a control.
+                  onTapUp: onTapPlace == null
+                      ? null
+                      : (d) => onTapPlace!(d.localPosition),
                   onLongPressStart: (d) => onDragBegin(d.localPosition),
                   onLongPressMoveUpdate: (d) => onDragExtend(d.localPosition),
                   onLongPressEnd: (_) => onDragCommit(),
@@ -404,6 +515,37 @@ class _GridBody extends StatelessWidget {
                 left: gutter + i * colWidth,
                 width: colWidth,
               ),
+
+            // Above the events, because they are the thing being worked on,
+            // and below the live drag draft so a drag started on top of one
+            // still previews over it.
+            for (var i = 0; i < pending.length; i++)
+              () {
+                final at = placePending(pending[i]);
+                if (at == null) return const SizedBox.shrink();
+                return Positioned(
+                  left: gutter + at.dayIndex * colWidth + 1,
+                  width: colWidth - 2,
+                  top: at.fromMinutes / 60 * kHourHeight,
+                  height: ((at.toMinutes - at.fromMinutes) / 60 * kHourHeight)
+                      .clamp(14.0, double.infinity),
+                  child: _PendingBlock(
+                    from: pending[i].start,
+                    to: pending[i].end,
+                    title: blockTitle,
+                    color: blockColor,
+                    compact: compact,
+                    onRemove: onRemovePending == null
+                        ? null
+                        : () => onRemovePending!(i),
+                    onMove: (dy) => onMovePending(i, dy),
+                    onResize: (dy) => onResizePending(
+                      i,
+                      at.toMinutes / 60 * kHourHeight + dy,
+                    ),
+                  ),
+                );
+              }(),
 
             if (draft != null)
               Positioned(
@@ -695,6 +837,141 @@ class EventMenuArea extends StatelessWidget {
 /// writes the event - so this is the only sight of what is being created. With
 /// no block target it is the accent and just the times, which is all a draft
 /// about to open the editor has to say.
+/// A block placed in quick-add mode but not written yet.
+///
+/// Drawn as an outline rather than a filled event, because the difference
+/// between "this is on your calendar" and "this is about to be" has to be
+/// visible at a glance - the whole mode is laying out a shape you then look at
+/// and adjust before committing to it.
+///
+/// Three gestures, and which gesture is on which part is the whole design:
+///
+///   - **Tap removes it.** Nothing is written yet, so a mis-tap costs one tap
+///     to put back. The ✕ says so; without it, tapping a block you just made
+///     and having it vanish would read as a bug.
+///   - **Long-press-drag moves it.** Long-press for the same reason creating
+///     uses it - a one-finger drag inside the grid has to be able to scroll,
+///     so a plain drag here would make the calendar unscrollable wherever a
+///     block happened to be.
+///   - **The grip at the bottom edge resizes**, on a plain vertical drag. That
+///     one is safe without the long press because the deepest recogniser in the
+///     arena wins: the grip is a child of the scroll view, so it takes the
+///     gesture the scrollable would otherwise have got.
+class _PendingBlock extends StatelessWidget {
+  const _PendingBlock({
+    required this.from,
+    required this.to,
+    required this.compact,
+    required this.onMove,
+    required this.onResize,
+    this.title,
+    this.color,
+    this.onRemove,
+  });
+
+  final DateTime from;
+  final DateTime to;
+  final bool compact;
+  final String? title;
+  final Color? color;
+  final VoidCallback? onRemove;
+
+  /// Vertical movement since the last update, in pixels.
+  final void Function(double dy) onMove;
+  final void Function(double dy) onResize;
+
+  /// The grab area at the bottom. Big enough for a fingertip without eating a
+  /// short block whole, which is why it is capped against the block's height by
+  /// the FractionallySizedBox below rather than being a fixed 20px.
+  static const _gripHeight = 16.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = color ?? T.accent;
+
+    return GestureDetector(
+      onTap: onRemove,
+      onLongPressMoveUpdate: (d) => onMove(d.offsetFromOrigin.dy),
+      child: Container(
+        decoration: BoxDecoration(
+          color: tint.withValues(alpha: 0.16),
+          border: Border.all(color: tint.withValues(alpha: 0.85), width: 1.5),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!compact && title != null)
+                    Text(
+                      title!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: tint,
+                      ),
+                    ),
+                  Text(
+                    compact
+                        ? '${hhmm(from)}\n${hhmm(to)}'
+                        : '${hhmm(from)} – ${hhmm(to)}',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      height: 1.15,
+                      color: tint.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // The mark that says this one is not real yet, and the way to take
+            // it back. Top-right, out of the way of the times.
+            if (onRemove != null)
+              Positioned(
+                top: 1,
+                right: 1,
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 11,
+                  color: tint.withValues(alpha: 0.8),
+                ),
+              ),
+
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (d) => onResize(d.delta.dy),
+                child: SizedBox(
+                  height: _gripHeight,
+                  width: double.infinity,
+                  child: Center(
+                    child: Container(
+                      width: 18,
+                      height: 2.5,
+                      decoration: BoxDecoration(
+                        color: tint.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DraftBlock extends StatelessWidget {
   const _DraftBlock({
     required this.from,

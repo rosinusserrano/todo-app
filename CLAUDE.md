@@ -357,6 +357,34 @@ time on one. The rules that are not obvious from the schema:
   `event_uuid` is a supported state — the task is still on the list, it just
   never turns up in a session. Same shape as the attachment-row-without-bytes
   case, minus the sweep, because nothing is leaked by it.
+- **The toolbar is two rows on touch, one everywhere else.** As a single Row it
+  had to fit a back arrow, two steppers, the date, Today, the bolt, a three-way
+  mode switch and a filter menu across 390pt — it "fitted" by giving the title
+  whatever was left, which was six characters, so the one label saying *where
+  you are* showed as "Au…". Splitting it puts where-you-are on one line and the
+  controls on another and makes every target finger-sized out of the same
+  change. `_IconBtn`, `_ModeSwitch` and `_FilterMenu` take optional sizes; null
+  keeps the compact desktop shape.
+- **A horizontal swipe switches D/W/Y** (`_stepMode`), clamped rather than
+  wrapped. Safe to claim because the grid's own gestures are a vertical scroll
+  and a *long-press*-then-drag to create — creating is split by input device
+  precisely so a one-finger drag can still scroll, which leaves a plain
+  horizontal fling belonging to nobody.
+- **Quick add holds blocks before writing them** (`AppState.pendingBlocks`).
+  Tapping the grid with the bolt on places an adjustable hour; nothing reaches
+  the database until the mode ends. They are deliberately not stored and not
+  synced — an unfinished thought about Tuesday is not something another device
+  should receive — which also means they do not survive the app closing, the
+  right trade for something whose whole life is one sitting. **There is one
+  commit rule and every exit uses it**: `commitPendingBlocks()` runs from the
+  bolt going off, from `_stepMode`, and from `_toggleCalendar`. Some exits
+  committing and others discarding is how a user loses an afternoon's planning.
+  It clears the list *before* awaiting the writes, so a missing target drops
+  them instead of retrying forever. On the block itself: tap removes (nothing is
+  written yet, so a mis-tap costs one tap), long-press-drag moves (a plain drag
+  would make the grid unscrollable wherever a block sat), and the bottom grip
+  resizes on a plain vertical drag — safe without the long press because the
+  deepest recogniser in the arena beats the scrollable above it.
 - The year view's month tiles are **always six week rows** (`_weekRows`), padded
   with blanks. A month needs four to six depending on where its 1st falls, and
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it

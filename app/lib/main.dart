@@ -412,6 +412,10 @@ class _WidgetShellState extends State<WidgetShell>
     _closeSound();
     _closeSettings();
     _closeSublist();
+    // Leaving the calendar ends quick-add too, so anything placed and not yet
+    // written goes in now. Same rule as the bolt and the mode switch: a block
+    // you laid down is never lost by leaving in a way you did not think of.
+    if (s.showCalendar) await s.commitPendingBlocks();
     await s.toggleCalendar();
   }
 

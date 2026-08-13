@@ -817,6 +817,21 @@ reminders are both there now**, queued for 0.18.0.
   one shared duration — and the title bar's calendar, settings and headphone
   buttons are finger-sized on touch, where they used to be 27pt targets.
 
+- **0.23.0** — **The calendar fits on a phone.** Its toolbar was one row trying
+  to hold nine controls across 390pt, and what got squeezed was the label saying
+  where you are — "August 2026" showed as "Au…". It is two rows on a phone now:
+  the date and the way through it on one, the quick-add bolt, D/W/Y and the
+  filter on the other, each a finger-sized target instead of a 24px one.
+  **Swiping left and right switches day, week and year.**
+  **Quick add lays out a week without an editor between every block.** With the
+  bolt on, tapping the grid drops an hour where you tapped — as an outline, not
+  an event, because nothing is written yet. Keep tapping, then drag blocks to
+  move them, drag the grip at the bottom to change their length, and tap one to
+  take it back. Turning the bolt off writes them all, titled after the calendar
+  they were placed on. Leaving the calendar or switching view writes them too:
+  there is one rule, so a block you laid down is never lost by leaving in a way
+  you did not think of.
+
 - **0.22.1** — **Navigation moved to where the thumb is.** The four content
   views — Tasks, Notes, Parked, History — are a bar of icons along the bottom
   edge on a phone, instead of a ▾ menu at the top corner that hid which views

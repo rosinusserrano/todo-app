@@ -205,6 +205,27 @@ before the shell closes the pane. Two things there are load-bearing:
   is not on the focus path and Esc falls straight through to the shell, skipping
   the list rung. `test/journal_panel_test.dart` pins that rung.
 
+**On touch those views are a bottom bar instead** (`ui/view_bar.dart`), and the
+workspace bar's ▾ is hidden — two doors to the same four views, one of them at
+the far end of the phone from the hand, is one too many. `kBarViews` is the
+order, and **`_swipeView` in `main.dart` reads that same list**, so the bar and
+the swipe cannot disagree about what is next to what. The swipe is safe to claim
+because the only other horizontal gesture in the list is the task `Draggable`,
+which exists only when there is something beside the list to drop onto — a
+window far wider than any phone. Note `_selectView` is a *destination* while the
+▾ menu's entries are *toggles*: tapping Notes must land on Notes whatever was
+showing, and a swipe that toggled would go backwards half the time.
+
+Two things take the whole screen on touch and both are about what is
+*incidentally* on display: `ThoughtSheet` (`ui/thought_sheet.dart`), because a
+phone is held in front of people and the inline capture field left every task in
+the workspace visible behind the keyboard; and an open journal entry, via
+`_noteTakesScreen`, which hides the workspace bar, the view bar and the footer.
+`JournalView` reports that through `onEntryOpen` rather than the shell inferring
+it — `showJournal` says the pane is open, not which rung of its ladder you are
+on. That callback is deferred to after the frame, because the shell reacts with
+`setState` and doing that from inside another widget's build is a crash.
+
 **Per-workspace views live on the workspace bar, not the title bar.** Notes,
 Parked and History are opened from the ▾ `_ViewsMenu` in `ui/workspace_bar.dart`
 (they are about the current workspace); the title bar (`ui/title_bar.dart`) is
@@ -632,6 +653,18 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   `window_manager`'s `setAlwaysOnTop` is a `SetWindowPos` without
   `SWP_NOACTIVATE`, so calling it unconditionally on a 20-second timer would
   raise and activate the window every time round.
+- **Sheets animate through `SheetTransition`** (`ui/sheet_transition.dart`),
+  which owns *how* a panel moves; each sheet still returns its own `Positioned`
+  and so owns *where* it sits. The child goes into a nested `Stack` precisely
+  because a `Positioned` is only legal as a direct child of one and still has to
+  be translatable. The exit is the part with machinery: a widget removed from
+  the tree cannot animate itself out, so the host caches the last child it built
+  and keeps showing it until the reverse finishes — which is also why the
+  builder is a callback. `SublistSheet` is built from `_sublist!`, and that goes
+  null the instant it closes. Its `AnimationController` is built in `initState`,
+  **not** as a `late final`: a sheet never opened never reads it from `build`,
+  so a lazy field is first touched by `dispose`, where `vsync: this` looks up
+  `TickerMode.of(context)` on a deactivated element and throws.
 - **Anything long-lived that covers the content area is a sheet in the shell's
   `Stack`, never a `showDialog` route.** A modal route's barrier covers the
   whole window — including the title bar — so an open dialog leaves the window
@@ -688,6 +721,20 @@ own. Two rules hold everything together and both are load-bearing:
 - **The design width is the floor, not the target.** Extra room buys more at
   once (a rail, a second pane), never a stretched copy of the same thing — hence
   `taskColumnMax` and `focusTileMax`.
+
+**`Layout.touch` is the one axis that is not a size**, and it is separate
+because the questions genuinely differ: every other getter asks *does it fit*,
+this asks *can it be reached at all*. A 340px desktop window and a 340pt phone
+lay out identically and still need different controls, because one has a hover
+state and a 3px pointer and the other has neither. It exists because pretending
+otherwise had already cost real function — every action on a task row was drawn
+behind `visible: _hovered`, so on a phone reminders, parking, focus and delete
+were not small, they were **absent**, and no width would ever have revealed
+them. It is a field on `Layout` (set from `!isDesktop`, default false) rather
+than a `Platform` check at the point of use, so there is one place to read, one
+to change, and a test can pump a touch layout on a desktop machine. `tapTarget`
+and `actionIcon` hang off it; 40 rather than Apple's 44 because the number is
+spent *inside* `UiScale`, whose smallest real-phone zoom is about 1.1.
 
 Notes for changing it:
 

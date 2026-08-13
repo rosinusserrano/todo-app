@@ -53,7 +53,18 @@ class JournalView extends StatefulWidget {
     required this.onSave,
     required this.onDelete,
     required this.onBack,
+    this.onEntryOpen,
   });
+
+  /// Called when a note is opened for reading or editing, and again when the
+  /// panel drops back to its list.
+  ///
+  /// The shell uses it to give the note the whole screen on a phone. It is a
+  /// callback rather than something the shell can work out for itself because
+  /// which rung of the ladder this panel is on is genuinely this panel's own
+  /// state - `showJournal` only says the pane is open, not whether you are
+  /// looking at the list or at one entry.
+  final ValueChanged<bool>? onEntryOpen;
 
   /// A password has been set (encryption is on).
   final bool configured;
@@ -335,7 +346,24 @@ class _JournalViewState extends State<JournalView> {
     );
   }
 
+  /// Whether an entry is on screen, told to the shell when it changes.
+  ///
+  /// Reported from `build` and deferred to after the frame: the shell reacts by
+  /// calling setState, and doing that from inside another widget's build is the
+  /// "setState called during build" crash.
+  bool? _reportedOpen;
+
+  void _reportEntryOpen() {
+    final open = _editorOpen || _reading;
+    if (open == _reportedOpen) return;
+    _reportedOpen = open;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onEntryOpen?.call(open);
+    });
+  }
+
   Widget _content() {
+    _reportEntryOpen();
     if (widget.locked) return _gate(setup: false);
     if (_settingUp) return _gate(setup: true);
     if (_editorOpen) return _editor();

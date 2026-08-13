@@ -590,9 +590,13 @@ void main() {
             ),
           );
 
+      // The workspace pill carries a ▾ of its own, so the bar has two. This
+      // one is the free-standing views menu - the last in the row.
+      final viewsArrow = find.byIcon(Icons.expand_more_rounded).last;
+
       // Nothing open: the menu offers three plain entries.
       await tester.pumpWidget(bar(null));
-      await tester.tap(find.byIcon(Icons.expand_more_rounded));
+      await tester.tap(viewsArrow);
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.check_rounded), findsNothing);
 
@@ -601,7 +605,7 @@ void main() {
 
       // Parked open: exactly one tick, so re-picking it to close is findable.
       await tester.pumpWidget(bar(WorkspaceView.parked));
-      await tester.tap(find.byIcon(Icons.expand_more_rounded));
+      await tester.tap(viewsArrow);
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     });

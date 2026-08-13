@@ -17,16 +17,40 @@
 // since a task being composed has no notes yet and so still lands in a field
 // with the caret in it.
 //
-// A dialog rather than a sheet, unlike Settings and the sublist. The rule in
-// main.dart is about things that live on screen while you work *around* them -
-// a sheet leaves the title bar reachable so the window can still be dragged and
-// closed. This is modal by nature (it is one task's fields, saved or cancelled)
-// and it is the same shape as the event and workspace forms, which are dialogs
-// for the same reason.
+// A modal *route* rather than a sheet in the shell's Stack, unlike Settings and
+// the sublist. The rule in main.dart is about things that live on screen while
+// you work around them - a sheet leaves the title bar reachable so the window
+// can still be dragged and closed. This is modal by nature (it is one task's
+// fields, saved or cancelled) and it is the same shape as the event and
+// workspace forms.
+//
+// It is **not** an AlertDialog, though, and that is the difference between what
+// this looks like and what a phone showed. AlertDialog brings Material's own
+// surface, insets, title styling and button bar, so on a phone the composer
+// arrived as a small grey card floating in the middle of the screen in stock
+// purple and blue, cropped by the keyboard, with the Priority row cut off - a
+// different application's dialog wearing this app's data. What is here instead
+// is [showGeneralDialog] with the surface drawn from the same tokens as
+// SettingsSheet, so the composer reads as this app opening a panel.
+//
+// The shape is one decision made twice, on [Layout.touch]:
+//
+//   - Touch: full width, anchored to the bottom, rounded at the top only, and
+//     rising from the bottom edge. A phone form belongs against the thumb and
+//     against the keyboard, and a card inset by 40px on each side is 40px of
+//     line length given away on the narrowest screen there is.
+//   - Pointer: a centred column at the width the fields were drawn for, fading
+//     in with a small rise. A full-width sheet on a 1400px monitor would be a
+//     form with a metre of nothing beside it.
+//
+// Either way the body scrolls and the surface is pushed up by the keyboard
+// rather than covered by it (`viewInsets`), which is what makes the reminder
+// chips reachable while the notes field has the caret.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'markdown_text.dart';
@@ -60,32 +84,70 @@ class TaskDraft {
 
 /// [existing] null composes a new task; otherwise the same form edits that one.
 /// [initialText] seeds the title of a new task with whatever was already typed
-/// into the add field.
+/// into the add field. [accent] is the workspace colour, so the panel belongs
+/// to the list it was opened from rather than being a neutral grey card.
 Future<TaskDraft?> showTaskComposer(
   BuildContext context, {
   Task? existing,
   String initialText = '',
+  Color accent = T.accent,
 }) {
-  return showDialog<TaskDraft>(
+  // Read here, not inside the builder: the route's own context sits above the
+  // shell's LayoutScope, so asking there would always get the fallback.
+  final layout = Layout.of(context);
+
+  return showGeneralDialog<TaskDraft>(
     context: context,
-    builder: (context) => _ComposerDialog(
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: const Color(0x99000000),
+    // Matched to the sheets in the shell, since the two now animate the same
+    // way and arriving at different speeds would read as two different kinds
+    // of thing.
+    transitionDuration: T.sheetDur,
+    pageBuilder: (context, _, _) => _ComposerSheet(
       existing: existing,
       initialText: existing?.text ?? initialText,
+      accent: accent,
+      layout: layout,
     ),
+    transitionBuilder: (context, anim, _, child) {
+      final t = T.sheetEase.transform(anim.value);
+      return FadeTransition(
+        opacity: anim,
+        child: Transform.translate(
+          // Touch rises the full height of a thumb's travel; a pointer gets a
+          // token 12px, which reads as "this appeared" without the panel
+          // sliding across a desk-sized screen.
+          offset: Offset(0, (1 - t) * (layout.touch ? 64 : 12)),
+          child: child,
+        ),
+      );
+    },
   );
 }
 
-class _ComposerDialog extends StatefulWidget {
-  const _ComposerDialog({required this.existing, required this.initialText});
+class _ComposerSheet extends StatefulWidget {
+  const _ComposerSheet({
+    required this.existing,
+    required this.initialText,
+    required this.accent,
+    required this.layout,
+  });
 
   final Task? existing;
   final String initialText;
+  final Color accent;
+
+  /// Passed down rather than read from context: this widget is built by a
+  /// route, above the shell's LayoutScope.
+  final Layout layout;
 
   @override
-  State<_ComposerDialog> createState() => _ComposerDialogState();
+  State<_ComposerSheet> createState() => _ComposerSheetState();
 }
 
-class _ComposerDialogState extends State<_ComposerDialog> {
+class _ComposerSheetState extends State<_ComposerSheet> {
   late final _title = TextEditingController(text: widget.initialText);
   late final _notes = TextEditingController(text: widget.existing?.notes ?? '');
 
@@ -155,19 +217,20 @@ class _ComposerDialogState extends State<_ComposerDialog> {
     // primary focus is the autofocused notes field over in `content:` - a
     // sibling branch - so the only way to reach it was to tab onto Save, where
     // a plain Enter already saves.
+    final touch = widget.layout.touch;
+
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.enter, control: true): _save,
       },
-      child: AlertDialog(
-        backgroundColor: T.bgSolid,
-        title: Text(
-          widget.existing == null ? 'New task' : 'Task',
-          style: const TextStyle(fontSize: 15),
-        ),
-        content: SizedBox(
-          width: 340,
-          child: SingleChildScrollView(
+      child: _Surface(
+        accent: widget.accent,
+        touch: touch,
+        title: widget.existing == null ? 'New task' : 'Task',
+        onCancel: () => Navigator.pop(context),
+        onSave: _save,
+        saveLabel: widget.existing == null ? 'Add' : 'Save',
+        child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,20 +346,6 @@ class _ComposerDialogState extends State<_ComposerDialog> {
               ],
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
-          ),
-          FilledButton(
-            onPressed: _save,
-            child: Text(
-              widget.existing == null ? 'Add' : 'Save',
-              style: const TextStyle(fontSize: 12.5),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -383,6 +432,187 @@ class _ComposerDialogState extends State<_ComposerDialog> {
           },
         ),
       ],
+    );
+  }
+}
+
+/// The panel the composer is drawn on: full-width and bottom-anchored under a
+/// fingertip, a centred column under a pointer.
+///
+/// It owns the chrome an AlertDialog used to bring - surface, title, and the
+/// cancel/save pair - so that all of it comes from [T] and none of it from
+/// Material's defaults. The colours are SettingsSheet's, deliberately: these
+/// are the two big panels in the app and they should look like siblings.
+class _Surface extends StatelessWidget {
+  const _Surface({
+    required this.accent,
+    required this.touch,
+    required this.title,
+    required this.onCancel,
+    required this.onSave,
+    required this.saveLabel,
+    required this.child,
+  });
+
+  final Color accent;
+  final bool touch;
+  final String title;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+  final String saveLabel;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+
+    // What the keyboard is covering. Padding the panel by it lifts the whole
+    // form clear rather than letting the caret sit behind the keys - which is
+    // what the AlertDialog did, and why the priority row was unreachable on a
+    // phone with the notes field focused.
+    final keyboard = media.viewInsets.bottom;
+
+    // AlertDialog used to bring this along, and dropping it is what broke the
+    // fields: an InkWell needs a Material to paint its splash onto and a
+    // TextField needs one for its decoration, so without it the whole form
+    // asserts. Transparent, because the surface below is drawn by the
+    // Container and a second opaque layer would flatten it.
+    final panel = Material(
+      type: MaterialType.transparency,
+      child: Container(
+      decoration: BoxDecoration(
+        color: Color.lerp(T.bgSolid, accent, 0.14),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+        borderRadius: touch
+            // Square at the bottom on touch: the panel is against the edge of
+            // the screen, and a rounded corner there shows a sliver of the
+            // list behind it that reads as a rendering fault.
+            ? const BorderRadius.vertical(top: Radius.circular(16))
+            : BorderRadius.circular(T.radius),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x8C000000),
+            blurRadius: 34,
+            offset: Offset(0, -8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 10, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: T.text,
+                    ),
+                  ),
+                ),
+                // A real close control, not just the barrier. On a phone the
+                // barrier is a thin strip above a full-width panel and is
+                // nobody's first guess at how to get out.
+                Semantics(
+                  label: 'Close without saving',
+                  button: true,
+                  child: InkWell(
+                    onTap: onCancel,
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: touch ? 40 : 28,
+                      height: touch ? 40 : 28,
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: touch ? 20 : 16,
+                        color: T.muted,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: child,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, touch ? 18 : 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onCancel,
+                  style: TextButton.styleFrom(
+                    foregroundColor: T.muted,
+                    minimumSize: Size(0, touch ? 44 : 32),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: onSave,
+                  style: FilledButton.styleFrom(
+                    // The workspace colour, not Material's seed purple - this
+                    // panel belongs to the list it was opened from.
+                    backgroundColor: accent,
+                    foregroundColor: T.bgSolid,
+                    minimumSize: Size(touch ? 96 : 64, touch ? 44 : 32),
+                  ),
+                  child: Text(
+                    saveLabel,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+        ),
+    );
+
+    if (touch) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: keyboard),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            // Never taller than most of the screen, so there is always a strip
+            // of barrier left to tap and the panel never reads as a new page.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: media.size.height * 0.88 - keyboard,
+              ),
+              child: panel,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 380,
+            maxHeight: media.size.height * 0.86 - keyboard,
+          ),
+          child: panel,
+        ),
+      ),
     );
   }
 }

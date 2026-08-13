@@ -38,6 +38,7 @@ class ThoughtFooter extends StatefulWidget {
     required this.workspaceColor,
     required this.blockedMessage,
     required this.onAdd,
+    this.onCapture,
     required this.listOpen,
     required this.onToggleList,
   });
@@ -55,6 +56,12 @@ class ThoughtFooter extends StatefulWidget {
   final String? blockedMessage;
 
   final Future<void> Function(String text) onAdd;
+
+  /// Non-null on touch: capturing takes over the screen instead of expanding
+  /// this field in place. See ui/thought_sheet.dart - a phone is held in front
+  /// of people, and the inline field leaves the whole task list on show behind
+  /// the keyboard at exactly the moment somebody is watching you type.
+  final VoidCallback? onCapture;
 
   @override
   State<ThoughtFooter> createState() => ThoughtFooterState();
@@ -266,6 +273,11 @@ class ThoughtFooterState extends State<ThoughtFooter>
             message: 'Capture a side thought',
             child: InkWell(
               onTap: () {
+                final capture = widget.onCapture;
+                if (capture != null) {
+                  capture();
+                  return;
+                }
                 setState(() => _expanded = !_expanded);
                 if (_expanded) _focus.requestFocus();
               },

@@ -21,6 +21,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 
@@ -88,28 +89,25 @@ class WorkspaceBar extends StatelessWidget {
               others: others,
               onTap: () => onEdit(current),
               onSelect: onSelect,
+              onCreate: onCreate,
             ),
           ),
           const Spacer(),
-          _ViewsMenu(
-            accent: accent,
-            parkedReviewDue: parkedReviewDue,
-            openView: openView,
-            onOpenNotes: onOpenNotes,
-            onOpenParked: onOpenParked,
-            onOpenHistory: onOpenHistory,
-          ),
-          Tooltip(
-            message: 'New workspace',
-            child: InkWell(
-              onTap: onCreate,
-              borderRadius: BorderRadius.circular(6),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Icon(Icons.add, size: 15, color: T.muted),
-              ),
+          // On touch the views are along the bottom edge instead (see
+          // ui/view_bar.dart), where a thumb reaches them - so this ▾ would be
+          // a second door to the same four views, at the far end of the phone
+          // from the hand. Two ways in is one more than there should be when
+          // one of them is worse.
+          if (!Layout.of(context).touch)
+            _ViewsMenu(
+              accent: accent,
+              parkedReviewDue: parkedReviewDue,
+              openView: openView,
+              onOpenNotes: onOpenNotes,
+              onOpenParked: onOpenParked,
+              onOpenHistory: onOpenHistory,
             ),
-          ),
+          const SizedBox(width: 6),
         ],
       ),
     );
@@ -239,26 +237,37 @@ class _SwitcherMenu extends StatelessWidget {
   const _SwitcherMenu({
     required this.others,
     required this.onSelect,
+    required this.onCreate,
     required this.radius,
   });
 
   final List<Workspace> others;
   final ValueChanged<Workspace> onSelect;
 
+  /// Making a new one, from the bottom of this list.
+  ///
+  /// It used to be a permanent `+` on the bar, which spent a slot in a 340px
+  /// row on something done a handful of times a year, next to controls used
+  /// constantly. It belongs here: this menu is already the answer to "which
+  /// workspace", and "a new one" is one of the answers.
+  final VoidCallback onCreate;
+
   /// The enclosing pill's corner radius, so the tap highlight follows it.
   final Radius radius;
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<Workspace>(
+    // Nullable, with null meaning "a new one". `onSelected` never fires for a
+    // dismissed menu, so null here can only ever be the entry below.
+    return PopupMenuButton<Workspace?>(
       tooltip: 'Switch workspace',
       color: T.bgSolid,
       position: PopupMenuPosition.under,
       borderRadius: BorderRadius.only(topRight: radius, bottomRight: radius),
-      onSelected: onSelect,
+      onSelected: (ws) => ws == null ? onCreate() : onSelect(ws),
       itemBuilder: (context) => [
         for (final ws in others)
-          PopupMenuItem<Workspace>(
+          PopupMenuItem<Workspace?>(
             value: ws,
             height: 38,
             child: Row(
@@ -277,6 +286,25 @@ class _SwitcherMenu extends StatelessWidget {
               ],
             ),
           ),
+        // Last, and separated: everything above switches to something that
+        // already exists, this one makes something. Only entry in the menu
+        // that is a verb.
+        if (others.isNotEmpty) const PopupMenuDivider(),
+        const PopupMenuItem<Workspace?>(
+          value: null,
+          height: 38,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 8,
+                child: Icon(Icons.add_rounded, size: 14, color: T.muted),
+              ),
+              SizedBox(width: 10),
+              Text('Add workspace…',
+                  style: TextStyle(fontSize: 12.5, color: T.muted)),
+            ],
+          ),
+        ),
       ],
       // Smaller than the free-standing views ▾: this one is a detail on a
       // control that is already there, not a button in its own right.
@@ -301,17 +329,18 @@ class _Tab extends StatelessWidget {
     required this.others,
     required this.onTap,
     required this.onSelect,
+    required this.onCreate,
   });
 
   final Workspace workspace;
   final List<Workspace> others;
   final VoidCallback onTap;
   final ValueChanged<Workspace> onSelect;
+  final VoidCallback onCreate;
 
   @override
   Widget build(BuildContext context) {
     final color = T.parseHex(workspace.color);
-    final hasSwitcher = others.isNotEmpty;
     const radius = Radius.circular(7);
 
     return Padding(
@@ -333,11 +362,14 @@ class _Tab extends StatelessWidget {
                 borderRadius: BorderRadius.only(
                   topLeft: radius,
                   bottomLeft: radius,
-                  topRight: hasSwitcher ? Radius.zero : radius,
-                  bottomRight: hasSwitcher ? Radius.zero : radius,
+                  // Squared off because the switcher is always there now:
+                  // even a lone workspace has somewhere to go from this
+                  // menu, since making a new one is its last entry.
+                  topRight: Radius.zero,
+                  bottomRight: Radius.zero,
                 ),
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(9, 5, hasSwitcher ? 7 : 9, 5),
+                  padding: const EdgeInsets.fromLTRB(9, 5, 7, 5),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -364,21 +396,20 @@ class _Tab extends StatelessWidget {
                 ),
               ),
             ),
-            if (hasSwitcher) ...[
-              // Fixed height rather than a Border on the arrow: a stretched
-              // divider would need the Row to size on the cross axis, and this
-              // Row is deliberately unbounded there.
-              Container(
-                width: 1,
-                height: 16,
-                color: color.withValues(alpha: 0.4),
-              ),
-              _SwitcherMenu(
-                others: others,
-                onSelect: onSelect,
-                radius: radius,
-              ),
-            ],
+            // Fixed height rather than a Border on the arrow: a stretched
+            // divider would need the Row to size on the cross axis, and this
+            // Row is deliberately unbounded there.
+            Container(
+              width: 1,
+              height: 16,
+              color: color.withValues(alpha: 0.4),
+            ),
+            _SwitcherMenu(
+              others: others,
+              onSelect: onSelect,
+              onCreate: onCreate,
+              radius: radius,
+            ),
           ],
         ),
       ),

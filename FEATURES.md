@@ -796,6 +796,47 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
+- **0.22.0** — **Every action on a task is reachable with a thumb.** On a phone
+  the row's controls were drawn behind a hover state, and a fingertip does not
+  hover — so setting a reminder, flagging, parking, focusing, attaching and
+  deleting were not small, they were *absent*, with no gesture that would ever
+  reveal them. Touch now gets those actions as a real bar under the task title,
+  always visible and finger-sized, and **tapping a task expands it in place** to
+  show its notes rendered rather than previewed on one line. Editing moved to
+  its own pencil, since the tap it used to use now does something better. The
+  mouse is untouched: nine controls still fit across a 340px window precisely
+  because they stay invisible until the pointer is on the row.
+  **The task editor stopped looking like a different application.** It was an
+  `AlertDialog`, so it arrived as a small grey card in the middle of the screen
+  in stock Material purple and blue, cropped by the keyboard, with the priority
+  row cut off. It is now drawn from the same tokens as Settings, in the
+  workspace's own colour: full width and against the bottom edge on a phone,
+  a centred column on a desktop, pushed clear by the keyboard rather than
+  covered by it. Settings, the sound sheet and the block sublist now **slide up
+  and back down** instead of appearing and vanishing between two frames, all on
+  one shared duration — and the title bar's calendar, settings and headphone
+  buttons are finger-sized on touch, where they used to be 27pt targets.
+
+- **0.22.1** — **Navigation moved to where the thumb is.** The four content
+  views — Tasks, Notes, Parked, History — are a bar of icons along the bottom
+  edge on a phone, instead of a ▾ menu at the top corner that hid which views
+  even existed. **Swiping left and right** moves between them in the same order,
+  so the bar says what there is and the swipe is the cheap way through it.
+  Tasks is an entry in its own right rather than "nothing selected": the way
+  back should be as visible as the way in. The ends do not wrap.
+  **Writing a side thought no longer shows everybody your tasks.** The moment
+  this feature is most used is the one that matters — someone recommends a book
+  and you pull your phone out — and the inline field left the whole workspace on
+  screen behind the keyboard. On a phone it now takes the screen: nothing but
+  what you are writing, with "Save & another" for when the recommendations keep
+  coming.
+  **A note opened for reading or writing gets the screen too**, instead of a
+  paragraph of text squeezed between the workspace pill, the view bar and the
+  footer. And the permanent **+ for a new workspace is gone** from the bar,
+  where it spent a slot next to controls used constantly; it is now
+  "Add workspace…" at the bottom of the workspace menu, which was already the
+  place that answers "which workspace".
+
 - **0.21.0** — **Sync tells you when something changed instead of waiting to be
   asked.** The 60-second poll was the only thing that ever noticed a change from
   another device, so ticking a task off on the phone left the desktop stale for

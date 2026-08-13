@@ -47,12 +47,15 @@ import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
 import 'ui/session_view.dart';
 import 'ui/settings_sheet.dart';
+import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/task_composer.dart';
 import 'ui/task_drag.dart';
 import 'ui/sublist_sheet.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
+import 'ui/thought_sheet.dart';
+import 'ui/view_bar.dart';
 import 'ui/workspace_bar.dart';
 import 'ui/workspace_rail.dart';
 
@@ -239,6 +242,15 @@ class _WidgetShellState extends State<WidgetShell>
   /// barrier covers the title bar, and the title bar is how the window is
   /// dragged. See settings_sheet.dart.
   bool _settingsOpen = false;
+
+  /// The full-screen side-thought capture pane. Touch only - see
+  /// ui/thought_sheet.dart for why a phone does not get the inline field.
+  bool _thoughtCapture = false;
+
+  /// A journal entry is being read or edited, rather than the note list being
+  /// shown. On touch the shell hands that entry the whole screen - see
+  /// [_noteTakesScreen].
+  bool _noteOpen = false;
 
   /// The block whose sublist is open, and what that sheet is showing. Loaded
   /// rather than read off [AppState.sessionTasks]: the sheet is also reachable
@@ -1128,7 +1140,7 @@ class _WidgetShellState extends State<WidgetShell>
             child: _inset(
               LayoutBuilder(
                 builder: (context, constraints) {
-                  _layout = Layout(constraints.biggest);
+                  _layout = Layout(constraints.biggest, touch: !isDesktop);
                   return LayoutScope(layout: _layout, child: _shell(ws));
                 },
               ),
@@ -1162,22 +1174,39 @@ class _WidgetShellState extends State<WidgetShell>
 
         // Above the focus overlay, since picking something to listen to is
         // exactly what you do *after* picking a task.
-        if (_soundOpen)
-          SoundSheet(sound: widget.sound, accent: ws, onClose: _closeSound),
+        SheetTransition(
+          open: _soundOpen,
+          builder: (_) =>
+              SoundSheet(sound: widget.sound, accent: ws, onClose: _closeSound),
+        ),
 
-        if (_settingsOpen)
-          SettingsSheet(
+        // Above every other sheet: it is opened to hide what is behind it, so
+        // anything drawn over it would defeat the point.
+        SheetTransition(
+          open: _thoughtCapture,
+          builder: (_) => ThoughtSheet(
+            accent: ws,
+            onAdd: (text) => s.addThought(text),
+            onClose: _closeThoughtCapture,
+          ),
+        ),
+
+        SheetTransition(
+          open: _settingsOpen,
+          builder: (_) => SettingsSheet(
             sync: widget.sync,
             accent: ws,
             onClose: _closeSettings,
             startup: isDesktop && StartupSetting.supported ? _startup : null,
           ),
+        ),
 
         // Above the focus overlay for the same reason the sound sheet is: it
         // is opened from the tile that sits over the list, and it is about the
         // block you are in rather than about the task you are on.
-        if (_sublist != null)
-          SublistSheet(
+        SheetTransition(
+          open: _sublist != null,
+          builder: (_) => SublistSheet(
             event: _sublist!,
             subtitle: _describeEvent(_sublist!),
             color: s.colorForEvent(_sublist!),
@@ -1198,6 +1227,7 @@ class _WidgetShellState extends State<WidgetShell>
             },
             onClose: _closeSublist,
           ),
+        ),
 
         // Above everything, so the window stays draggable and closable during
         // focus mode and with the sheet open.
@@ -1397,10 +1427,56 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.showSession) s.toggleSession();
   }
 
+  /// Go to one view directly, rather than toggling towards it.
+  ///
+  /// The ▾ menu's entries are toggles - pressing the open one closes it - which
+  /// is right for a menu you opened on purpose. The bottom bar and the swipe are
+  /// *destinations*: tapping Notes must land on Notes whatever was showing, and
+  /// a swipe that toggled would go backwards half the time.
+  void _selectView(WorkspaceView? view) {
+    if (_clearOverlays()) return;
+    _showTasks();
+    switch (view) {
+      case null:
+        break;
+      case WorkspaceView.notes:
+        s.toggleJournal();
+      case WorkspaceView.parked:
+        s.toggleParked();
+      case WorkspaceView.history:
+        s.toggleHistory();
+      case WorkspaceView.thoughts:
+        s.toggleThoughts();
+    }
+  }
+
+  /// One step along [kBarViews]. Returns false at either end, so a swipe there
+  /// does nothing rather than wrapping around - a list with a first and last
+  /// entry that silently loops is one you cannot tell your position in.
+  bool _swipeView(int direction) {
+    final at = kBarViews.indexOf(_openView);
+    // Thoughts is not on the bar, so a swipe from it has no defined neighbour.
+    // Going back to the list is the honest answer.
+    if (at < 0) {
+      _showTasks();
+      return true;
+    }
+    final next = at + direction;
+    if (next < 0 || next >= kBarViews.length) return false;
+    _selectView(kBarViews[next]);
+    return true;
+  }
+
   /// Dismisses whatever is covering the content area. Returns true if it did,
   /// meaning the press was spent on getting out of the way rather than on the
   /// view the caller wanted.
   bool _clearOverlays() {
+    // First, because it is the top-most sheet and the one whose whole job is
+    // to be covering the others.
+    if (_thoughtCapture) {
+      _closeThoughtCapture();
+      return true;
+    }
     if (_settingsOpen) {
       _closeSettings();
       return true;
@@ -1419,6 +1495,16 @@ class _WidgetShellState extends State<WidgetShell>
     }
     return false;
   }
+
+  /// The capture pane. Focus mode goes first: it is an overlay of its own, and
+  /// leaving it up behind an opaque sheet means closing this one lands back
+  /// somewhere the user did not ask to be.
+  void _openThoughtCapture() {
+    _exitFocus();
+    setState(() => _thoughtCapture = true);
+  }
+
+  void _closeThoughtCapture() => setState(() => _thoughtCapture = false);
 
   Future<void> _openSettings() async {
     _closeSound();
@@ -1468,11 +1554,33 @@ class _WidgetShellState extends State<WidgetShell>
     // Narrow: the workspace bar across the top, with its two ▾ menus. Wide
     // enough and the same controls unroll into a rail down the left, where the
     // workspace list and the views are on screen instead of behind a press.
+    // The bar and the swipe are the same navigation, offered twice: the bar
+    // says which views exist, the swipe is the cheap way between them. Both
+    // walk kBarViews, so they cannot disagree about what is next to what.
+    //
+    // A horizontal drag is safe to claim here. The one other horizontal gesture
+    // in the list is the task Draggable, and that only exists when there is
+    // something beside the list to drop onto (see _plannable) - which needs a
+    // window far wider than any phone, so the two can never both be live.
+    final content = _layout.touch && !_layout.hasRail
+        ? GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: (details) {
+              final v = details.primaryVelocity ?? 0;
+              // Flung, not merely dragged a little sideways while scrolling.
+              if (v.abs() < 220) return;
+              _swipeView(v < 0 ? 1 : -1);
+            },
+            child: _contentArea(ws),
+          )
+        : _contentArea(ws);
+
     final middle = Column(
       children: [
-        if (!_layout.hasRail) _workspaceBar(ws),
-        if (s.hasLiveSession && !s.showSession) _sessionBanner(),
-        Expanded(child: _contentArea(ws)),
+        if (!_layout.hasRail && !_noteTakesScreen) _workspaceBar(ws),
+        if (s.hasLiveSession && !s.showSession && !_noteTakesScreen)
+          _sessionBanner(),
+        Expanded(child: content),
       ],
     );
 
@@ -1505,16 +1613,40 @@ class _WidgetShellState extends State<WidgetShell>
                 )
               : middle,
         ),
-        _footer(ws),
+        // Below the content, above the footer. The footer is about the global
+        // thought pile and stays the bottom-most thing in the window; this bar
+        // is about the workspace above it, so it sits between the two.
+        if (_layout.touch && !_layout.hasRail && !_noteTakesScreen)
+          ViewBar(
+            accent: ws,
+            openView: _openView,
+            onSelect: _selectView,
+            parkedReviewDue: s.groupsDueForReview.isNotEmpty,
+          ),
+        if (!_noteTakesScreen) _footer(ws),
       ],
     );
   }
+
+  /// A note being read or written gets the screen to itself on a phone.
+  ///
+  /// "Open a note" and "look at this workspace" are different jobs, and on a
+  /// 390pt screen the second one's chrome - the workspace pill, the view bar,
+  /// the thought footer - is most of the height around a paragraph of text.
+  /// Nothing is taken away: the note's own back arrow is the way out, and it is
+  /// the control the eye is already on.
+  ///
+  /// Not applied where there is room for both (the rail, the split), because
+  /// there the chrome is beside the note rather than crowding it.
+  bool get _noteTakesScreen =>
+      _layout.touch && !_layout.hasRail && s.showJournal && _noteOpen;
 
   /// Outside the rail and outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
   /// you happen to be in.
   Widget _footer(Color ws) => ThoughtFooter(
     key: _footerKey,
+    onCapture: _layout.touch ? _openThoughtCapture : null,
     thoughts: s.thoughts,
     workspaceColor: ws,
     blockedMessage: _blockedMessage,
@@ -1548,7 +1680,7 @@ class _WidgetShellState extends State<WidgetShell>
   Widget _calendar() {
     return LayoutBuilder(
       builder: (context, constraints) => LayoutScope(
-        layout: Layout(constraints.biggest),
+        layout: Layout(constraints.biggest, touch: !isDesktop),
         child: CalendarView(
           state: s,
           onClose: _toggleCalendar,
@@ -1590,7 +1722,7 @@ class _WidgetShellState extends State<WidgetShell>
                 width: Layout.calendarTaskPaneWidth,
                 child: LayoutBuilder(
                   builder: (context, constraints) => LayoutScope(
-                    layout: Layout(constraints.biggest),
+                    layout: Layout(constraints.biggest, touch: !isDesktop),
                     child: Column(
                       children: [
                         _workspaceBar(ws),
@@ -1806,6 +1938,10 @@ class _WidgetShellState extends State<WidgetShell>
     }
     if (s.showJournal) {
       return JournalView(
+        onEntryOpen: (open) {
+          if (_noteOpen == open) return;
+          setState(() => _noteOpen = open);
+        },
         configured: s.journalConfigured,
         locked: s.journalLocked,
         items: s.journal,
@@ -1883,6 +2019,7 @@ class _WidgetShellState extends State<WidgetShell>
     final draft = await showTaskComposer(
       context,
       initialText: _addController.text.trim(),
+      accent: s.workspaceColor,
     );
     if (draft == null || !mounted) return;
     _addController.clear();
@@ -1897,7 +2034,11 @@ class _WidgetShellState extends State<WidgetShell>
 
   /// The same form on a task that already exists, opened from its own text.
   Future<void> _openTask(Task t) async {
-    final draft = await showTaskComposer(context, existing: t);
+    final draft = await showTaskComposer(
+      context,
+      existing: t,
+      accent: s.workspaceColor,
+    );
     if (draft == null || !mounted) return;
     await s.saveTaskDetails(
       t,

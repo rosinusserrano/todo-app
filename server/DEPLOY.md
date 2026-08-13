@@ -283,11 +283,39 @@ to re-push.
 ## Upgrading
 
 ```sh
-cd todo-app && git pull
-sudo ./server/install-server.sh
+cd todo-app
+sudo server/update-server.sh
 ```
 
-The schema migrates itself on open (`addColumn` in `db.js`). Client and server
-versions may differ: unknown fields are dropped rather than rejected, so an
-older server stays usable against a newer app, and a column the server does not
-have yet syncs as null until it is upgraded.
+That is the whole thing. The script pulls, snapshots the database, stops the
+service, copies the new server into `/opt/todo-sync`, reinstalls production
+dependencies, starts it again and checks it answers — including that
+`/api/events` is present, which is how you can tell the new code is really the
+code that is running.
+
+`install-server.sh` still works and does the same file dance; `update-server.sh`
+is the one that also takes a backup first and tells you whether the thing came
+back up.
+
+**There is no migration step, and there should never be one.** The schema lives
+in `init()` in `db.js` and runs on every boot: `CREATE TABLE IF NOT EXISTS` for
+tables, `addColumn()` — which checks `pragma_table_info` first — for columns
+added later. Both are idempotent, so a database is migrated by *starting the new
+server on it*. Keep it that way: a server that migrates itself cannot be run
+against a database somebody forgot to migrate, and there is no second command
+whose absence is only discovered when a push starts failing with "no column
+named …".
+
+Client and server versions may differ: unknown fields are dropped rather than
+rejected, so an older server stays usable against a newer app, and a column the
+server does not have yet syncs as null until it is upgraded.
+
+### After upgrading to instant sync
+
+One thing the script cannot do for you, because it is on the proxy host rather
+than this one: **Caddy buffers proxied responses by default**, and `/api/events`
+is a response that deliberately never ends. Without `flush_interval -1` in the
+`reverse_proxy` block the stream is buffered into uselessness and every device
+silently falls back to polling once a minute. It fails *soft* — sync keeps
+working, it is just a minute slow — which is exactly why it is worth checking
+rather than waiting to notice.

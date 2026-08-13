@@ -6,7 +6,7 @@
 #
 # install-server.sh sets a deployment up; this is the one you run afterwards,
 # every time. It does the same file dance in the same order and nothing else:
-# pull, back up, stop, copy, install deps, start, check.
+# pull, stop, back up, copy, install deps, start, check.
 #
 # ---------------------------------------------------------------------------
 # What this does NOT have to do, and why
@@ -73,12 +73,18 @@ sudo -u "$(stat -c '%U' "$REPO")" git pull --ff-only
 BEFORE="$(git rev-parse --short HEAD)"
 say "Now at $BEFORE — $(git log -1 --pretty=%s)"
 
+# ----------------------------------------------------------------- stop
+
+say "Stopping $SERVICE"
+systemctl stop "$SERVICE"
+
 # ----------------------------------------------------------------- backup
 #
-# Before the stop, so the copy is of a database nothing is mid-write on. WAL
-# mode means sync.db alone is not the whole story, so `.backup` is used rather
-# than cp - it takes a consistent snapshot including anything still in the
-# write-ahead log.
+# *After* the stop, deliberately. WAL mode means sync.db alone is not the whole
+# story, and the cp fallback below cannot take a consistent copy of a database
+# that is being written to - which it would be, if this ran while the service
+# was still up. sqlite3 `.backup` could, but it is not installed everywhere, so
+# the order is chosen for the path that has the weaker tool.
 
 if [[ -f "$DB" ]]; then
   mkdir -p "$BACKUP_DIR"
@@ -89,6 +95,7 @@ if [[ -f "$DB" ]]; then
     sqlite3 "$DB" ".backup '$SNAPSHOT'"
   else
     warn "sqlite3 not installed; copying the db, wal and shm instead."
+    warn "  (sudo apt install sqlite3 gives a proper snapshot next time.)"
     cp "$DB" "$SNAPSHOT"
     [[ -f "$DB-wal" ]] && cp "$DB-wal" "$SNAPSHOT-wal"
     [[ -f "$DB-shm" ]] && cp "$DB-shm" "$SNAPSHOT-shm"
@@ -102,11 +109,6 @@ if [[ -f "$DB" ]]; then
 else
   warn "No database at $DB yet - nothing to back up."
 fi
-
-# ----------------------------------------------------------------- stop
-
-say "Stopping $SERVICE"
-systemctl stop "$SERVICE"
 
 # ----------------------------------------------------------------- files
 #
@@ -160,9 +162,25 @@ fi
 # ----------------------------------------------------------------- check
 
 say "Checking the server answers"
-HEALTH="$(curl -fsS --max-time 5 "http://127.0.0.1:$PORT/api/health" || true)"
-[[ "$HEALTH" == *'"service":"todo-widget-sync"'* ]] \
-  || die "Health check failed. Log: journalctl -u $SERVICE -n 40"
+
+# Polled, not asked once. `systemctl is-active` goes true the moment the process
+# is *spawned* - a Type=simple unit says nothing about whether Express has bound
+# the port yet - so a single curl here raced the startup and reported a
+# perfectly healthy deploy as a failure. That is the worst kind of false alarm:
+# it sends you looking for a problem that is not there while the update it just
+# performed is actually fine.
+HEALTH=""
+for _ in $(seq 1 30); do
+  HEALTH="$(curl -fsS --max-time 3 "http://127.0.0.1:$PORT/api/health" 2>/dev/null || true)"
+  [[ "$HEALTH" == *'"service":"todo-widget-sync"'* ]] && break
+  sleep 0.5
+done
+
+if [[ "$HEALTH" != *'"service":"todo-widget-sync"'* ]]; then
+  warn "No answer on 127.0.0.1:$PORT after 15s. Recent log:"
+  journalctl -u "$SERVICE" -n 40 --no-pager || true
+  die "Health check failed. The database is untouched; restore from $BACKUP_DIR if needed."
+fi
 echo "  health   $HEALTH"
 
 # The instant-sync route. Unauthenticated it must answer 401 - that is proof

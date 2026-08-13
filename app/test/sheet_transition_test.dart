@@ -128,6 +128,47 @@ void main() {
     expect(shift.translation.dy, moreOrLessEquals(0, epsilon: 0.001));
   });
 
+  testWidgets('a closed sheet does not collapse the Stack it sits in',
+      (tester) async {
+    // The regression, and it shipped: a Stack sizes itself to its
+    // *non-positioned* children, and the shell's Stack sits in a Scaffold
+    // body, which lays out **loose**. A closed sheet returning a bare
+    // SizedBox.shrink() therefore made the widest non-positioned child zero and
+    // collapsed the whole window to 0x0 - the app opened blank, with only the
+    // background and border still painting because those are drawn above it.
+    //
+    // The `Align` is what makes this test able to see it at all. The earlier
+    // tests here put the Stack straight under `home:`, which hands down *tight*
+    // constraints, and under tight constraints the collapse cannot happen -
+    // which is exactly why they all passed while the app was broken.
+    Widget shell(bool open) => MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: Stack(
+              children: [
+                const Positioned.fill(child: ColoredBox(color: Color(0xFF101014))),
+                SheetTransition(open: open, builder: (_) => const _FakeSheet()),
+              ],
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(shell(false));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(Stack).first),
+      isNot(Size.zero),
+      reason: 'a closed sheet must not size the Stack',
+    );
+
+    // And it must still be out of the way once it has finished closing.
+    await tester.pumpWidget(shell(true));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(shell(false));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(Stack).first), isNot(Size.zero));
+  });
+
   test('the sheet timings are shared, not per-panel', () {
     // Two panels animating at different speeds is the kind of difference
     // nobody can name and everybody notices.

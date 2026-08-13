@@ -105,9 +105,23 @@ class _SheetTransitionState extends State<SheetTransition>
     if (widget.open) _closed = widget.builder(context);
     final child = _closed;
 
-    // Nothing to show and nothing to finish showing. Not Positioned, so it
-    // simply takes no part in the Stack.
-    if (child == null) return const SizedBox.shrink();
+    // Nothing to show and nothing to finish showing.
+    //
+    // **Positioned, and that is load-bearing.** A Stack sizes itself to its
+    // *non-positioned* children: `width` starts at `constraints.minWidth` and
+    // grows to the widest of them. Under tight constraints that is harmless,
+    // but the shell's Stack sits in a Scaffold body, which lays out **loose** -
+    // so a bare `SizedBox.shrink()` here made the maximum zero and collapsed
+    // the entire window to 0x0. The background and border still painted, since
+    // they are drawn by the AnimatedContainer above; everything inside was
+    // clipped away. The app opened blank.
+    //
+    // A positioned child never contributes to that maximum, so with all
+    // children positioned the Stack falls back to `constraints.biggest` and
+    // fills the window as it did before this widget existed.
+    if (child == null) {
+      return const Positioned(width: 0, height: 0, child: SizedBox.shrink());
+    }
 
     return Positioned.fill(
       child: AnimatedBuilder(

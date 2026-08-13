@@ -80,11 +80,11 @@ systemctl stop "$SERVICE"
 
 # ----------------------------------------------------------------- backup
 #
-# *After* the stop, deliberately. WAL mode means sync.db alone is not the whole
-# story, and the cp fallback below cannot take a consistent copy of a database
-# that is being written to - which it would be, if this ran while the service
-# was still up. sqlite3 `.backup` could, but it is not installed everywhere, so
-# the order is chosen for the path that has the weaker tool.
+# *After* the stop, deliberately. The online backup API below can snapshot a
+# live database, so this is not strictly required - but a snapshot taken with
+# nothing writing is one fewer thing to reason about when you are restoring it
+# at two in the morning, and the stop costs nothing here because it has to
+# happen anyway.
 
 if [[ -f "$DB" ]]; then
   mkdir -p "$BACKUP_DIR"

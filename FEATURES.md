@@ -206,6 +206,13 @@ actually be crossed; it hangs from the button's *right* edge rather than being
 centred, because everything in this bar lives in its right-hand end and a
 centred panel would spill off a 340px window.
 
+**It keeps playing with the screen off.** On iPhone the sound survives locking
+the phone and switching to another app — which is the only way a two-hour
+concentration sound is any use, and it is not the default: an app that says
+nothing gets an audio session that the lock switch silences. The app asks for
+the playback session at launch but only *takes* it when you press play, so
+opening the widget never interrupts whatever you were already listening to.
+
 - The taskbar control is Windows-only and silently absent everywhere else.
 - Windows refuses to change a thumbnail toolbar while the window is hidden, and
   this widget lives in the tray, so the intended state is cached and re-applied
@@ -669,6 +676,22 @@ simply stretched.
 - **You can see the queue** — while the server is unreachable, the settings panel
   says how many changes are waiting ("3 changes waiting"), so a failed sync reads
   as *queued* rather than *lost*.
+- **Changes appear at once** — tick something off on the phone and the desktop
+  updates in about a second, rather than on the next poll. The server holds an
+  open connection to each running device and tells the *others* when your
+  account has moved; they then run the ordinary sync. Nothing about the data
+  travels down that connection — it is a nudge, not a second way for rows to
+  arrive — so a device that cannot hold it open (an older server, a proxy that
+  buffers, a phone in a tunnel) is exactly as correct as before, just up to a
+  minute slower. The settings panel says "Live." when it is connected.
+- **It notices when the server is not the one it was talking to** — a rebuilt
+  database, a restore from an older backup, or a different account at the same
+  address. Each device tracks which server and account its local rows were last
+  accepted by; when that stops matching it re-offers everything it has instead
+  of assuming a row it once uploaded is still there. Without this the two sides
+  could sit there permanently disagreeing and both look healthy: the device
+  believes every row is sent, the server has never heard of most of them, and a
+  new phone set up against it pulls the fragment and looks fine.
 - **Syncs on wake** — returning to the app pushes immediately instead of waiting
   out the poll. This is mostly for phones, which suspend timers in the background:
   a phone that was offline all night syncs on unlock, not a minute later. It is
@@ -772,6 +795,41 @@ reminders are both there now**, queued for 0.18.0.
 ---
 
 ## Changelog
+
+- **0.21.0** — **Sync tells you when something changed instead of waiting to be
+  asked.** The 60-second poll was the only thing that ever noticed a change from
+  another device, so ticking a task off on the phone left the desktop stale for
+  up to a minute. The server now keeps an open event stream per running device
+  (`GET /api/events`) and, whenever a push actually writes rows, tells that
+  account's *other* devices; they run the sync they would have run anyway. The
+  stream carries no rows at all — deliberately, so there is still exactly one
+  path data takes into the database and one place conflicts are resolved — which
+  is also why losing the connection costs latency and nothing else. The poll
+  stays underneath as the backstop, the device that pushed is left out of its own
+  broadcast, and a server without the route turns the feature off rather than
+  becoming a client that retries forever. Behind a reverse proxy it needs one
+  line of config (`flush_interval -1` in Caddy, `proxy_buffering off` in nginx);
+  without it, sync degrades to exactly the old behaviour rather than breaking.
+  **A device now knows which server its rows were accepted by.** The `dirty`
+  flag only ever meant "*a* server has taken this row", which is the same thing
+  as "this server has taken it" right up until the server changes — and then it
+  is silently wrong in the worst possible way. Repointing the app at a rebuilt
+  database left every local row simultaneously already-sent here and unheard-of
+  there, so nothing pushed them, ever; only rows edited afterwards went up. Both
+  ends stayed internally consistent, neither reported a problem, and a second
+  device set up against the new server dutifully pulled the fragment and looked
+  like sync was working. Two independent signals now catch it: the server's
+  cursor going *backwards* (impossible on a database that issued the old one) and
+  a stored fingerprint of the server address and account. Either one re-arms
+  every local row for upload. A re-arm that turns out to be unnecessary is
+  free — the merge already resolves ties in favour of the incumbent, so an
+  in-sync database writes nothing and wakes nobody.
+  **The concentration sounds keep playing when the phone locks.** iOS gives an
+  app that never says otherwise an audio session the lock switch silences, which
+  is right for a game and wrong for the one thing here whose whole job is to run
+  while you are not looking at the screen. The app now claims the playback
+  session and the background-audio entitlement — but only *activates* it when
+  you actually press play, so launching the widget does not stop your music.
 
 - **0.20.0** — **The pin stays pinned.** Always-on-top is a Windows style bit
   (`WS_EX_TOPMOST`) and it was set exactly once, at startup — but it is not ours

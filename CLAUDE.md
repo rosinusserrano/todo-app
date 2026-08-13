@@ -477,6 +477,13 @@ slow archive.org lookup from landing after the user moved on.
   reporting) are honoured there.
 - Synthesis runs on a background isolate via `compute` — on the main isolate it
   drops frames.
+- **iOS needs two things to keep playing with the screen off, and one alone does
+  nothing.** `UIBackgroundModes: audio` in `Info.plist` *permits* background
+  playback; the `AVAudioSession` category set in `AppDelegate.swift` is what
+  *asks* for it. Without the category the default is `.soloAmbient`, which the
+  lock switch silences. The category is only set, never activated — activation is
+  what interrupts other apps' audio, and libmpv does it when a source actually
+  starts, so launching the widget does not stop your music.
 
 ### Sync
 
@@ -488,6 +495,71 @@ that's the `onChangesApplied` callback wired up in `main()`.
 The offline queue is not a queue — it's the `dirty` column, which is why it
 survives a crash and needs no replay log. `pendingCount()` counts it and
 `describe()` surfaces it, so an unreachable server reads as queued, not lost.
+
+**`dirty` means "*a* server accepted this row", not "*this* server did."** That
+distinction cost 187 rows once: the sync database was rebuilt, every local row
+was already clean from the old one, so the client pushed nothing and the new
+server only ever received what happened to be edited afterwards. Both sides were
+internally consistent and permanently different, and a second device set up
+against the new server pulled the fragment and looked correct. Two signals now
+catch it, and they are separate because either can fire without the other:
+
+- **The cursor going backwards** (`SyncClient.syncOnce`). On a given server a
+  user's cursor only grows — `seq` is monotonic and rows are tombstoned, not
+  deleted — so an answer below what we sent is proof this is a different
+  database. Note `purgeUser` is the one thing that legitimately resets it, and a
+  re-arm is the right response there too.
+- **A fingerprint of address + account** (`kServerFingerprint`, checked in
+  `SyncService._reconcileFingerprint` right after `whoAmI`). Catches the swaps a
+  cursor cannot see: a different token at the same address, or a move to a
+  server that happens to be further along.
+
+Either re-arms every row via `LocalStore.markAllDirty()`. **A needless re-arm is
+free and that is what makes this safe to be aggressive about** — `mergeRow` gives
+ties to the incumbent, so an in-sync database writes nothing server-side, burns
+no `seq`, and re-broadcasts nothing. An absent fingerprint therefore re-arms too:
+a database that has never been checked cannot be distinguished from one that has
+been diverging for a month, and proving it costs one request.
+
+### Instant sync is a hint, not a channel
+
+`server/events.js` holds an SSE connection per running device, keyed by user, and
+`POST /api/sync` broadcasts to that user's *other* devices whenever the merge
+actually wrote something (`sync()` returns `merged` for exactly this; the route
+strips it from the response). `ChangeStream` on the client turns a hint into a
+`syncNow()`.
+
+**Nothing about the data travels down it.** That is the whole design constraint:
+rows enter the database through `SyncClient.syncOnce` and nowhere else, so there
+is still one merge, one conflict rule and one tombstone path. Consequences worth
+keeping:
+
+- **A dropped hint costs latency, nothing else** — the 60s poll is still running.
+  That is why there is no acknowledgement, no replay and no per-connection
+  cursor; none of it would ever earn its keep.
+- The hint's payload carries a cursor and `ChangeStream` **deliberately ignores
+  it**. It arrived outside the transaction that produced it; the sync it triggers
+  computes its own.
+- `onHint` calls `syncNow`, **not** `scheduleSync`. The 2s debounce exists to
+  coalesce *our own* typing, and a hint means the rows are already on the server —
+  debouncing it would add back the latency this exists to remove.
+- **A 404 turns the feature off for good** (`supported`), rather than retrying an
+  older server every two seconds forever. A 401/403 likewise stops: reconnecting
+  never mints a credential.
+- `X-Device-Id` is how a push avoids coming back to its own author. It is not a
+  credential and is not trusted for anything — the bearer token already
+  established *who* — so the worst a wrong one does is cost its owner one
+  redundant sync.
+- `resume()` drops the stream outright. A suspended process holds a socket the
+  other end abandoned and cannot know it: no packet says so, and the watchdog
+  that would notice was frozen too.
+- **Behind a reverse proxy this needs one line** (`flush_interval -1` in Caddy,
+  `proxy_buffering off` in nginx) or the stream is buffered into uselessness —
+  see `server/DEPLOY.md`. It fails *soft*: without it, sync is exactly what it
+  was before, one minute slower.
+- `ChangeStream.stop()` sets `_connected` directly instead of going through
+  `_setConnected`. Firing `onStateChanged` from a teardown means calling
+  `notifyListeners` on a `SyncService` that may be half way through `dispose()`.
 
 `SyncService.resume()` is called from `didChangeAppLifecycleState` on the shell,
 and exists because a suspended phone runs no timers. It is **rate-limited on

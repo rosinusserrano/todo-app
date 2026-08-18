@@ -188,28 +188,35 @@ Marco's list, in his order. Several of these may already be partly fixed by the
 **reproduce each on a build of current `main` before changing anything**, and
 say so if a report no longer reproduces.
 
-### 7. A horizontal swipe moves through time, not through modes  `[ ]`
+### 7. A horizontal swipe moves through time, not through modes  `[x]`
 
 Today `_stepMode` maps a swipe to D/W/Y. It should move the **period**: next /
 previous week in week view, day in day view, year in year view. D/W/Y stays on
 the toolbar, which is where it is visible anyway.
 
-- [ ] Repoint the swipe at the existing step-forward / step-back path.
-- [ ] Clamp nothing — time has no ends.
-- [ ] `CLAUDE.md` documents the old behaviour and its justification; rewrite
+- [x] Repoint the swipe at the existing step-forward / step-back path.
+- [x] Clamp nothing — time has no ends.
+- [x] `CLAUDE.md` documents the old behaviour and its justification; rewrite
       that paragraph rather than leaving it lying.
 
-### 8. The date label gets its own line  `[ ]`
+### 8. The date label gets its own line  `[x]`
 
 In day and week view the month and date are cut off. Put the label **below** the
 row with the arrows, in a smaller font, so the arrows keep their finger-sized
 targets and the label gets the full width.
 
-### 9. The event editor matches every other editor  `[ ]`
+### 9. The event editor matches every other editor  `[x]`
 
 Full width, against the bottom edge on a phone, drawn from `T.*` — the same
 treatment the task composer got in 0.22.0, which stopped it looking like a
 different application. No stock Material card.
+
+Done by **extracting** the composer's panel into `ui/form_sheet.dart` rather
+than copying it, since step 11 wanted the same thing: `showFormSheet` +
+`FormSheet`, now used by all three forms. Two bugs came out of it that were not
+on the list — the details card's "white rectangle" (step 11) turned out to be
+Material's `OverflowBar` claiming the height, and the event form's date/time row
+had been overflowing in a 340px window behind a dialog that clipped it.
 
 ### 10. Quick add: pick the block up, then drop it  `[ ]`
 
@@ -224,7 +231,7 @@ different application. No stock Material card.
       right edge steps the grid one day / one week, so a block can be moved
       across the boundary of what is on screen.
 
-### 11. Opening an event shows a full-width card, not a white rectangle  `[ ]`
+### 11. Opening an event shows a full-width card, not a white rectangle  `[x]`
 
 Reported: title, delete button, then a large empty white rectangle running to
 the bottom. Reproduce, find what is claiming that space (a description box with
@@ -237,14 +244,19 @@ Day and week views: a pinch changes how tall an hour is drawn. One stored value,
 clamped, remembered in `settings` like the other calendar prefs. Note it has to
 coexist with the vertical scroll and with the long-press-drag to create.
 
-### 13. Quick-add blocks that vanish  `[ ]`
+### 13. Quick-add blocks that vanish  `[x]` — withdrawn, and one real gap behind it
 
-Reported: blocks laid out with the bolt disappear after moving to the next week
-or the year view, and pressing the bolt again does not save them. The 0.23.1
-commit-rule fix addresses one cause of this; reproduce on current main, and if
-it survives, the suspects are (a) blocks held for a window that is no longer on
-screen, (b) a commit path that clears the list before the write completes.
-**This one is data loss — it gets a test either way.**
+**Not a bug.** Marco: "calendar entries are not disappearing; I simply had to
+scroll up." The blocks were where they were placed, above the scroll position.
+
+There *was* a real hole next to it, found while doing step 7 and fixed there:
+`commitPendingBlocks` ran from the calendar view's swipe handler, so *swiping*
+to another mode wrote the pending blocks while *tapping* D/W/Y did not - and
+step 7 was about to delete that swipe. The commit now lives on
+`AppState.setCalendarMode`, next to the one on `setTimeBlockCalendar`, where no
+caller can miss it. `test/quick_add_test.dart` pins both that and the fact that
+moving through *time* keeps blocks pending, since looking at next week is not
+leaving the sitting.
 
 ### 14. Side thoughts as a bubble  `[ ]`
 

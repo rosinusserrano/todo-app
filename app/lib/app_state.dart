@@ -1427,7 +1427,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// **Commits first**, for the same structural reason [setTimeBlockCalendar]
+  /// does: changing view is one of the ways a quick-add sitting ends, and the
+  /// rule has to live where it cannot be bypassed rather than at each call
+  /// site. It used to sit in the calendar view's own swipe handler, which meant
+  /// *swiping* to another mode wrote the blocks and *tapping* D/W/Y did not -
+  /// the same split that once lost an afternoon's planning through the block
+  /// strip. Nothing can be pending when the mode is off, so this costs nothing
+  /// the rest of the time.
   Future<void> setCalendarMode(CalendarViewMode mode) async {
+    await commitPendingBlocks();
     calendarMode = mode;
     await _store.setSetting(_kCalendarMode, mode.name);
     await refreshEvents();

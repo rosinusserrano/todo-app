@@ -28,8 +28,6 @@
 // rather than another section of the filter menu: the strip only exists while
 // the mode is on, and while it is on it is the answer to "what am I filling in".
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
@@ -190,22 +188,30 @@ class CalendarView extends StatelessWidget {
             onOff: () => state.setTimeBlockCalendar(null),
           ),
         Expanded(
-          // Swiping switches D/W/Y, the same gesture and the same reasoning as
-          // the swipe between Tasks/Notes/Parked/History: the segmented control
-          // says what there is, the swipe is the cheap way through it.
+          // Swiping moves through **time**: the next and previous week in the
+          // week view, day in the day view, year in the year view. It used to
+          // switch D/W/Y, which was the wrong axis - the mode is a thing you
+          // set once and read off the toolbar, while "what about next week" is
+          // the question asked twenty times in a sitting, and answering it
+          // meant reaching for the ‹ › at the top of the screen every time.
           //
           // Safe to claim on touch because the grid's own gestures are a
           // *vertical* scroll and a **long-press**-then-drag to create (see
           // time_grid.dart, where creating is split by input device precisely
           // so a one-finger drag can still scroll). A plain horizontal fling
           // belongs to nobody else.
+          //
+          // Unclamped, unlike the mode swipe it replaces: time has no ends.
           child: layout.touch
               ? GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onHorizontalDragEnd: (d) {
                     final v = d.primaryVelocity ?? 0;
                     if (v.abs() < 220) return;
-                    _stepMode(v < 0 ? 1 : -1);
+                    // Leftwards - the content sliding away to the left - is
+                    // forwards, which is the direction every calendar on a
+                    // phone agrees on.
+                    state.stepCalendar(v < 0 ? 1 : -1);
                   },
                   child: _grid(layout),
                 )
@@ -213,22 +219,6 @@ class CalendarView extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  /// One step along [CalendarViewMode.values]: day, week, year.
-  ///
-  /// Clamped rather than wrapped, for the same reason the view swipe is: a
-  /// three-way control that loops from the last back to the first is one you
-  /// cannot tell your position in without reading it.
-  void _stepMode(int direction) {
-    final at = CalendarViewMode.values.indexOf(state.calendarMode);
-    final next = at + direction;
-    if (next < 0 || next >= CalendarViewMode.values.length) return;
-    // Anything placed on the way out gets written - see the commit rule on
-    // AppState.commitPendingBlocks. Changing view is one of the ways the mode
-    // ends, and a block you laid down must not be lost by a swipe.
-    unawaited(state.commitPendingBlocks());
-    state.setCalendarMode(CalendarViewMode.values[next]);
   }
 
   /// The body for the current mode, at the current size.
@@ -491,6 +481,25 @@ class _Header extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(children: _whereRow(layout)),
+            // The label gets a line of its own, under the arrows.
+            //
+            // Between them it was one `Flexible` competing with a back arrow,
+            // two steppers and Today across 390pt, so "Tuesday, 18 August 2026"
+            // - the whole answer to where you are - ellipsed to a few
+            // characters. Given the full width it fits at a *smaller* size than
+            // it was being clipped at, and the arrows keep their finger-sized
+            // targets instead of being shaved to make room for it.
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: T.text,
+              ),
+            ),
             const SizedBox(height: 2),
             Row(children: _controlsRow(layout)),
           ],
@@ -583,11 +592,14 @@ class _Header extends StatelessWidget {
     );
   }
 
-  /// Where you are, and how to move: back out, step, the date, and Today.
+  /// How to move: back out, step, and Today.
   ///
-  /// The title gets the whole middle of its own row, so the full "August 2026"
-  /// fits and Today can be the word rather than the icon it degraded to when
-  /// there was no room for either.
+  /// The date itself is the line *underneath* this one (see [build]). It was in
+  /// the middle of this row, and even with a row to itself the four controls
+  /// around it left a day view's "Tuesday, 18 August 2026" a few characters -
+  /// so where-you-are now gets the full width and the controls keep their
+  /// finger-sized targets. Today stays the word rather than the icon it
+  /// degrades to when there is no room for either.
   List<Widget> _whereRow(Layout layout) => [
         _IconBtn(
           icon: Icons.arrow_back_rounded,
@@ -604,22 +616,7 @@ class _Header extends StatelessWidget {
           size: layout.tapTarget,
           iconSize: layout.actionIcon,
         ),
-        Flexible(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: T.text,
-              ),
-            ),
-          ),
-        ),
+        const SizedBox(width: 4),
         _IconBtn(
           icon: Icons.chevron_right,
           tooltip: 'Next',

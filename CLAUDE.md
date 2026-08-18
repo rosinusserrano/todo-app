@@ -457,11 +457,19 @@ time on one. The rules that are not obvious from the schema:
   controls on another and makes every target finger-sized out of the same
   change. `_IconBtn`, `_ModeSwitch` and `_FilterMenu` take optional sizes; null
   keeps the compact desktop shape.
-- **A horizontal swipe switches D/W/Y** (`_stepMode`), clamped rather than
-  wrapped. Safe to claim because the grid's own gestures are a vertical scroll
-  and a *long-press*-then-drag to create — creating is split by input device
-  precisely so a one-finger drag can still scroll, which leaves a plain
-  horizontal fling belonging to nobody.
+- **A horizontal swipe moves through time** — next/previous week in the week
+  view, day in the day view, year in the year view (`state.stepCalendar`), and
+  unclamped, because time has no ends. It used to switch D/W/Y, which was the
+  wrong axis: the mode is set once and read off the toolbar, while "what about
+  next week" is asked twenty times in a sitting and meant reaching for the ‹ ›
+  at the top of the screen each time. Safe to claim because the grid's own
+  gestures are a vertical scroll and a *long-press*-then-drag to create —
+  creating is split by input device precisely so a one-finger drag can still
+  scroll, which leaves a plain horizontal fling belonging to nobody.
+- **The date label is its own line on touch**, under the arrows rather than
+  between them. Sharing a row with a back arrow, two steppers and Today left a
+  day view's "Tuesday, 18 August 2026" a few characters wide; given the full
+  width it fits at a *smaller* size than it was being clipped at.
 - **Quick add holds blocks before writing them** (`AppState.pendingBlocks`).
   Tapping the grid with the bolt on places an adjustable hour; nothing reaches
   the database until the mode ends. They are deliberately not stored and not
@@ -469,13 +477,18 @@ time on one. The rules that are not obvious from the schema:
   should receive — which also means they do not survive the app closing, the
   right trade for something whose whole life is one sitting. **There is one
   commit rule and it is structural**: `commitPendingBlocks()` runs from
-  `_stepMode`, from `_toggleCalendar`, and — this is the load-bearing part —
-  from **`setTimeBlockCalendar` itself**, which is the only way the target ever
-  changes. It used to be a convention each call site had to remember, and the
+  `_toggleCalendar`, and — this is the load-bearing part — from
+  **`AppState.setCalendarMode`** and
+  **`setTimeBlockCalendar`** themselves — the only ways the view and the
+  target ever change. It used to be a convention each call site had to remember, and the
   block strip did not: its "Off" set the target directly, so the blocks outlived
   the mode with nothing to belong to and the calendar closing then discarded
   them, while its pick filed blocks laid out on one calendar under another's
-  name. Some exits committing and others discarding is how a user loses an
+  name; and the mode change was committed by the *swipe* handler in
+  `calendar_view.dart` but not by a *tap* on the same D/W/Y control, a split
+  that only closed when the swipe was repointed at time and the commit moved
+  onto `setCalendarMode`. Some exits committing and others discarding is how
+  a user loses an
   afternoon's planning, so the rule lives where it cannot be bypassed rather
   than where it has to be repeated. (Turning the mode *on* commits nothing —
   nothing can be pending with the mode off.) It clears the list *before*
@@ -803,6 +816,22 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   **not** as a `late final`: a sheet never opened never reads it from `build`,
   so a lazy field is first touched by `dispose`, where `vsync: this` looks up
   `TickerMode.of(context)` on a deactivated element and throws.
+- **Every *form* opens as the same panel** (`ui/form_sheet.dart`): the task
+  composer, the event editor and the event details card. `showFormSheet` is a
+  `showGeneralDialog` with the surface drawn from `T`, full width against the
+  bottom edge on touch and a centred column under a pointer, and `FormSheet` is
+  the titled body with its actions along the bottom. It started as `_Surface`
+  inside `task_composer.dart` and moved out when the second and third form
+  wanted it — a copy of a shape whose whole point is that every form looks the
+  same is the copy guaranteed to drift. Two things it fixes that Material's
+  `AlertDialog` caused: the panel is lifted by `viewInsets` so the last row of
+  controls is reachable with the keyboard up, and the actions are a `Wrap`, so
+  four finger-sized buttons take a second line instead of an `OverflowBar`
+  claiming the height and squeezing the card's own content into nothing (which
+  is what drew the "white rectangle" on a phone). `accent` is the workspace's
+  colour on a task and the *calendar's* on an event, so a form belongs to what
+  opened it. The `Layout` is passed **in**, not read from context: these are
+  routes, and a route sits above the shell's `LayoutScope`.
 - **Anything long-lived that covers the content area is a sheet in the shell's
   `Stack`, never a `showDialog` route.** A modal route's barrier covers the
   whole window — including the title bar — so an open dialog leaves the window

@@ -10,15 +10,25 @@
 // on this card and in the right-click / long-press menu that offers the same
 // four things without opening anything first.
 //
-// It stays a *dialog* rather than a sheet, unlike Settings and the sublist: it
-// is a glance that is gone in seconds, which is exactly the case the sheet rule
-// in main.dart carves out. Nothing here takes typing, so there is no state to
-// lose to the barrier.
+// It stays a modal *route* rather than a sheet in the shell's Stack, unlike
+// Settings and the sublist: it is a glance that is gone in seconds, which is
+// exactly the case the sheet rule in main.dart carves out. Nothing here takes
+// typing, so there is no state to lose to the barrier.
+//
+// It is drawn on the same panel as the two forms (form_sheet.dart) rather than
+// as an `AlertDialog`, and that is not only for the look. As a dialog its four
+// named actions went into Material's `OverflowBar` with a `Spacer` between
+// them, which on a phone gave the title, Delete, and then a tall empty slab of
+// Material's own surface running to the bottom of the screen - the card's own
+// content squeezed into nothing above it. The panel lays the actions out in a
+// Wrap that takes a second line when four finger-sized buttons do not fit.
 
 import 'package:flutter/material.dart';
 
+import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
+import '../form_sheet.dart';
 import '../markdown_text.dart';
 import 'time_grid.dart' show hhmm;
 
@@ -34,14 +44,15 @@ Future<EventAction?> showEventDetails(
   required Future<List<Task>> Function() loadTasks,
   required Future<List<Attachment>> Function() loadAttachments,
 }) {
-  return showDialog<EventAction>(
-    context: context,
-    builder: (context) => _DetailsDialog(
+  return showFormSheet<EventAction>(
+    context,
+    builder: (context, layout) => _DetailsDialog(
       event: event,
       calendarName: calendarName,
       color: color,
       loadTasks: loadTasks,
       loadAttachments: loadAttachments,
+      layout: layout,
     ),
   );
 }
@@ -91,6 +102,7 @@ class _DetailsDialog extends StatefulWidget {
     required this.color,
     required this.loadTasks,
     required this.loadAttachments,
+    required this.layout,
   });
 
   final CalendarEvent event;
@@ -98,6 +110,10 @@ class _DetailsDialog extends StatefulWidget {
   final Color color;
   final Future<List<Task>> Function() loadTasks;
   final Future<List<Attachment>> Function() loadAttachments;
+
+  /// Passed down rather than read from context - this widget is built by a
+  /// route, above the shell's LayoutScope.
+  final Layout layout;
 
   @override
   State<_DetailsDialog> createState() => _DetailsDialogState();
@@ -155,48 +171,45 @@ class _DetailsDialogState extends State<_DetailsDialog> {
     final tasks = _tasks;
     final attachments = _attachments;
 
-    return AlertDialog(
-      backgroundColor: T.bgSolid,
-      titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-      title: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // The calendar's colour, said the same way the block on the grid says
-          // it: a bar down the leading edge.
-          Container(
-            width: 3,
-            height: 30,
-            margin: const EdgeInsets.only(right: 9, top: 1),
-            decoration: BoxDecoration(
-              color: widget.color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  e.title,
-                  style: const TextStyle(fontSize: 15, height: 1.2),
-                ),
-                if (widget.calendarName.isNotEmpty)
-                  Text(
-                    widget.calendarName,
-                    style: const TextStyle(fontSize: 11, color: T.muted),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 320,
-        child: SingleChildScrollView(
+    final touch = widget.layout.touch;
+
+    return FormSheet(
+      // The calendar's own colour, so the card belongs to the block it was
+      // opened from - the same rule the editor and the composer follow.
+      accent: widget.color,
+      layout: widget.layout,
+      title: e.title,
+      onClose: () => Navigator.pop(context),
+      actions: [
+        FormSheet.dangerButton(
+          touch: touch,
+          onTap: () => Navigator.pop(context, EventAction.delete),
+        ),
+        FormSheet.plainButton(
+          touch: touch,
+          label: 'Todos',
+          onTap: () => Navigator.pop(context, EventAction.plan),
+        ),
+        FormSheet.saveButton(
+          touch: touch,
+          accent: widget.color,
+          label: 'Edit',
+          onTap: () => Navigator.pop(context, EventAction.edit),
+        ),
+      ],
+      child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Which calendar, under the title the panel is already showing.
+              if (widget.calendarName.isNotEmpty) ...[
+                _Line(
+                  icon: Icons.circle,
+                  iconColor: widget.color,
+                  text: widget.calendarName,
+                ),
+              ],
               _Line(
                 icon: Icons.schedule_rounded,
                 text: '$_when  ·  ${describeLength(e.end.difference(e.start))}',
@@ -253,34 +266,19 @@ class _DetailsDialogState extends State<_DetailsDialog> {
               ],
             ],
           ),
-        ),
       ),
-      actionsPadding: const EdgeInsets.fromLTRB(10, 0, 12, 10),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, EventAction.delete),
-          child: const Text('Delete',
-              style: TextStyle(color: T.danger, fontSize: 12.5)),
-        ),
-        const Spacer(),
-        TextButton(
-          onPressed: () => Navigator.pop(context, EventAction.plan),
-          child: const Text('Todos', style: TextStyle(fontSize: 12.5)),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, EventAction.edit),
-          child: const Text('Edit', style: TextStyle(fontSize: 12.5)),
-        ),
-      ],
     );
   }
 }
 
 class _Line extends StatelessWidget {
-  const _Line({required this.icon, required this.text});
+  const _Line({required this.icon, required this.text, this.iconColor});
 
   final IconData icon;
   final String text;
+
+  /// The calendar's colour on the line that names it; muted everywhere else.
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -289,8 +287,9 @@ class _Line extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 13, color: T.muted),
-          const SizedBox(width: 8),
+          Icon(icon, size: iconColor == null ? 13 : 9,
+              color: iconColor ?? T.muted),
+          SizedBox(width: iconColor == null ? 8 : 10),
           Expanded(
             child: Text(
               text,

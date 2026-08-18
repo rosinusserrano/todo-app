@@ -330,6 +330,12 @@ Three tiers, none of which need an account, an API key, or a licence:
     to scroll the day, which is the only way to reach the rest of it.
   - Creating only happens on **empty** grid. A click or press on an existing
     event opens that event and nothing else.
+- **The event form and the details card are the app's own panel**, not a
+  Material dialog: full width against the bottom edge on a phone, a centred
+  card on a desktop, in the colour of the calendar they belong to. On a phone
+  the card used to show its title, a Delete button and then a tall empty
+  rectangle running to the bottom of the screen, with everything it was meant
+  to be answering squeezed out of view.
 - **Click an entry to read it; right-click for what to do with it.** A plain
   click opens a **details card** — when it runs and for how long, its calendar,
   its reminder rule, the description, what is planned into it and what is
@@ -440,6 +446,14 @@ Three tiers, none of which need an account, an API key, or a licence:
   still reorders it; only a drag towards the calendar means "plan this". Like
   every other adaptation here this is a size, not a mode — there is nothing to
   switch on, and below that width the calendar behaves exactly as it always has.
+- **On a phone, swipe to move through time** — the next and previous week in
+  the week view, day in the day view, year in the year view. The swipe used to
+  change D/W/Y, which is the setting you touch once a session; where you are in
+  time is the question you ask twenty times, and it meant reaching for the ‹ ›
+  at the top of the screen each time. D/W/Y is still one tap on the toolbar.
+- **The date has a line of its own** under the arrows, so a day view says
+  "Tuesday, 18 August 2026" in full instead of clipping it to fit beside four
+  controls.
 - **The calendar fits the window you have.** Opening it never moves or resizes
   the widget. Instead the views change shape:
   - The **week stays a week** — seven real columns you can drag on — right down
@@ -867,6 +881,20 @@ reminders are both there now**, queued for 0.18.0.
   document — which the stored SHA-256 can prove, so a copy under a different
   name still counts and a different file is refused rather than quietly filed
   under the wrong name on one device.
+  **On a phone, swiping the calendar moves through time** rather than switching
+  day/week/year — the setting you change once a session was on the gesture you
+  make twenty times, while moving a week meant reaching for the ‹ › at the top
+  of the screen. **The date also gets a line of its own**, so a day view shows
+  "Tuesday, 18 August 2026" instead of clipping it beside four controls.
+  **Opening a calendar entry no longer shows a white rectangle.** The details
+  card and the event form were the last two Material dialogs in the app: on a
+  phone the card's four actions took the whole height and left the title, a
+  Delete button and a tall empty slab where the answers should have been. Both
+  now open as the same panel every other form uses — full width against the
+  bottom edge, in the colour of the calendar they belong to, pushed clear by
+  the keyboard rather than covered by it. The date and time buttons inside the
+  form also stop overflowing in a 340px window, which they had been doing
+  behind a dialog that clipped them silently.
 - **0.23.1** — **Fixes.** An edit made on a device in another timezone could
   lose to an *older* edit made elsewhere, and lose silently. Timestamps were
   written as a bare wall-clock reading with no timezone on it, so "which of

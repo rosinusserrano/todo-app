@@ -1,5 +1,11 @@
 // The form behind a drag on the grid, and behind tapping an existing event.
 //
+// It opens as the app's own panel (form_sheet.dart), not as an `AlertDialog`:
+// full width against the bottom edge on a phone, a centred column under a
+// pointer, in the colour of the calendar being filled in. It was the last form
+// in the app still arriving as a small grey Material card in stock purple and
+// blue - see the header of form_sheet.dart for what that cost on a phone.
+//
 // A drag has already said when, so the form opens with the times filled in and
 // the caret in the title - the one field that is required and the only thing
 // the drag could not have told us.
@@ -20,8 +26,10 @@ import 'dart:io' show File;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
+import '../form_sheet.dart';
 import 'time_grid.dart' show hhmm;
 
 /// What the form produced. [delete] is the one case that carries nothing else.
@@ -86,9 +94,9 @@ Future<EventEdit?> showEventForm(
   Future<List<Task>> Function()? loadTasks,
   Future<void> Function(Task, bool)? onPlanTask,
 }) {
-  return showDialog<EventEdit>(
-    context: context,
-    builder: (context) => _EventDialog(
+  return showFormSheet<EventEdit>(
+    context,
+    builder: (context, layout) => _EventDialog(
       existing: existing,
       calendars: calendars,
       nameFor: nameFor,
@@ -101,6 +109,7 @@ Future<EventEdit?> showEventForm(
       onRemoveAttachment: onRemoveAttachment,
       loadTasks: loadTasks,
       onPlanTask: onPlanTask,
+      layout: layout,
     ),
   );
 }
@@ -119,6 +128,7 @@ class _EventDialog extends StatefulWidget {
     required this.onRemoveAttachment,
     required this.loadTasks,
     required this.onPlanTask,
+    required this.layout,
   });
 
   final CalendarEvent? existing;
@@ -138,6 +148,10 @@ class _EventDialog extends StatefulWidget {
 
   /// Plan a task into this block, or take it out again.
   final Future<void> Function(Task, bool)? onPlanTask;
+
+  /// Passed down rather than read from context - this widget is built by a
+  /// route, above the shell's LayoutScope.
+  final Layout layout;
 
   @override
   State<_EventDialog> createState() => _EventDialogState();
@@ -323,16 +337,34 @@ class _EventDialogState extends State<_EventDialog> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.existing != null;
+    final touch = widget.layout.touch;
 
-    return AlertDialog(
-      backgroundColor: T.bgSolid,
-      title: Text(
-        editing ? 'Edit event' : 'New event',
-        style: const TextStyle(fontSize: 15),
-      ),
-      content: SizedBox(
-        width: 340,
-        child: SingleChildScrollView(
+    // The calendar being filled in, so the panel wears its colour - the same
+    // rule the task composer follows with the workspace's. Falls back to the
+    // accent when the uuid names a calendar that is not on the list, which is
+    // the just-deleted-underneath case.
+    final target =
+        widget.calendars.where((c) => c.uuid == _calendarUuid).firstOrNull;
+    final accent = target == null ? T.accent : widget.colorFor(target);
+
+    return FormSheet(
+      accent: accent,
+      layout: widget.layout,
+      title: editing ? 'Edit event' : 'New event',
+      onClose: () => Navigator.pop(context),
+      actions: [
+        if (editing)
+          FormSheet.dangerButton(
+            touch: touch,
+            onTap: () => Navigator.pop(context, const EventEdit.delete()),
+          ),
+        FormSheet.cancelButton(
+          touch: touch,
+          onTap: () => Navigator.pop(context),
+        ),
+        FormSheet.saveButton(touch: touch, accent: accent, onTap: _save),
+      ],
+      child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,25 +523,7 @@ class _EventDialogState extends State<_EventDialog> {
               ],
             ],
           ),
-        ),
       ),
-      actions: [
-        if (editing)
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(context, const EventEdit.delete()),
-            child: const Text('Delete',
-                style: TextStyle(color: T.danger, fontSize: 12.5)),
-          ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
-        ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Save', style: TextStyle(fontSize: 12.5)),
-        ),
-      ],
     );
   }
 
@@ -568,11 +582,21 @@ class _WhenRow extends StatelessWidget {
             ),
           ),
         ),
-        OutlinedButton(
-          onPressed: onDate,
-          child: Text(
-            '${at.day} ${_months[at.month - 1]} ${at.year}',
-            style: const TextStyle(fontSize: 12),
+        // Flexible, not fixed: the label plus a full date plus a time is about
+        // 344px of natural width, and the panel is 308 wide in a 340px window -
+        // so this row overflowed on the narrowest window the app supports, and
+        // did so behind an AlertDialog that clipped it rather than reporting
+        // it. The date is what gives, since it is the longer of the two and
+        // still readable shortened.
+        Expanded(
+          child: OutlinedButton(
+            onPressed: onDate,
+            child: Text(
+              '${at.day} ${_months[at.month - 1]} ${at.year}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
           ),
         ),
         if (onTime != null) ...[

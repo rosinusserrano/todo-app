@@ -126,6 +126,38 @@ void main() {
     expect(s.events.single.title, s.calendarName(first));
   });
 
+  test('changing the view writes what was placed', () async {
+    final s = await blocking();
+    s.placePendingBlock(at9);
+
+    // Tapping D/W/Y, not swiping. The commit used to live in the calendar
+    // view's swipe handler, so a *swipe* to another mode wrote the blocks and
+    // a *tap* on the same control did not - and the swipe now moves through
+    // time instead, which would have left no committing path at all. It lives
+    // on AppState.setCalendarMode now, where no caller can miss it.
+    await s.setCalendarMode(CalendarViewMode.year);
+
+    expect(s.pendingBlocks, isEmpty);
+    await s.setCalendarMode(CalendarViewMode.week);
+    expect(s.events, hasLength(1));
+  });
+
+  test('moving through time keeps them pending', () async {
+    final s = await blocking();
+    s.placePendingBlock(at9);
+
+    // Looking at next week is not leaving the sitting: the mode is still on
+    // and the target has not changed, so there is nothing to resolve. Coming
+    // back has to find them exactly where they were laid.
+    await s.stepCalendar(1);
+    await s.stepCalendar(-1);
+
+    expect(s.pendingBlocks, hasLength(1));
+    expect(s.pendingBlocks.single.start, at9);
+    await s.refreshEvents();
+    expect(s.events, isEmpty);
+  });
+
   test('turning the mode on commits nothing', () async {
     // Nothing can be pending with the mode off, so the commit on the way in is
     // a no-op rather than a surprise write.

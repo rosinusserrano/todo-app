@@ -137,9 +137,8 @@ class CalendarView extends StatelessWidget {
     if (state.timeBlocking) {
       // Turning the bolt off is what *materialises* what was placed - the
       // whole shape of the mode is "lay it out, look at it, then commit".
-      // Written before the target is cleared, because the blocks are titled
-      // after the calendar they were being placed on.
-      await state.commitPendingBlocks();
+      // The commit itself lives in setTimeBlockCalendar, so that the strip's
+      // own "Off" cannot take a different path than this one.
       await state.setTimeBlockCalendar(null);
       return;
     }

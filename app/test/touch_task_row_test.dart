@@ -22,12 +22,13 @@ import 'package:todo_widget/ui/markdown_text.dart';
 import 'package:todo_widget/ui/task_row.dart';
 
 void main() {
-  Task task({String notes = '', int priority = 0}) => Task(
+  Task task({String notes = '', int priority = 0, String? event}) => Task(
         uuid: 't1',
         workspaceUuid: 'ws',
         text: 'inspect the layers',
         notes: notes,
         priority: priority,
+        eventUuid: event,
         createdAt: nowStamp(),
         updatedAt: nowStamp(),
       );
@@ -41,6 +42,7 @@ void main() {
     VoidCallback? onOpen,
     VoidCallback? onFocus,
     Future<void> Function(bool)? onSetPriority,
+    bool dragHandle = false,
   }) =>
       MaterialApp(
         home: Scaffold(
@@ -56,6 +58,13 @@ void main() {
               onPark: (_) async {},
               onSetPriority: onSetPriority ?? (_) async {},
               onOpenAttachments: () {},
+              onUnplan: () async {},
+              dragHandle: dragHandle
+                  ? const Padding(
+                      padding: EdgeInsets.only(right: 4),
+                      child: Icon(Icons.drag_indicator, size: 14),
+                    )
+                  : null,
               // Defaulted rather than left null: a null onOpen is "this row
               // has no long form" (the history list), which would take the
               // pencil out of the bar and quietly weaken most of these tests.
@@ -112,6 +121,50 @@ void main() {
       );
       expect(target.width, greaterThanOrEqualTo(Layout.touchTargetSide));
       expect(target.height, greaterThanOrEqualTo(Layout.touchTargetSide));
+    });
+
+    testWidgets('the fullest row still fits the design width', (tester) async {
+      // The touch row draws its actions at [Layout.touchTargetSide] rather than
+      // the pointer size, so the bar is nearly twice as wide as the desktop
+      // one - and it has to survive the row that asks for the most: a reminder,
+      // a flag, attachments, an unplan, a park, focus, edit, an expander and
+      // delete. Nine fingertips is 360 units against a phone's ~340 (see
+      // UiScale), so this overflowed by 68 pixels and clipped its own delete
+      // button until the bar learned to wrap.
+      tester.view.physicalSize = const Size(T.designWidth, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(row(
+        touch: true,
+        of: task(notes: 'a note', priority: 1, event: 'e1'),
+        dragHandle: true,
+      ));
+      await tester.pumpAndSettle();
+
+      // A RenderFlex overflow is reported as an exception rather than a failed
+      // layout, so nothing else here would notice one.
+      expect(tester.takeException(), isNull);
+
+      // And it wrapped rather than dropping or shrinking anything.
+      for (final icon in [
+        Icons.notifications_none_rounded, // remind
+        Icons.flag_rounded, // priority, filled because this row is flagged
+        Icons.attach_file_rounded, // attachments
+        Icons.event_available_rounded, // unplan
+        Icons.inbox_rounded, // park
+        Icons.play_arrow_rounded, // focus
+        Icons.edit_outlined, // edit
+        Icons.keyboard_arrow_down_rounded, // expand the notes
+        Icons.close_rounded, // delete
+      ]) {
+        expect(find.byIcon(icon), findsOneWidget, reason: '$icon went missing');
+        final box = tester.getSize(find
+            .ancestor(of: find.byIcon(icon), matching: find.byType(SizedBox))
+            .first);
+        expect(box.width, greaterThanOrEqualTo(Layout.touchTargetSide),
+            reason: '$icon shrank below a fingertip');
+      }
     });
 
     testWidgets('an action actually fires when tapped', (tester) async {

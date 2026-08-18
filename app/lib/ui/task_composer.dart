@@ -307,7 +307,10 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                           context,
                           initial: _remindAt,
                         );
-                        if (at != null) setState(() => _remindAt = at);
+                        // The picker is a route, so the composer underneath it
+                        // can be gone by the time it answers - a back gesture
+                        // that pops both, or the shell clearing its overlays.
+                        if (at != null && mounted) setState(() => _remindAt = at);
                       },
                     ),
                   ],

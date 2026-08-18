@@ -11,10 +11,41 @@ const _uuid = Uuid();
 
 String newId() => _uuid.v4();
 
-/// Timestamps are RFC 3339 with an offset, matching what the Rust backend
+/// Timestamps are RFC 3339 **with an offset**, matching what the Rust backend
 /// wrote (`chrono::Local::now().to_rfc3339()`), so existing rows migrate
 /// without reformatting.
-String nowStamp() => DateTime.now().toIso8601String();
+///
+/// The offset has to be written explicitly, because Dart will not do it:
+/// `DateTime.now().toIso8601String()` appends `Z` for a UTC value and
+/// **nothing at all** for a local one, so it produced a naive wall-clock
+/// reading - `2026-08-14T10:40:25.991547` - that says nothing about which
+/// clock read it. That is not an instant, and last-write-wins needs an
+/// instant: a phone in New York editing a row at 09:30 (13:30 UTC) wrote a
+/// stamp that sorts *below* a desktop in Madrid that had edited it half an
+/// hour earlier at 15:00 (13:00 UTC), so the older edit won and the newer one
+/// was silently dropped. [compareStamps] was already written to parse rather
+/// than compare as text for exactly this reason - it just had no offset to
+/// read.
+///
+/// The wall-clock part is unchanged, which is what makes this safe to start
+/// doing to a database full of the old naive stamps: anything still comparing
+/// these as strings (the server's merge did until it learned to parse them)
+/// orders a new stamp against an old one exactly as it did before, while
+/// everything that parses now gets the real instant.
+String nowStamp() => stampOf(DateTime.now());
+
+/// [nowStamp] for an arbitrary time. Local reading plus the offset that was in
+/// force *at that time*, so a stamp written either side of a DST change
+/// carries its own offset rather than today's.
+String stampOf(DateTime at) {
+  final local = at.toLocal();
+  final offset = local.timeZoneOffset;
+  final sign = offset.isNegative ? '-' : '+';
+  final abs = offset.abs();
+  final hh = abs.inHours.toString().padLeft(2, '0');
+  final mm = (abs.inMinutes % 60).toString().padLeft(2, '0');
+  return '${local.toIso8601String()}$sign$hh:$mm';
+}
 
 /// Reminders and calendar events are stored as an instant, in UTC, unlike the
 /// local-time stamps above. Both are a moment ("in an hour", or the instant
@@ -411,8 +442,6 @@ class Task implements SyncRow {
 
   bool get isActive => completedAt == null && deletedAt == null;
 
-  bool get isParked => groupUuid != null;
-
   bool get isPlanned => eventUuid != null;
 
   bool get hasNotes => notes.trim().isNotEmpty;
@@ -436,8 +465,6 @@ class Task implements SyncRow {
 
   @override
   bool get isDeleted => deletedAt != null;
-
-  bool get isRecurring => recur != null;
 
   /// The occurrence that follows this one, or null when this task does not
   /// recur, has no reminder to count from, or carries a rule this build does
@@ -621,8 +648,6 @@ class Attachment implements SyncRow {
   /// Whichever row owns this attachment.
   String get ownerUuid => eventUuid ?? taskUuid;
 
-  bool get isForEvent => eventUuid != null;
-
   @override
   bool get isDeleted => deletedAt != null;
 
@@ -803,8 +828,6 @@ class SideThought implements SyncRow {
     required this.updatedAt,
     this.deletedAt,
   });
-
-  bool get isPending => resolvedAt == null && deletedAt == null;
 
   @override
   bool get isDeleted => deletedAt != null;

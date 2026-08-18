@@ -81,6 +81,60 @@ void main() {
     expect(s.events.map((e) => e.title).toSet(), {s.calendarName(target)});
   });
 
+  test('switching the target off from the strip writes what was placed',
+      () async {
+    // The strip's "Off" is a *second* way out of the mode, beside the bolt, and
+    // it used to set the target directly instead of going through the commit.
+    // The blocks then outlived the mode with nowhere to belong, and the
+    // calendar closing found no target and discarded them - an afternoon's
+    // planning lost by reaching for the wrong control. The rule now lives in
+    // setTimeBlockCalendar, so no caller can take a different path.
+    final s = await blocking();
+    s.placePendingBlock(at9);
+    s.placePendingBlock(at11);
+
+    await s.setTimeBlockCalendar(null);
+    await s.refreshEvents();
+
+    expect(s.timeBlocking, isFalse);
+    expect(s.pendingBlocks, isEmpty);
+    expect(s.events, hasLength(2), reason: 'placed blocks must survive the exit');
+  });
+
+  test('moving the target writes the blocks to the calendar they were laid on',
+      () async {
+    // Switching mid-mode is the other half of the same hole: committing after
+    // the target moved would file an afternoon planned on one calendar under
+    // another one's name.
+    final s = await freshState();
+    // Both calendars have to stay visible, or the target resolves to null and
+    // the commit correctly drops the blocks instead - a different test.
+    await s.saveWorkspace(name: 'Workout', color: '#7ee3a1');
+    await s.setCalendarScope(CalendarScope.all);
+    await s.refreshCalendars();
+
+    final first = s.visibleCalendars.first;
+    final second = s.visibleCalendars.firstWhere((c) => c.uuid != first.uuid);
+    await s.setTimeBlockCalendar(first.uuid);
+
+    s.placePendingBlock(at9);
+    await s.setTimeBlockCalendar(second.uuid);
+    await s.refreshEvents();
+
+    expect(s.events, hasLength(1));
+    expect(s.events.single.calendarUuid, first.uuid);
+    expect(s.events.single.title, s.calendarName(first));
+  });
+
+  test('turning the mode on commits nothing', () async {
+    // Nothing can be pending with the mode off, so the commit on the way in is
+    // a no-op rather than a surprise write.
+    final s = await freshState();
+    await s.setTimeBlockCalendar(s.visibleCalendars.first.uuid);
+    await s.refreshEvents();
+    expect(s.events, isEmpty);
+  });
+
   test('committing twice does not write them twice', () async {
     // Every exit path calls this, and more than one can fire on the way out -
     // switching mode and then closing the calendar, say.
@@ -141,9 +195,16 @@ void main() {
   test('losing the target drops the blocks rather than looping', () async {
     // The calendar can go away underneath the mode - unticked, scope narrowed,
     // workspace deleted. There is then nowhere honest to write them.
+    //
+    // Simulated by hiding the calendar, which is what actually makes
+    // [AppState.timeBlockCalendar] resolve to null: the setting still names it
+    // and it is no longer among the visible ones. Turning the mode *off*
+    // through the setter is a different thing entirely and commits - see the
+    // strip tests above.
     final s = await blocking();
     s.placePendingBlock(at9);
-    await s.setTimeBlockCalendar(null);
+    await s.toggleCalendarHidden(s.visibleCalendars.first.uuid);
+    expect(s.timeBlocking, isFalse, reason: 'the target is gone');
 
     await s.commitPendingBlocks();
     await s.refreshEvents();

@@ -205,7 +205,10 @@ class _EventDialogState extends State<_EventDialog> {
       firstDate: DateTime(current.year - 5),
       lastDate: DateTime(current.year + 5),
     );
-    if (picked == null) return;
+    // The picker is a route, so the editor underneath it can be gone by the
+    // time it answers - a back gesture that pops both, or the shell clearing
+    // its overlays.
+    if (picked == null || !mounted) return;
     setState(() {
       final moved = DateTime(
         picked.year,
@@ -232,7 +235,7 @@ class _EventDialogState extends State<_EventDialog> {
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     setState(() {
       final moved = DateTime(
         current.year,

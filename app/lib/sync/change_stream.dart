@@ -141,6 +141,19 @@ class ChangeStream {
 
       final response = await client.send(request);
 
+      // [stop] may have run while that was in the air. Closing the client does
+      // not cancel a request already sent, so without this the teardown is
+      // undone from underneath: _setConnected(true) fires onStateChanged into
+      // an owner that may be half way through dispose - the "ChangeNotifier
+      // used after being disposed" that stop() bends over backwards to avoid -
+      // and the listener attached below outlives the _lines that stop() has
+      // already cancelled, leaving a live stream to a server we have finished
+      // with quietly calling syncNow.
+      if (!_running) {
+        client.close();
+        return;
+      }
+
       if (response.statusCode == 404 || response.statusCode == 501) {
         // An older server. Not an error, just a server without the feature.
         _supported = false;

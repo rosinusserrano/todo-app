@@ -1266,11 +1266,22 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Turn the mode on for one calendar, or off with null.
+  /// Turn the mode on for one calendar, off with null, or move it to another.
   ///
   /// Device-local like the other calendar prefs: which calendar you are filling
   /// in right now is about this sitting, not about the account.
+  ///
+  /// **Commits first, always**, because this is the only way the target ever
+  /// changes and [commitPendingBlocks] writes whatever is placed against the
+  /// target *at the moment it runs*. Leaving that to the call sites meant the
+  /// bolt committed and the block strip did not: turning the mode off from the
+  /// strip left the blocks behind with no target, and the calendar closing then
+  /// found none and discarded them - an afternoon's planning gone for picking
+  /// the wrong control. Switching target had the matching bug, writing blocks
+  /// laid out on one calendar onto another under its name. Turning the mode
+  /// *on* commits nothing, because nothing can be pending with the mode off.
   Future<void> setTimeBlockCalendar(String? uuid) async {
+    await commitPendingBlocks();
     timeBlockCalendarUuid = uuid;
     await _store.setSetting(_kCalendarBlock, uuid ?? '');
     notifyListeners();

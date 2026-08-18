@@ -10,6 +10,13 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // flutter_local_notifications schedules against java.time, which is API
+        // 26+; this back-ports it so the reminders that mobile exists for can be
+        // handed to the OS on the phones the app still supports. Without it the
+        // Android build does not merely lack notifications, it **fails**:
+        // ":flutter_local_notifications requires core library desugaring to be
+        // enabled for :app". Nothing caught that, because CI builds iOS only.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -32,6 +39,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // The back-port itself. 2.1.4 is the floor flutter_local_notifications 22
+    // asks for.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {

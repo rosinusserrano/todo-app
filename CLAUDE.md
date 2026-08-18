@@ -105,6 +105,27 @@ to collide. Every row carries `updated_at` and `deleted_at`; deletes are
 **tombstones**, so a removal actually propagates instead of looking like a row
 the peer never saw.
 
+**`updated_at` is RFC 3339 *with an offset*, and the offset is the whole point.**
+`nowStamp` builds it by hand (`stampOf`) because Dart will not:
+`DateTime.now().toIso8601String()` appends `Z` for a UTC value and *nothing* for
+a local one, so every stamp used to be a naive wall-clock reading that said
+nothing about which clock read it. Last-write-wins then compared clock faces, and
+a phone in New York editing at 09:30 (13:30 UTC) lost to a desktop in Madrid that
+had edited half an hour *earlier* at 15:00 (13:00 UTC) — a silently dropped edit,
+and exactly what `compareStamps` had been written to prevent; it just had no
+offset to read. Two things follow:
+
+- **The wall-clock part is unchanged**, which is what made this safe to start
+  doing to a database full of the old naive stamps: text ordering of a new stamp
+  against an old one is what it always was.
+- **The server's merge parses instants only when *both* stamps carry a zone**
+  (`compareStamps` in `db.js`), and falls back to text otherwise. It must: an
+  offsetless stamp is resolved by `Date.parse` in the *server's* timezone, so on
+  a UTC server an old `T15:00` row reads as 15:00Z and the same client's next
+  edit at `T15:05+02:00` (13:05Z) looks two hours older and gets rejected — and
+  the client clears `dirty` on push whatever the merge decided, so it would never
+  be retried. Rows heal as they are rewritten.
+
 State flags rather than separate tables:
 
 - `completed_at IS NULL` → active task; non-null → done (shown in History).
@@ -376,11 +397,22 @@ time on one. The rules that are not obvious from the schema:
   synced — an unfinished thought about Tuesday is not something another device
   should receive — which also means they do not survive the app closing, the
   right trade for something whose whole life is one sitting. **There is one
-  commit rule and every exit uses it**: `commitPendingBlocks()` runs from the
-  bolt going off, from `_stepMode`, and from `_toggleCalendar`. Some exits
-  committing and others discarding is how a user loses an afternoon's planning.
-  It clears the list *before* awaiting the writes, so a missing target drops
-  them instead of retrying forever. On the block itself: tap removes (nothing is
+  commit rule and it is structural**: `commitPendingBlocks()` runs from
+  `_stepMode`, from `_toggleCalendar`, and — this is the load-bearing part —
+  from **`setTimeBlockCalendar` itself**, which is the only way the target ever
+  changes. It used to be a convention each call site had to remember, and the
+  block strip did not: its "Off" set the target directly, so the blocks outlived
+  the mode with nothing to belong to and the calendar closing then discarded
+  them, while its pick filed blocks laid out on one calendar under another's
+  name. Some exits committing and others discarding is how a user loses an
+  afternoon's planning, so the rule lives where it cannot be bypassed rather
+  than where it has to be repeated. (Turning the mode *on* commits nothing —
+  nothing can be pending with the mode off.) It clears the list *before*
+  awaiting the writes, so a missing target drops them instead of retrying
+  forever. Note that "the target went away underneath" — unticked, scope
+  narrowed, workspace deleted — is a *different* state from the mode being
+  turned off, and only the first one drops blocks; `test/quick_add_test.dart`
+  pins both. On the block itself: tap removes (nothing is
   written yet, so a mis-tap costs one tap), long-press-drag moves (a plain drag
   would make the grid unscrollable wherever a block sat), and the bottom grip
   resizes on a plain vertical drag — safe without the long press because the

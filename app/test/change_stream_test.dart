@@ -211,6 +211,35 @@ void main() {
     await server.stop();
   });
 
+  test('stopping mid-connect does not land a connection afterwards', () async {
+    // stop() closes the client, but a request already sent is allowed to
+    // finish - so the response can arrive after the teardown. Landing it would
+    // fire onStateChanged into an owner that may be disposing (the crash stop()
+    // is written to avoid) and attach a listener stop() has no way to cancel,
+    // leaving a live stream to a server we are done with.
+    final server = await _EventServer.start();
+    var states = 0;
+    final stream = ChangeStream(
+      baseUrl: server.url,
+      deviceId: 'this-device',
+      bearer: () async => 'a-token',
+      onHint: () {},
+      onStateChanged: () => states++,
+    );
+
+    stream.start();
+    // No `await tick()`: stop while the connect is still in the air, which is
+    // what saving new sync settings or closing the app does.
+    await stream.stop();
+    states = 0;
+
+    await tick(600);
+    expect(stream.connected, isFalse, reason: 'the late response must not land');
+    expect(states, 0, reason: 'nothing may be reported after the teardown');
+
+    await server.stop();
+  });
+
   test('no credential means no connection attempt', () async {
     final server = await _EventServer.start();
     final stream = ChangeStream(

@@ -360,6 +360,45 @@ export function purgeUser(db, userId) {
   return run();
 }
 
+/** Whether a stamp says which clock read it: a trailing `Z` or `±HH:MM`. */
+function hasZone(s) {
+  return /(?:Z|[+-]\d{2}:\d{2})$/.test(s);
+}
+
+/**
+ * Order two RFC 3339 stamps, newest-positive - as *instants* when both of them
+ * say what timezone they were written in, and as text when either does not.
+ *
+ * Text order is only the same as time order while every stamp carries the same
+ * offset, and these do not: they are written as the local reading plus the
+ * writing device's offset, so a phone that has flown somewhere starts pushing
+ * `T09:30...-04:00` at a moment a desktop back home would call `T15:30+02:00`.
+ * Compared as text the phone's newer edit sorts below the desktop's older one
+ * and loses the merge - a silent lost update rather than a conflict anyone
+ * sees. That is what comparing instants fixes.
+ *
+ * **Both** stamps have to carry a zone before that is allowed, and the reason
+ * is the upgrade. Rows written before the client carried an offset hold a naive
+ * wall-clock reading, and `Date.parse` resolves those in *this server's*
+ * timezone - which is not the writer's. On a UTC server an old `T15:00` row
+ * reads as 15:00Z, so the same client's next edit at `T15:05+02:00` (13:05Z)
+ * looks two hours *older*, gets rejected, and is lost: the client clears
+ * `dirty` on push whatever the merge decided, so it is never retried. Falling
+ * back to text order there is exactly what this function did before it learned
+ * to parse anything, and it is right for the same reason it always was - the
+ * wall-clock part of a stamp did not change, so an old row and a new one still
+ * order against each other correctly. Rows heal as they are rewritten: once
+ * both sides carry a zone, the instant comparison takes over.
+ */
+function compareStamps(a, b) {
+  if (hasZone(a) && hasZone(b)) {
+    const pa = Date.parse(a);
+    const pb = Date.parse(b);
+    if (!Number.isNaN(pa) && !Number.isNaN(pb)) return pa - pb;
+  }
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
  * Merge one incoming row, last-write-wins on `updated_at`.
  * Returns true if the row was actually written.
@@ -372,7 +411,9 @@ function mergeRow(db, table, userId, row) {
 
   // Ties go to the incumbent: a device replaying an unchanged row must not
   // churn the seq and re-broadcast itself to every other peer.
-  if (existing && !(row.updated_at > existing.updated_at)) return false;
+  if (existing && compareStamps(row.updated_at, existing.updated_at) <= 0) {
+    return false;
+  }
 
   const seq = nextSeq(db);
   const cols = ['uuid', 'user_id', ...fields, 'updated_at', 'deleted_at', 'seq'];
@@ -400,15 +441,24 @@ function mergeRow(db, table, userId, row) {
  * in_progress = 1 on *different* uuids, so per-row LWW leaves both set. Resolve
  * it the same way the rest of the merge resolves conflicts - newest write wins,
  * everything older gets cleared.
+ *
+ * The ordering is done here rather than in SQL because SQLite would order these
+ * stamps as text, and [compareStamps] is what makes two devices in different
+ * timezones agree on which of them focused something more recently. `uuid` is
+ * the tiebreak, so the survivor is deterministic when both stamps are the same
+ * instant.
  */
 function enforceSingleInProgress(db, userId) {
   const flagged = db
     .prepare(
       `SELECT uuid, updated_at FROM tasks
-        WHERE user_id = ? AND in_progress = 1 AND deleted_at IS NULL
-        ORDER BY updated_at DESC, uuid DESC`
+        WHERE user_id = ? AND in_progress = 1 AND deleted_at IS NULL`
     )
-    .all(userId);
+    .all(userId)
+    .sort(
+      (x, y) =>
+        compareStamps(y.updated_at, x.updated_at) || (x.uuid < y.uuid ? 1 : -1)
+    );
 
   if (flagged.length <= 1) return;
 

@@ -352,9 +352,17 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                   ),
                 ),
 
+              // Full width, unlike the notes above, which line up under the
+              // title. The bar is a toolbar for the row rather than a
+              // continuation of its text, and the indent was costing it a
+              // whole tap target: at [_textInset] a seven-action row wrapped
+              // its delete onto a line of its own with the width to hold it
+              // sitting empty alongside. The icons carry their own padding
+              // inside a [Layout.tapTarget] box, so the first glyph still
+              // lands under the tick box rather than against the edge.
               if (touch)
                 Padding(
-                  padding: EdgeInsets.only(left: _textInset(high) - 6, top: 2),
+                  padding: const EdgeInsets.only(top: 2),
                   child: _TouchActions(
                     task: widget.task,
                     accent: widget.accent,
@@ -449,8 +457,7 @@ class _TouchActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
+    final leading = <Widget>[
         if (onReminder != null)
           _TouchAction(
             key: bellKey,
@@ -514,10 +521,9 @@ class _TouchActions extends StatelessWidget {
             color: T.muted,
             onPressed: onEdit!,
           ),
+    ];
 
-        // Pushed to the far end rather than sitting next to the others: it is
-        // the one press here with nothing behind it, and a fingertip is wide.
-        const Spacer(),
+    final trailing = <Widget>[
         if (onToggleExpanded != null)
           _TouchAction(
             layout: layout,
@@ -535,7 +541,41 @@ class _TouchActions extends StatelessWidget {
           color: T.danger,
           onPressed: onDelete,
         ),
-      ],
+    ];
+
+    // A fingertip is [Layout.touchTargetSide] wide and there are up to nine of
+    // these, which is more than a phone has room for on one line: every phone
+    // lays out at about [T.designWidth] units (that is what [UiScale] is for),
+    // and nine times forty overruns it before the indent under the title is
+    // counted. A row that asked for the lot - planned, flagged, with notes -
+    // overflowed by 68 pixels and clipped its own delete button.
+    //
+    // So the bar wraps rather than shrinking: the alternative is a tap target
+    // below a fingertip, and this whole file exists because actions that cannot
+    // be hit reliably are actions the phone does not have. Measured from its
+    // own box rather than [Layout], the way the time grid picks its geometry -
+    // the bar is indented under the title, so the window's width is not the
+    // width it was given.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final needed = (leading.length + trailing.length) * layout.tapTarget;
+        if (needed <= constraints.maxWidth) {
+          return Row(
+            children: [
+              ...leading,
+              // Pushed to the far end rather than sitting next to the others:
+              // it is the one press here with nothing behind it, and a
+              // fingertip is wide.
+              const Spacer(),
+              ...trailing,
+            ],
+          );
+        }
+        // Wrapped, the delete is simply last. It keeps the gap that sets it
+        // apart whenever the final line is not full, and there is nowhere
+        // further from the reaching thumb to put it.
+        return Wrap(children: [...leading, ...trailing]);
+      },
     );
   }
 }

@@ -796,26 +796,38 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
-- **0.22.0** — **Every action on a task is reachable with a thumb.** On a phone
-  the row's controls were drawn behind a hover state, and a fingertip does not
-  hover — so setting a reminder, flagging, parking, focusing, attaching and
-  deleting were not small, they were *absent*, with no gesture that would ever
-  reveal them. Touch now gets those actions as a real bar under the task title,
-  always visible and finger-sized, and **tapping a task expands it in place** to
-  show its notes rendered rather than previewed on one line. Editing moved to
-  its own pencil, since the tap it used to use now does something better. The
-  mouse is untouched: nine controls still fit across a 340px window precisely
-  because they stay invisible until the pointer is on the row.
-  **The task editor stopped looking like a different application.** It was an
-  `AlertDialog`, so it arrived as a small grey card in the middle of the screen
-  in stock Material purple and blue, cropped by the keyboard, with the priority
-  row cut off. It is now drawn from the same tokens as Settings, in the
-  workspace's own colour: full width and against the bottom edge on a phone,
-  a centred column on a desktop, pushed clear by the keyboard rather than
-  covered by it. Settings, the sound sheet and the block sublist now **slide up
-  and back down** instead of appearing and vanishing between two frames, all on
-  one shared duration — and the title bar's calendar, settings and headphone
-  buttons are finger-sized on touch, where they used to be 27pt targets.
+- **0.23.1** — **Fixes.** An edit made on a device in another timezone could
+  lose to an *older* edit made elsewhere, and lose silently. Timestamps were
+  written as a bare wall-clock reading with no timezone on it, so "which of
+  these two edits is newer" was answered by comparing the two clock faces:
+  a phone in New York editing at 09:30 lost to a desktop in Madrid that had
+  edited half an hour *earlier* at 15:00. Stamps now carry their offset and
+  both the app and the server compare them as real instants. Existing rows are
+  unaffected — the clock-face part of a stamp is unchanged, so nothing reorders.
+  **The action bar on a phone no longer runs off the edge of the screen.** A
+  task with a reminder, a flag, an attachment, a plan and notes asked for nine
+  finger-sized controls on a row about 340 units wide; the last of them, delete,
+  was clipped. The bar now starts at the edge of the row rather than indented
+  under the title, which is a whole control's worth of room back, and wraps to a
+  second line rather than shrinking targets below a fingertip when even that is
+  not enough.
+  **Quick add no longer loses an afternoon's planning to the wrong control.**
+  Blocks laid out with the bolt were written when the bolt went off, but turning
+  the mode off from the calendar strip instead left them behind with nothing to
+  belong to, and closing the calendar then discarded them; switching the strip
+  to another calendar filed them under that one's name. Committing now happens
+  wherever the target changes, so there is no way out of the mode that drops
+  them.
+  **Dragging a quick-add block works again.** Long-press-dragging one moved it
+  by the whole distance travelled *on every frame*, so it shot away from the
+  finger, and the grip at the bottom ignored anything slower than a flick.
+  **Android builds again.** The build had been failing outright - reminders need
+  library desugaring switched on, and the Gradle plugin the project had moved to
+  cannot compile several of its own dependencies. Nothing caught it because CI
+  builds iOS only.
+  Also: the sync event stream no longer reports a connection that arrives after
+  it was told to stop, and the two date pickers no longer risk a crash when the
+  sheet under them closes first.
 
 - **0.23.0** — **The calendar fits on a phone.** Its toolbar was one row trying
   to hold nine controls across 390pt, and what got squeezed was the label saying
@@ -851,6 +863,27 @@ reminders are both there now**, queued for 0.18.0.
   where it spent a slot next to controls used constantly; it is now
   "Add workspace…" at the bottom of the workspace menu, which was already the
   place that answers "which workspace".
+
+- **0.22.0** — **Every action on a task is reachable with a thumb.** On a phone
+  the row's controls were drawn behind a hover state, and a fingertip does not
+  hover — so setting a reminder, flagging, parking, focusing, attaching and
+  deleting were not small, they were *absent*, with no gesture that would ever
+  reveal them. Touch now gets those actions as a real bar under the task title,
+  always visible and finger-sized, and **tapping a task expands it in place** to
+  show its notes rendered rather than previewed on one line. Editing moved to
+  its own pencil, since the tap it used to use now does something better. The
+  mouse is untouched: nine controls still fit across a 340px window precisely
+  because they stay invisible until the pointer is on the row.
+  **The task editor stopped looking like a different application.** It was an
+  `AlertDialog`, so it arrived as a small grey card in the middle of the screen
+  in stock Material purple and blue, cropped by the keyboard, with the priority
+  row cut off. It is now drawn from the same tokens as Settings, in the
+  workspace's own colour: full width and against the bottom edge on a phone,
+  a centred column on a desktop, pushed clear by the keyboard rather than
+  covered by it. Settings, the sound sheet and the block sublist now **slide up
+  and back down** instead of appearing and vanishing between two frames, all on
+  one shared duration — and the title bar's calendar, settings and headphone
+  buttons are finger-sized on touch, where they used to be 27pt targets.
 
 - **0.21.0** — **Sync tells you when something changed instead of waiting to be
   asked.** The 60-second poll was the only thing that ever noticed a change from

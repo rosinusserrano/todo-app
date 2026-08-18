@@ -82,12 +82,6 @@ class Layout {
   /// button around a 14px icon reads as a mis-click waiting to happen.
   double get actionIcon => touch ? 20.0 : 15.0;
 
-  /// Whether an action may be revealed by hovering.
-  ///
-  /// False on touch, and every hover-gated control has to ask - there is no
-  /// hover to reveal it, so "shown on hover" means "never shown".
-  bool get canHover => !touch;
-
   // ------------------------------------------------------------------- rail
 
   /// The workspace bar, unrolled down the left edge.

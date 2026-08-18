@@ -286,4 +286,33 @@ void main() {
     expect(compareStamps('2026-07-21T09:00:00+02:00', '2026-07-21T08:00:00Z'),
         lessThan(0));
   });
+
+  test('a written stamp carries the offset compareStamps needs', () {
+    // The bug this pins: `DateTime.now().toIso8601String()` writes no offset at
+    // all for a local value, so every stamp was a naive wall-clock reading and
+    // the comparison above had nothing to work with. Without the offset a
+    // device in another timezone loses its newer edits to an older one.
+    final stamp = nowStamp();
+    expect(stamp, matches(r'[+-]\d{2}:\d{2}$'));
+    expect(DateTime.tryParse(stamp), isNotNull);
+  });
+
+  test('stampOf keeps the instant across timezones', () {
+    // Two readings of the same instant, written by devices four hours apart,
+    // have to compare equal - and neither may beat the other.
+    const madrid = '2026-07-21T15:00:00.000+02:00';
+    const newYork = '2026-07-21T09:00:00.000-04:00';
+    expect(compareStamps(madrid, newYork), 0);
+
+    // And the newer edit wins even though it sorts lower as text.
+    const newYorkLater = '2026-07-21T09:30:00.000-04:00';
+    expect(newYorkLater.compareTo(madrid), lessThan(0), reason: 'text order');
+    expect(compareStamps(newYorkLater, madrid), greaterThan(0));
+  });
+
+  test('stampOf round-trips the instant it was given', () {
+    final at = DateTime.now();
+    final parsed = DateTime.parse(stampOf(at));
+    expect(parsed.toUtc(), at.toUtc());
+  });
 }

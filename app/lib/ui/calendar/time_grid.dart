@@ -539,10 +539,8 @@ class _GridBody extends StatelessWidget {
                         ? null
                         : () => onRemovePending!(i),
                     onMove: (dy) => onMovePending(i, dy),
-                    onResize: (dy) => onResizePending(
-                      i,
-                      at.toMinutes / 60 * kHourHeight + dy,
-                    ),
+                    endY: at.toMinutes / 60 * kHourHeight,
+                    onResize: (endY) => onResizePending(i, endY),
                   ),
                 );
               }(),
@@ -857,12 +855,13 @@ class EventMenuArea extends StatelessWidget {
 ///     one is safe without the long press because the deepest recogniser in the
 ///     arena wins: the grip is a child of the scroll view, so it takes the
 ///     gesture the scrollable would otherwise have got.
-class _PendingBlock extends StatelessWidget {
+class _PendingBlock extends StatefulWidget {
   const _PendingBlock({
     required this.from,
     required this.to,
     required this.compact,
     required this.onMove,
+    required this.endY,
     required this.onResize,
     this.title,
     this.color,
@@ -878,7 +877,14 @@ class _PendingBlock extends StatelessWidget {
 
   /// Vertical movement since the last update, in pixels.
   final void Function(double dy) onMove;
-  final void Function(double dy) onResize;
+
+  /// Where the block currently ends, in pixels from midnight. The grip drag
+  /// measures from this, captured once when the drag starts - see
+  /// [_PendingBlockState._resizeFrom].
+  final double endY;
+
+  /// The block's new end, in pixels from midnight.
+  final void Function(double endY) onResize;
 
   /// The grab area at the bottom. Big enough for a fingertip without eating a
   /// short block whole, which is why it is capped against the block's height by
@@ -886,12 +892,45 @@ class _PendingBlock extends StatelessWidget {
   static const _gripHeight = 16.0;
 
   @override
+  State<_PendingBlock> createState() => _PendingBlockState();
+}
+
+class _PendingBlockState extends State<_PendingBlock> {
+  /// Where the finger was at the previous update, measured from the press.
+  ///
+  /// [_PendingBlock.onMove] is movement *since the last update*, because the
+  /// other end adds it to where the block is now - but a long press reports
+  /// `offsetFromOrigin`, which is measured from where the press began and so
+  /// grows for the whole drag. Passing that straight through re-applied the
+  /// whole accumulated offset on every update, and a block dragged 40px ran
+  /// several hundred down the grid, away from the finger holding it.
+  double _lastDy = 0;
+
+  /// Where the block ended when the grip drag began, and how far the grip has
+  /// moved since - in pixels.
+  ///
+  /// Both are needed because the end is *snapped* to [kSnapMinutes]. Reporting
+  /// each `delta.dy` against the block's live end meant every update asked for
+  /// the current end plus two or three pixels, which snapped straight back to
+  /// the current end and threw the movement away - so the grip only worked if
+  /// one single update happened to exceed half a snap (about 5.5px). Dragged at
+  /// any normal speed it did nothing at all. Freezing the base and accumulating
+  /// keeps the fractions.
+  double _resizeFrom = 0;
+  double _resizeDy = 0;
+
+  @override
   Widget build(BuildContext context) {
-    final tint = color ?? T.accent;
+    final tint = widget.color ?? T.accent;
 
     return GestureDetector(
-      onTap: onRemove,
-      onLongPressMoveUpdate: (d) => onMove(d.offsetFromOrigin.dy),
+      onTap: widget.onRemove,
+      onLongPressStart: (_) => _lastDy = 0,
+      onLongPressMoveUpdate: (d) {
+        final dy = d.offsetFromOrigin.dy;
+        widget.onMove(dy - _lastDy);
+        _lastDy = dy;
+      },
       child: Container(
         decoration: BoxDecoration(
           color: tint.withValues(alpha: 0.16),
@@ -906,9 +945,9 @@ class _PendingBlock extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!compact && title != null)
+                  if (!widget.compact && widget.title != null)
                     Text(
-                      title!,
+                      widget.title!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -918,9 +957,9 @@ class _PendingBlock extends StatelessWidget {
                       ),
                     ),
                   Text(
-                    compact
-                        ? '${hhmm(from)}\n${hhmm(to)}'
-                        : '${hhmm(from)} – ${hhmm(to)}',
+                    widget.compact
+                        ? '${hhmm(widget.from)}\n${hhmm(widget.to)}'
+                        : '${hhmm(widget.from)} – ${hhmm(widget.to)}',
                     style: TextStyle(
                       fontSize: 9.5,
                       height: 1.15,
@@ -933,7 +972,7 @@ class _PendingBlock extends StatelessWidget {
 
             // The mark that says this one is not real yet, and the way to take
             // it back. Top-right, out of the way of the times.
-            if (onRemove != null)
+            if (widget.onRemove != null)
               Positioned(
                 top: 1,
                 right: 1,
@@ -948,9 +987,16 @@ class _PendingBlock extends StatelessWidget {
               alignment: Alignment.bottomCenter,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onVerticalDragUpdate: (d) => onResize(d.delta.dy),
+                onVerticalDragStart: (_) {
+                  _resizeFrom = widget.endY;
+                  _resizeDy = 0;
+                },
+                onVerticalDragUpdate: (d) {
+                  _resizeDy += d.delta.dy;
+                  widget.onResize(_resizeFrom + _resizeDy);
+                },
                 child: SizedBox(
-                  height: _gripHeight,
+                  height: _PendingBlock._gripHeight,
                   width: double.infinity,
                   child: Center(
                     child: Container(

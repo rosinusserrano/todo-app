@@ -65,6 +65,85 @@ test('later updated_at wins; earlier is ignored', async () => {
   assert.equal(state.changes.tasks[0].text, 'newer');
 });
 
+test('a newer edit from another timezone wins, though it sorts lower as text', async () => {
+  const db = freshDb();
+  // The desktop back home edits at 15:00+02:00, which is 13:00 UTC.
+  sync(db, USER, 0, { tasks: [task('t1', 'from the desktop', '2026-07-21T15:00:00+02:00')] });
+
+  // The phone, in New York, edits the same row half an hour *later* in real
+  // time: 09:30-04:00 is 13:30 UTC. As text that stamp sorts below the
+  // desktop's, so a text comparison drops this edit on the floor.
+  assert.ok('2026-07-21T09:30:00-04:00' < '2026-07-21T15:00:00+02:00', 'text order');
+
+  sync(db, USER, 0, { tasks: [task('t1', 'from the phone', '2026-07-21T09:30:00-04:00')] });
+  const state = sync(db, USER, 0, {});
+  assert.equal(state.changes.tasks[0].text, 'from the phone');
+});
+
+test('the same instant in two timezones is a tie, so the incumbent keeps it', async () => {
+  const db = freshDb();
+  sync(db, USER, 0, { tasks: [task('t1', 'incumbent', '2026-07-21T15:00:00+02:00')] });
+  const before = currentSeq(db);
+
+  // 09:00-04:00 is the very same instant as 15:00+02:00.
+  sync(db, USER, before, { tasks: [task('t1', 'challenger', '2026-07-21T09:00:00-04:00')] });
+  assert.equal(currentSeq(db), before, 'a tie must not churn the seq');
+  assert.equal(sync(db, USER, 0, {}).changes.tasks[0].text, 'incumbent');
+});
+
+test('focus goes to whichever device flagged it later in real time', async () => {
+  const db = freshDb();
+  // Both devices focus a different task while offline. The phone's flag is the
+  // newer one as an instant (13:30 UTC vs 13:00 UTC) and the older one as text.
+  sync(db, USER, 0, {
+    tasks: [
+      task('t-desk', 'desktop task', '2026-07-21T15:00:00+02:00', { in_progress: 1 }),
+      task('t-phone', 'phone task', '2026-07-21T09:30:00-04:00', { in_progress: 1 }),
+    ],
+  });
+
+  const rows = sync(db, USER, 0, {}).changes.tasks;
+  const flagged = rows.filter((r) => r.in_progress === 1);
+  assert.equal(flagged.length, 1, 'exactly one task stays flagged');
+  assert.equal(flagged[0].uuid, 't-phone');
+});
+
+test('stamps written before the client carried an offset still order as text', async () => {
+  const db = freshDb();
+  // Naive, offsetless stamps are what every row in an existing database has.
+  // They are all read the same way (as server-local time), so they keep exactly
+  // the ordering the merge always gave them.
+  sync(db, USER, 0, { tasks: [task('t1', 'original', '2026-07-21T10:00:00.000')] });
+  sync(db, USER, 0, { tasks: [task('t1', 'newer', '2026-07-21T11:00:00.000')] });
+  assert.equal(sync(db, USER, 0, {}).changes.tasks[0].text, 'newer');
+
+  sync(db, USER, 0, { tasks: [task('t1', 'stale', '2026-07-21T09:00:00.000')] });
+  assert.equal(sync(db, USER, 0, {}).changes.tasks[0].text, 'newer');
+});
+
+test('the first edit after the client gains an offset is not rejected', async () => {
+  const db = freshDb();
+  // The upgrade case, and the one that bites hardest on a server running in a
+  // different timezone from its user - a UTC container, say. The incumbent is a
+  // naive stamp from before the client wrote offsets; `Date.parse` would read
+  // it in the *server's* zone, making a +02:00 client's newer edit look two
+  // hours older and silently dropping it. The client clears `dirty` on push
+  // whatever the merge decided, so a rejection here is never retried.
+  sync(db, USER, 0, { tasks: [task('t1', 'written before the upgrade', '2026-07-21T15:00:00.000')] });
+  sync(db, USER, 0, { tasks: [task('t1', 'the first edit after it', '2026-07-21T15:05:00.000+02:00')] });
+
+  assert.equal(sync(db, USER, 0, {}).changes.tasks[0].text, 'the first edit after it');
+});
+
+test('a stale edit still loses to a naive incumbent', async () => {
+  const db = freshDb();
+  sync(db, USER, 0, { tasks: [task('t1', 'incumbent', '2026-07-21T15:00:00.000')] });
+  // Earlier by the wall clock that wrote both, so it must not win.
+  sync(db, USER, 0, { tasks: [task('t1', 'stale', '2026-07-21T14:55:00.000+02:00')] });
+
+  assert.equal(sync(db, USER, 0, {}).changes.tasks[0].text, 'incumbent');
+});
+
 test('re-pushing an unchanged row does not bump the cursor', async () => {
   const db = freshDb();
   const row = task('t1', 'stable', '2026-07-21T10:00:00+02:00');

@@ -21,6 +21,9 @@ Rules for keeping it honest:
 
 ## Now
 
+Steps 0-6 are done; the mobile and calendar list below is what is next. See
+*Done* for what landed.
+
 ### 0. Commit the 0.23.1 batch  `[x]`
 
 22 modified files, unreleased: the timezone-offset fix, the phone action bar
@@ -167,12 +170,12 @@ Left on disk deliberately, because it is untracked build output and 6.5 GB of
 it is not mine to delete: `src-tauri/target`, `src-tauri/gen` and `dist/`.
 `rm -rf src-tauri dist` when Marco says so.
 
-### 6. Commit  `[~]`
+### 6. Commit  `[x]`
 
 Steps 1–5, each as its own commit as it lands rather than one lump at the end.
 
 - [x] 1 CI, 2 recurring events, 3 all-day, 4 locate, 5 the deletion.
-- [ ] Bump `app/pubspec.yaml` to 0.24.0 (the changelog entry is already written
+- [x] Bump `app/pubspec.yaml` to 0.24.0 (the changelog entry is already written
       under that number; `package.json` is already there).
 
 ---
@@ -267,4 +270,17 @@ Events keep their own calendar's colour — that is the point of the week view.
 
 ## Done
 
-Nothing yet in this file's lifetime.
+- **0** Release 0.23.1: an edit no longer loses to an older one, and a phone can
+  reach delete. (`5a9eace`, plus `30792a2` for the planning docs.)
+- **1** Build every platform in CI, not just the one that could not regress
+  quietly. (`6036c0c`) — **not yet proven**: the workflow has never run, because
+  the branch has not been pushed.
+- **2** Let a block of time repeat, as one row rather than fifty-two.
+  (`b69cf4e`, schema v13)
+- **3** Let an event be a whole day, and stop flattening the ones that arrive as
+  days. (`5f932d7`, schema v14)
+- **4** Give "not on this device" a way out that does not need blob sync.
+  (`65d2f6b`)
+- **5** Delete the Tauri build, three years after it stopped being the app.
+  (`be311fd`, tagged `legacy-tauri`)
+- **6** Version bumped to 0.24.0.

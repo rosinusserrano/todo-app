@@ -771,6 +771,9 @@ class EventBlock extends StatelessWidget {
                     ],
                     if (!compact && hasAttachment)
                       const Icon(Icons.attach_file, size: 9, color: T.muted),
+                    if (!compact && event.repeats)
+                      const Icon(Icons.repeat_rounded,
+                          size: 9, color: T.muted),
                   ],
                 ),
                 if (!compact && event.description.isNotEmpty)

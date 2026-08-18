@@ -149,6 +149,64 @@ class Recur {
     return null;
   }
 
+  /// The occurrence [n] steps after [anchor], counted **from the anchor** and
+  /// not from the one before it.
+  ///
+  /// That distinction is the whole reason this exists beside [next]. Clamping
+  /// is per step, so walking a monthly rule from 31 January lands on 28
+  /// February and then, because the walk continues from *there*, on 28 March
+  /// and the 28th of every month after it: one short February silently rewrites
+  /// the rule. Measuring each occurrence from the anchor gives 31 January,
+  /// 28 February, 31 March, which is what "monthly on the 31st" means and what
+  /// every other calendar draws.
+  ///
+  /// [Task.nextOccurrence] goes on using [next], and should: a task spawns its
+  /// successor when the current one is completed, so there is no anchor left to
+  /// count from - the row in front of you *is* the series.
+  static DateTime? nth(DateTime anchor, String rule, int n) {
+    final a = anchor.toLocal();
+    DateTime at(int year, int month, int day) =>
+        DateTime(year, month, day, a.hour, a.minute, a.second);
+
+    /// The last day of the month [month] of [year] falls in, after Dart has
+    /// normalised any overflow (month 13 is January of the next year).
+    int lastDayOf(int year, int month) => DateTime(year, month + 1, 0).day;
+
+    switch (rule) {
+      case daily:
+        return at(a.year, a.month, a.day + n);
+
+      case weekly:
+        return at(a.year, a.month, a.day + 7 * n);
+
+      case weekdays:
+        // Anchor on a weekend means the series starts on the Monday; from
+        // there it is five occurrences per seven days, exactly.
+        var first = a;
+        while (first.weekday == DateTime.saturday ||
+            first.weekday == DateTime.sunday) {
+          first = at(first.year, first.month, first.day + 1);
+        }
+        final w = first.weekday - DateTime.monday; // 0..4
+        final idx = w + n;
+        final days = (idx ~/ 5) * 7 + (idx % 5) - w;
+        return at(first.year, first.month, first.day + days);
+
+      case monthly:
+        final month = a.month + n;
+        final year = a.year + (month - 1) ~/ 12;
+        final normalised = (month - 1) % 12 + 1;
+        final last = lastDayOf(year, normalised);
+        return at(year, normalised, a.day > last ? last : a.day);
+
+      case yearly:
+        final year = a.year + n;
+        final last = lastDayOf(year, a.month);
+        return at(year, a.month, a.day > last ? last : a.day);
+    }
+    return null;
+  }
+
   /// Namespace for [Task.nextOccurrence]'s derived uuids. A fixed constant, so
   /// two devices deriving the same occurrence agree.
   static const occurrenceNamespace = '6f9a1c2e-4d3b-5a7f-8e10-2b6c4d9f1a35';
@@ -1014,6 +1072,32 @@ class CalendarEvent implements SyncRow {
 
   static const notifySilent = -1;
 
+  /// How this block repeats, or null for a one-off. One of [Recur.rules].
+  ///
+  /// The stored row is the **series**, and its `start_at` / `end_at` are the
+  /// first occurrence. Every later occurrence is produced on the way out of the
+  /// store by [occurrencesBetween] and is never written, which is what keeps a
+  /// weekly stand-up one row rather than fifty-two.
+  ///
+  /// Deliberately unlike [Task.recur], which spawns each occurrence as a real
+  /// row. A task occurrence has state of its own - it gets completed, and that
+  /// completion is what History is made of - so it has to exist. A block has
+  /// none: it is a span of time with a title, identical every week, and writing
+  /// out a year of them would be a year of rows to migrate the day the title
+  /// changes.
+  final String? recur;
+
+  /// The stored row this was expanded from, or null if this *is* the stored
+  /// row (including for the first occurrence of a series, which is).
+  ///
+  /// Not a column and never written. It exists so that a write reached through
+  /// an occurrence - deleting it, editing it - lands on the series with the
+  /// series' own times, instead of quietly moving the series to whichever
+  /// Tuesday the user happened to be looking at. Use [stored] for that; the
+  /// uuid is the same either way, so anything keyed on uuid (its attachments,
+  /// the todos planned into it) needs no special handling at all.
+  final CalendarEvent? series;
+
   final String createdAt;
   @override
   final String updatedAt;
@@ -1028,6 +1112,8 @@ class CalendarEvent implements SyncRow {
     required this.startAt,
     required this.endAt,
     this.notifyMinutes,
+    this.recur,
+    this.series,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -1035,6 +1121,95 @@ class CalendarEvent implements SyncRow {
 
   @override
   bool get isDeleted => deletedAt != null;
+
+  /// True for an occurrence that was expanded out of a series.
+  bool get isOccurrence => series != null;
+
+  /// True for a row that repeats - the series itself, or one of its
+  /// occurrences.
+  bool get repeats => recur != null;
+
+  /// The row to write when a change is made through this event. For an
+  /// occurrence that is the series it came from; for anything else, itself.
+  CalendarEvent get stored => series ?? this;
+
+  /// A key that distinguishes two occurrences of one series, which share a
+  /// uuid. Occurrence uuids are deliberately *not* derived the way
+  /// [Task.nextOccurrence]'s are: derivation exists so that two devices writing
+  /// the same row agree on its id, and nothing here is ever written.
+  String get instanceKey => '$uuid@$startAt';
+
+  /// The occurrences of this event that overlap `[from, to)`, in order.
+  ///
+  /// A one-off yields itself when it overlaps and nothing when it does not, so
+  /// callers can run everything through this without asking which kind they
+  /// hold.
+  ///
+  /// Each occurrence keeps the series' duration and is stepped with
+  /// [Recur.next], which is calendar arithmetic in local time - so a 09:00
+  /// block is still at 09:00 on the far side of a DST boundary rather than
+  /// sliding to 08:00 for half the year.
+  List<CalendarEvent> occurrencesBetween(DateTime from, DateTime to) {
+    final rule = recur;
+    if (rule == null) {
+      return start.isBefore(to) && end.isAfter(from) ? [this] : const [];
+    }
+
+    final length = duration;
+    final anchor = start;
+    final out = <CalendarEvent>[];
+
+    // Counted from the anchor rather than walked one at a time - see
+    // [Recur.nth], which is what keeps a monthly block on the 31st.
+    //
+    // Two caps, because a series has no end date and the window can be a long
+    // way from where it started. Neither is reachable with a real calendar: a
+    // year view of a daily block is 365 occurrences, and 20000 steps is a
+    // daily block started fifty years ago.
+    for (var n = 0; n < _maxSteps; n++) {
+      // An unknown rule yields nothing beyond the first occurrence rather than
+      // looping: a row written by a newer version reads as a one-off here, not
+      // as an error. The first occurrence is the stored row itself, so it does
+      // not depend on understanding the rule at all.
+      final at = n == 0 ? anchor : Recur.nth(anchor, rule, n);
+      if (at == null) break;
+      if (!at.isBefore(to)) break;
+      if (at.add(length).isAfter(from)) {
+        out.add(n == 0 ? this : _occurrenceAt(at, length));
+        if (out.length >= _maxOccurrences) break;
+      }
+    }
+    return out;
+  }
+
+  static const _maxSteps = 20000;
+  static const _maxOccurrences = 500;
+
+  CalendarEvent _occurrenceAt(DateTime at, Duration length) => CalendarEvent(
+        uuid: uuid,
+        calendarUuid: calendarUuid,
+        title: title,
+        description: description,
+        startAt: reminderStamp(at),
+        endAt: reminderStamp(at.add(length)),
+        notifyMinutes: notifyMinutes,
+        recur: recur,
+        series: stored,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        deletedAt: deletedAt,
+      );
+
+  /// The first occurrence that has not finished by [now], or null for a series
+  /// whose rule is unknown. This is what the notification schedule arms: only
+  /// ever one instant per series, because handing the OS a year of them would
+  /// be a year of alarms to cancel every time the row is touched.
+  CalendarEvent? nextOccurrence([DateTime? now]) {
+    final at = now ?? DateTime.now();
+    if (recur == null) return end.isAfter(at) ? this : null;
+    final found = occurrencesBetween(at, at.add(const Duration(days: 366)));
+    return found.isEmpty ? null : found.first;
+  }
 
   DateTime get start => DateTime.tryParse(startAt)?.toLocal() ?? DateTime.now();
   DateTime get end => DateTime.tryParse(endAt)?.toLocal() ?? start;
@@ -1065,6 +1240,9 @@ class CalendarEvent implements SyncRow {
     return start.subtract(lead);
   }
 
+  /// Always builds from [stored], so a change made through an occurrence edits
+  /// the series and keeps the series' own times unless it is explicitly given
+  /// new ones.
   CalendarEvent copyWith({
     String? calendarUuid,
     String? title,
@@ -1073,23 +1251,28 @@ class CalendarEvent implements SyncRow {
     String? endAt,
     int? notifyMinutes,
     bool clearNotify = false,
+    String? recur,
+    bool clearRecur = false,
     String? updatedAt,
     String? deletedAt,
     bool clearDeleted = false,
-  }) =>
-      CalendarEvent(
-        uuid: uuid,
-        calendarUuid: calendarUuid ?? this.calendarUuid,
-        title: title ?? this.title,
-        description: description ?? this.description,
-        startAt: startAt ?? this.startAt,
-        endAt: endAt ?? this.endAt,
-        notifyMinutes:
-            clearNotify ? null : (notifyMinutes ?? this.notifyMinutes),
-        createdAt: createdAt,
-        updatedAt: updatedAt ?? nowStamp(),
-        deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
-      );
+  }) {
+    final base = stored;
+    return CalendarEvent(
+      uuid: base.uuid,
+      calendarUuid: calendarUuid ?? base.calendarUuid,
+      title: title ?? base.title,
+      description: description ?? base.description,
+      startAt: startAt ?? base.startAt,
+      endAt: endAt ?? base.endAt,
+      notifyMinutes:
+          clearNotify ? null : (notifyMinutes ?? base.notifyMinutes),
+      recur: clearRecur ? null : (recur ?? base.recur),
+      createdAt: base.createdAt,
+      updatedAt: updatedAt ?? nowStamp(),
+      deletedAt: clearDeleted ? null : (deletedAt ?? base.deletedAt),
+    );
+  }
 
   @override
   Map<String, Object?> toMap() => {
@@ -1097,9 +1280,10 @@ class CalendarEvent implements SyncRow {
         'calendar_uuid': calendarUuid,
         'title': title,
         'description': description,
-        'start_at': startAt,
-        'end_at': endAt,
+        'start_at': stored.startAt,
+        'end_at': stored.endAt,
         'notify_minutes': notifyMinutes,
+        'recur': recur,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -1113,6 +1297,7 @@ class CalendarEvent implements SyncRow {
         startAt: m['start_at']! as String,
         endAt: m['end_at']! as String,
         notifyMinutes: (m['notify_minutes'] as num?)?.toInt(),
+        recur: m['recur'] as String?,
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,

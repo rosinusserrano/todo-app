@@ -1516,6 +1516,8 @@ class AppState extends ChangeNotifier {
     required DateTime end,
     int? notifyMinutes,
     bool clearNotify = false,
+    String? recur,
+    bool clearRecur = false,
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return null;
@@ -1535,6 +1537,7 @@ class AppState extends ChangeNotifier {
             startAt: reminderStamp(from),
             endAt: reminderStamp(to),
             notifyMinutes: notifyMinutes,
+            recur: recur,
             createdAt: stamp,
             updatedAt: stamp,
           )
@@ -1546,6 +1549,8 @@ class AppState extends ChangeNotifier {
             endAt: reminderStamp(to),
             notifyMinutes: notifyMinutes,
             clearNotify: clearNotify,
+            recur: recur,
+            clearRecur: clearRecur,
             updatedAt: stamp,
           );
 
@@ -1564,9 +1569,11 @@ class AppState extends ChangeNotifier {
   /// flag: a block that behaved differently from one you dragged would be a
   /// second kind of event to reason about for no gain.
   ///
-  /// The description carries the location and a note when the source was
-  /// recurring, because only the first occurrence comes across and silently
-  /// importing one of a series is the kind of thing that is discovered late.
+  /// A repeat rule comes across when the .ics said something this app can say
+  /// (see `icsRecurRule`). When it did not, the description carries a note that
+  /// only the first occurrence was imported - silently importing one of a
+  /// series is the kind of thing that is discovered late. The location goes
+  /// into the description the same way, having no column of its own.
   Future<int> importIcsEvents(
     List<IcsEvent> events, {
     required String calendarUuid,
@@ -1576,7 +1583,9 @@ class AppState extends ChangeNotifier {
       final notes = [
         if (e.location.isNotEmpty) e.location,
         if (e.description.isNotEmpty) e.description,
-        if (e.recurring) 'Repeats — only this occurrence was imported.',
+        if (e.recurring && e.recur == null)
+          'Repeats on a rule this app cannot store — only this occurrence '
+              'was imported.',
       ].join('\n\n');
 
       final row = await saveEvent(
@@ -1585,6 +1594,7 @@ class AppState extends ChangeNotifier {
         description: notes,
         start: e.start,
         end: e.end,
+        recur: e.recur,
       );
       if (row != null) added++;
     }

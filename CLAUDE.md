@@ -286,9 +286,11 @@ made, or fail in a later step that alters a table the fixture never created.
 A rolled-back fixture has to give the *column* back too (`DROP INDEX` first;
 SQLite refuses to drop a column an index is built on — see the v10 `event_uuid`
 and v11 `notes` / `priority` lines in `attachments_test`, `calendar_test` and
-`default_workspace_test`), and
-a hand-built one has to contain every table a later step touches, which is why
-`journal_test` carries `_v9Tasks` and `_v4Attachments` as scaffolding.
+`default_workspace_test`; the v13 `recur` on `calendar_events` is the first
+such column on a table other than `tasks`, so `recurrence_test` and
+`default_workspace_test` roll that one back too), and a hand-built one has to
+contain every table a later step touches, which is why `journal_test` carries
+`_v9Tasks` and `_v4Attachments` as scaffolding.
 
 ### The calendar
 
@@ -314,6 +316,36 @@ time on one. The rules that are not obvious from the schema:
 - `eventsBetween` tests **overlap** (`start_at < to AND end_at > from`), not
   containment. A query keyed on `start_at` alone silently drops exactly the
   multi-day events the spanning band exists for.
+- **A repeating event is one row, expanded on the way out.** `recur` on
+  `calendar_events` (v13) is the same closed vocabulary tasks use, and the
+  stored `start_at`/`end_at` are the *first* occurrence. `occurrencesBetween`
+  produces the rest for whatever window is being drawn, and they are **never**
+  written. This is the opposite of `Task.recur`, deliberately: a task
+  occurrence gets completed, so it has to be a row and History is made of
+  those; a block has no state of its own, and writing a year of them would be
+  a year of rows to rewrite the day the title changes.
+  - An occurrence **keeps the series' uuid** and carries the stored row in
+    `series`. That is what makes everything keyed on uuid - its attachments,
+    the todos planned into it, `eventTaskCounts` - work with no special case
+    at all. `instanceKey` is what tells two occurrences apart. Occurrence ids
+    are pointedly *not* derived the way `Task.nextOccurrence`'s are: deriving
+    exists so two devices agree on a row they both **write**, and nothing here
+    is ever written.
+  - `copyWith` and `toMap` always build from `stored`, so a write reached
+    through an occurrence cannot move the series onto whichever Tuesday was on
+    screen. `_editEvent` opens `event.stored` for the same reason, and the
+    form says the change applies to the series.
+  - **The window query cannot filter a series on `end_at`.** A series has no
+    end; the stored end only says how long one occurrence lasts. `eventsBetween`
+    and `liveEvents` therefore have two predicates, and `upcomingEvents`
+    contributes exactly one instant per series - the schedule is rewritten
+    wholesale, so a year of a daily block would be a year of alarms to cancel
+    on every edit.
+  - **Occurrences are counted from the anchor** (`Recur.nth`), not walked one
+    from the last (`Recur.next`). Walking clamps per step, so a monthly block
+    on the 31st meets February and becomes the 28th *for ever*. Tasks keep
+    using `next` because a completed task has no anchor left - the row in
+    front of you is the series.
 - `notify_minutes` on an event is a **three-state column**: null inherits the
   calendar's rule, `CalendarEvent.notifySilent` (-1) overrides it to quiet, any
   other value is a lead time. One column rather than a flag plus a value,

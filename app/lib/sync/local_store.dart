@@ -80,7 +80,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 12,
+        version: 13,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -141,7 +141,7 @@ class LocalStore {
     }
     if (from < 8) {
       await db.execute(_calendarsTable);
-      await db.execute(_calendarEventsTable);
+      await db.execute(_calendarEventsTableV8);
       await db.execute(_calendarsWsIndex);
       await db.execute(_eventsCalendarIndex);
       await db.execute(_eventsStartIndex);
@@ -175,6 +175,13 @@ class LocalStore {
       // is the only new state, because the next occurrence is a new row rather
       // than a second set of columns on this one.
       await db.execute('ALTER TABLE tasks ADD COLUMN recur TEXT');
+    }
+    if (from < 13) {
+      // The same column on a block of time, and the same "null means one-off".
+      // Unlike a task, a repeating block stays *one* row: its occurrences are
+      // expanded on the way out of the store and never written, so there is
+      // nothing here to backfill either.
+      await db.execute('ALTER TABLE calendar_events ADD COLUMN recur TEXT');
     }
   }
 
@@ -285,6 +292,26 @@ class LocalStore {
       )''';
 
   static const _calendarEventsTable = '''
+      CREATE TABLE calendar_events (
+        uuid           TEXT PRIMARY KEY,
+        calendar_uuid  TEXT NOT NULL,
+        title          TEXT NOT NULL,
+        description    TEXT NOT NULL DEFAULT '',
+        start_at       TEXT NOT NULL,
+        end_at         TEXT NOT NULL,
+        notify_minutes INTEGER,
+        recur          TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT,
+        dirty          INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  /// The v8 shape, kept verbatim for the upgrade path only. A database coming
+  /// from v7 or earlier creates the table here and then has `recur` added by
+  /// the from < 13 step; building the current shape in both places is how you
+  /// get "duplicate column name" halfway through a migration.
+  static const _calendarEventsTableV8 = '''
       CREATE TABLE calendar_events (
         uuid           TEXT PRIMARY KEY,
         calendar_uuid  TEXT NOT NULL,
@@ -716,25 +743,62 @@ class LocalStore {
   /// Both bounds are compared as stored UTC strings, which is a valid ordering
   /// here because [reminderStamp] normalises every stamp to UTC before it is
   /// written - unlike the local-offset stamps [compareStamps] has to parse.
+  /// A repeating row is fetched whenever its *first* occurrence begins before
+  /// the window ends, and is then expanded in Dart. It cannot be filtered on
+  /// `end_at` the way a one-off is: a series has no end, so the only thing the
+  /// stored end says is how long one occurrence lasts.
   Future<List<CalendarEvent>> eventsBetween(DateTime from, DateTime to) async {
+    final toStamp = reminderStamp(to);
     final rows = await _db.query(
       'calendar_events',
-      where: 'deleted_at IS NULL AND start_at < ? AND end_at > ?',
-      whereArgs: [reminderStamp(to), reminderStamp(from)],
+      where: 'deleted_at IS NULL AND ('
+          '(recur IS NULL AND start_at < ? AND end_at > ?) OR '
+          '(recur IS NOT NULL AND start_at < ?))',
+      whereArgs: [toStamp, reminderStamp(from), toStamp],
       orderBy: 'start_at',
     );
-    return rows.map(CalendarEvent.fromMap).toList();
+    return _expand(rows, from, to);
   }
 
   /// Every event that has not finished yet, for the notification schedule.
+  ///
+  /// A series contributes exactly **one** instant - its next occurrence. The
+  /// schedule is rewritten wholesale on every change, so handing the OS a year
+  /// of a daily block would be a year of alarms to cancel each time anything
+  /// is touched, to say nothing of the platform limits on how many an app may
+  /// hold.
   Future<List<CalendarEvent>> upcomingEvents([DateTime? now]) async {
+    final at = now ?? DateTime.now();
     final rows = await _db.query(
       'calendar_events',
-      where: 'deleted_at IS NULL AND end_at > ?',
-      whereArgs: [reminderStamp(now ?? DateTime.now())],
+      where: 'deleted_at IS NULL AND (recur IS NOT NULL OR end_at > ?)',
+      whereArgs: [reminderStamp(at)],
       orderBy: 'start_at',
     );
-    return rows.map(CalendarEvent.fromMap).toList();
+    final out = <CalendarEvent>[];
+    for (final row in rows.map(CalendarEvent.fromMap)) {
+      final next = row.nextOccurrence(at);
+      if (next != null) out.add(next);
+    }
+    out.sort((a, b) => a.startAt.compareTo(b.startAt));
+    return out;
+  }
+
+  /// Expand the stored rows into the occurrences that overlap `[from, to)`,
+  /// back in start order. A one-off yields itself, so this is the one path
+  /// every calendar read goes through and there is no second answer to "what
+  /// is on screen".
+  static List<CalendarEvent> _expand(
+    List<Map<String, Object?>> rows,
+    DateTime from,
+    DateTime to,
+  ) {
+    final out = <CalendarEvent>[];
+    for (final row in rows.map(CalendarEvent.fromMap)) {
+      out.addAll(row.occurrencesBetween(from, to));
+    }
+    out.sort((a, b) => a.startAt.compareTo(b.startAt));
+    return out;
   }
 
   /// The events covering this instant - the block (or blocks) you are in.
@@ -744,14 +808,31 @@ class LocalStore {
   /// begun. Overlaps are not resolved here - two events really can be running
   /// at once, and picking one of them for the user would be guessing.
   Future<List<CalendarEvent>> liveEvents([DateTime? now]) async {
-    final at = reminderStamp(now ?? DateTime.now());
+    final at = now ?? DateTime.now();
+    final stamp = reminderStamp(at);
     final rows = await _db.query(
       'calendar_events',
-      where: 'deleted_at IS NULL AND start_at <= ? AND end_at > ?',
-      whereArgs: [at, at],
+      where: 'deleted_at IS NULL AND ('
+          '(recur IS NULL AND start_at <= ? AND end_at > ?) OR '
+          '(recur IS NOT NULL AND start_at <= ?))',
+      whereArgs: [stamp, stamp, stamp],
       orderBy: 'start_at',
     );
-    return rows.map(CalendarEvent.fromMap).toList();
+
+    final out = <CalendarEvent>[];
+    for (final row in rows.map(CalendarEvent.fromMap)) {
+      // The window starts one occurrence-length back, because the occurrence
+      // covering this instant is one that *began* before it. Overlap is then
+      // narrowed to the same half-open test the SQL uses for a one-off.
+      for (final e in row.occurrencesBetween(
+        at.subtract(row.duration),
+        at.add(const Duration(milliseconds: 1)),
+      )) {
+        if (!e.start.isAfter(at) && e.end.isAfter(at)) out.add(e);
+      }
+    }
+    out.sort((a, b) => a.startAt.compareTo(b.startAt));
+    return out;
   }
 
   /// What is still to be done in one block.

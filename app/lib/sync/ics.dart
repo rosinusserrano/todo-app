@@ -4,10 +4,12 @@
 // This is a *reader for what other apps send*, not an iCalendar implementation.
 // A mail client sharing an invite, a booking confirmation, a train ticket: all
 // of them produce a small VEVENT with a start, an end and a summary, and that
-// is what this understands. RRULE, VALARM, VTIMEZONE, attendees and the rest
-// are parsed as far as being skipped correctly and no further, because guessing
-// at a recurrence rule we cannot store is worse than importing the first
-// occurrence and saying so.
+// is what this understands. VALARM, VTIMEZONE, attendees and the rest are
+// parsed as far as being skipped correctly and no further. An RRULE is read
+// only when it maps *exactly* onto one of this app's own repeat rules (see
+// [icsRecurRule]); anything else still comes in as its first occurrence with a
+// note saying so, because guessing at a rule we cannot store would be wrong
+// every week rather than once.
 //
 // The three parts of RFC 5545 that actually bite, and are handled:
 //
@@ -22,6 +24,8 @@
 //      floating (whatever the reader's timezone is), and `TZID=` names a zone
 //      we cannot resolve without a database. See [_parseStamp].
 
+import 'models.dart' show Recur;
+
 /// One event out of an .ics file.
 class IcsEvent {
   const IcsEvent({
@@ -32,6 +36,7 @@ class IcsEvent {
     this.location = '',
     this.allDay = false,
     this.recurring = false,
+    this.recur,
     this.uid,
   });
 
@@ -47,9 +52,21 @@ class IcsEvent {
   /// A DATE-valued start, meaning a whole day rather than a moment.
   final bool allDay;
 
-  /// The source carried an RRULE. Only the first occurrence is imported, and
-  /// the UI says so rather than pretending the series came across.
+  /// The source carried an RRULE.
+  ///
+  /// True whether or not [recur] could express it, because it is what the
+  /// import list has to disclose: a rule we cannot store comes in as its first
+  /// occurrence, and importing one of a series while saying nothing is exactly
+  /// the sort of thing discovered three weeks late.
   final bool recurring;
+
+  /// The rule as one of [Recur.rules], when the RRULE maps onto it exactly, or
+  /// null when it does not.
+  ///
+  /// Deliberately strict - see [icsRecurRule]. An approximation would be
+  /// *wrong every week for ever*, which is worse than importing one block and
+  /// admitting it.
+  final String? recur;
 
   final String? uid;
 
@@ -293,8 +310,80 @@ IcsEvent? _build(Map<String, _Prop> props) {
     location: _unescape(props['LOCATION']?.value ?? '').trim(),
     allDay: start.allDay,
     recurring: props.containsKey('RRULE'),
+    recur: icsRecurRule(props['RRULE']?.value, start.at),
     uid: props['UID']?.value.trim(),
   );
+}
+
+/// The [Recur] rule an RRULE means, or null when it means something this app
+/// cannot say.
+///
+/// Strict on purpose. The rules here are periods with no end and no interval,
+/// so anything carrying COUNT, UNTIL, INTERVAL or a BY-part that is not simply
+/// restating DTSTART is **rejected** rather than rounded to the nearest thing
+/// we have. A six-week course imported as "every week for ever" would be wrong
+/// on the seventh week and every week after it, silently, on a calendar the
+/// user now trusts; one imported block plus the note saying why is a smaller
+/// and much more visible loss.
+///
+/// The one BY-part that is honoured is `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR`,
+/// because that is [Recur.weekdays] exactly and is what every "every working
+/// day" event in the wild emits.
+String? icsRecurRule(String? rrule, DateTime start) {
+  if (rrule == null) return null;
+
+  final parts = <String, String>{};
+  for (final piece in rrule.toUpperCase().split(';')) {
+    final i = piece.indexOf('=');
+    if (i <= 0) continue;
+    parts[piece.substring(0, i).trim()] = piece.substring(i + 1).trim();
+  }
+
+  if (parts.containsKey('COUNT') || parts.containsKey('UNTIL')) return null;
+
+  final interval = parts['INTERVAL'];
+  if (interval != null && interval != '1') return null;
+
+  final byDay = parts['BYDAY'];
+  // Any other BY-part is a shape this app has no column for.
+  final otherBy = parts.keys.any((k) => k.startsWith('BY') && k != 'BYDAY');
+  if (otherBy) return null;
+
+  const dayNames = {
+    DateTime.monday: 'MO',
+    DateTime.tuesday: 'TU',
+    DateTime.wednesday: 'WE',
+    DateTime.thursday: 'TH',
+    DateTime.friday: 'FR',
+    DateTime.saturday: 'SA',
+    DateTime.sunday: 'SU',
+  };
+
+  switch (parts['FREQ']) {
+    case 'DAILY':
+      return byDay == null ? Recur.daily : null;
+
+    case 'WEEKLY':
+      if (byDay == null) return Recur.weekly;
+      final days = byDay.split(',').map((d) => d.trim()).toSet();
+      if (days.length == 5 &&
+          days.containsAll(const {'MO', 'TU', 'WE', 'TH', 'FR'})) {
+        return Recur.weekdays;
+      }
+      // A single BYDAY that just restates the day DTSTART already falls on
+      // adds nothing, so it is still a plain weekly rule.
+      if (days.length == 1 && days.first == dayNames[start.weekday]) {
+        return Recur.weekly;
+      }
+      return null;
+
+    case 'MONTHLY':
+      return byDay == null ? Recur.monthly : null;
+
+    case 'YEARLY':
+      return byDay == null ? Recur.yearly : null;
+  }
+  return null;
 }
 
 /// Parse the subset of ISO 8601 durations iCalendar uses: `PT1H30M`, `P2D`.

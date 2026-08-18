@@ -33,6 +33,7 @@ class EventEdit {
     required this.start,
     required this.end,
     required this.notifyMinutes,
+    required this.recur,
     this.delete = false,
   });
 
@@ -43,6 +44,7 @@ class EventEdit {
         start = null,
         end = null,
         notifyMinutes = null,
+        recur = null,
         delete = true;
 
   final String calendarUuid;
@@ -54,6 +56,9 @@ class EventEdit {
   /// Null inherits the calendar's rule; [CalendarEvent.notifySilent] overrides
   /// it to stay quiet.
   final int? notifyMinutes;
+
+  /// One of [Recur.rules], or null for a block that happens once.
+  final String? recur;
 
   final bool delete;
 }
@@ -139,6 +144,7 @@ class _EventDialogState extends State<_EventDialog> {
   late DateTime _start = widget.initialStart;
   late DateTime _end = widget.initialEnd;
   late int? _notify = widget.existing?.notifyMinutes;
+  late String? _recur = widget.existing?.recur;
 
   List<Attachment>? _attachments;
   List<Task>? _tasks;
@@ -266,6 +272,7 @@ class _EventDialogState extends State<_EventDialog> {
         start: _start,
         end: _end,
         notifyMinutes: _notify,
+        recur: _recur,
       ),
     );
   }
@@ -362,6 +369,42 @@ class _EventDialogState extends State<_EventDialog> {
                     ),
                 ],
               ),
+              const SizedBox(height: 14),
+              const Text('Repeats',
+                  style: TextStyle(fontSize: 11.5, color: T.muted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Once',
+                        style: TextStyle(fontSize: 11.5)),
+                    selected: _recur == null,
+                    onSelected: (_) => setState(() => _recur = null),
+                  ),
+                  for (final r in Recur.rules)
+                    ChoiceChip(
+                      label: Text(Recur.label(r),
+                          style: const TextStyle(fontSize: 11.5)),
+                      selected: _recur == r,
+                      onSelected: (_) => setState(() => _recur = r),
+                    ),
+                ],
+              ),
+              // Said once, here, rather than on every occurrence: this form is
+              // always the series - see _editEvent, which opens `event.stored`
+              // - so the times above are the first occurrence's and a change to
+              // any of it changes every one of them. Editing a single
+              // occurrence needs somewhere to record the exception and is
+              // deliberately not in this version.
+              if (_recur != null) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Changes apply to the whole series.',
+                  style: TextStyle(fontSize: 11, color: T.muted),
+                ),
+              ],
               if (editing && widget.loadTasks != null) ...[
                 const SizedBox(height: 14),
                 _TodosSection(

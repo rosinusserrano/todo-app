@@ -396,6 +396,19 @@ Three tiers, none of which need an account, an API key, or a licence:
   they cover, with the start and end times at its ends. A block running from
   Tuesday morning to Thursday evening has no single column to live in, and
   slicing it into three would read as three separate events.
+- **A block can repeat** — every day, every weekday, every week, month or year.
+  Pick the rule in the event form and the block appears on every occurrence,
+  with a ↻ on it and its rule named on the details card. It stays **one entry**:
+  the occurrences are drawn from the rule rather than written out, so renaming
+  a stand-up renames all of them and nothing has to be tidied up afterwards.
+  Editing or deleting any occurrence therefore applies to the whole series, and
+  both say so — the form under the rule, and a confirmation before a delete
+  that names how it repeats. Changing a single occurrence is not in this
+  version; it needs somewhere to record the exception, and silently editing the
+  series instead would be the version of that you find out about late.
+  A monthly block on the 31st stays on the 31st — February does not drag it
+  back to the 28th for good — and a 09:00 block still reads 09:00 on the far
+  side of a daylight-saving change.
 - **Notification rules belong to the calendar** — Workout can warn you ten
   minutes ahead while Work warns you an hour ahead — because that is the level
   the answer actually varies at. Any single event can override its calendar,
@@ -447,9 +460,15 @@ Three tiers, none of which need an account, an API key, or a licence:
 - An imported block is an **ordinary event** in every respect - no "imported"
   flag, no separate handling. Location and description come across as the
   event's description.
-- **A repeating event is imported once**, and both the list and the resulting
-  description say so. The series cannot be stored, and importing one occurrence
-  while saying nothing would be the version of this you find out about late.
+- **A repeating event comes across as a repeating block** when the .ics said
+  something this app can also say: every day, every weekday, every week, month
+  or year, with no end date and no interval. The import list names the rule it
+  found.
+- **Anything more elaborate is imported once**, and both the list and the
+  resulting description say so — a six-week course, every second Tuesday, the
+  third Thursday of the month. Rounding those to the nearest rule this app has
+  would be wrong every week rather than once, on a calendar you have started to
+  trust.
 - Handles what real producers actually emit: folded long lines, escaped commas
   and newlines, all-day dates with their exclusive end, `DURATION` instead of an
   end time, quoted `TZID` parameters, and both CRLF and LF. A malformed event in
@@ -796,6 +815,24 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
+- **0.24.0** — **A block of time can repeat.** A stand-up every weekday, rent
+  on the 1st, a birthday: pick the rule in the event form and it is on the grid
+  every time it comes round, marked with a ↻ and named on its details card.
+  It is still **one entry** — the occurrences are worked out from the rule
+  rather than written into the database — so renaming it renames every one of
+  them, and a year of Mondays costs one row rather than fifty-two. What follows
+  from that is stated rather than hidden: editing or deleting an occurrence is
+  editing or deleting the series, the form says so under the rule, and a delete
+  asks first and names how the block repeats. Changing one occurrence on its own
+  is deliberately not in this version.
+  Two details that are wrong in a lot of calendars: a monthly block on the 31st
+  stays on the 31st instead of being dragged back to the 28th by the first
+  February it meets, and a 09:00 block still reads 09:00 after the clocks change.
+  **Importing an .ics brings the rule with it**, when the file said something
+  this app can also say — every day, weekday, week, month or year. A rule with
+  an end date, an interval or a “second Tuesday” in it still imports as one
+  block and still says so, because approximating it would be wrong every week
+  instead of once.
 - **0.23.1** — **Fixes.** An edit made on a device in another timezone could
   lose to an *older* edit made elsewhere, and lose silently. Timestamps were
   written as a bare wall-clock reading with no timezone on it, so "which of

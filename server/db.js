@@ -196,6 +196,7 @@ function init(db) {
       start_at       TEXT NOT NULL,
       end_at         TEXT NOT NULL,
       notify_minutes INTEGER,
+      recur          TEXT,
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
@@ -229,6 +230,10 @@ function init(db) {
   addColumn(db, 'tasks', 'priority', 'INTEGER NOT NULL DEFAULT 0');
   // Recurrence. Nullable, and null is what every pre-v12 row means: a one-off.
   addColumn(db, 'tasks', 'recur', 'TEXT');
+  // The same on a block of time (client v13). A repeating block stays one row -
+  // the client expands its occurrences for display and never writes them - so
+  // this column is the whole of the feature as far as the server is concerned.
+  addColumn(db, 'calendar_events', 'recur', 'TEXT');
   // A server that first synced a journal before entries had titles has the
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -301,6 +306,7 @@ export const TABLES = {
     'start_at',
     'end_at',
     'notify_minutes',
+    'recur',
     'created_at',
   ],
 };

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_state.dart';
 import '../../sync/ics.dart';
+import '../../sync/models.dart' show Recur;
 import '../../theme.dart';
 
 /// Shows what was found and asks which calendar it should go on. Returns the
@@ -190,8 +191,14 @@ class _EventLine extends StatelessWidget {
           Text(
             // The recurrence note belongs here, next to the event, rather than
             // only in the description it is about to be given: this is the
-            // moment to notice that a series came across as one block.
-            event.recurring ? '$_when · repeats (first only)' : _when,
+            // moment to notice what a series came across as - the whole rule
+            // when the .ics said something we can say, and one block when it
+            // did not.
+            !event.recurring
+                ? _when
+                : event.recur != null
+                    ? '$_when · ${Recur.label(event.recur!).toLowerCase()}'
+                    : '$_when · repeats (first only)',
             style: const TextStyle(fontSize: 11, color: T.muted),
           ),
         ],

@@ -54,39 +54,51 @@ and the server's own tests have never run in CI at all.
 - [ ] Push the branch and watch the run go green before calling it done.
       **Not done yet — the workflow is unverified until it has run once.**
 
-### 2. Recurring calendar events  `[ ]`
+### 2. Recurring calendar events  `[x]`
 
 Tasks repeat (`Recur`, v12); events do not. The .ics importer therefore drops
 every RRULE and says so, and a weekly stand-up has to be laid out by hand.
 
-- [ ] Schema **v13**: `recur` TEXT NULL on `calendar_events`. The usual three
+- [x] Schema **v13**: `recur` TEXT NULL on `calendar_events`. The usual three
       edits — `local_store.dart` `_create` *and* `_upgrade`, the model, and
       `db.js` (schema, `addColumn`, `TABLES`). Reuse `Recur` from
       `sync/models.dart` rather than inventing a second rule format.
-- [ ] Expansion at **read** time, in Dart, not in SQL: `eventsBetween` keeps its
+- [x] Expansion at **read** time, in Dart, not in SQL: `eventsBetween` keeps its
       current query for one-off rows, and recurring rows (few, so load them all)
       are expanded into the window. Occurrence uuids are **derived** — v5 over
       the series uuid and the occurrence instant — same rule as
       `Task.nextOccurrence`.
-- [ ] `Recur.next` is calendar arithmetic in local time already; reuse it so a
+- [x] `Recur.next` is calendar arithmetic in local time already; reuse it so a
       09:00 block stays 09:00 across a DST boundary.
-- [ ] **v1 has no per-occurrence edit.** Editing or deleting a recurring event
+- [x] **v1 has no per-occurrence edit.** Editing or deleting a recurring event
       is the series. "Only this one" needs an exception list and is a second
       step, deliberately deferred — say so in the UI rather than silently
       editing the series.
-- [ ] Planning a task into a recurring block attaches to the **series**;
+- [x] Planning a task into a recurring block attaches to the **series**;
       `refreshSessions` must match a task whose `event_uuid` is the series *or*
       the occurrence, or a stand-up's todos vanish the week after.
-- [ ] Notifications: only the next occurrence is ever armed. `reschedule` still
+- [x] Notifications: only the next occurrence is ever armed. `reschedule` still
       rewrites everything in one call.
-- [ ] Editor UI: the same repeat control the reminder picker uses.
-- [ ] Payoff: `sync/ics.dart` can then import the RRULEs it understands
+- [x] Editor UI: the same repeat control the reminder picker uses.
+- [x] Payoff: `sync/ics.dart` can then import the RRULEs it understands
       (DAILY / WEEKLY / MONTHLY, no COUNT/UNTIL gymnastics) instead of importing
       one occurrence and apologising. Keep the apology for the rest.
-- [ ] Tests: expansion across a month boundary and a DST boundary, derived-uuid
+- [x] Tests: expansion across a month boundary and a DST boundary, derived-uuid
       stability, and the migration fixtures (`attachments_test`,
       `calendar_test`, `default_workspace_test`, `journal_test` scaffolding).
-- [ ] `FEATURES.md`: calendar section + changelog.
+- [x] `FEATURES.md`: calendar section + changelog.
+
+Two things this plan had wrong and the build corrected:
+
+- **Occurrence uuids are not derived.** Derivation exists so two devices agree
+  on a row they both *write*, and an occurrence is never written; it keeps the
+  series' uuid instead, which is what makes attachments, planned todos and the
+  task counts work with no special case. `instanceKey` tells two occurrences
+  apart.
+- **`Recur.next` was not enough.** Walking occurrence to occurrence clamps per
+  step, so a monthly block on the 31st meets one February and becomes the 28th
+  for ever. Expansion counts from the anchor through a new `Recur.nth`; tasks
+  still use `next`, because a completed task has no anchor left.
 
 ### 3. All-day events  `[ ]`
 

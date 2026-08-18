@@ -192,6 +192,13 @@ class _DetailsDialogState extends State<_DetailsDialog> {
                 icon: Icons.notifications_none_rounded,
                 text: describeNotify(e.notifyMinutes),
               ),
+              // Only when it repeats. "Once" on every other block would be a
+              // line of noise on the card that exists to answer questions.
+              if (e.repeats)
+                _Line(
+                  icon: Icons.repeat_rounded,
+                  text: Recur.label(e.recur!),
+                ),
               if (e.description.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 // Markdown, like a task's notes. This card is already the

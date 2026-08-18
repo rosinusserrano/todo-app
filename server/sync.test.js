@@ -740,6 +740,7 @@ test('calendars and events round-trip, including the null workspace', async () =
         start_at: '2026-07-30T16:00:00.000Z',
         end_at: '2026-07-30T17:00:00.000Z',
         notify_minutes: null,
+        recur: 'weekly',
         created_at: '2026-07-30T09:00:00+02:00',
         updated_at: '2026-07-30T09:00:00+02:00',
         deleted_at: null,
@@ -758,6 +759,11 @@ test('calendars and events round-trip, including the null workspace', async () =
 
   const event = changes.calendar_events[0];
   assert.equal(event.title, 'squats');
+  // A repeating block is one row carrying its rule; the client expands the
+  // occurrences and never writes them. If `recur` were missing from TABLES it
+  // would sync as null for ever, and a weekly stand-up would arrive on the
+  // second device as a single block on one Monday.
+  assert.equal(event.recur, 'weekly');
   assert.equal(event.description, 'leg day');
   assert.equal(event.start_at, '2026-07-30T16:00:00.000Z');
   // Null means "inherit the calendar's rule", so it must not arrive as a 0 -

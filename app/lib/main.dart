@@ -619,13 +619,56 @@ class _WidgetShellState extends State<WidgetShell>
       case EventAction.plan:
         await _openSublist(event);
       case EventAction.delete:
-        await s.deleteEvent(event);
+        await _deleteEvent(event);
     }
   }
 
-  Future<void> _editEvent(CalendarEvent event) async {
+  /// Deleting a repeating block deletes **the series**, so it says so first.
+  ///
+  /// The same rule as activating a parked group: one press that removes a row
+  /// you can see is its own confirmation, but one press that removes fifty-two
+  /// Tuesdays you cannot see is not, and there is no undo behind either.
+  Future<void> _deleteEvent(CalendarEvent event) async {
+    if (event.repeats) {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: T.bgSolid,
+          title: const Text('Delete every occurrence?',
+              style: TextStyle(fontSize: 15)),
+          content: Text(
+            '"${event.title}" repeats ${Recur.label(event.recur!).toLowerCase()}. '
+            'Deleting it removes the whole series, not just this one.',
+            style: const TextStyle(
+                fontSize: 12.5, color: T.muted, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete series'),
+            ),
+          ],
+        ),
+      );
+      if (yes != true) return;
+    }
+    await s.deleteEvent(event);
+  }
+
+  Future<void> _editEvent(CalendarEvent occurrence) async {
     final calendars = s.calendars;
     if (calendars.isEmpty) return;
+
+    // The form always edits the **series**, times included. Opening the third
+    // Tuesday of a weekly block and changing its title would otherwise save
+    // that Tuesday's start as the series start, quietly moving every
+    // occurrence; there is nowhere yet to record "this one is different". The
+    // form says so, and for a one-off `stored` is the row itself.
+    final event = occurrence.stored;
 
     final edit = await showEventForm(
       context,
@@ -645,7 +688,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (edit == null) return;
 
     if (edit.delete) {
-      await s.deleteEvent(event);
+      await _deleteEvent(event);
       return;
     }
     await s.saveEvent(
@@ -657,8 +700,11 @@ class _WidgetShellState extends State<WidgetShell>
       end: edit.end!,
       notifyMinutes: edit.notifyMinutes,
       // copyWith cannot tell "leave it alone" from "set it back to inherit",
-      // so the form's null has to be passed as an explicit clear.
+      // so the form's null has to be passed as an explicit clear. Same for the
+      // repeat rule, where null means "stop repeating".
       clearNotify: edit.notifyMinutes == null,
+      recur: edit.recur,
+      clearRecur: edit.recur == null,
     );
   }
 

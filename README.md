@@ -13,10 +13,10 @@ self-hosted server.
 Built with **Flutter** (Dart) for every platform, plus a **Node + Express**
 sync server you run yourself.
 
-> **Note on layout:** `src/` and `src-tauri/` are the original Tauri v2 +
-> TypeScript build. They were superseded by `app/` in 0.7.0 and are kept only
-> as a reference for the port and the legacy-database importer. They are not
-> built and not shipped — don't edit them.
+> **Note on layout:** everything the app is lives in `app/`, and the sync
+> server in `server/`. The original Tauri v2 + TypeScript build was superseded
+> by `app/` in 0.7.0 and deleted from the working tree in 0.24.0; it is still
+> in the history under the `legacy-tauri` tag if it is ever wanted.
 
 ---
 
@@ -201,13 +201,14 @@ Authorization Grant** enabled. Full setup in
 | `app/lib/ui/` | Widgets, including `ui/calendar/` |
 | `app/test/` | The test suite — run it |
 | `server/` | The sync server. Node + Express + SQLite. |
-| `src/`, `src-tauri/` | **Superseded.** Do not edit. |
 
 Docs:
 
 - **[FEATURES.md](./FEATURES.md)** — everything the app does, plus the
   changelog. The closest thing to a spec.
 - **[ROADMAP.md](./ROADMAP.md)** — agreed and designed, not yet built.
+- **[TODO.md](./TODO.md)** — the running work order: what is being worked on
+  now and what comes next.
 - **[CLAUDE.md](./CLAUDE.md)** — architecture notes and the reasoning behind
   the decisions that are easy to undo by accident.
 - **[server/DEPLOY.md](./server/DEPLOY.md)** — running the server for real.

@@ -18,12 +18,17 @@ server.
 | --- | --- |
 | `app/` | **The client. All work goes here.** Flutter, all platforms. |
 | `server/` | The self-hosted sync server. Node + Express + SQLite. |
-| `src/`, `src-tauri/`, `index.html`, `vite.config.ts`, `package.json` | **Superseded. Do not edit.** |
+| `package.json` | The server's dependencies and scripts, nothing else. |
 
-`src/` + `src-tauri/` are the original Tauri v2 + TypeScript build, replaced by
-`app/` in 0.7.0. They are kept only as a reference for the port and for the
-legacy-database importer; they are not built, not shipped, and changing them has
-no effect on the app. `git log -- src` shows nothing since the rewrite landed.
+The original Tauri v2 + TypeScript build (`src/`, `src-tauri/`, `index.html`,
+`vite.config.ts`, `tsconfig.json`) was replaced by `app/` in 0.7.0 and was
+**deleted** in 0.24.0, after seventeen releases as a reference nobody read. It
+is still in the history, tagged **`legacy-tauri`** - `git show
+legacy-tauri:src/main.ts`, or `git checkout legacy-tauri` - which is where to
+look if the legacy importer ever has to be checked against the schema it reads.
+The importer itself lives on in `app/lib/sync/legacy_import.dart` and reads the
+old *database file* at its install path, not this source tree, so nothing about
+the deletion touches it.
 
 `FEATURES.md` is the running description of everything the app does, with a
 changelog at the bottom. **Keep it updated whenever behaviour changes** — it is
@@ -895,7 +900,8 @@ Notes for changing it:
 
 ## Gotchas
 
-- **Don't edit `src/` or `src-tauri/`.** See the table above.
+- **The old Tauri build is gone from the working tree**, not from history:
+  `git show legacy-tauri:...`. See the note under the layout table.
 - A schema change is **three** edits, not one: the client (`local_store.dart`
   `_create` *and* `_upgrade`, plus the model), and the server (`db.js` schema,
   `addColumn` for existing databases, and the `TABLES` column list — a field

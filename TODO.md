@@ -146,26 +146,34 @@ in the backlog.
       path that makes the state recoverable in the meantime.
 - [x] Tests + `FEATURES.md`.
 
-### 5. Throw away the dead Tauri build  `[ ]`
+### 5. Throw away the dead Tauri build  `[x]`
 
 `src/`, `src-tauri/`, `index.html`, `vite.config.ts`, `tsconfig.json` — the
 original TypeScript app, superseded in 0.7.0 and untouched since.
 
-- [ ] Confirm nothing live references them: `legacy_import.dart` reads the old
+- [x] Confirm nothing live references them: `legacy_import.dart` reads the old
       **database file** at its install path, not this source tree, and the
       server has no relationship with them at all.
-- [ ] Tag the last commit that contains them (`legacy-tauri`) and say so in the
+- [x] Tag the last commit that contains them (`legacy-tauri`) and say so in the
       commit message. Deleting history is not the point; keeping a museum in the
       working tree is what stops.
-- [ ] `package.json`: keep the server scripts (`server`, `token`) and drop the
+- [x] `package.json`: keep the server scripts (`server`, `token`) and drop the
       vite/tauri devDependencies and scripts. `npm run server` must still work
       afterwards — check it, do not assume.
-- [ ] Update the "Where the code lives" table in `CLAUDE.md`, the memory note
+- [x] Update the "Where the code lives" table in `CLAUDE.md`, the memory note
       that says never to edit them, and any README references.
 
-### 6. Commit  `[ ]`
+Left on disk deliberately, because it is untracked build output and 6.5 GB of
+it is not mine to delete: `src-tauri/target`, `src-tauri/gen` and `dist/`.
+`rm -rf src-tauri dist` when Marco says so.
+
+### 6. Commit  `[~]`
 
 Steps 1–5, each as its own commit as it lands rather than one lump at the end.
+
+- [x] 1 CI, 2 recurring events, 3 all-day, 4 locate, 5 the deletion.
+- [ ] Bump `app/pubspec.yaml` to 0.24.0 (the changelog entry is already written
+      under that number; `package.json` is already there).
 
 ---
 

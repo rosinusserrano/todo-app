@@ -41,3 +41,9 @@ app/macos/Pods/
 *.njsproj
 *.sln
 *.sw?
+
+# Build output left behind by the Tauri app that was deleted in 0.24.0. The
+# rules for these lived in src-tauri/.gitignore, which went with it - so
+# without this line 6.5 GB of Rust target/ turns up as untracked. Safe to
+# delete from disk; the source is in the history under the legacy-tauri tag.
+/src-tauri/

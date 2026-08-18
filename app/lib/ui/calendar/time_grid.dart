@@ -21,6 +21,8 @@
 // creating used to run on top of opening and a click on an event wrote a new
 // 15-minute block behind the editor.
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
@@ -28,8 +30,15 @@ import '../../sync/models.dart';
 import '../../theme.dart';
 import '../task_drag.dart';
 
-/// Height of one hour of the grid. Everything vertical is derived from this.
+/// Height of one hour of the grid, before the user has zoomed. Everything
+/// vertical is derived from it.
 const double kHourHeight = 44;
+
+/// What a pinch can zoom to. The floor is the point where a 15-minute block is
+/// still a tappable sliver; the ceiling is about "one hour fills a phone",
+/// which is as far as anyone reads a day.
+const double kHourHeightMin = 24;
+const double kHourHeightMax = 160;
 
 /// The time-of-day gutter down the left edge.
 const double kGutter = 38;
@@ -51,6 +60,17 @@ const int kSnapMinutes = 15;
 /// Height of the band above the grid that holds multi-day events.
 const double kSpanRowHeight = 18;
 
+/// How close to the left or right edge a dragged block has to be held for the
+/// grid to start moving under it. Wide enough to hit with a thumb that is
+/// already holding something, narrow enough not to trigger while aiming at
+/// Monday.
+const double kEdgeZone = 34;
+
+/// How long the grid waits before stepping again while a block is held in an
+/// edge zone. One step per beat, so a week is a deliberate pause rather than a
+/// blur of six.
+const Duration kEdgeStepInterval = Duration(milliseconds: 650);
+
 class TimeGridView extends StatefulWidget {
   const TimeGridView({
     super.key,
@@ -69,6 +89,9 @@ class TimeGridView extends StatefulWidget {
     this.onPlacePending,
     this.onAdjustPending,
     this.onRemovePending,
+    this.onStep,
+    this.hourHeight = kHourHeight,
+    this.onZoom,
   });
 
   /// The columns, left to right, each at local midnight.
@@ -119,6 +142,21 @@ class TimeGridView extends StatefulWidget {
   final void Function(int index, DateTime start, DateTime end)? onAdjustPending;
   final void Function(int index)? onRemovePending;
 
+  /// Move the calendar one step - a day, a week or a year, whichever the mode
+  /// is built on. Used while a block is held against the left or right edge of
+  /// the grid, so a block can be dragged to a day that is not on screen.
+  final void Function(int delta)? onStep;
+
+  /// How tall one hour is drawn, which the user can pinch to change. Passed in
+  /// rather than read from a constant so the whole grid - painter, labels,
+  /// blocks and the drag maths - answers to one number; see the note on
+  /// [gutter] for the same rule.
+  final double hourHeight;
+
+  /// A pinch asked for a new hour height. Null leaves the grid fixed, which is
+  /// what a mouse gets: there is no two-finger gesture to make.
+  final void Function(double height)? onZoom;
+
   @override
   State<TimeGridView> createState() => _TimeGridViewState();
 }
@@ -132,6 +170,7 @@ class _TimeGridViewState extends State<TimeGridView> {
 
   @override
   void dispose() {
+    _edgeTimer?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -143,6 +182,38 @@ class _TimeGridViewState extends State<TimeGridView> {
   /// keeps its [Layout]. Nothing notifies off them.
   bool _compact = false;
   double _gutter = kGutter;
+
+  /// Running while a dragged block sits in an edge zone. Held here rather than
+  /// in the body so that a drag which ends anywhere - dropped, cancelled, or
+  /// the whole view disposed mid-gesture - stops it.
+  Timer? _edgeTimer;
+  int _edgeDirection = 0;
+
+  /// Whether the edge zones are live for the drag in progress.
+  ///
+  /// False until the block has been seen *outside* both zones, because a block
+  /// that lives in the first or last column starts its own drag inside one -
+  /// and picking Monday up to move it two hours down would otherwise step the
+  /// grid back a week before the finger had gone anywhere. The zones are for
+  /// carrying a block *out* of the visible range, so they arm on the way past
+  /// the middle.
+  bool _edgeArmed = false;
+
+  /// Live pointers, for the pinch. Tracked with a [Listener] rather than a
+  /// [GestureDetector]'s scale callbacks **on purpose**: a ScaleGestureRecognizer
+  /// enters the arena against the scroll view and wins it on a single finger,
+  /// so the day would stop scrolling. A Listener never competes for anything -
+  /// it just watches - which leaves one finger meaning "scroll" and two
+  /// meaning "zoom", with nothing to arbitrate.
+  final Map<int, Offset> _pointers = {};
+
+  /// The pinch in progress: the distance and hour height it started at, and
+  /// where the fingers were centred, so the time under them can be held still
+  /// while the grid grows or shrinks around it.
+  double? _pinchFrom;
+  double _pinchHeight = kHourHeight;
+  double _pinchAnchorMinutes = 0;
+  double _pinchAnchorY = 0;
 
   /// Decided against the *roomy* gutter, so the answer cannot depend on itself:
   /// a column that is tight even with 38px to spare is tight.
@@ -163,7 +234,7 @@ class _TimeGridViewState extends State<TimeGridView> {
     final day = anchorDay ??
         ((local.dx - _gutter) / colWidth).floor().clamp(0, widget.days.length - 1);
 
-    final raw = (local.dy / kHourHeight) * 60;
+    final raw = (local.dy / widget.hourHeight) * 60;
     final snapped = (raw / kSnapMinutes).round() * kSnapMinutes;
     final minutes = snapped.clamp(0, 24 * 60);
 
@@ -260,6 +331,111 @@ class _TimeGridViewState extends State<TimeGridView> {
     }
   }
 
+  /// Start, keep or stop the grid moving under a dragged block.
+  ///
+  /// [direction] is -1, 0 or +1. The first step is immediate - a drag held at
+  /// the edge means "go there", and waiting 650ms to acknowledge it reads as
+  /// nothing happening - and the timer then repeats while the block stays put.
+  void _edgeStep(int direction) {
+    if (direction == 0) _edgeArmed = true;
+    if (direction != 0 && !_edgeArmed) return;
+    if (direction == _edgeDirection) return;
+
+    _edgeTimer?.cancel();
+    _edgeDirection = direction;
+    if (direction == 0) {
+      _edgeTimer = null;
+      return;
+    }
+    final step = widget.onStep;
+    if (step == null) return;
+    step(direction);
+    _edgeTimer = Timer.periodic(kEdgeStepInterval, (_) => step(direction));
+  }
+
+  void _pointerDown(PointerDownEvent e) {
+    if (widget.onZoom == null || e.kind != PointerDeviceKind.touch) return;
+    _pointers[e.pointer] = e.localPosition;
+    if (_pointers.length == 2) _pinchBegin();
+  }
+
+  void _pointerMove(PointerMoveEvent e) {
+    if (!_pointers.containsKey(e.pointer)) return;
+    _pointers[e.pointer] = e.localPosition;
+    _pinchUpdate();
+  }
+
+  void _pointerUp(int pointer) {
+    if (_pointers.remove(pointer) == null) return;
+    if (_pointers.length < 2) _pinchFrom = null;
+  }
+
+  void _pinchBegin() {
+    final points = _pointers.values.toList();
+    _pinchFrom = (points[0] - points[1]).distance;
+    _pinchHeight = widget.hourHeight;
+
+    // Where the fingers are, in the scroll view's own coordinates, and what
+    // time that is. Both are frozen for the gesture: zooming about the middle
+    // of the screen would send whatever you were looking at off the top.
+    final centre = (points[0].dy + points[1].dy) / 2;
+    _pinchAnchorY = centre;
+    _pinchAnchorMinutes =
+        (_scroll.offset + centre) / widget.hourHeight * 60;
+  }
+
+  void _pinchUpdate() {
+    final from = _pinchFrom;
+    final zoom = widget.onZoom;
+    if (from == null || zoom == null || _pointers.length < 2 || from <= 0) {
+      return;
+    }
+
+    final points = _pointers.values.toList();
+    final now = (points[0] - points[1]).distance;
+    final height =
+        (_pinchHeight * (now / from)).clamp(kHourHeightMin, kHourHeightMax);
+    if ((height - widget.hourHeight).abs() < 0.5) return;
+
+    zoom(height);
+
+    // Hold the pinched time still. Done after the frame that draws the new
+    // height, because until then the scroll view still has the old extent and
+    // would clamp the jump.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final target = _pinchAnchorMinutes / 60 * height - _pinchAnchorY;
+      _scroll.jumpTo(
+        target.clamp(0.0, _scroll.position.maxScrollExtent),
+      );
+    });
+  }
+
+  /// The drag is over, however it ended.
+  void _edgeStop() {
+    _edgeTimer?.cancel();
+    _edgeTimer = null;
+    _edgeDirection = 0;
+    _edgeArmed = false;
+  }
+
+  /// Where a dropped block should land: the day and minute under its own
+  /// top-left corner, which is where the ghost the user is looking at sits.
+  void _dropPending(int index, Offset local) {
+    _edgeStop();
+    final adjust = widget.onAdjustPending;
+    if (adjust == null || index >= widget.pending.length) return;
+
+    final slot = _pointToSlot(local);
+    if (slot == null) return;
+
+    final block = widget.pending[index];
+    final length = block.end.difference(block.start);
+    final start =
+        widget.days[slot.dayIndex].add(Duration(minutes: slot.lowMinutes));
+    adjust(index, start, start.add(length));
+  }
+
   void _commit() {
     final draft = _draft;
     setState(() => _draft = null);
@@ -331,10 +507,15 @@ class _TimeGridViewState extends State<TimeGridView> {
                 compact: _compact,
               ),
             Expanded(
-              child: SingleChildScrollView(
+              child: Listener(
+                onPointerDown: _pointerDown,
+                onPointerMove: _pointerMove,
+                onPointerUp: (e) => _pointerUp(e.pointer),
+                onPointerCancel: (e) => _pointerUp(e.pointer),
+                child: SingleChildScrollView(
                 controller: _scroll,
                 child: SizedBox(
-                  height: 24 * kHourHeight,
+                  height: 24 * widget.hourHeight,
                   child: _GridBody(
                     days: widget.days,
                     timedByDay: _timedByDay,
@@ -353,15 +534,21 @@ class _TimeGridViewState extends State<TimeGridView> {
                     pending: widget.pending,
                     placePending: _placePending,
                     onTapPlace: widget.onPlacePending == null ? null : _tapPlace,
-                    onMovePending: (i, dy) =>
-                        _adjustPending(i, deltaMinutes: (dy / kHourHeight * 60).round()),
+                    onDropPending: _dropPending,
+                    onEdge: widget.onStep == null ? null : _edgeStep,
+                    onEdgeEnd: _edgeStop,
                     onResizePending: (i, endY) =>
-                        _adjustPending(i, newEndMinutes: (endY / kHourHeight * 60).round()),
+                        _adjustPending(
+                            i,
+                            newEndMinutes:
+                                (endY / widget.hourHeight * 60).round()),
                     onRemovePending: widget.onRemovePending,
                     gutter: _gutter,
+                    hourHeight: widget.hourHeight,
                     compact: _compact,
                   ),
                 ),
+              ),
               ),
             ),
           ],
@@ -407,10 +594,13 @@ class _GridBody extends StatelessWidget {
     required this.pending,
     required this.placePending,
     required this.onTapPlace,
-    required this.onMovePending,
+    required this.onDropPending,
+    required this.onEdge,
+    required this.onEdgeEnd,
     required this.onResizePending,
     required this.onRemovePending,
     required this.gutter,
+    required this.hourHeight,
     required this.compact,
   });
 
@@ -441,13 +631,25 @@ class _GridBody extends StatelessWidget {
 
   /// Null unless quick-add is on and a tap should place a block.
   final void Function(Offset local)? onTapPlace;
-  final void Function(int index, double dy) onMovePending;
+
+  /// A lifted block was let go over the grid, at [local] - the position of the
+  /// block's own top-left corner, so it lands where the ghost was drawn.
+  final void Function(int index, Offset local) onDropPending;
+
+  /// A lifted block is being held against an edge: -1, 0 or +1. Null when
+  /// there is nothing to step (no [TimeGridView.onStep]).
+  final void Function(int direction)? onEdge;
+
+  /// The drag left the grid without being dropped on it.
+  final VoidCallback? onEdgeEnd;
+
   final void Function(int index, double endY) onResizePending;
   final void Function(int index)? onRemovePending;
 
   /// The grid's geometry, decided once by the view above and passed down so
   /// every part of it - painter, labels, blocks - draws to the same one.
   final double gutter;
+  final double hourHeight;
   final bool compact;
 
   @override
@@ -457,14 +659,56 @@ class _GridBody extends StatelessWidget {
         final colWidth = (constraints.maxWidth - gutter) / days.length;
         final today = DateTime.now();
 
-        return Stack(
+        // The whole grid takes a dropped block, and it is the *outermost*
+        // widget here for a reason: a Stack hit-tests top-down and stops at the
+        // first child that takes the pointer, so a drop target below the event
+        // blobs would never be found over one. An ancestor is always on the hit
+        // path.
+        return DragTarget<int>(
+          onWillAcceptWithDetails: (_) => true,
+          // Off the grid entirely - dropped on something else, or cancelled.
+          // Stepping must not carry on underneath.
+          onLeave: (_) => onEdgeEnd?.call(),
+          onMove: (d) {
+            final edge = onEdge;
+            if (edge == null) return;
+            final box = context.findRenderObject() as RenderBox?;
+            if (box == null) return;
+            final x = box.globalToLocal(d.offset).dx;
+            // Measured from the *gutter*, not from zero: the hour labels are
+            // not part of any day, and a block held over them is being aimed at
+            // Monday rather than at last week.
+            edge(x < gutter + kEdgeZone
+                ? -1
+                : x > constraints.maxWidth - kEdgeZone
+                    ? 1
+                    : 0);
+          },
+          onAcceptWithDetails: (d) {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box == null) return;
+            onDropPending(d.data, box.globalToLocal(d.offset));
+          },
+          builder: (context, _, _) => _stack(colWidth, today),
+        );
+      },
+    );
+  }
+
+  Widget _stack(double colWidth, DateTime today) {
+    return Stack(
           children: [
             Positioned.fill(
               child: CustomPaint(
-                painter: _GridPainter(columns: days.length, gutter: gutter),
+                painter: _GridPainter(
+                  columns: days.length,
+                  gutter: gutter,
+                  hourHeight: hourHeight,
+                ),
               ),
             ),
-            Positioned.fill(child: _HourLabels(gutter: gutter)),
+            Positioned.fill(
+                child: _HourLabels(gutter: gutter, hourHeight: hourHeight)),
 
             // The now line, only on the column that is actually today.
             for (var i = 0; i < days.length; i++)
@@ -472,7 +716,7 @@ class _GridBody extends StatelessWidget {
                 Positioned(
                   left: gutter + i * colWidth,
                   width: colWidth,
-                  top: (today.hour * 60 + today.minute) / 60 * kHourHeight,
+                  top: (today.hour * 60 + today.minute) / 60 * hourHeight,
                   height: 2,
                   child: const _NowLine(),
                 ),
@@ -527,23 +771,27 @@ class _GridBody extends StatelessWidget {
               () {
                 final at = placePending(pending[i]);
                 if (at == null) return const SizedBox.shrink();
+                final width = colWidth - 2;
+                final height =
+                    ((at.toMinutes - at.fromMinutes) / 60 * hourHeight)
+                        .clamp(14.0, double.infinity);
                 return Positioned(
                   left: gutter + at.dayIndex * colWidth + 1,
-                  width: colWidth - 2,
-                  top: at.fromMinutes / 60 * kHourHeight,
-                  height: ((at.toMinutes - at.fromMinutes) / 60 * kHourHeight)
-                      .clamp(14.0, double.infinity),
+                  width: width,
+                  top: at.fromMinutes / 60 * hourHeight,
+                  height: height,
                   child: _PendingBlock(
+                    index: i,
                     from: pending[i].start,
                     to: pending[i].end,
                     title: blockTitle,
                     color: blockColor,
                     compact: compact,
+                    size: Size(width, height),
                     onRemove: onRemovePending == null
                         ? null
                         : () => onRemovePending!(i),
-                    onMove: (dy) => onMovePending(i, dy),
-                    endY: at.toMinutes / 60 * kHourHeight,
+                    endY: at.toMinutes / 60 * hourHeight,
                     onResize: (endY) => onResizePending(i, endY),
                   ),
                 );
@@ -553,8 +801,8 @@ class _GridBody extends StatelessWidget {
               Positioned(
                 left: gutter + draft!.dayIndex * colWidth + 1,
                 width: colWidth - 2,
-                top: draft!.lowMinutes / 60 * kHourHeight,
-                height: ((draft!.highMinutes - draft!.lowMinutes) / 60 * kHourHeight)
+                top: draft!.lowMinutes / 60 * hourHeight,
+                height: ((draft!.highMinutes - draft!.lowMinutes) / 60 * hourHeight)
                     .clamp(6.0, double.infinity),
                 child: _DraftBlock(
                   from: days[draft!.dayIndex]
@@ -567,8 +815,6 @@ class _GridBody extends StatelessWidget {
                 ),
               ),
           ],
-        );
-      },
     );
   }
 
@@ -588,10 +834,11 @@ class _GridBody extends StatelessWidget {
           return Positioned(
             left: left + 1 + p.column * slotWidth,
             width: slotWidth,
-            top: startMin / 60 * kHourHeight,
+            top: startMin / 60 * hourHeight,
             // Floor of ~14px: a 15-minute event still has to be legible and,
             // more to the point, tappable.
-            height: (((endMin - startMin) / 60) * kHourHeight).clamp(14.0, 24 * kHourHeight),
+            height: (((endMin - startMin) / 60) * hourHeight)
+                .clamp(14.0, 24 * hourHeight),
             child: EventBlock(
               event: p.event,
               color: colorFor(p.event),
@@ -854,26 +1101,43 @@ class EventMenuArea extends StatelessWidget {
 ///   - **Tap removes it.** Nothing is written yet, so a mis-tap costs one tap
 ///     to put back. The ✕ says so; without it, tapping a block you just made
 ///     and having it vanish would read as a bug.
-///   - **Long-press-drag moves it.** Long-press for the same reason creating
-///     uses it - a one-finger drag inside the grid has to be able to scroll,
-///     so a plain drag here would make the calendar unscrollable wherever a
-///     block happened to be.
+///   - **Long-press lifts it off the grid**, and it lands where it is dropped -
+///     a different day included. Long press for the same reason creating uses
+///     it: a one-finger drag inside the grid has to be able to scroll, so a
+///     plain drag here would make the calendar unscrollable wherever a block
+///     happened to be.
 ///   - **The grip at the bottom edge resizes**, on a plain vertical drag. That
 ///     one is safe without the long press because the deepest recogniser in the
 ///     arena wins: the grip is a child of the scroll view, so it takes the
 ///     gesture the scrollable would otherwise have got.
+///
+/// Moving used to be a long-press-*drag* that fed the block a stream of
+/// vertical deltas, and it was wrong in two ways at once. It could only move a
+/// block within its own column, so putting Tuesday's block on Wednesday meant
+/// deleting it and placing it again; and it re-laid the block out on every
+/// update, so what the finger followed was a block being rebuilt underneath it
+/// rather than something being carried. A `LongPressDraggable` carries a ghost
+/// and the grid takes the drop - the block is picked up, and it lands where it
+/// is let go. Held against the left or right edge, the grid steps under it
+/// (see [kEdgeZone]), which is the only way to reach a day that is not on
+/// screen.
 class _PendingBlock extends StatefulWidget {
   const _PendingBlock({
+    required this.index,
     required this.from,
     required this.to,
     required this.compact,
-    required this.onMove,
+    required this.size,
     required this.endY,
     required this.onResize,
     this.title,
     this.color,
     this.onRemove,
   });
+
+  /// Which pending block this is. Carried as the drag's payload, so the grid
+  /// knows what was dropped on it.
+  final int index;
 
   final DateTime from;
   final DateTime to;
@@ -882,8 +1146,11 @@ class _PendingBlock extends StatefulWidget {
   final Color? color;
   final VoidCallback? onRemove;
 
-  /// Vertical movement since the last update, in pixels.
-  final void Function(double dy) onMove;
+  /// The box this block occupies on the grid. The ghost that follows the finger
+  /// is drawn at exactly this size: feedback is built outside the layout that
+  /// gave the block its size, so without it the ghost would be laid out
+  /// unconstrained and arrive as a full-width slab.
+  final Size size;
 
   /// Where the block currently ends, in pixels from midnight. The grip drag
   /// measures from this, captured once when the drag starts - see
@@ -903,16 +1170,6 @@ class _PendingBlock extends StatefulWidget {
 }
 
 class _PendingBlockState extends State<_PendingBlock> {
-  /// Where the finger was at the previous update, measured from the press.
-  ///
-  /// [_PendingBlock.onMove] is movement *since the last update*, because the
-  /// other end adds it to where the block is now - but a long press reports
-  /// `offsetFromOrigin`, which is measured from where the press began and so
-  /// grows for the whole drag. Passing that straight through re-applied the
-  /// whole accumulated offset on every update, and a block dragged 40px ran
-  /// several hundred down the grid, away from the finger holding it.
-  double _lastDy = 0;
-
   /// Where the block ended when the grip drag began, and how far the grip has
   /// moved since - in pixels.
   ///
@@ -930,15 +1187,40 @@ class _PendingBlockState extends State<_PendingBlock> {
   Widget build(BuildContext context) {
     final tint = widget.color ?? T.accent;
 
-    return GestureDetector(
-      onTap: widget.onRemove,
-      onLongPressStart: (_) => _lastDy = 0,
-      onLongPressMoveUpdate: (d) {
-        final dy = d.offsetFromOrigin.dy;
-        widget.onMove(dy - _lastDy);
-        _lastDy = dy;
-      },
-      child: Container(
+    return LongPressDraggable<int>(
+      data: widget.index,
+      // The ghost is the block itself at the size it occupies on the grid, so
+      // what is being carried looks like what was picked up. It needs its own
+      // Material: feedback is built in an Overlay, outside this subtree.
+      feedback: Material(
+        type: MaterialType.transparency,
+        child: Opacity(
+          opacity: 0.85,
+          child: SizedBox(
+            width: widget.size.width,
+            height: widget.size.height,
+            child: _blockBody(tint, dragging: false),
+          ),
+        ),
+      ),
+      // What is left behind: the space the block came from, faint, so the grid
+      // does not reflow and the drop has somewhere obvious to go back to.
+      childWhenDragging: Opacity(
+        opacity: 0.25,
+        child: _blockBody(tint, dragging: true),
+      ),
+      child: GestureDetector(
+        onTap: widget.onRemove,
+        child: _blockBody(tint, dragging: false),
+      ),
+    );
+  }
+
+  /// The drawn block. Built three times - in place, as the ghost under the
+  /// finger, and as the faint hole left behind - so it cannot drift between
+  /// them.
+  Widget _blockBody(Color tint, {required bool dragging}) {
+    return Container(
         decoration: BoxDecoration(
           color: tint.withValues(alpha: 0.16),
           border: Border.all(color: tint.withValues(alpha: 0.85), width: 1.5),
@@ -990,37 +1272,40 @@ class _PendingBlockState extends State<_PendingBlock> {
                 ),
               ),
 
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onVerticalDragStart: (_) {
-                  _resizeFrom = widget.endY;
-                  _resizeDy = 0;
-                },
-                onVerticalDragUpdate: (d) {
-                  _resizeDy += d.delta.dy;
-                  widget.onResize(_resizeFrom + _resizeDy);
-                },
-                child: SizedBox(
-                  height: _PendingBlock._gripHeight,
-                  width: double.infinity,
-                  child: Center(
-                    child: Container(
-                      width: 18,
-                      height: 2.5,
-                      decoration: BoxDecoration(
-                        color: tint.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(2),
+            // Not on the ghost or on the hole it left: a live resize handle
+            // on something already being carried is two gestures on one
+            // fingertip.
+            if (!dragging)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragStart: (_) {
+                    _resizeFrom = widget.endY;
+                    _resizeDy = 0;
+                  },
+                  onVerticalDragUpdate: (d) {
+                    _resizeDy += d.delta.dy;
+                    widget.onResize(_resizeFrom + _resizeDy);
+                  },
+                  child: SizedBox(
+                    height: _PendingBlock._gripHeight,
+                    width: double.infinity,
+                    child: Center(
+                      child: Container(
+                        width: 18,
+                        height: 2.5,
+                        decoration: BoxDecoration(
+                          color: tint.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
-      ),
     );
   }
 }
@@ -1121,9 +1406,10 @@ class _NowLine extends StatelessWidget {
 }
 
 class _HourLabels extends StatelessWidget {
-  const _HourLabels({required this.gutter});
+  const _HourLabels({required this.gutter, required this.hourHeight});
 
   final double gutter;
+  final double hourHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -1135,7 +1421,7 @@ class _HourLabels extends StatelessWidget {
           Positioned(
             left: 0,
             width: gutter - (compact ? 4 : 6),
-            top: h * kHourHeight - 6,
+            top: h * hourHeight - 6,
             child: Text(
               compact ? '$h' : '${h.toString().padLeft(2, '0')}:00',
               textAlign: TextAlign.right,
@@ -1148,10 +1434,15 @@ class _HourLabels extends StatelessWidget {
 }
 
 class _GridPainter extends CustomPainter {
-  const _GridPainter({required this.columns, required this.gutter});
+  const _GridPainter({
+    required this.columns,
+    required this.gutter,
+    required this.hourHeight,
+  });
 
   final int columns;
   final double gutter;
+  final double hourHeight;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1163,10 +1454,10 @@ class _GridPainter extends CustomPainter {
       ..strokeWidth = 1;
 
     for (var h = 0; h <= 24; h++) {
-      final y = h * kHourHeight;
+      final y = h * hourHeight;
       canvas.drawLine(Offset(gutter, y), Offset(size.width, y), hour);
       if (h < 24) {
-        final mid = y + kHourHeight / 2;
+        final mid = y + hourHeight / 2;
         canvas.drawLine(Offset(gutter, mid), Offset(size.width, mid), half);
       }
     }

@@ -454,6 +454,19 @@ Three tiers, none of which need an account, an API key, or a licence:
 - **The date has a line of its own** under the arrows, so a day view says
   "Tuesday, 18 August 2026" in full instead of clipping it to fit beside four
   controls.
+- **Drag a placed block anywhere, including onto another day.** With quick add
+  on, a long press lifts a block off the grid — it follows your finger as a
+  thing being carried — and it lands where you let go, on whatever day is under
+  it. Hold it against the left or right edge and the grid moves under it a week
+  (or a day, or a year) at a time, which is how a block reaches a day that is
+  not on screen. The edges only wake up once the block has been somewhere that
+  is not an edge, so picking up Monday's block to move it two hours down does
+  not send you back a week.
+- **Pinch to zoom the day.** Two fingers make an hour taller or shorter, from a
+  compressed overview down to a day you can drop a 15-minute block into
+  precisely. The time between your fingers stays where it is while the grid
+  grows around it, and the zoom is remembered per device — it is about the
+  screen in front of you, so it is not synced.
 - **The calendar fits the window you have.** Opening it never moves or resizes
   the widget. Instead the views change shape:
   - The **week stays a week** — seven real columns you can drag on — right down
@@ -895,6 +908,14 @@ reminders are both there now**, queued for 0.18.0.
   the keyboard rather than covered by it. The date and time buttons inside the
   form also stop overflowing in a 340px window, which they had been doing
   behind a dialog that clipped them silently.
+  **A quick-add block can be picked up and put down somewhere else.** Dragging
+  one used to move it only within its own column, and it moved by re-laying
+  itself out under your finger rather than being carried; putting Tuesday's
+  block on Wednesday meant deleting it and placing it again. A long press now
+  lifts it, it lands where it is dropped, and holding it against the left or
+  right edge walks the grid under it so it can reach a day that is off screen.
+  **Pinching the day and week views zooms them**, from a compressed overview to
+  a grid you can place a 15-minute block on, remembered per device.
 - **0.23.1** — **Fixes.** An edit made on a device in another timezone could
   lose to an *older* edit made elsewhere, and lose silently. Timestamps were
   written as a bare wall-clock reading with no timezone on it, so "which of

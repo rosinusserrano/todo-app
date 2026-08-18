@@ -497,10 +497,32 @@ time on one. The rules that are not obvious from the schema:
   narrowed, workspace deleted — is a *different* state from the mode being
   turned off, and only the first one drops blocks; `test/quick_add_test.dart`
   pins both. On the block itself: tap removes (nothing is
-  written yet, so a mis-tap costs one tap), long-press-drag moves (a plain drag
-  would make the grid unscrollable wherever a block sat), and the bottom grip
-  resizes on a plain vertical drag — safe without the long press because the
-  deepest recogniser in the arena beats the scrollable above it.
+  written yet, so a mis-tap costs one tap), long-press *lifts* it (see the
+  bullet below; long press, because a plain drag would make the grid
+  unscrollable wherever a block sat), and the bottom grip resizes on a plain
+  vertical drag — safe without the long press because the deepest recogniser in
+  the arena beats the scrollable above it.
+- **A pending block is picked up, not pushed around.** Moving one is a
+  `LongPressDraggable` whose ghost the grid takes as a drop (`_dropPending`),
+  resolved from the **top-left of the ghost** so it lands where it is drawn.
+  The old version fed the block vertical deltas, which meant it could never
+  leave its own column and was re-laid-out under the finger every frame. Two
+  things about the edge zones (`kEdgeZone`): the grid steps *immediately* on
+  entering one and then repeats on a timer, because waiting for the first beat
+  reads as nothing happening; and they **arm only after the block has been
+  outside both of them**, since a block in the first column starts its own drag
+  inside the left zone and would otherwise step back a week before the finger
+  moved. `_edgeStop` runs on drop, on leaving the grid and on dispose - a timer
+  that outlives its gesture walks the calendar on its own.
+- **The hour height is a value, not a constant** (`TimeGridView.hourHeight`),
+  pinched on touch and stored device-locally in `settings`. Everything vertical
+  reads it - painter, labels, blocks, `_pointToSlot` - for the same reason
+  nothing may read `kGutter` directly. The pinch is a **`Listener`, not a
+  `GestureDetector`**: a `ScaleGestureRecognizer` enters the arena against the
+  scroll view and wins it on one finger, so the day would stop scrolling. A
+  Listener never competes, which leaves one finger meaning scroll and two
+  meaning zoom with nothing to arbitrate. The pinched instant is held still by
+  re-anchoring the scroll offset after the frame that draws the new height.
 - The year view's month tiles are **always six week rows** (`_weekRows`), padded
   with blanks. A month needs four to six depending on where its 1st falls, and
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it

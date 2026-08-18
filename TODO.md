@@ -21,8 +21,16 @@ Rules for keeping it honest:
 
 ## Now
 
-Steps 0-6 are done; the mobile and calendar list below is what is next. See
-*Done* for what landed.
+Everything through step 13 is done and committed. **Steps 14 and 15 are what is
+next**, then step 16 closes the branch. See *Done* for what landed.
+
+Two things carried over, neither of them blocking:
+
+- **CI has still never run.** The workflow from step 1 is unverified until
+  `feature/ci-calendar-cleanup` is pushed. That is the one unticked box above.
+- `src-tauri/target`, `src-tauri/gen` and `dist/` are still on disk (6.5 GB of
+  Rust build output from the deleted app). Gitignored, safe to `rm -rf` whenever
+  Marco says so.
 
 ### 0. Commit the 0.23.1 batch  `[x]`
 
@@ -218,18 +226,24 @@ on the list — the details card's "white rectangle" (step 11) turned out to be
 Material's `OverflowBar` claiming the height, and the event form's date/time row
 had been overflowing in a 340px window behind a dialog that clipped it.
 
-### 10. Quick add: pick the block up, then drop it  `[ ]`
+### 10. Quick add: pick the block up, then drop it  `[x]`
 
-- [ ] Resizing stops while the finger is still moving. Find out whether the
-      0.23.1 grip fix covers it; if not, the recogniser is losing the pointer.
-- [ ] Moving runs faster than the finger — the delta bug 0.23.1 fixed. Verify on
-      current main first.
-- [ ] Then the redesign Marco asked for: a long press **lifts** the block off
-      the grid (it follows the finger as a dragged object, not as a block being
-      re-laid-out every frame), and it lands where it is dropped.
-- [ ] **Edge zones** while dragging: holding a lifted block against the left or
-      right edge steps the grid one day / one week, so a block can be moved
-      across the boundary of what is on screen.
+- [x] The redesign: a long press **lifts** the block off the grid (a
+      `LongPressDraggable`, so it follows the finger as a thing being carried),
+      and it lands where it is dropped — on whatever day is under it, which the
+      old delta-based version could never do.
+- [x] **Edge zones** while dragging (`kEdgeZone`): holding a lifted block
+      against the left or right edge steps the grid, immediately and then on a
+      timer.
+- [x] The resize grip and tap-to-remove are unchanged and still pinned.
+- [x] `test/quick_add_drag_test.dart` — where a block lands, that straight down
+      keeps its day, that the edges step and then stop, and that a tap still
+      takes a block back.
+
+The test found the one thing this design gets wrong by default: a block in the
+first column starts its own drag *inside* the left edge zone, so picking Monday
+up to move it two hours down stepped back a week before the finger moved. The
+zones now arm only after the block has been somewhere that is not an edge.
 
 ### 11. Opening an event shows a full-width card, not a white rectangle  `[x]`
 
@@ -238,11 +252,19 @@ the bottom. Reproduce, find what is claiming that space (a description box with
 no intrinsic height is the first suspect), and make the card full width like the
 editor in step 9.
 
-### 12. Pinch to zoom the hour height  `[ ]`
+### 12. Pinch to zoom the hour height  `[x]`
 
-Day and week views: a pinch changes how tall an hour is drawn. One stored value,
-clamped, remembered in `settings` like the other calendar prefs. Note it has to
-coexist with the vertical scroll and with the long-press-drag to create.
+Day and week views: a pinch changes how tall an hour is drawn, clamped between
+`kHourHeightMin` and `kHourHeightMax` and remembered in `settings` like the
+other calendar prefs — device-local, because how far you are zoomed in is about
+the screen in front of you.
+
+The coexistence problem was the whole of it, and the answer is that the pinch is
+a **`Listener`, not a `GestureDetector`**: a `ScaleGestureRecognizer` enters the
+arena against the scroll view and wins it on a single finger, which would stop
+the day scrolling. A Listener never competes for anything, so one finger still
+means scroll and two mean zoom. The pinched instant is held still by
+re-anchoring the scroll offset after the frame that draws the new height.
 
 ### 13. Quick-add blocks that vanish  `[x]` — withdrawn, and one real gap behind it
 
@@ -282,6 +304,8 @@ Events keep their own calendar's colour — that is the point of the week view.
 
 ## Done
 
+- **7-9, 11** Put the calendar's forms on the app's own panel, and the swipe on
+  the right axis. (`6015b9d`)
 - **0** Release 0.23.1: an edit no longer loses to an older one, and a phone can
   reach delete. (`5a9eace`, plus `30792a2` for the planning docs.)
 - **1** Build every platform in CI, not just the one that could not regress

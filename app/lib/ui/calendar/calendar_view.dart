@@ -277,6 +277,15 @@ class CalendarView extends StatelessWidget {
           : null,
       onAdjustPending: state.adjustPendingBlock,
       onRemovePending: state.removePendingBlock,
+      // Holding a lifted block against an edge moves the grid under it, which
+      // is the only way to drag one onto a day that is not on screen. The same
+      // step the arrows and the swipe use, so all three agree on what one step
+      // means in the current mode.
+      onStep: state.stepCalendar,
+      // Pinch to zoom, on touch only: there is no two-finger gesture with a
+      // mouse, and the fixed grid is what the desktop has always had.
+      hourHeight: state.hourHeight,
+      onZoom: layout.touch ? state.setHourHeight : null,
     );
   }
 }

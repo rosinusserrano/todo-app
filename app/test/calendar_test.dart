@@ -20,7 +20,13 @@ import 'package:todo_widget/theme.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 
 import 'package:todo_widget/ui/calendar/time_grid.dart'
-    show EventBlock, TimeGridView, packOverlaps;
+    show
+        EventBlock,
+        TimeGridView,
+        kHourHeight,
+        kHourHeightMax,
+        kHourHeightMin,
+        packOverlaps;
 import 'package:todo_widget/ui/calendar/year_view.dart';
 
 void main() {
@@ -958,6 +964,35 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(created, isEmpty);
+    });
+  });
+
+  group('zooming the grid', () {
+    test('the hour height is remembered, clamped, and device-local', () async {
+      final s = await device();
+
+      // Default until something says otherwise.
+      expect(s.hourHeight, kHourHeight);
+
+      s.setHourHeight(80);
+      expect(s.hourHeight, 80);
+
+      // Clamped at both ends: a pinch can be enthusiastic, and an hour drawn
+      // at 4px is a grid nobody can hit.
+      s.setHourHeight(5000);
+      expect(s.hourHeight, kHourHeightMax);
+      s.setHourHeight(1);
+      expect(s.hourHeight, kHourHeightMin);
+
+      // Persisted like the mode and the scope - and *only* locally: how far
+      // you are zoomed in is about the screen in front of you, so it is a
+      // setting rather than a synced row.
+      s.setHourHeight(64);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final reopened = AppState(s.store);
+      await reopened.load();
+      await reopened.loadCalendarPrefs();
+      expect(reopened.hourHeight, 64);
     });
   });
 

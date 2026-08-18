@@ -6,6 +6,7 @@
 // (local SQLite, small lists) and it keeps the UI a pure function of the DB,
 // which is what made focus mode survivable across restarts.
 
+import 'dart:async';
 import 'dart:io' show File;
 import 'dart:ui' show Color;
 
@@ -17,12 +18,17 @@ import 'sync/attachment_store.dart';
 import 'sync/ics.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
+// For the grid's hour-height constants: the zoom this holds is the grid's own
+// geometry, and a second copy of the bounds would drift from the ones the
+// pinch clamps to.
+import 'ui/calendar/time_grid.dart' show kHourHeight, kHourHeightMin, kHourHeightMax;
 import 'theme.dart';
 
 const _kLastWorkspace = 'ui:last-workspace';
 const _kNudge = 'ui:nudge-enabled';
 const _kCalendarMode = 'ui:calendar-mode';
 const _kCalendarScope = 'ui:calendar-scope';
+const _kCalendarZoom = 'ui:calendar-hour-height';
 const _kCalendarHidden = 'ui:calendar-hidden';
 const _kCalendarBlock = 'ui:calendar-block';
 
@@ -1368,6 +1374,25 @@ class AppState extends ChangeNotifier {
     hiddenCalendars = hidden.split(',').where((s) => s.isNotEmpty).toSet();
     final block = await _store.setting(_kCalendarBlock) ?? '';
     timeBlockCalendarUuid = block.isEmpty ? null : block;
+    final zoom = double.tryParse(await _store.setting(_kCalendarZoom) ?? '');
+    hourHeight = (zoom ?? kHourHeight).clamp(kHourHeightMin, kHourHeightMax);
+  }
+
+  /// How tall an hour is drawn on the day and week grids.
+  ///
+  /// A device-local preference, in `settings` beside the mode and the scope,
+  /// and deliberately **not** synced: how far you are zoomed in is about the
+  /// screen in front of you, and a phone's answer is not a desktop's.
+  double hourHeight = kHourHeight;
+
+  /// Called continuously while two fingers are pinching, so it writes the
+  /// setting but does not wait for it: the grid has to follow the fingers.
+  void setHourHeight(double height) {
+    final next = height.clamp(kHourHeightMin, kHourHeightMax);
+    if (next == hourHeight) return;
+    hourHeight = next;
+    notifyListeners();
+    unawaited(_store.setSetting(_kCalendarZoom, next.toStringAsFixed(1)));
   }
 
   /// Give every workspace a calendar, and drop the ones whose workspace is gone.

@@ -282,7 +282,10 @@ class _TimeGridViewState extends State<TimeGridView> {
   List<List<CalendarEvent>> get _timedByDay {
     final out = [for (var i = 0; i < widget.days.length; i++) <CalendarEvent>[]];
     for (final e in widget.events) {
-      if (e.spansDays) continue;
+      // A whole day belongs in the band even when it is only one day: drawn in
+      // the column it would be a block from midnight to midnight, which is
+      // 24 hours of scrolling past the same event.
+      if (e.allDay || e.spansDays) continue;
       for (var i = 0; i < widget.days.length; i++) {
         final day = widget.days[i];
         final next = day.add(const Duration(days: 1));
@@ -295,9 +298,10 @@ class _TimeGridViewState extends State<TimeGridView> {
     return out;
   }
 
-  /// Events crossing a day boundary, which are drawn in the band on top.
+  /// Events crossing a day boundary, and whole days, which are drawn in the
+  /// band on top.
   List<CalendarEvent> get _spanning =>
-      [for (final e in widget.events) if (e.spansDays) e];
+      [for (final e in widget.events) if (e.allDay || e.spansDays) e];
 
   @override
   Widget build(BuildContext context) {
@@ -1343,12 +1347,14 @@ class _SpanBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 5),
           child: Row(
             children: [
-              if (showStart)
+              // A whole day has no times worth printing: "00:00" at each end of
+              // a bar that is already the width of the day says nothing.
+              if (showStart && !event.allDay)
                 Text(
                   hhmm(event.start),
                   style: const TextStyle(fontSize: 9, color: T.muted),
                 ),
-              if (showStart) const SizedBox(width: 5),
+              if (showStart && !event.allDay) const SizedBox(width: 5),
               Expanded(
                 child: Text(
                   event.title,
@@ -1361,8 +1367,8 @@ class _SpanBar extends StatelessWidget {
                   ),
                 ),
               ),
-              if (showEnd) const SizedBox(width: 5),
-              if (showEnd)
+              if (showEnd && !event.allDay) const SizedBox(width: 5),
+              if (showEnd && !event.allDay)
                 Text(
                   hhmm(event.end),
                   style: const TextStyle(fontSize: 9, color: T.muted),

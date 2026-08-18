@@ -409,6 +409,15 @@ Three tiers, none of which need an account, an API key, or a licence:
   A monthly block on the 31st stays on the 31st — February does not drag it
   back to the 28th for good — and a 09:00 block still reads 09:00 on the far
   side of a daylight-saving change.
+- **A whole day, or a run of days.** An *All day* switch on the event form
+  turns off the times and keeps the dates, and the block moves into the band
+  above the grid — where a birthday, a public holiday or a week away belongs,
+  rather than as a 24-hour column blocking out the day underneath it. The days
+  read inclusively: 17 to 22 August is six days off, not five and a midnight.
+  All-day blocks do **not** inherit their calendar's reminder rule, because
+  "an hour before" means an hour before a meeting — inherited, every birthday
+  would wake you at 23:00 the night before. Set a lead on the block itself and
+  it is honoured.
 - **Notification rules belong to the calendar** — Workout can warn you ten
   minutes ahead while Work warns you an hour ahead — because that is the level
   the answer actually varies at. Any single event can override its calendar,
@@ -464,6 +473,9 @@ Three tiers, none of which need an account, an API key, or a licence:
   something this app can also say: every day, every weekday, every week, month
   or year, with no end date and no interval. The import list names the rule it
   found.
+- **An all-day event stays an all-day event.** A public holiday or a booking
+  that covers a date rather than a time used to arrive as a block from midnight
+  to midnight; it now comes in as the whole day it was.
 - **Anything more elaborate is imported once**, and both the list and the
   resulting description say so — a six-week course, every second Tuesday, the
   third Thursday of the month. Rounding those to the nearest rule this app has
@@ -833,6 +845,14 @@ reminders are both there now**, queued for 0.18.0.
   an end date, an interval or a “second Tuesday” in it still imports as one
   block and still says so, because approximating it would be wrong every week
   instead of once.
+  **An event can be a whole day.** A birthday, a public holiday, a week away:
+  the *All day* switch drops the times and the block moves into the band above
+  the grid, instead of standing as a 24-hour column with nothing behind it.
+  All-day blocks stay quiet unless you give that one a lead time of its own —
+  a calendar's “an hour before” rule is about meetings, and inheriting it
+  would have every birthday going off at 23:00 the night before. All-day
+  events in an imported .ics are no longer flattened into midnight-to-midnight
+  blocks either.
 - **0.23.1** — **Fixes.** An edit made on a device in another timezone could
   lose to an *older* edit made elsewhere, and lose silently. Timestamps were
   written as a bare wall-clock reading with no timezone on it, so "which of

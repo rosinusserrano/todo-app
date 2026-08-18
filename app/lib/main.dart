@@ -522,6 +522,8 @@ class _WidgetShellState extends State<WidgetShell>
       start: edit.start!,
       end: edit.end!,
       notifyMinutes: edit.notifyMinutes,
+      recur: edit.recur,
+      allDay: edit.allDay,
     );
   }
 
@@ -705,6 +707,7 @@ class _WidgetShellState extends State<WidgetShell>
       clearNotify: edit.notifyMinutes == null,
       recur: edit.recur,
       clearRecur: edit.recur == null,
+      allDay: edit.allDay,
     );
   }
 

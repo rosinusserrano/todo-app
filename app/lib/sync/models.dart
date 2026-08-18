@@ -1072,6 +1072,16 @@ class CalendarEvent implements SyncRow {
 
   static const notifySilent = -1;
 
+  /// A whole day (or run of days) rather than a span of hours.
+  ///
+  /// The times are still real instants and still say everything: an all-day
+  /// event starts at **00:00 local on its first day and ends at 00:00 on the
+  /// day after its last**, which is the exclusive end .ics already uses and
+  /// what makes every existing overlap test go on working untouched. The flag
+  /// is not a second source of truth for *when* - it says how to draw it and
+  /// how to notify for it, which are the two things the instants cannot say.
+  final bool allDay;
+
   /// How this block repeats, or null for a one-off. One of [Recur.rules].
   ///
   /// The stored row is the **series**, and its `start_at` / `end_at` are the
@@ -1112,6 +1122,7 @@ class CalendarEvent implements SyncRow {
     required this.startAt,
     required this.endAt,
     this.notifyMinutes,
+    this.allDay = false,
     this.recur,
     this.series,
     required this.createdAt,
@@ -1193,6 +1204,7 @@ class CalendarEvent implements SyncRow {
         startAt: reminderStamp(at),
         endAt: reminderStamp(at.add(length)),
         notifyMinutes: notifyMinutes,
+        allDay: allDay,
         recur: recur,
         series: stored,
         createdAt: createdAt,
@@ -1225,9 +1237,16 @@ class CalendarEvent implements SyncRow {
   }
 
   /// Resolved lead time, given the calendar this sits on. Null means silent.
+  ///
+  /// An all-day event does **not** inherit its calendar's rule. That rule is a
+  /// lead time before a start, and an all-day event's start is midnight, so
+  /// "an hour before" on the Work calendar would fire at 23:00 the night
+  /// before for every birthday and every day off. It still honours a lead set
+  /// on the event itself, which is the only place someone can have meant it.
   Duration? notifyLead(Calendar? calendar) {
     final own = notifyMinutes;
     if (own == notifySilent) return null;
+    if (allDay && own == null) return null;
     final minutes = own ?? calendar?.notifyMinutes;
     if (minutes == null || minutes < 0) return null;
     return Duration(minutes: minutes);
@@ -1251,6 +1270,7 @@ class CalendarEvent implements SyncRow {
     String? endAt,
     int? notifyMinutes,
     bool clearNotify = false,
+    bool? allDay,
     String? recur,
     bool clearRecur = false,
     String? updatedAt,
@@ -1267,6 +1287,7 @@ class CalendarEvent implements SyncRow {
       endAt: endAt ?? base.endAt,
       notifyMinutes:
           clearNotify ? null : (notifyMinutes ?? base.notifyMinutes),
+      allDay: allDay ?? base.allDay,
       recur: clearRecur ? null : (recur ?? base.recur),
       createdAt: base.createdAt,
       updatedAt: updatedAt ?? nowStamp(),
@@ -1283,6 +1304,7 @@ class CalendarEvent implements SyncRow {
         'start_at': stored.startAt,
         'end_at': stored.endAt,
         'notify_minutes': notifyMinutes,
+        'all_day': allDay ? 1 : 0,
         'recur': recur,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -1297,6 +1319,7 @@ class CalendarEvent implements SyncRow {
         startAt: m['start_at']! as String,
         endAt: m['end_at']! as String,
         notifyMinutes: (m['notify_minutes'] as num?)?.toInt(),
+        allDay: ((m['all_day'] as num?)?.toInt() ?? 0) != 0,
         recur: m['recur'] as String?,
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,

@@ -265,6 +265,8 @@ void main() {
     // v13 put the same column on calendar_events; rolling back past v12 means
     // rolling back past that too, or its migration collides on the way up.
     await store.raw.execute('ALTER TABLE calendar_events DROP COLUMN recur');
+    await store.raw
+        .execute('ALTER TABLE calendar_events DROP COLUMN all_day');
     await store.raw.setVersion(11);
     await store.close();
 

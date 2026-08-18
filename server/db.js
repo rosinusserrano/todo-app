@@ -197,6 +197,7 @@ function init(db) {
       end_at         TEXT NOT NULL,
       notify_minutes INTEGER,
       recur          TEXT,
+      all_day        INTEGER NOT NULL DEFAULT 0,
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
@@ -234,6 +235,9 @@ function init(db) {
   // the client expands its occurrences for display and never writes them - so
   // this column is the whole of the feature as far as the server is concerned.
   addColumn(db, 'calendar_events', 'recur', 'TEXT');
+  // Whole days (client v14). 0 is what every existing row means: a span of
+  // hours. The instants are unchanged - this only says how to draw it.
+  addColumn(db, 'calendar_events', 'all_day', 'INTEGER NOT NULL DEFAULT 0');
   // A server that first synced a journal before entries had titles has the
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -307,6 +311,7 @@ export const TABLES = {
     'end_at',
     'notify_minutes',
     'recur',
+    'all_day',
     'created_at',
   ],
 };

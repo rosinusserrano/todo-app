@@ -124,10 +124,23 @@ class _DetailsDialogState extends State<_DetailsDialog> {
   }
 
   /// "5 Aug · 09:00 – 11:00", or both dates when the block crosses midnight.
+  ///
+  /// A whole day is named by its days and nothing else, and its *last* day is
+  /// the one before the stored end - that end is exclusive, so printing it
+  /// would add a day to every all-day event on this card.
   String get _when {
     final e = widget.event;
     final from = e.start;
     final to = e.end;
+    if (e.allDay) {
+      final last = to.subtract(const Duration(days: 1));
+      final oneDay = last.year == from.year &&
+          last.month == from.month &&
+          last.day == from.day;
+      return oneDay
+          ? '${_day(from)} · all day'
+          : '${_day(from)} – ${_day(last)} · all day';
+    }
     final sameDay =
         from.year == to.year && from.month == to.month && from.day == to.day;
     if (sameDay) {

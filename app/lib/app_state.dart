@@ -1518,14 +1518,32 @@ class AppState extends ChangeNotifier {
     bool clearNotify = false,
     String? recur,
     bool clearRecur = false,
+    bool allDay = false,
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return null;
     // A backwards drag, or a click that never moved. Either way the block needs
     // a positive length or it cannot be drawn, let alone grabbed again.
-    final from = start.isBefore(end) ? start : end;
+    var from = start.isBefore(end) ? start : end;
     var to = start.isBefore(end) ? end : start;
     if (!to.isAfter(from)) to = from.add(const Duration(minutes: 15));
+
+    // An all-day event is stored as real instants like any other: midnight on
+    // its first day to midnight on the day *after* its last. That exclusive end
+    // is what .ics uses, and it is what lets every existing overlap test - the
+    // window query, the spanning band, the session - go on working with no idea
+    // this flag exists.
+    //
+    // [end] is therefore **exclusive** for an all-day event, which is what
+    // `parseIcs` already produces; the editor is the one that has to convert,
+    // because a person picking "ends 20 Aug" means the 20th included.
+    if (allDay) {
+      from = DateTime(from.year, from.month, from.day);
+      final lastDay = DateTime(to.year, to.month, to.day);
+      to = lastDay.isAfter(from)
+          ? lastDay
+          : from.add(const Duration(days: 1));
+    }
 
     final stamp = nowStamp();
     final row = existing == null
@@ -1538,6 +1556,7 @@ class AppState extends ChangeNotifier {
             endAt: reminderStamp(to),
             notifyMinutes: notifyMinutes,
             recur: recur,
+            allDay: allDay,
             createdAt: stamp,
             updatedAt: stamp,
           )
@@ -1551,6 +1570,7 @@ class AppState extends ChangeNotifier {
             clearNotify: clearNotify,
             recur: recur,
             clearRecur: clearRecur,
+            allDay: allDay,
             updatedAt: stamp,
           );
 
@@ -1595,6 +1615,7 @@ class AppState extends ChangeNotifier {
         start: e.start,
         end: e.end,
         recur: e.recur,
+        allDay: e.allDay,
       );
       if (row != null) added++;
     }

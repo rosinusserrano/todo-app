@@ -89,8 +89,10 @@ void main() {
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
-      // v13 added the same column to a block of time.
+      // v13 and v14 added columns to a block of time.
       await store.raw.execute('ALTER TABLE calendar_events DROP COLUMN recur');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN all_day');
       await store.raw.setVersion(8);
       await store.close();
       return path;
@@ -233,8 +235,10 @@ void main() {
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
-      // v13 added the same column to a block of time.
+      // v13 and v14 added columns to a block of time.
       await store.raw.execute('ALTER TABLE calendar_events DROP COLUMN recur');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN all_day');
       await store.raw.setVersion(8);
       await store.close();
 

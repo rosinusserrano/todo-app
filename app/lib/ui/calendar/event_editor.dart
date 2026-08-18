@@ -34,6 +34,7 @@ class EventEdit {
     required this.end,
     required this.notifyMinutes,
     required this.recur,
+    required this.allDay,
     this.delete = false,
   });
 
@@ -45,6 +46,7 @@ class EventEdit {
         end = null,
         notifyMinutes = null,
         recur = null,
+        allDay = false,
         delete = true;
 
   final String calendarUuid;
@@ -59,6 +61,12 @@ class EventEdit {
 
   /// One of [Recur.rules], or null for a block that happens once.
   final String? recur;
+
+  /// A whole day or run of days. [end] is then the **exclusive** end - midnight
+  /// on the day after the last one - which is what the store and .ics both use;
+  /// the form displays the inclusive day, because that is what a person means
+  /// by "ends on the 20th".
+  final bool allDay;
 
   final bool delete;
 }
@@ -145,6 +153,7 @@ class _EventDialogState extends State<_EventDialog> {
   late DateTime _end = widget.initialEnd;
   late int? _notify = widget.existing?.notifyMinutes;
   late String? _recur = widget.existing?.recur;
+  late bool _allDay = widget.existing?.allDay ?? false;
 
   List<Attachment>? _attachments;
   List<Task>? _tasks;
@@ -204,7 +213,10 @@ class _EventDialogState extends State<_EventDialog> {
   }
 
   Future<void> _pickDate({required bool isStart}) async {
-    final current = isStart ? _start : _end;
+    // The end button shows the inclusive last day when this is a whole-day
+    // event, so that is also what the picker has to open on and what the
+    // answer means.
+    final current = isStart ? _start : (_allDay ? _lastDay : _end);
     final picked = await showDatePicker(
       context: context,
       initialDate: current,
@@ -230,7 +242,7 @@ class _EventDialogState extends State<_EventDialog> {
         _start = moved;
         _end = moved.add(length);
       } else {
-        _end = moved;
+        _end = _allDay ? moved.add(const Duration(days: 1)) : moved;
       }
     });
   }
@@ -260,6 +272,36 @@ class _EventDialogState extends State<_EventDialog> {
     });
   }
 
+  /// Whole days are displayed inclusively - "18 Aug to 18 Aug" is one day -
+  /// and stored exclusively. The conversion lives here, at the one boundary
+  /// between what a person means and what the overlap tests need.
+  DateTime get _lastDay {
+    final e = _end.subtract(const Duration(days: 1));
+    final day = DateTime(e.year, e.month, e.day);
+    final first = DateTime(_start.year, _start.month, _start.day);
+    return day.isBefore(first) ? first : day;
+  }
+
+  void _toggleAllDay(bool on) {
+    setState(() {
+      _allDay = on;
+      if (on) {
+        // Keep the days the user had; drop the hours, which no longer mean
+        // anything, and make the end exclusive.
+        final first = DateTime(_start.year, _start.month, _start.day);
+        final last = DateTime(_end.year, _end.month, _end.day);
+        _start = first;
+        _end = last.isAfter(first) ? last : first.add(const Duration(days: 1));
+      } else {
+        // Coming back to a timed block, midnight to midnight would be a
+        // 24-hour meeting nobody asked for; a working hour is the honest
+        // default and is one tap from anything else.
+        _start = DateTime(_start.year, _start.month, _start.day, 9);
+        _end = _start.add(const Duration(hours: 1));
+      }
+    });
+  }
+
   void _save() {
     final title = _title.text.trim();
     if (title.isEmpty) return;
@@ -273,6 +315,7 @@ class _EventDialogState extends State<_EventDialog> {
         end: _end,
         notifyMinutes: _notify,
         recur: _recur,
+        allDay: _allDay,
       ),
     );
   }
@@ -312,22 +355,38 @@ class _EventDialogState extends State<_EventDialog> {
                 ),
               ),
               const SizedBox(height: 14),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 46,
+                    child: Text('All day',
+                        style: TextStyle(fontSize: 11.5, color: T.muted)),
+                  ),
+                  Switch(
+                    value: _allDay,
+                    onChanged: _toggleAllDay,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
               _WhenRow(
                 label: 'Starts',
                 at: _start,
                 onDate: () => _pickDate(isStart: true),
-                onTime: () => _pickTime(isStart: true),
+                onTime: _allDay ? null : () => _pickTime(isStart: true),
               ),
               const SizedBox(height: 6),
               _WhenRow(
+                // Whole days read inclusively: one day is "18 Aug" to
+                // "18 Aug", not to the midnight that ends it.
                 label: 'Ends',
-                at: _end,
+                at: _allDay ? _lastDay : _end,
                 // An end before the start is the one combination the form must
                 // not hand back; the store also guards it, but saying so here
                 // is better than silently correcting it after the fact.
                 warn: !_end.isAfter(_start),
                 onDate: () => _pickDate(isStart: false),
-                onTime: () => _pickTime(isStart: false),
+                onTime: _allDay ? null : () => _pickTime(isStart: false),
               ),
               const SizedBox(height: 14),
               const Text('Calendar',
@@ -482,7 +541,12 @@ class _WhenRow extends StatelessWidget {
   final String label;
   final DateTime at;
   final VoidCallback onDate;
-  final VoidCallback onTime;
+
+  /// Null on a whole-day event, where there is no time to pick. The button is
+  /// removed rather than disabled: a greyed control invites a second attempt at
+  /// pressing it.
+  final VoidCallback? onTime;
+
   final bool warn;
 
   static const _months = [
@@ -511,11 +575,13 @@ class _WhenRow extends StatelessWidget {
             style: const TextStyle(fontSize: 12),
           ),
         ),
-        const SizedBox(width: 6),
-        OutlinedButton(
-          onPressed: onTime,
-          child: Text(hhmm(at), style: const TextStyle(fontSize: 12)),
-        ),
+        if (onTime != null) ...[
+          const SizedBox(width: 6),
+          OutlinedButton(
+            onPressed: onTime,
+            child: Text(hhmm(at), style: const TextStyle(fontSize: 12)),
+          ),
+        ],
       ],
     );
   }

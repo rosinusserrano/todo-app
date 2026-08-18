@@ -477,6 +477,8 @@ END:VCALENDAR
       // migration on the way up finds it already there.
       await store.raw
           .execute('ALTER TABLE calendar_events DROP COLUMN recur');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN all_day');
       await store.raw.setVersion(12);
       await store.close();
 

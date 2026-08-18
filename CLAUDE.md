@@ -346,6 +346,26 @@ time on one. The rules that are not obvious from the schema:
     on the 31st meets February and becomes the 28th *for ever*. Tasks keep
     using `next` because a completed task has no anchor left - the row in
     front of you is the series.
+- **`all_day` (v14) says how to draw an event, not when it is.** The instants
+  still carry the whole answer: midnight on the first day to midnight on the
+  day *after* the last, which is .ics's exclusive end and is what lets
+  `eventsBetween`, the spanning band and the session go on working without
+  knowing the flag exists. Three things follow:
+  - **The end is exclusive everywhere below the form.** `saveEvent` normalises
+    to it, `parseIcs` already produces it, and the *editor* is the single place
+    that converts - a person picking "ends 20 Aug" means the 20th included.
+    Print the stored end anywhere user-facing and every all-day event gains a
+    day.
+  - **One whole day already satisfies `spansDays`** (midnight to the next
+    midnight is two calendar days), so it lands in the band with no separate
+    rule. The grid still tests `allDay || spansDays`, because that is the
+    question being asked and relying on the coincidence would be a trap for
+    whoever changes `spansDays`.
+  - **An all-day event does not inherit its calendar's lead time**
+    (`notifyLead`). That rule is minutes before a start and an all-day start is
+    midnight, so inheriting "an hour before" fires at 23:00 the night before
+    for every birthday. A lead set on the event itself is still honoured -
+    that is the only place someone can have meant it.
 - `notify_minutes` on an event is a **three-state column**: null inherits the
   calendar's rule, `CalendarEvent.notifySilent` (-1) overrides it to quiet, any
   other value is a lead time. One column rather than a flag plus a value,

@@ -100,26 +100,32 @@ Two things this plan had wrong and the build corrected:
   for ever. Expansion counts from the anchor through a new `Recur.nth`; tasks
   still use `next`, because a completed task has no anchor left.
 
-### 3. All-day events  `[ ]`
+### 3. All-day events  `[x]`
 
 Nothing here has an all-day concept. The .ics reader already *parses* one
 (`IcsEvent.allDay`) and then flattens it to a span, and Google produces them
 constantly — so this is also a prerequisite for the calendar mirror.
 
-- [ ] Schema **v14**: `all_day` INTEGER NOT NULL DEFAULT 0 on `calendar_events`
+- [x] Schema **v14**: `all_day` INTEGER NOT NULL DEFAULT 0 on `calendar_events`
       (NOT NULL with a default that is what every existing row means, so there
       is no third state). Three edits again.
-- [ ] Rendering: an all-day event belongs in the **spanning band**, not in the
+- [x] Rendering: an all-day event belongs in the **spanning band**, not in the
       hour grid, whether it covers one day or five. `spansDays` stays what it
       is; the band's membership test becomes `allDay || spansDays`.
-- [ ] Editor: a toggle that hides the time pickers and keeps the dates.
-- [ ] Notification lead is measured from the **start of the day**, and an
+- [x] Editor: a toggle that hides the time pickers and keeps the dates.
+- [x] Notification lead is measured from the **start of the day**, and an
       all-day event is silent unless it says otherwise — a 60-minute lead
       inherited from its calendar would otherwise fire at 23:00 the night
       before, which is not what that rule meant.
-- [ ] `parseIcs` stops flattening: `allDay` goes straight onto the row, and the
+- [x] `parseIcs` stops flattening: `allDay` goes straight onto the row, and the
       exclusive DTEND that .ics uses keeps working.
-- [ ] Tests + `FEATURES.md`.
+- [x] Tests + `FEATURES.md`.
+
+One correction to the plan: the band's membership test did not need changing
+for the *single*-day case after all - midnight to the next midnight is already
+two calendar days, so `spansDays` is true. It tests `allDay || spansDays`
+anyway, because that is the question being asked and leaning on the coincidence
+would trap whoever next edits `spansDays`.
 
 ### 4. An attachment whose bytes never arrive  `[ ]`
 

@@ -80,7 +80,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 13,
+        version: 14,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -182,6 +182,15 @@ class LocalStore {
       // expanded on the way out of the store and never written, so there is
       // nothing here to backfill either.
       await db.execute('ALTER TABLE calendar_events ADD COLUMN recur TEXT');
+    }
+    if (from < 14) {
+      // Whole days. NOT NULL with a default that is what every existing row
+      // means - a span of hours - so there is no third state to reason about.
+      // The instants are unchanged: an all-day event is one that runs from
+      // midnight to midnight, and this says to *draw* it as a day rather than
+      // as a very long meeting.
+      await db.execute(
+          'ALTER TABLE calendar_events ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0');
     }
   }
 
@@ -301,6 +310,7 @@ class LocalStore {
         end_at         TEXT NOT NULL,
         notify_minutes INTEGER,
         recur          TEXT,
+        all_day        INTEGER NOT NULL DEFAULT 0,
         created_at     TEXT NOT NULL,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,

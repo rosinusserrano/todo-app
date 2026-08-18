@@ -231,6 +231,7 @@ class _AgendaRow extends StatelessWidget {
   /// printing a time from a different day, which would be a lie about when it
   /// starts here.
   String get _when {
+    if (event.allDay) return 'all day';
     final next = day.add(const Duration(days: 1));
     final startsEarlier = event.start.isBefore(day);
     // Strictly after: an event ending *at* midnight ends today, and printing

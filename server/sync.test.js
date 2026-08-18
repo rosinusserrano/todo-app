@@ -741,6 +741,7 @@ test('calendars and events round-trip, including the null workspace', async () =
         end_at: '2026-07-30T17:00:00.000Z',
         notify_minutes: null,
         recur: 'weekly',
+        all_day: 0,
         created_at: '2026-07-30T09:00:00+02:00',
         updated_at: '2026-07-30T09:00:00+02:00',
         deleted_at: null,
@@ -764,6 +765,7 @@ test('calendars and events round-trip, including the null workspace', async () =
   // would sync as null for ever, and a weekly stand-up would arrive on the
   // second device as a single block on one Monday.
   assert.equal(event.recur, 'weekly');
+  assert.equal(event.all_day, 0);
   assert.equal(event.description, 'leg day');
   assert.equal(event.start_at, '2026-07-30T16:00:00.000Z');
   // Null means "inherit the calendar's rule", so it must not arrive as a 0 -

@@ -29,6 +29,20 @@ no effect on the app. `git log -- src` shows nothing since the rewrite landed.
 changelog at the bottom. **Keep it updated whenever behaviour changes** — it is
 the closest thing to a spec.
 
+Three files hold the plan, and they are not interchangeable:
+
+| File | Holds |
+| --- | --- |
+| `TODO.md` | **The work order.** What is being worked on now and what is next, in order, with enough detail per step to start it cold. |
+| `ROADMAP.md` | The *design* behind work that is agreed but not built, and a one-line record of each item once it ships. |
+| `FEATURES.md` | What the app does today, plus the *Ideas / backlog* list for wishes with no design behind them yet. |
+
+**`TODO.md` must be kept current as work proceeds** — tick a step when it is
+committed, and move a finished block to its *Done* section. It exists so a
+session that ends mid-list can be resumed from that file alone, which only works
+if it says what is actually true. New work agreed in conversation goes in there
+in the order agreed; the reasoning for it goes in `ROADMAP.md`, not in `TODO.md`.
+
 ## Commands
 
 Run from `app/` unless noted. The Flutter SDK must be on `PATH`.

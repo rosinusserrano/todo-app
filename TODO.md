@@ -37,21 +37,22 @@ correctly gated behind `--dart-define=SYNC_URL`), `node --test server/` 91/91.
 
 ## Next
 
-### 1. CI builds more than iOS  `[ ]`
+### 1. CI builds more than iOS  `[~]`
 
 `.github/workflows/ios.yml` is the only workflow, so Android was broken outright
 for an unknown length of time and nothing noticed (see the 0.23.1 changelog),
 and the server's own tests have never run in CI at all.
 
-- [ ] Split the checks out of the iOS job into a `checks` job that runs once:
+- [x] Split the checks out of the iOS job into a `checks` job that runs once:
       `flutter analyze`, `flutter test`, and `node --test server/`.
-- [ ] `android` job — ubuntu-latest, JDK 17, `flutter build apk --release`
+- [x] `android` job — ubuntu-latest, JDK 17, `flutter build apk --release`
       (unsigned is fine; it is the *compile* that regressed, not the signing),
       artifact uploaded like the .ipa.
-- [ ] `windows` job — windows-latest, `flutter build windows`. This is the
+- [x] `windows` job — windows-latest, `flutter build windows`. This is the
       primary platform and has never been built by CI.
-- [ ] Keep the iOS job's unsigned-.ipa output and its comment block intact.
+- [x] Keep the iOS job's unsigned-.ipa output and its comment block intact.
 - [ ] Push the branch and watch the run go green before calling it done.
+      **Not done yet — the workflow is unverified until it has run once.**
 
 ### 2. Recurring calendar events  `[ ]`
 

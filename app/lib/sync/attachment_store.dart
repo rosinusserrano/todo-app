@@ -14,7 +14,9 @@
 // What is deliberately *not* here is any sync of the bytes. The row syncs, the
 // file does not, so a second device can hold an attachment whose contents it
 // has never seen. [hasLocal] is how the UI tells, and it says so plainly rather
-// than pretending the attachment is broken.
+// than pretending the attachment is broken; [adopt] is the way out of that
+// state without a blob channel - point at the same document on this machine and
+// the digest proves it is the same one.
 
 import 'dart:io';
 
@@ -88,6 +90,35 @@ class AttachmentStore {
       createdAt: nowStamp(),
       updatedAt: nowStamp(),
     );
+  }
+
+  /// Take a copy of [source] as the bytes for [row], if it really is that file.
+  ///
+  /// The manual half of "not on this device". A row syncs and its bytes do not,
+  /// so a second device can hold an attachment it has never seen; until there
+  /// is a blob channel, this is the way out of that - point at the same
+  /// document on this machine and the row lights up here too.
+  ///
+  /// **The digest is what makes this safe.** Content addressing means the row
+  /// already names its bytes exactly, so this can *check* rather than trust:
+  /// anything that hashes to the same value is the same file, and anything else
+  /// is refused rather than being filed under a name it does not match. Returns
+  /// false in that case, and the caller offers it as a new attachment - which
+  /// is a different thing and should look like one.
+  Future<bool> adopt(File source, Attachment row) async {
+    final digest = await sha256.bind(source.openRead()).first;
+    if (digest.toString() != row.sha256) return false;
+
+    final target = fileFor(row.sha256);
+    if (!await target.exists()) {
+      // Same temporary-then-rename as [_copyIn], for the same reason: an
+      // interrupted copy must not be left sitting at the address of the real
+      // file, where every later lookup would find it and believe it.
+      final tmp = File('${target.path}.part');
+      await source.copy(tmp.path);
+      await tmp.rename(target.path);
+    }
+    return true;
   }
 
   /// Drops the bytes for [sha256]. The caller is responsible for checking that

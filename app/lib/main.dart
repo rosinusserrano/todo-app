@@ -2028,6 +2028,7 @@ class _WidgetShellState extends State<WidgetShell>
       load: () => s.attachmentsFor(t),
       onAdd: (file) => s.attachFile(t, file),
       onRemove: s.removeAttachment,
+      onLocate: s.locateAttachment,
     );
   }
 

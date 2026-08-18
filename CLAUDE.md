@@ -571,6 +571,13 @@ this device" rather than hiding it or failing. Two consequences worth keeping:
 
 - Content addressing means two rows can share one file. Deleting a row must
   check `isBlobReferenced` before touching the bytes.
+- **`adopt` is the manual way out of "not on this device"**, and content
+  addressing is what makes it safe: the row already names its bytes by digest,
+  so a file the user picks is *checked* rather than trusted. A copy under
+  another name is recognised; a different document is refused and offered as a
+  new attachment. It writes no row - nothing about the attachment changes, so
+  nothing syncs and this is one device catching up with itself. It is not blob
+  sync and does not pretend to be; that is still in FEATURES.md's backlog.
 - A row tombstoned on another device arrives as a *merge*, so the local delete
   path never runs. `AppState.sweepAttachments()` at startup is the only thing
   that ever collects those bytes.

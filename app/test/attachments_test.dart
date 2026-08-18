@@ -208,6 +208,81 @@ void main() {
     await s.store.close();
   });
 
+  group('locating a file whose bytes never arrived', () {
+    /// The state every second device is in: the row is here, the bytes are not.
+    /// Built by attaching, then deleting the blob out from under the row -
+    /// which is exactly what syncing a row without its file produces.
+    Future<(AppState, Attachment, File)> orphanedRow() async {
+      final s = await freshState();
+      final t = await addTask(s, 'send the contract');
+      final src = await sourceFile('contract.pdf', 'the actual contract');
+      final a = (await s.attachFile(t, src))!;
+      await s.blobs!.fileFor(a.sha256).delete();
+      expect(await s.blobs!.hasLocal(a), isFalse);
+      return (s, a, src);
+    }
+
+    test('the same file is adopted and the row lights up', () async {
+      final (s, a, src) = await orphanedRow();
+
+      expect(await s.locateAttachment(a, src), isTrue);
+      expect(await s.blobs!.hasLocal(a), isTrue);
+      await s.store.close();
+    });
+
+    test('a copy under a different name is still the same document', () async {
+      final (s, a, _) = await orphanedRow();
+      // The name is not the identity - the digest is. A file that came off
+      // another device, or out of an email, will not be called the same thing.
+      final elsewhere =
+          await sourceFile('downloaded (1).pdf', 'the actual contract');
+
+      expect(await s.locateAttachment(a, elsewhere), isTrue);
+      expect(await s.blobs!.hasLocal(a), isTrue);
+      await s.store.close();
+    });
+
+    test('a different document is refused', () async {
+      final (s, a, _) = await orphanedRow();
+      final wrong = await sourceFile('contract.pdf', 'a different contract');
+
+      expect(await s.locateAttachment(a, wrong), isFalse);
+      // And nothing is written at the address: the whole point is that the row
+      // goes on waiting for the file it actually names, rather than quietly
+      // resolving to the wrong one on this device only.
+      expect(await s.blobs!.hasLocal(a), isFalse);
+      await s.store.close();
+    });
+
+    test('nothing about the row changes, so nothing syncs', () async {
+      final (s, a, src) = await orphanedRow();
+      final before = a.updatedAt;
+
+      await s.locateAttachment(a, src);
+
+      final row = (await s.attachmentsFor(
+        s.tasks.firstWhere((t) => t.text == 'send the contract'),
+      ))
+          .single;
+      expect(row.updatedAt, before);
+      expect(row.sha256, a.sha256);
+      await s.store.close();
+    });
+
+    test('adopting leaves no .part file behind', () async {
+      final (s, a, src) = await orphanedRow();
+
+      await s.locateAttachment(a, src);
+
+      final leftovers = s.blobs!.directory
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.part'));
+      expect(leftovers, isEmpty);
+      await s.store.close();
+    });
+  });
+
   group('size formatting', () {
     test('bytes below a kilobyte are shown as bytes', () {
       expect(AttachmentStore.formatSize(0), '0 B');

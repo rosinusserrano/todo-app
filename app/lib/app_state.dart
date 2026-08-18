@@ -654,6 +654,18 @@ class AppState extends ChangeNotifier {
     return a;
   }
 
+  /// Point an attachment whose bytes never arrived at the file on this device.
+  ///
+  /// Nothing about the row changes - it already names the bytes it wants, by
+  /// their digest - so this is purely local and syncs nothing. False means the
+  /// file the user picked is a *different* document, which the caller offers to
+  /// attach as a new one rather than filing it under a name it does not match.
+  Future<bool> locateAttachment(Attachment a, File source) async {
+    final store = blobs;
+    if (store == null) return false;
+    return store.adopt(source, a);
+  }
+
   /// Tombstones the row, and drops the bytes only if nothing else points at
   /// them - two tasks can share one file, since blobs are content-addressed.
   Future<void> removeAttachment(Attachment a) async {

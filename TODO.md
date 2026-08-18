@@ -127,23 +127,24 @@ two calendar days, so `spansDays` is true. It tests `allDay || spansDays`
 anyway, because that is the question being asked and leaning on the coincidence
 would trap whoever next edits `spansDays`.
 
-### 4. An attachment whose bytes never arrive  `[ ]`
+### 4. An attachment whose bytes never arrive  `[x]`
 
 A row syncs, the file does not, and "not on this device" is currently a dead
 end: there is no way to resolve it short of the byte-sync feature that is still
 in the backlog.
 
-- [ ] "Locate file…" on a missing attachment: pick the file, hash it, and if the
+- [x] "Locate file…" on a missing attachment: pick the file, hash it, and if the
       SHA-256 matches the row's digest, store it — the row lights up here and
       the state clears. Content addressing is what makes this safe; the digest
       is the proof it is the same file.
-- [ ] A non-matching file is offered as a **new** attachment instead of
+- [x] A non-matching file is offered as a **new** attachment instead of
       silently replacing, since the digest says it is a different file.
-- [ ] Say something useful in the empty state — the file name and its size, both
-      of which the row already carries.
-- [ ] Not byte sync. That stays in `FEATURES.md`'s backlog; this is the manual
+- [x] Say something useful in the empty state — the file name and its size, both
+      of which the row already carries. (Already did: the sheet has shown both
+      since the feature landed. Nothing to change.)
+- [x] Not byte sync. That stays in `FEATURES.md`'s backlog; this is the manual
       path that makes the state recoverable in the meantime.
-- [ ] Tests + `FEATURES.md`.
+- [x] Tests + `FEATURES.md`.
 
 ### 5. Throw away the dead Tauri build  `[ ]`
 

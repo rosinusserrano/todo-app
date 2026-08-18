@@ -9,6 +9,14 @@
 // So a missing blob is drawn as a dimmed row with a plain label, and it stays
 // removable - deciding you no longer need a document is not something you
 // should have to be at the right computer to do.
+//
+// It also stays *recoverable*: "Locate" points the row at the same file on this
+// machine. That is safe to offer only because blobs are content-addressed - the
+// row already names the bytes it wants by their SHA-256, so the picked file can
+// be checked rather than trusted, and a different document is refused and
+// offered as a new attachment instead. Until there is a blob channel this is
+// the only way out of the state, and without the digest it would be a way to
+// file the wrong document under the right name on one device only.
 
 import 'dart:io';
 
@@ -31,6 +39,7 @@ Future<void> showAttachments(
   required Future<List<Attachment>> Function() load,
   required Future<void> Function(File) onAdd,
   required Future<void> Function(Attachment) onRemove,
+  required Future<bool> Function(Attachment, File) onLocate,
 }) {
   return showDialog<void>(
     context: context,
@@ -41,6 +50,7 @@ Future<void> showAttachments(
       load: load,
       onAdd: onAdd,
       onRemove: onRemove,
+      onLocate: onLocate,
     ),
   );
 }
@@ -53,6 +63,7 @@ class _AttachmentDialog extends StatefulWidget {
     required this.load,
     required this.onAdd,
     required this.onRemove,
+    required this.onLocate,
   });
 
   final Task task;
@@ -61,6 +72,10 @@ class _AttachmentDialog extends StatefulWidget {
   final Future<List<Attachment>> Function() load;
   final Future<void> Function(File) onAdd;
   final Future<void> Function(Attachment) onRemove;
+
+  /// Adopt a local file as the bytes for a row that never received them.
+  /// False means it was a different document.
+  final Future<bool> Function(Attachment, File) onLocate;
 
   @override
   State<_AttachmentDialog> createState() => _AttachmentDialogState();
@@ -113,6 +128,66 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
     } catch (e) {
       if (mounted) setState(() => _error = 'Could not attach that file.');
       debugPrint('Attach failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// "I have that file here." Picks one, and the digest decides what it was.
+  Future<void> _locate(Attachment a) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final result = await FilePicker.pickFiles(
+        dialogTitle: 'Find ${a.filename}',
+        lockParentWindow: true,
+      );
+      final path = result?.files.singleOrNull?.path;
+      if (path == null) return;
+
+      final file = File(path);
+      if (await widget.onLocate(a, file)) {
+        if (mounted) await _reload();
+        return;
+      }
+
+      // Not the same bytes. Offering it as a new attachment is the honest
+      // reading: the user has a document they want on this task, it is simply
+      // not the one that row is waiting for.
+      if (!mounted) return;
+      final asNew = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: T.bgSolid,
+          title: const Text('That is a different file',
+              style: TextStyle(fontSize: 15)),
+          content: Text(
+            'Its contents do not match "${a.filename}", so it is not the '
+            'document this attachment is waiting for. Attach it as a new one?',
+            style: const TextStyle(
+                fontSize: 12.5, color: T.muted, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Attach as new'),
+            ),
+          ],
+        ),
+      );
+      if (asNew == true) {
+        await widget.onAdd(file);
+        if (mounted) await _reload();
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not read that file.');
+      debugPrint('Locate failed: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -174,6 +249,7 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
                         accent: widget.accent,
                         here: _local[a.uuid] ?? false,
                         onOpen: () => _open(a),
+                        onLocate: _busy ? null : () => _locate(a),
                         onRemove: () async {
                           await widget.onRemove(a);
                           await _reload();
@@ -213,6 +289,7 @@ class _Row extends StatelessWidget {
     required this.accent,
     required this.here,
     required this.onOpen,
+    required this.onLocate,
     required this.onRemove,
   });
 
@@ -224,6 +301,11 @@ class _Row extends StatelessWidget {
   final bool here;
 
   final VoidCallback onOpen;
+
+  /// Offered only when the bytes are missing, and null while another pick is
+  /// in flight.
+  final VoidCallback? onLocate;
+
   final Future<void> Function() onRemove;
 
   @override
@@ -267,6 +349,19 @@ class _Row extends StatelessWidget {
                 ],
               ),
             ),
+            if (!here && onLocate != null)
+              Tooltip(
+                message: 'Locate this file on this device',
+                child: InkWell(
+                  onTap: onLocate,
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.travel_explore_rounded,
+                        size: 14, color: T.muted),
+                  ),
+                ),
+              ),
             if (here)
               Tooltip(
                 message: 'Open',

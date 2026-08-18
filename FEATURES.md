@@ -95,6 +95,14 @@ Documents attached to a task — a quote, a scan, a spec.
   and cannot be opened yet — rather than being hidden, or shown as broken. It
   stays removable from there, since deciding you no longer need a document
   shouldn't require being at the machine that holds it.
+- **And it can be resolved by hand: “Locate”.** On a row whose bytes never
+  arrived, the 🌐 button asks for that file on this device and adopts it — the
+  entry lights up, opens, and behaves as if it had always been here. It is safe
+  because the row already names its bytes by digest: the file you pick is
+  *checked*, not trusted, so it can be a copy under a different name and still
+  be recognised, while a different document is refused and offered as a new
+  attachment instead. Nothing about the row changes, so nothing syncs — this is
+  one device catching up with itself.
 - **Orphaned files are swept at startup** — a row tombstoned on another device
   arrives as a merge, never as a local delete, so its bytes would otherwise sit
   on disk forever.
@@ -853,6 +861,12 @@ reminders are both there now**, queued for 0.18.0.
   would have every birthday going off at 23:00 the night before. All-day
   events in an imported .ics are no longer flattened into midnight-to-midnight
   blocks either.
+  **An attachment whose file never arrived can be pointed at it.** “Not on
+  this device” was a dead end until blob sync exists; the new *Locate* button
+  on such a row asks for the file here and adopts it if it really is the same
+  document — which the stored SHA-256 can prove, so a copy under a different
+  name still counts and a different file is refused rather than quietly filed
+  under the wrong name on one device.
 - **0.23.1** — **Fixes.** An edit made on a device in another timezone could
   lose to an *older* edit made elsewhere, and lose silently. Timestamps were
   written as a bare wall-clock reading with no timezone on it, so "which of

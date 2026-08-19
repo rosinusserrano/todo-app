@@ -21,10 +21,57 @@ Rules for keeping it honest:
 
 ## Now
 
-**Nothing.** Every step on this list is done, committed, pushed and — for the
-first time — proven by CI. `main` is at `5f27a04`, the sync server on
-marco-apps is deployed to the same commit, and this laptop is running the
-0.24.0 build. See *Done* for what landed.
+**Nothing.** Step 17 landed as 0.24.1. Everything on this list is done,
+committed and pushed; the design that produced it has moved to `ROADMAP.md`'s
+*Shipped*.
+
+One thing the handshake found while it was being built and could not fix from
+here: the fake servers in the test suite are stand-ins for a real one, so they
+have to answer `/api/health` now. `server_swap_test` was taught to;
+`change_stream_test` never talks to `SyncService`, so it did not need it. A new
+fake server that omits the route will hang for the client timeout rather than
+fail cleanly.
+
+### 17. A version handshake between app and server  `[x]` — see *Done*
+
+Agreed 2026-08-19. The 0.24.0 deploy is the worked example: the app wrote
+`recur` and `all_day`, the server had neither column, and the only symptom was
+those fields arriving null on the other device. Nothing said anything.
+
+A **protocol number**, not a table of app↔server versions — see ROADMAP for why
+the table is the wrong shape. Bumped only when the wire changes, which a new
+optional column is not.
+
+- [x] `server/protocol.js`: `PROTOCOL` and `MIN_CLIENT`, both 1 today, with the
+      rule for bumping them written above the constants rather than in a commit
+      message nobody will find.
+- [x] Serve them on **`/api/health`** (unauthenticated — the setup screen has to
+      be able to say "too old" before a token exists) and repeat them on
+      `/api/me` so the sync loop sees them without a second request.
+- [x] `app/lib/sync/protocol.dart`: `kSyncProtocol`, `kMinServerProtocol`,
+      `ServerProtocol.parse`, and the comparison. **Absent fields mean 1** — a
+      server that predates this is protocol 1 by definition, and that is what
+      stops this being a flag day.
+- [x] Two directions, two sentences: `client < server.minClient` is *update the
+      app*, `server.protocol < client.minServer` is *update the server*. One
+      message for both sends the user to the wrong machine half the time.
+- [x] `SyncService`: check before the first sync of a configuration, not after —
+      `whoAmI` runs on the back of a sync that already worked, which is too late
+      to gate one. Re-check while incompatible (it costs the poll it replaces,
+      and resuming the moment the server is updated is the point); skip it once
+      it has passed.
+- [x] New `SyncStatus.outdated`, **not** `blocked`: that one says "check the
+      address and token", which is the wrong machine and the wrong afternoon.
+      Update `describe()` and `_syncColor()` with it.
+- [x] The alert screen: a sheet in the shell's `Stack` (never a route — a
+      barrier over the title bar leaves the window undraggable), opened once per
+      run when the mismatch is first seen, naming both numbers and saying the
+      local database is fine. Closable; the red sync icon and the settings line
+      are what remain afterwards. Add it to `_clearOverlays` and the Esc ladder.
+- [x] Tests both sides — `node --test server/` for the fields, and Dart for the
+      comparison, the absent-field default, and that an incompatible server
+      stops the sync rather than running it.
+- [x] `FEATURES.md` + changelog, and move the ROADMAP entry to *Shipped*.
 
 One thing carried over, not blocking: `src-tauri/target`, `src-tauri/gen` and
 `dist/` are still on disk (6.5 GB of Rust build output from the deleted app).
@@ -324,14 +371,16 @@ a workspace you cannot see.
 - [x] 14 the thought bubble, 15 the calendar's own colour — each its own commit
       as it landed (`354bbc9`, `dfe4c7f`). `flutter analyze` clean,
       `flutter test` 457 passed / 6 skipped, `node --test server/` 91/91.
-- [ ] **Push `feature/ci-calendar-cleanup`** — the last thing left on the
-      branch, and the only way step 1's workflow is ever proven. Waiting on
-      Marco, since it is the first push of this branch.
+- [x] **Push `feature/ci-calendar-cleanup`** — done, along with `main`, the
+      `legacy-tauri` tag, and the server deploy that had been waiting on it.
 
 ---
 
 ## Done
 
+- **17** Agree on a version before exchanging anything (0.24.1) — protocol
+  number on both ends, checked on `/api/health` before the first row moves,
+  `SyncStatus.outdated` and an alert that names which machine is behind.
 - **16** Both landed as their own commits. Branch and `main` pushed, the
   `legacy-tauri` tag with them, the server updated to `5f27a04` (it had been
   three server-affecting commits behind, missing the offset-aware compare and

@@ -25,6 +25,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:todo_widget/app_state.dart';
 import 'package:todo_widget/sync/local_store.dart';
+import 'package:todo_widget/sync/protocol.dart';
 import 'package:todo_widget/sync/sync_service.dart';
 
 /// A sync server that holds nothing and answers whatever the test tells it to.
@@ -57,8 +58,27 @@ class _FakeServer {
         (n, push) => n + push.values.fold<int>(0, (m, rows) => m + rows.length),
       );
 
+  /// What the health probe says about the wire, or null to answer nothing at
+  /// all - which is how a server that predates the handshake behaves.
+  ServerProtocol? protocol = ServerProtocol.legacy;
+
   Future<void> _handle(HttpRequest req) async {
     final res = req.response..headers.contentType = ContentType.json;
+    // The client asks this before it will exchange any rows - see
+    // SyncService._agreeProtocol. A fake server without it is not a stand-in
+    // for a real one: /api/health has been there since the first version.
+    if (req.uri.path == '/api/health') {
+      final p = protocol;
+      res.write(jsonEncode({
+        'ok': true,
+        'service': 'todo-widget-sync',
+        'version': 1,
+        if (p != null) 'protocol': p.speaks,
+        if (p != null) 'minClient': p.minClient,
+      }));
+      await res.close();
+      return;
+    }
     if (req.uri.path == '/api/me') {
       res.write(jsonEncode({'user': user, 'label': user, 'admin': false}));
       await res.close();

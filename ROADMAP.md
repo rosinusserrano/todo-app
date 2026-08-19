@@ -144,6 +144,22 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### 0.24.1 — a version handshake between app and server
+
+Built; see FEATURES.md for what it does and CLAUDE.md for how it works. The
+design as agreed is below, and the build changed nothing about it.
+
+- [x] A **protocol number** rather than a table of app↔server versions, moved
+      only when the wire changes — a new optional column is not that.
+- [x] Two numbers per end (`PROTOCOL`/`MIN_CLIENT`, `kSyncProtocol`/
+      `kMinServerProtocol`), because either side can be the old one and the two
+      cases are different sentences.
+- [x] **Absence means 1**, which is what kept this from being a flag day.
+- [x] Asked on `/api/health` before anything is exchanged, repeated on
+      `/api/me`; unreachable is not incompatible.
+- [x] A mismatch blocks the sync and says which machine to fix; the local
+      database is untouched and the queue keeps filling.
+
 ### 0.18.0 — reminders that say when, and keep saying it
 
 Both built; see FEATURES.md for what they do.

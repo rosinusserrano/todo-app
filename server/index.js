@@ -18,6 +18,7 @@ import { openDb, purgeUser, sync, userCursor, TABLES } from './db.js';
 import { publish, subscribe } from './events.js';
 import { adminOnly, middleware } from './auth.js';
 import { DB_PATH, HOST, PORT, loadSecret } from './config.js';
+import { MIN_CLIENT, PROTOCOL } from './protocol.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
   adoptBootstrapSecret,
@@ -105,8 +106,25 @@ function validatePayload(body) {
 
 // Unauthenticated: lets a client verify the address is reachable and is
 // actually a todo-sync server before asking the user for a token.
+//
+// It also answers "can these two talk to each other at all". `protocol` is the
+// wire this server speaks and `minClient` is the oldest it will accept; see
+// protocol.js for what does and does not move them. Unauthenticated on purpose:
+// "this app is too old for this server" is something the setup screen has to be
+// able to say *before* a token exists, not something discovered after pairing.
+//
+// `version` stays at 1 and is now only the legacy spelling of `protocol`.
+// Clients before the handshake read it as a constant and compared it to
+// nothing; removing it would break exactly the old clients this exists to be
+// kind to.
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'todo-widget-sync', version: 1 });
+  res.json({
+    ok: true,
+    service: 'todo-widget-sync',
+    version: 1,
+    protocol: PROTOCOL,
+    minClient: MIN_CLIENT,
+  });
 });
 
 // Unauthenticated, and deliberately: a client has to know *whether* to offer
@@ -194,12 +212,19 @@ app.get('/api/cursor', middleware(auth), (req, res) => {
 // tasks into the wrong account. `admin` is what makes the app show the user
 // management panel at all, so an ordinary account never sees a door it cannot
 // open (the routes below still check for themselves - this only hides the UI).
+//
+// The protocol pair is repeated here so the sync loop can see it on a request
+// it was already making, rather than paying for a second one every cycle. Same
+// two numbers from the same constants - health is where a client that has no
+// token yet asks.
 app.get('/api/me', middleware(auth), (req, res) => {
   const user = getUser(db, req.userId);
   res.json({
     user: req.userId,
     label: user?.label ?? req.userId,
     admin: isAdmin(db, req.userId),
+    protocol: PROTOCOL,
+    minClient: MIN_CLIENT,
   });
 });
 

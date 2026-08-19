@@ -752,6 +752,57 @@ no `seq`, and re-broadcasts nothing. An absent fingerprint therefore re-arms too
 a database that has never been checked cannot be distinguished from one that has
 been diverging for a month, and proving it costs one request.
 
+### The wire has a version, and it is not either program's
+
+`server/protocol.js` and `app/lib/sync/protocol.dart` hold the same two numbers
+on each side: what this end speaks, and the oldest other end it will accept.
+The number is **the wire**, not the app's version and not the server's — those
+move on every release, and almost every release leaves the wire alone. That is
+the whole reason it is a number and not a table of "app 0.24.x works with server
+1.2–1.4": a table is a second thing to edit on every release, it goes stale in
+silence, and its failure mode is claiming a pair works when it does not.
+
+The 0.24.0 deploy is what it is for: the app wrote `recur` and `all_day`, the
+server had neither column, and the only symptom was those fields arriving null
+on the other device. Nothing said anything, and nothing could.
+
+- **What moves `PROTOCOL`.** A required field, a renamed one, a changed meaning,
+  a different conflict rule, an endpoint the client cannot work without. **Not**
+  a new optional column (v13, v14) and **not** an optional endpoint — `/api/
+  events` returning 404 already means "no instant sync, carry on". `MIN_CLIENT`
+  moves far more rarely still: raising it cuts devices off until they update.
+- **An absent number is 1**, on both sides. Protocol 1 is what the wire was on
+  the day the number was invented, so every server already deployed is protocol
+  1 by definition and nothing had to be upgraded in lockstep. Without that rule
+  this would have been a flag day, which is the exact kind of upgrade it exists
+  to prevent.
+- **Asked on `/api/health`, before anything is exchanged.** `_agreeProtocol` in
+  `SyncService` runs ahead of `syncOnce`, not after it — `whoAmI` (where the
+  fingerprint check lives) runs on the back of a sync that already *worked*,
+  which is far too late to gate one. Health is unauthenticated, so the answer is
+  available at setup before a token exists. The same pair is repeated on
+  `/api/me` so the loop can read it without a second request.
+- **Unreachable is not incompatible.** A probe that fails tells us nothing about
+  the wire, so the sync runs and reports the network failure in its own words. A
+  server that is merely down must never read as one that needs updating.
+- **Agreed once per configuration, re-asked every cycle while it is failing.**
+  That is the right way round: the failing case costs one request *in place of*
+  the sync it is refusing, and re-asking is what makes syncing resume by itself
+  the moment the server is deployed. `configure()` forgets it — a different
+  address is a different server.
+- **`SyncStatus.outdated`, deliberately not `blocked`.** Blocked means "check
+  the address and token", and sending someone to their credentials for a version
+  problem is a wasted afternoon. Two directions, two sentences: the client being
+  behind says *update the app*, the server being behind says *update the
+  server*, because there is nothing to be done on a phone about a server that
+  needs deploying.
+- **Blocking is airplane mode with a reason.** No rows move, the local database
+  is untouched, `dirty` keeps filling, and `UpdateSheet` says so in as many
+  words — the first thing anybody reads "syncing is off" as is "where are my
+  tasks". The sheet is closable and shown once per mismatch: it re-checks every
+  cycle, and a screen that reappeared every minute is one you learn to dismiss
+  unread.
+
 ### Instant sync is a hint, not a channel
 
 `server/events.js` holds an SSE connection per running device, keyed by user, and

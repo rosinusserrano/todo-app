@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'local_store.dart';
+import 'protocol.dart';
 
 sealed class SyncResult {
   const SyncResult();
@@ -44,11 +45,22 @@ class SyncFailed extends SyncResult {
 /// with a different token is a different set of tasks, and [admin] is what
 /// decides whether this device gets the user-management panel at all.
 class ServerIdentity {
-  const ServerIdentity({required this.user, required this.label, required this.admin});
+  const ServerIdentity({
+    required this.user,
+    required this.label,
+    required this.admin,
+    this.protocol = ServerProtocol.legacy,
+  });
 
   final String user;
   final String label;
   final bool admin;
+
+  /// What the server says about the wire. `/api/me` repeats the pair that
+  /// `/api/health` carries, so the sync loop learns it on a request it was
+  /// already making. A server that has never heard of it is [legacy], which is
+  /// what an absent field means everywhere - see sync/protocol.dart.
+  final ServerProtocol protocol;
 
   static ServerIdentity? parse(String body) {
     try {
@@ -64,11 +76,26 @@ class ServerIdentity {
         // case where the panel must stay hidden rather than call routes that
         // are not there.
         admin: map['admin'] == true,
+        protocol: ServerProtocol.fromJson(map),
       );
     } catch (_) {
       return null;
     }
   }
+}
+
+/// What `/api/health` said: whether it answered at all, and what wire it speaks.
+///
+/// The protocol is only meaningful when [result] is a [SyncOk] - a server that
+/// did not answer has not told us anything, and treating silence as "legacy"
+/// would turn every network blip into an update prompt.
+class ServerProbe {
+  const ServerProbe(this.result, {this.protocol});
+
+  final SyncResult result;
+  final ServerProtocol? protocol;
+
+  bool get reachable => result is SyncOk;
 }
 
 class SyncClient {
@@ -111,21 +138,37 @@ class SyncClient {
   /// Unauthenticated reachability check, so the UI can tell "wrong address"
   /// apart from "wrong token" instead of showing one vague failure for both.
   Future<SyncResult> checkReachable() async {
+    final probe = await probeServer();
+    return probe.result;
+  }
+
+  /// The same probe, keeping what the server said about the wire.
+  ///
+  /// Unauthenticated, and that is the point: "this app is too old for this
+  /// server" has to be sayable at setup, before there is a token to present.
+  /// The sync loop reads the same pair off `/api/me` instead, on a request it
+  /// was already making.
+  Future<ServerProbe> probeServer() async {
     try {
       final res = await _http.get(_endpoint('/api/health')).timeout(_timeout);
       if (res.statusCode != 200) {
-        return SyncFailed('Server answered ${res.statusCode}');
+        return ServerProbe(SyncFailed('Server answered ${res.statusCode}'));
       }
       final body = jsonDecode(res.body);
       if (body is! Map || body['service'] != 'todo-widget-sync') {
-        return const SyncFailed(
-          'That address is reachable but is not a todo sync server',
-          transient: false,
+        return const ServerProbe(
+          SyncFailed(
+            'That address is reachable but is not a todo sync server',
+            transient: false,
+          ),
         );
       }
-      return const SyncOk(0, 0, 0);
+      return ServerProbe(
+        const SyncOk(0, 0, 0),
+        protocol: ServerProtocol.fromJson(body),
+      );
     } catch (e) {
-      return SyncFailed('Cannot reach server: ${_short(e)}');
+      return ServerProbe(SyncFailed('Cannot reach server: ${_short(e)}'));
     }
   }
 

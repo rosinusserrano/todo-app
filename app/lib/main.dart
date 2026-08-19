@@ -31,6 +31,7 @@ import 'sync/legacy_import.dart';
 import 'sync/ics.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
+import 'sync/protocol.dart';
 import 'sync/sync_service.dart';
 import 'theme.dart';
 import 'tray.dart';
@@ -56,6 +57,7 @@ import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/thought_sheet.dart';
 import 'ui/thought_bubble.dart';
+import 'ui/update_sheet.dart';
 import 'ui/view_bar.dart';
 import 'ui/workspace_bar.dart';
 import 'ui/workspace_rail.dart';
@@ -933,6 +935,7 @@ class _WidgetShellState extends State<WidgetShell>
   }
 
   void _onState() {
+    _noteCompatibility();
     setState(() {});
     // A merge from sync can tombstone the block this sheet is about, and a
     // remote delete never runs the local delete path - so nothing else would
@@ -1179,7 +1182,9 @@ class _WidgetShellState extends State<WidgetShell>
               event.logicalKey != LogicalKeyboardKey.escape) {
             return KeyEventResult.ignored;
           }
-          if (_settingsOpen) {
+          if (_updateOpen) {
+            _closeUpdateSheet();
+          } else if (_settingsOpen) {
             _closeSettings();
           } else if (_soundOpen) {
             _closeSound();
@@ -1341,6 +1346,20 @@ class _WidgetShellState extends State<WidgetShell>
             calendarOpen: s.showCalendar,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
+          ),
+        ),
+
+        // Above every other sheet and below the title bar: it is the one
+        // panel that is *about* the app rather than part of using it, and it
+        // is opened by the app rather than asked for - so it must not arrive
+        // underneath whatever happened to be open.
+        SheetTransition(
+          open: _updateOpen,
+          builder: (_) => UpdateSheet(
+            compatibility: widget.sync.compatibility,
+            server: widget.sync.serverProtocol ?? ServerProtocol.legacy,
+            accent: ws,
+            onClose: _closeUpdateSheet,
           ),
         ),
 
@@ -1560,8 +1579,12 @@ class _WidgetShellState extends State<WidgetShell>
   /// meaning the press was spent on getting out of the way rather than on the
   /// view the caller wanted.
   bool _clearOverlays() {
-    // First, because it is the top-most sheet and the one whose whole job is
-    // to be covering the others.
+    if (_updateOpen) {
+      _closeUpdateSheet();
+      return true;
+    }
+    // First of the rest, because it is the top-most sheet and the one whose
+    // whole job is to be covering the others.
     if (_thoughtCapture) {
       _closeThoughtCapture();
       return true;
@@ -1588,6 +1611,36 @@ class _WidgetShellState extends State<WidgetShell>
   /// The capture pane. Focus mode goes first: it is an overlay of its own, and
   /// leaving it up behind an opaque sheet means closing this one lands back
   /// somewhere the user did not ask to be.
+  /// Which mismatch the alert has already been shown for.
+  ///
+  /// Once per mismatch, not once per sync: the check re-runs on every cycle
+  /// while it is failing (that is what makes syncing resume by itself when the
+  /// server is deployed), and a screen that reappeared every minute would be
+  /// something you learn to dismiss without reading. Null again the moment the
+  /// two agree, so a *later* mismatch is announced properly.
+  Compatibility? _updateShownFor;
+  bool _updateOpen = false;
+
+  void _noteCompatibility() {
+    final now = widget.sync.compatibility;
+    if (now.isOk) {
+      _updateShownFor = null;
+      if (_updateOpen) _updateOpen = false;
+      return;
+    }
+    if (_updateShownFor == now) return;
+    _updateShownFor = now;
+    // Focus mode first, for the same reason the capture pane does it: leaving
+    // an overlay up behind this one means closing it lands somewhere the user
+    // did not ask to be.
+    _exitFocus();
+    _updateOpen = true;
+  }
+
+  void _closeUpdateSheet() {
+    if (_updateOpen) setState(() => _updateOpen = false);
+  }
+
   void _openThoughtCapture() {
     _exitFocus();
     setState(() => _thoughtCapture = true);
@@ -1619,6 +1672,10 @@ class _WidgetShellState extends State<WidgetShell>
     SyncStatus.ok => const Color(0xFF7EE3A1),
     SyncStatus.error => const Color(0xFFFFCF6C),
     SyncStatus.blocked => T.danger,
+    // Red like blocked: both are states that will not recover on their own.
+    // What differs is the sentence, which the settings sheet and the alert
+    // carry - the icon has one colour to spend and "needs you" is the message.
+    SyncStatus.outdated => T.danger,
   };
 
   Widget _body(Color ws) {

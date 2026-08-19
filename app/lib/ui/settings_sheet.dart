@@ -153,7 +153,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
   Color _statusColor() => switch (widget.sync.status) {
     SyncStatus.ok => const Color(0xFF7EE3A1),
     SyncStatus.error => const Color(0xFFFFCF6C),
-    SyncStatus.blocked => T.danger,
+    // A version mismatch is red for the same reason a bad token is: neither
+    // recovers on its own. `describe()` is what says which of the two it is,
+    // and it names the machine that has to change.
+    SyncStatus.blocked || SyncStatus.outdated => T.danger,
     _ => T.muted,
   };
 

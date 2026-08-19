@@ -749,6 +749,22 @@ simply stretched.
   address and token, with a "Test" that checks reachability separately from the
   token, so a wrong address reports itself as a wrong address. The gear's colour
   still carries sync health, so a silent failure stays visible.
+- **The app and the server agree on a version before they exchange anything.**
+  Both ends declare what version of *sync itself* they speak — not the app's
+  release number and not the server's, since almost every release leaves the
+  wire exactly as it was. If they can talk, nothing is said about it. If they
+  cannot, the app stops syncing and says which machine is behind: **Update the
+  app** when the server has moved on without it, **Update the server** when it
+  is the other way round, with both version numbers shown. Nothing is lost while
+  it waits — every edit still saves locally and queues, and the moment the two
+  match again the queue goes up on its own. It also rechecks on its own, so
+  deploying the server is enough; nothing has to be restarted or re-entered.
+  The reason it exists: the 0.24.0 server was a few commits behind for a while,
+  so repeating and all-day events synced with those two fields silently dropped.
+  There was no symptom to see, on either machine.
+- **A server that has never heard of any of this still works**, and is treated
+  as the original version — which is what let the check be switched on without
+  every device and server having to be updated on the same day.
 - **Offline first** — the app always reads and writes its own local database.
   Sync is a background reconcile, never something the UI waits for.
 - **Works with the server off** — which, for a self-hosted server, is whenever
@@ -879,6 +895,17 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
+- **0.24.1** — **The app and the server check they still speak the same
+  language.** Both ends now declare a version of the sync protocol itself, and
+  if they disagree the app stops syncing and says which of the two has to be
+  updated, naming both numbers. This has a specific origin: the sync server here
+  ran a few commits behind for a while, and repeating and all-day events went up
+  with those two fields silently dropped — no error, no symptom, nothing on
+  either machine that would ever have said so. Nothing is lost while the two
+  disagree: edits still save, the queue still fills, the app re-checks on its
+  own and everything goes up the moment a deploy fixes it. A server too old to
+  know about the check is read as the original version and keeps working, so
+  turning this on did not require updating everything at once.
 - **0.24.0** — **A block of time can repeat.** A stand-up every weekday, rent
   on the 1st, a birthday: pick the rule in the event form and it is on the grid
   every time it comes round, marked with a ↻ and named on its details card.

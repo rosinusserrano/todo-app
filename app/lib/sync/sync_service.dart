@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 
 import 'change_stream.dart';
 import 'local_store.dart';
+import 'protocol.dart';
 import 'models.dart' show newId;
 import 'oidc_client.dart';
 import 'sync_client.dart';
@@ -48,6 +49,13 @@ enum SyncStatus {
 
   /// Last attempt failed in a way the user has to fix (bad token/address).
   blocked,
+
+  /// The two ends do not speak the same wire, so nothing was attempted.
+  ///
+  /// Deliberately not [blocked]: that one means "check the address and token",
+  /// and sending someone to their credentials for a version problem is a wasted
+  /// afternoon. See sync/protocol.dart.
+  outdated,
 }
 
 const kServerUrl = 'sync:server-url';
@@ -398,8 +406,12 @@ class SyncService extends ChangeNotifier {
     }
 
     // A different token is a different account, so who we are is now unknown
-    // rather than what it was a moment ago.
+    // rather than what it was a moment ago. The handshake goes with it: a
+    // different address is a different server, and one that agreed with us
+    // says nothing about the next one.
     identity = null;
+    serverProtocol = null;
+    _protocolAgreed = false;
     status = isConfigured ? SyncStatus.idle : SyncStatus.off;
     message = null;
     notifyListeners();
@@ -437,6 +449,63 @@ class SyncService extends ChangeNotifier {
     _debounceTimer = Timer(_debounce, () => unawaited(syncNow()));
   }
 
+  /// What the server said about the wire, once it has been asked.
+  ///
+  /// Null means not yet asked (or asked and unanswered, which is not evidence
+  /// of anything). Non-null and incompatible is what stops the sync.
+  ServerProtocol? serverProtocol;
+
+  Compatibility get compatibility =>
+      serverProtocol?.compatibility ?? Compatibility.ok;
+
+  /// True once the handshake has passed for this configuration, so it is asked
+  /// once rather than before every sync.
+  ///
+  /// While it has *not* passed the question is asked on every cycle, and that
+  /// is the right way round: the check costs one request in place of the sync
+  /// it is refusing to do, and resuming the moment the server is updated is
+  /// the whole point of re-asking.
+  bool _protocolAgreed = false;
+
+  /// One sentence about the mismatch, for the alert and the settings sheet.
+  String? get compatibilityMessage {
+    final p = serverProtocol;
+    if (p == null || p.compatibility.isOk) return null;
+    return p.compatibility.summary(p);
+  }
+
+  /// Asks the server what wire it speaks, and reports whether syncing may
+  /// proceed.
+  ///
+  /// **Before the first sync, not after it.** `whoAmI` runs on the back of a
+  /// sync that already worked, which is too late to gate one - by then the rows
+  /// have already been exchanged, which is exactly the exchange in question.
+  /// Unauthenticated, so it works before a token is accepted and cannot fail
+  /// for a reason that belongs to the credential.
+  Future<bool> _agreeProtocol() async {
+    if (_protocolAgreed) return true;
+
+    final client = SyncClient(baseUrl: baseUrl!, token: '');
+    final ServerProbe probe;
+    try {
+      probe = await client.probeServer();
+    } finally {
+      client.dispose();
+    }
+
+    // Unreachable says nothing about the wire. Let the sync itself run and
+    // report the network failure in its own words, rather than turning every
+    // blip into an update prompt.
+    if (!probe.reachable) return true;
+
+    serverProtocol = probe.protocol ?? ServerProtocol.legacy;
+    if (serverProtocol!.compatibility.isOk) {
+      _protocolAgreed = true;
+      return true;
+    }
+    return false;
+  }
+
   Future<void> syncNow() async {
     if (!isConfigured) return;
     if (_inFlight) {
@@ -447,6 +516,18 @@ class SyncService extends ChangeNotifier {
     _inFlight = true;
     status = SyncStatus.syncing;
     notifyListeners();
+
+    if (!await _agreeProtocol()) {
+      // Nothing is pushed and nothing is pulled. The local database is
+      // untouched and the queue keeps filling, so resolving the mismatch sends
+      // everything up - this is airplane mode with a reason attached.
+      status = SyncStatus.outdated;
+      message = compatibilityMessage;
+      _inFlight = false;
+      await refreshPending();
+      notifyListeners();
+      return;
+    }
 
     final bearer = await _bearer();
     if (bearer == null || bearer.isEmpty) {
@@ -531,6 +612,9 @@ class SyncService extends ChangeNotifier {
       SyncStatus.error => '${message ?? 'Sync failed.'}$queued',
       SyncStatus.blocked =>
         '${message ?? 'Check the address and token.'}$queued',
+      SyncStatus.outdated =>
+        '${message ?? 'This app and this server speak different '
+            'versions of sync.'}$queued',
     };
   }
 

@@ -21,17 +21,14 @@ Rules for keeping it honest:
 
 ## Now
 
-Every step on this list is done and committed. **The one thing left on the
-branch is pushing it**, which is also the only way step 1's CI workflow is ever
-proven — it has never run. See *Done* for what landed.
+**Nothing.** Every step on this list is done, committed, pushed and — for the
+first time — proven by CI. `main` is at `5f27a04`, the sync server on
+marco-apps is deployed to the same commit, and this laptop is running the
+0.24.0 build. See *Done* for what landed.
 
-Two things carried over, neither of them blocking:
-
-- **CI has still never run.** The workflow from step 1 is unverified until
-  `feature/ci-calendar-cleanup` is pushed. That is the one unticked box above.
-- `src-tauri/target`, `src-tauri/gen` and `dist/` are still on disk (6.5 GB of
-  Rust build output from the deleted app). Gitignored, safe to `rm -rf` whenever
-  Marco says so.
+One thing carried over, not blocking: `src-tauri/target`, `src-tauri/gen` and
+`dist/` are still on disk (6.5 GB of Rust build output from the deleted app).
+Gitignored, safe to `rm -rf` whenever Marco says so.
 
 ### 0. Commit the 0.23.1 batch  `[x]`
 
@@ -49,7 +46,7 @@ correctly gated behind `--dart-define=SYNC_URL`), `node --test server/` 91/91.
 
 ## Next
 
-### 1. CI builds more than iOS  `[~]`
+### 1. CI builds more than iOS  `[x]`
 
 `.github/workflows/ios.yml` is the only workflow, so Android was broken outright
 for an unknown length of time and nothing noticed (see the 0.23.1 changelog),
@@ -63,8 +60,10 @@ and the server's own tests have never run in CI at all.
 - [x] `windows` job — windows-latest, `flutter build windows`. This is the
       primary platform and has never been built by CI.
 - [x] Keep the iOS job's unsigned-.ipa output and its comment block intact.
-- [ ] Push the branch and watch the run go green before calling it done.
-      **Not done yet — the workflow is unverified until it has run once.**
+- [x] Push the branch and watch the run go green before calling it done.
+      Done 2026-08-19: the workflow only fires on `main` (or a PR into it), so
+      pushing the branch alone did nothing — the merge is what ran it. All four
+      jobs green in 7m36s, run `32239641231`, Android included.
 
 ### 2. Recurring calendar events  `[x]`
 
@@ -331,8 +330,10 @@ a workspace you cannot see.
 
 ## Done
 
-- **16** Both landed as their own commits; the branch has still never been
-  pushed.
+- **16** Both landed as their own commits. Branch and `main` pushed, the
+  `legacy-tauri` tag with them, the server updated to `5f27a04` (it had been
+  three server-affecting commits behind, missing the offset-aware compare and
+  both calendar columns), and the build installed on the laptop.
 - **15** Give the calendar its own colour instead of the workspace's.
   (`dfe4c7f`)
 - **14** Put the side-thought button where the thumb is, and the pane where it
@@ -342,8 +343,8 @@ a workspace you cannot see.
 - **0** Release 0.23.1: an edit no longer loses to an older one, and a phone can
   reach delete. (`5a9eace`, plus `30792a2` for the planning docs.)
 - **1** Build every platform in CI, not just the one that could not regress
-  quietly. (`6036c0c`) — **not yet proven**: the workflow has never run, because
-  the branch has not been pushed.
+  quietly. (`6036c0c`) — **proven** 2026-08-19: four jobs, all green, on the
+  first run.
 - **2** Let a block of time repeat, as one row rather than fifty-two.
   (`b69cf4e`, schema v13)
 - **3** Let an event be a whole day, and stop flattening the ones that arrive as

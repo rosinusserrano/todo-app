@@ -21,8 +21,8 @@ Rules for keeping it honest:
 
 ## Now
 
-Everything through step 13 is done and committed. **Steps 14 and 15 are what is
-next**, then step 16 closes the branch. See *Done* for what landed.
+Everything through step 14 is done and committed. **Step 15 is what is next**,
+then step 16 closes the branch. See *Done* for what landed.
 
 Two things carried over, neither of them blocking:
 
@@ -280,15 +280,24 @@ caller can miss it. `test/quick_add_test.dart` pins both that and the fact that
 moving through *time* keeps blocks pending, since looking at next week is not
 leaving the sitting.
 
-### 14. Side thoughts as a bubble  `[ ]`
+### 14. Side thoughts as a bubble  `[x]`
 
-- [ ] On mobile, move the side-thought entry point to a floating bubble sitting
+- [x] On mobile, move the side-thought entry point to a floating bubble sitting
       above the Tasks / Notes / Parked bar — the shape every chat widget on the
       web uses, and reachable with a thumb.
-- [ ] The open panel currently covers the **title bar**, so its close button sits
+- [x] The open panel currently covers the **title bar**, so its close button sits
       under the concentration-sound button and you press the wrong one. The
       panel must sit below `TitleBar.height` like every other sheet, or own a
       close control that cannot collide.
+
+Two things the build added to the plan. **Moving** the entry point means the
+footer gives its own 💭 up, or the same control is in two places — which is a
+third flag (`ThoughtFooter.showCaptureButton`), deliberately separate from
+`onCapture`: that one says capture opens the *pane*, which is true of any touch
+device, while the bubble is only drawn where the view bar is. And what the
+footer has left once its button is gone is the pressure meter, so with the pile
+empty it now takes no height at all rather than reserving a strip at the bottom
+of a phone.
 
 ### 15. The calendar gets its own colour  `[ ]`
 
@@ -304,6 +313,8 @@ Events keep their own calendar's colour — that is the point of the week view.
 
 ## Done
 
+- **14** Put the side-thought button where the thumb is, and the pane where it
+  cannot be pressed by mistake.
 - **7-9, 11** Put the calendar's forms on the app's own panel, and the swipe on
   the right axis. (`6015b9d`)
 - **0** Release 0.23.1: an edit no longer loses to an older one, and a phone can

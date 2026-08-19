@@ -22,6 +22,12 @@
 //
 // The bar carries two 💭 controls and they do different jobs: the one on the
 // left opens the capture field, the count on the right opens the panel.
+//
+// On touch the left one is gone, because it is the wrong end of the phone for
+// the control used in the biggest hurry - capturing moved to [ThoughtBubble],
+// floating above the view bar where the thumb is. What is left down here is the
+// meter and the count, and with the pile empty that is nothing at all, so the
+// bar takes no height rather than reserving a strip to say so.
 
 import 'dart:math' as math;
 
@@ -39,6 +45,7 @@ class ThoughtFooter extends StatefulWidget {
     required this.blockedMessage,
     required this.onAdd,
     this.onCapture,
+    this.showCaptureButton = true,
     required this.listOpen,
     required this.onToggleList,
   });
@@ -62,6 +69,18 @@ class ThoughtFooter extends StatefulWidget {
   /// of people, and the inline field leaves the whole task list on show behind
   /// the keyboard at exactly the moment somebody is watching you type.
   final VoidCallback? onCapture;
+
+  /// False while [ThoughtBubble] is on screen: the bubble above the view bar is
+  /// then the way in, and a second 💭 down here would be two doors to one
+  /// field. Deliberately separate from [onCapture], which says *how* capturing
+  /// happens rather than whether this bar offers it - a tablet wide enough for
+  /// the rail has no bubble and still wants the pane rather than the inline
+  /// field.
+  ///
+  /// With it false and nothing pending, the bar draws nothing at all: what is
+  /// left of it is the pressure meter, and an empty meter is 36 points of a
+  /// phone screen spent saying there is nothing to say.
+  final bool showCaptureButton;
 
   @override
   State<ThoughtFooter> createState() => ThoughtFooterState();
@@ -159,8 +178,22 @@ class ThoughtFooterState extends State<ThoughtFooter>
     }
   }
 
+  /// Nothing to draw: the bubble owns capturing, the pile is empty and no
+  /// refusal is being explained. Returning early rather than drawing a 36px
+  /// strip of nothing above the home indicator.
+  /// [_expanded] is in there because the field can be opened from outside
+  /// ([openAndFocus], the global shortcut): a bar that hid the field it was
+  /// just told to focus would swallow the keystroke.
+  bool get _silent =>
+      !widget.showCaptureButton &&
+      !_expanded &&
+      _count == 0 &&
+      widget.blockedMessage == null;
+
   @override
   Widget build(BuildContext context) {
+    if (_silent) return const SizedBox.shrink();
+
     final alarm = T.complementary(widget.workspaceColor);
 
     return AnimatedBuilder(
@@ -269,25 +302,26 @@ class ThoughtFooterState extends State<ThoughtFooter>
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
       child: Row(
         children: [
-          Tooltip(
-            message: 'Capture a side thought',
-            child: InkWell(
-              onTap: () {
-                final capture = widget.onCapture;
-                if (capture != null) {
-                  capture();
-                  return;
-                }
-                setState(() => _expanded = !_expanded);
-                if (_expanded) _focus.requestFocus();
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Text('💭', style: TextStyle(fontSize: 15)),
+          if (widget.showCaptureButton)
+            Tooltip(
+              message: 'Capture a side thought',
+              child: InkWell(
+                onTap: () {
+                  final capture = widget.onCapture;
+                  if (capture != null) {
+                    capture();
+                    return;
+                  }
+                  setState(() => _expanded = !_expanded);
+                  if (_expanded) _focus.requestFocus();
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Text('💭', style: TextStyle(fontSize: 15)),
+                ),
               ),
             ),
-          ),
           Expanded(
             child: AnimatedSize(
               duration: const Duration(milliseconds: 180),

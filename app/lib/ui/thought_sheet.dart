@@ -18,10 +18,19 @@
 // Deliberately not the composer's shape (a panel with the list dimmed behind
 // it): a barrier you can see through still shows the list. This is opaque and
 // full height.
+//
+// Full height *below the title bar*, that is. It used to start at the top of
+// the window and be drawn under the bar, which is above every sheet in the
+// shell's Stack - so this pane's ✕ landed exactly under the concentration-sound
+// button and pressing it started a rain sample instead of closing the pane.
+// Nothing is lost by stopping at [TitleBar.height]: what the pane hides is the
+// workspace name and the tasks, and both of those are *below* the bar. The bar
+// itself says "Todo" and holds window controls.
 
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'title_bar.dart';
 
 class ThoughtSheet extends StatefulWidget {
   const ThoughtSheet({
@@ -82,14 +91,14 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
     final keyboard = MediaQuery.of(context).viewInsets.bottom;
 
     return Positioned(
-      top: 0,
+      top: TitleBar.height,
       left: 0,
       right: 0,
       bottom: 0,
       child: Material(
-        // Opaque, and over the title bar too: the workspace name is in the bar
-        // above, and a capture pane that hid the tasks but not which list they
-        // were in would be missing half the point.
+        // Opaque: the workspace bar is directly under this, and a capture pane
+        // that hid the tasks but not which list they were in would be missing
+        // half the point.
         color: T.bgSolid,
         child: SafeArea(
           child: Padding(

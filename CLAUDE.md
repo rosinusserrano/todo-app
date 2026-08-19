@@ -266,6 +266,25 @@ it — `showJournal` says the pane is open, not which rung of its ladder you are
 on. That callback is deferred to after the frame, because the shell reacts with
 `setState` and doing that from inside another widget's build is a crash.
 
+`ThoughtSheet` still stops at `TitleBar.height` like every other sheet, and the
+"whole screen" is everything below the bar. It used to start at 0 and be drawn
+*under* the title bar — which is last in the shell's `Stack` so the window stays
+draggable — and the collision was exact: the pane's ✕ sat on the
+concentration-sound button. Nothing is lost by stopping, because what it hides
+is the workspace name and the tasks and both are below the bar.
+
+**On touch the way *into* that pane is `ThoughtBubble`, not the footer.** It
+floats in the bottom-right of the content area, above the view bar, and the
+footer drops its own 💭 (`ThoughtFooter.showCaptureButton`) so there is one
+door rather than one per view. Two things follow. `showCaptureButton` is
+deliberately **separate from `onCapture`**: `onCapture` says capturing opens the
+pane rather than expanding the field in place, which is true of any touch
+device, while the bubble is drawn only where the view bar is (`touch &&
+!hasRail && !_noteTakesScreen`) — so a tablet with the rail keeps the footer's
+button *and* the pane. And with the button gone the footer is only the pressure
+meter, so it renders nothing at all while the pile is empty rather than
+reserving a strip on the smallest screen there is.
+
 **Per-workspace views live on the workspace bar, not the title bar.** Notes,
 Parked and History are opened from the ▾ `_ViewsMenu` in `ui/workspace_bar.dart`
 (they are about the current workspace); the title bar (`ui/title_bar.dart`) is

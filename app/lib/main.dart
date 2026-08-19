@@ -55,6 +55,7 @@ import 'ui/sublist_sheet.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/thought_sheet.dart';
+import 'ui/thought_bubble.dart';
 import 'ui/view_bar.dart';
 import 'ui/workspace_bar.dart';
 import 'ui/workspace_rail.dart';
@@ -846,6 +847,13 @@ class _WidgetShellState extends State<WidgetShell>
       _openFocusThought();
       return;
     }
+    // On touch the footer has no field to focus - the bubble's pane is the
+    // capture surface there, and it is the one this shortcut's desktop twin
+    // would be opening if it existed on a phone.
+    if (_layout.touch) {
+      _openThoughtCapture();
+      return;
+    }
     _footerKey.currentState?.openAndFocus();
   }
 
@@ -1633,7 +1641,29 @@ class _WidgetShellState extends State<WidgetShell>
         if (!_layout.hasRail && !_noteTakesScreen) _workspaceBar(ws),
         if (s.hasLiveSession && !s.showSession && !_noteTakesScreen)
           _sessionBanner(),
-        Expanded(child: content),
+        // The bubble floats over the content rather than sitting in a row of
+        // its own: it is deliberately in the thumb's corner, and a strip
+        // reserved for one circle is height taken off the list on the smallest
+        // screen there is. Inside the content area, so it is above the view
+        // bar and comes and goes with the panels the body fades during focus
+        // mode - which has a thought field of its own.
+        Expanded(
+          child: _thoughtBubbleShows
+              ? Stack(
+                  children: [
+                    Positioned.fill(child: content),
+                    Positioned(
+                      right: ThoughtBubble.margin,
+                      bottom: ThoughtBubble.margin,
+                      child: ThoughtBubble(
+                        accent: ws,
+                        onTap: _openThoughtCapture,
+                      ),
+                    ),
+                  ],
+                )
+              : content,
+        ),
       ],
     );
 
@@ -1694,12 +1724,24 @@ class _WidgetShellState extends State<WidgetShell>
   bool get _noteTakesScreen =>
       _layout.touch && !_layout.hasRail && s.showJournal && _noteOpen;
 
+  /// Where the way into the capture pane is a bubble over the list rather than
+  /// the 💭 on the footer.
+  ///
+  /// The same condition the view bar is drawn under, and for the same reason:
+  /// it is the shape a phone wants. A window wide enough for the rail has room
+  /// for the footer's own button beside everything else, and a note that has
+  /// taken the screen is not a surface to float a button over - it has no
+  /// chrome at all by then.
+  bool get _thoughtBubbleShows =>
+      _layout.touch && !_layout.hasRail && !_noteTakesScreen;
+
   /// Outside the rail and outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
   /// you happen to be in.
   Widget _footer(Color ws) => ThoughtFooter(
     key: _footerKey,
     onCapture: _layout.touch ? _openThoughtCapture : null,
+    showCaptureButton: !_thoughtBubbleShows,
     thoughts: s.thoughts,
     workspaceColor: ws,
     blockedMessage: _blockedMessage,

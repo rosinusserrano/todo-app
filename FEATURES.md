@@ -593,6 +593,14 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 - **Capture a thought** — the 💭 button on the *left* of the footer expands a
   field to jot a quick note.
+- **On a phone it is a bubble instead**, floating over the list just above the
+  Tasks / Notes / Parked / History bar — the shape every chat widget on the web
+  uses, and for the same reason: the control used in the biggest hurry should be
+  where the thumb already is, not in the thinnest strip at the very bottom of
+  the screen. It is the *only* door there — the footer drops its own 💭 rather
+  than offering a second one — and with no thoughts pending the footer then has
+  nothing left to say and takes no height at all, giving the row back to the
+  list.
 - **Review them on demand** — the 💭 count on the *right* of the footer opens
   the parked-thoughts panel, which slides up and **takes over the content area
   in place of the tasks**. Thoughts are not shown otherwise: a parked thought is
@@ -916,6 +924,15 @@ reminders are both there now**, queued for 0.18.0.
   right edge walks the grid under it so it can reach a day that is off screen.
   **Pinching the day and week views zooms them**, from a compressed overview to
   a grid you can place a 15-minute block on, remembered per device.
+  **Writing down a side thought on a phone is a bubble over the list**, sitting
+  just above the bottom bar where the thumb already is, instead of a 15px 💭 in
+  the thinnest strip at the very bottom of the screen. It is the only capture
+  button there — the footer gives its own up rather than putting the same
+  control in two places — and with nothing pending the footer takes no height
+  at all, so the row goes back to the tasks. **The pane it opens also stops
+  below the title bar**: it used to be drawn underneath it, which put its ✕
+  exactly under the concentration-sound button, so closing what you had just
+  written started a rain sample instead.
 - **0.23.1** — **Fixes.** An edit made on a device in another timezone could
   lose to an *older* edit made elsewhere, and lose silently. Timestamps were
   written as a bare wall-clock reading with no timezone on it, so "which of

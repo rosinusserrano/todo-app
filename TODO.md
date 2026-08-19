@@ -307,11 +307,13 @@ eggshell in light. **Note the light theme does not exist yet** (it is in
 `FEATURES.md`'s backlog), so define both tokens and use the dark one now.
 Events keep their own calendar's colour — that is the point of the week view.
 
-Two decisions the plan left open. The tint drops **only while the calendar owns
-the whole window** (`_calendarChrome` = `showCalendar && !splitsCalendar`): in
-the split, the other half is that workspace's own list, so the tint is telling
-the truth there and the boundary between the panes is what says where the
-calendar starts. And the **title bar's accent goes with it**, to `T.accent`
+Two decisions the plan left open. The tint drops **whenever the calendar is
+open** (`_calendarChrome` = `showCalendar`). It was `&& !splitsCalendar` for one
+commit, on the theory that half a split window really is that workspace's list -
+which was wrong in the way that matters: the widget is run at about 1140x670 and
+the split starts at 813x400, so the exception was the only case that ever ran
+and the change could not be seen at all. And the **title bar's accent goes with
+it**, to `T.accent`
 rather than to the neutral — the neutral is within a few points of `T.muted`,
 so a lit control tinted with it would stop reading as lit, and leaving it the
 workspace colour would have left the one coloured thing on screen belonging to

@@ -1147,18 +1147,22 @@ class _WidgetShellState extends State<WidgetShell>
   /// notifies, it is a record of what layout just decided.
   Layout _layout = const Layout(Size(T.designWidth, 480));
 
-  /// The window drops the workspace tint for the calendar's neutral chrome -
-  /// but only while the calendar has the window to *itself*.
+  /// The window drops the workspace tint for the calendar's neutral chrome.
   ///
   /// The tint says which workspace you are looking at, and the calendar is the
-  /// one view that is not looking at one. Split beside the task pane it is
-  /// half the window and the other half is that workspace's list, add field and
-  /// bar, so the tint is telling the truth there and stays; the boundary
-  /// between the two panes is what says where the calendar starts.
+  /// one view that is not looking at one. **Whenever it is open**, including
+  /// beside the task list: this was `&& !splitsCalendar` at first, on the
+  /// theory that half a split window really is that workspace's list and the
+  /// tint was telling the truth there. What that actually bought was a change
+  /// nobody could see - the widget is run at about 1140x670, the split starts
+  /// at 813x400, so the exception was the only case that ever ran. A rule with
+  /// an exception covering the normal size is not a rule.
   ///
-  /// Reads [_layout], which is last frame's - a resize therefore changes the
-  /// tint one frame late, which the 250ms cross-fade swallows whole.
-  bool get _calendarChrome => s.showCalendar && !_layout.splitsCalendar;
+  /// Nothing is lost in the split, either. Which workspace you are in is on the
+  /// workspace bar's coloured pill, two inches from the tint that was repeating
+  /// it, and the blocks on the grid keep their own calendars' colours - which
+  /// is the distinction the neutral exists to stop competing with.
+  bool get _calendarChrome => s.showCalendar;
 
   @override
   Widget build(BuildContext context) {

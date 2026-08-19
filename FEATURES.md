@@ -324,12 +324,13 @@ Three tiers, none of which need an account, an API key, or a licence:
   choice is remembered.
 - **It has its own colour, and it is not a workspace's.** Every other view is a
   view of one workspace and the window is tinted with that workspace's colour to
-  say so. The calendar can show every workspace at once, so while it has the
-  window to itself the tint drops out for a neutral grey and the lit controls in
-  the title bar go with it. Blocks keep their *own* calendar's colour — telling
-  them apart is what the week view is for, and a window mixed 16% into one of
-  those colours was working against it. Beside the task list (in a window wide
-  enough for both) the tint stays: half that window really is the workspace.
+  say so. The calendar can show every workspace at once, so whenever it is open
+  the tint drops out for a neutral grey and the lit controls in the title bar go
+  with it — beside the task list as well as full window. Blocks keep their *own*
+  calendar's colour — telling them apart is what the week view is for, and a
+  window mixed 16% into one of those colours was working against it. Which
+  workspace you are in is still on the bar, in the coloured pill that says its
+  name.
 - **Drag to create.** Drag down a column from the start time to the end time and
   the event form opens with the times already filled in, so the only thing left
   to type is the title. Drags snap to 15 minutes, and dragging upwards works —
@@ -937,8 +938,7 @@ reminders are both there now**, queued for 0.18.0.
   all of them at once, each block in its own calendar's colour — and a window
   tinted 16% into one of those colours was quietly competing with exactly the
   distinction the week view exists to draw. It takes a neutral grey while it has
-  the window to itself. Beside the task list it keeps the tint, because half of
-  that window really is the workspace.
+  it is open, beside the task list as well as full window.
   **Writing down a side thought on a phone is a bubble over the list**, sitting
   just above the bottom bar where the thumb already is, instead of a 15px 💭 in
   the thinnest strip at the very bottom of the screen. It is the only capture

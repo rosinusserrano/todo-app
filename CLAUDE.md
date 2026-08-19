@@ -402,9 +402,14 @@ time on one. The rules that are not obvious from the schema:
   background is `T.tintedBackground(ws)` everywhere else, which is how it says
   which workspace you are in; the calendar is not in one, and a window mixed 16%
   into one workspace's colour competes with the per-calendar colours the week
-  view exists to distinguish. `_calendarChrome` on the shell decides it — and it
-  is `showCalendar && !splitsCalendar`, because in the split the other half of
-  the window *is* that workspace's list, so the tint is telling the truth. The
+  view exists to distinguish. `_calendarChrome` on the shell decides it, and it
+  is simply `showCalendar` — **including in the split**. It was
+  `&& !splitsCalendar` for one commit, on the theory that half a split window
+  really is that workspace's list; what that bought was a change nobody could
+  see, since the widget is run at about 1140×670 and the split starts at
+  813×400, so the exception was the only case that ever ran. Nothing is lost:
+  which workspace you are in is on the bar's coloured pill, inches from the
+  tint that was repeating it. The
   title bar's `accent` follows it to `T.accent`: the neutral itself is within a
   few points of `T.muted`, so tinting a lit control with it would stop it
   reading as lit. `T.calendarInk` has a light twin (`calendarInkLight`) that

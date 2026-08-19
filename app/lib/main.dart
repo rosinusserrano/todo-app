@@ -1147,6 +1147,19 @@ class _WidgetShellState extends State<WidgetShell>
   /// notifies, it is a record of what layout just decided.
   Layout _layout = const Layout(Size(T.designWidth, 480));
 
+  /// The window drops the workspace tint for the calendar's neutral chrome -
+  /// but only while the calendar has the window to *itself*.
+  ///
+  /// The tint says which workspace you are looking at, and the calendar is the
+  /// one view that is not looking at one. Split beside the task pane it is
+  /// half the window and the other half is that workspace's list, add field and
+  /// bar, so the tint is telling the truth there and stays; the boundary
+  /// between the two panes is what says where the calendar starts.
+  ///
+  /// Reads [_layout], which is last frame's - a resize therefore changes the
+  /// tint one frame late, which the 250ms cross-fade swallows whole.
+  bool get _calendarChrome => s.showCalendar && !_layout.splitsCalendar;
+
   @override
   Widget build(BuildContext context) {
     final ws = s.workspaceColor;
@@ -1192,9 +1205,13 @@ class _WidgetShellState extends State<WidgetShell>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           decoration: BoxDecoration(
-            color: T.tintedBackground(ws),
+            color: _calendarChrome
+                ? T.calendarBackground
+                : T.tintedBackground(ws),
             borderRadius: BorderRadius.circular(T.radius),
-            border: Border.all(color: T.tintedBorder(ws)),
+            border: Border.all(
+              color: _calendarChrome ? T.calendarBorder : T.tintedBorder(ws),
+            ),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(T.radius),
@@ -1306,7 +1323,14 @@ class _WidgetShellState extends State<WidgetShell>
             onTogglePause: widget.sound.togglePause,
             volume: widget.sound.volume,
             onVolumeChanged: widget.sound.setVolume,
-            accent: ws,
+            // The bar's lit controls follow the window they sit on. With the
+            // calendar's neutral chrome underneath, the workspace colour would
+            // be the only thing left on screen belonging to a workspace you
+            // cannot see - and the neutral itself is no use as a tint, being
+            // within a few points of T.muted, so "lit" would stop reading as
+            // lit. The app's own accent is neither workspace's, and it is what
+            // the calendar's own toolbar already uses for an active control.
+            accent: _calendarChrome ? T.accent : ws,
             onClose: () => isDesktop ? windowManager.close() : null,
             onOpenSettings: _openSettings,
             onToggleCalendar: _toggleCalendar,

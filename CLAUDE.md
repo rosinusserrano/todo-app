@@ -398,6 +398,19 @@ time on one. The rules that are not obvious from the schema:
 - Notifications for tasks and events are rewritten in **one** call
   (`NotificationService.reschedule`), because the cancel is global; two calls
   would each wipe the other's work.
+- **It drops the workspace tint while it owns the window.** The window's
+  background is `T.tintedBackground(ws)` everywhere else, which is how it says
+  which workspace you are in; the calendar is not in one, and a window mixed 16%
+  into one workspace's colour competes with the per-calendar colours the week
+  view exists to distinguish. `_calendarChrome` on the shell decides it — and it
+  is `showCalendar && !splitsCalendar`, because in the split the other half of
+  the window *is* that workspace's list, so the tint is telling the truth. The
+  title bar's `accent` follows it to `T.accent`: the neutral itself is within a
+  few points of `T.muted`, so tinting a lit control with it would stop it
+  reading as lit. `T.calendarInk` has a light twin (`calendarInkLight`) that
+  nothing reads yet — the light theme is still in the backlog, and deciding the
+  pair together is the point, since "neutral" means something different against
+  a pale window.
 - The calendar is the one view that replaces the **whole window** rather than
   the content area. It lives on the *title* bar, not the workspace bar's views
   menu, because it can show every workspace at once. `_toggleCalendar` used to

@@ -21,8 +21,9 @@ Rules for keeping it honest:
 
 ## Now
 
-Everything through step 14 is done and committed. **Step 15 is what is next**,
-then step 16 closes the branch. See *Done* for what landed.
+Everything through step 15 is done and committed. **Step 16 — the last
+commit, and pushing the branch so CI finally runs — is what is left.** See
+*Done* for what landed.
 
 Two things carried over, neither of them blocking:
 
@@ -299,7 +300,7 @@ footer has left once its button is gone is the pressure meter, so with the pile
 empty it now takes no height at all rather than reserving a strip at the bottom
 of a phone.
 
-### 15. The calendar gets its own colour  `[ ]`
+### 15. The calendar gets its own colour  `[x]`
 
 It is not a view of the workspace you came from and should not be tinted like
 one — it can show every workspace at once. Neutral chrome: greyish in dark mode,
@@ -307,14 +308,25 @@ eggshell in light. **Note the light theme does not exist yet** (it is in
 `FEATURES.md`'s backlog), so define both tokens and use the dark one now.
 Events keep their own calendar's colour — that is the point of the week view.
 
+Two decisions the plan left open. The tint drops **only while the calendar owns
+the whole window** (`_calendarChrome` = `showCalendar && !splitsCalendar`): in
+the split, the other half is that workspace's own list, so the tint is telling
+the truth there and the boundary between the panes is what says where the
+calendar starts. And the **title bar's accent goes with it**, to `T.accent`
+rather than to the neutral — the neutral is within a few points of `T.muted`,
+so a lit control tinted with it would stop reading as lit, and leaving it the
+workspace colour would have left the one coloured thing on screen belonging to
+a workspace you cannot see.
+
 ### 16. Commit  `[ ]`
 
 ---
 
 ## Done
 
+- **15** Give the calendar its own colour instead of the workspace's.
 - **14** Put the side-thought button where the thumb is, and the pane where it
-  cannot be pressed by mistake.
+  cannot be pressed by mistake. (`354bbc9`)
 - **7-9, 11** Put the calendar's forms on the app's own panel, and the swipe on
   the right axis. (`6015b9d`)
 - **0** Release 0.23.1: an edit no longer loses to an older one, and a phone can

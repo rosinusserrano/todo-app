@@ -111,6 +111,34 @@ class T {
   static Color tintedBorder(Color ws) =>
       Color.lerp(const Color(0x14FFFFFF), ws, 0.30)!;
 
+  /// The calendar's own chrome, in place of the workspace tint.
+  ///
+  /// Every other view is a view of one workspace, and tinting the window with
+  /// that workspace's colour is telling you which one you are in. The calendar
+  /// is not: it can show every workspace at once, and each block on it is
+  /// already drawn in *its own* calendar's colour - which is the whole point of
+  /// the week view, and which a window mixed 16% into one of those colours was
+  /// quietly working against. So while it owns the window the tint drops out
+  /// and this neutral takes its place.
+  ///
+  /// Two neutrals, decided together though only one is reachable: [calendarInk]
+  /// is what mixes in today, [calendarInkLight] is the eggshell the light theme
+  /// will take when it exists (still in FEATURES.md's backlog). Pairing them
+  /// here rather than leaving the second to be invented later is the point -
+  /// "neutral" means something different against a dark window than a pale one,
+  /// and deciding it twice is how the two end up unrelated.
+  static const calendarInk = Color(0xFF8A8A96);
+  static const calendarInkLight = Color(0xFFF1EBDD);
+
+  /// The same two mixes [tintedBackground] and [tintedBorder] make, with the
+  /// neutral in place of the workspace colour. Lighter mixes than those, since
+  /// grey has no hue to carry the signal and reads as dirt if it is laid on as
+  /// thickly as a colour.
+  static final calendarBackground = Color.lerp(bg, calendarInk, 0.12)!;
+
+  static final calendarBorder =
+      Color.lerp(const Color(0x14FFFFFF), calendarInk, 0.22)!;
+
   /// Hue-rotate 180 degrees from the workspace colour, but force high
   /// saturation and mid lightness. A pale or desaturated workspace colour would
   /// otherwise produce a complement too washed out to read as an alarm, which

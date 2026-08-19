@@ -21,9 +21,9 @@ Rules for keeping it honest:
 
 ## Now
 
-Everything through step 15 is done and committed. **Step 16 — the last
-commit, and pushing the branch so CI finally runs — is what is left.** See
-*Done* for what landed.
+Every step on this list is done and committed. **The one thing left on the
+branch is pushing it**, which is also the only way step 1's CI workflow is ever
+proven — it has never run. See *Done* for what landed.
 
 Two things carried over, neither of them blocking:
 
@@ -318,13 +318,23 @@ so a lit control tinted with it would stop reading as lit, and leaving it the
 workspace colour would have left the one coloured thing on screen belonging to
 a workspace you cannot see.
 
-### 16. Commit  `[ ]`
+### 16. Commit  `[x]`
+
+- [x] 14 the thought bubble, 15 the calendar's own colour — each its own commit
+      as it landed (`354bbc9`, `dfe4c7f`). `flutter analyze` clean,
+      `flutter test` 457 passed / 6 skipped, `node --test server/` 91/91.
+- [ ] **Push `feature/ci-calendar-cleanup`** — the last thing left on the
+      branch, and the only way step 1's workflow is ever proven. Waiting on
+      Marco, since it is the first push of this branch.
 
 ---
 
 ## Done
 
+- **16** Both landed as their own commits; the branch has still never been
+  pushed.
 - **15** Give the calendar its own colour instead of the workspace's.
+  (`dfe4c7f`)
 - **14** Put the side-thought button where the thumb is, and the pane where it
   cannot be pressed by mistake. (`354bbc9`)
 - **7-9, 11** Put the calendar's forms on the app's own panel, and the swipe on

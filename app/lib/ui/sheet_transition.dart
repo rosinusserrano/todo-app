@@ -1,7 +1,7 @@
 // Where a sheet sits in the shell, and how it arrives and leaves.
 //
-// The three panels that cover the content area - Settings, the sound sheet and
-// a block's sublist - were each a bare `if (_open) Sheet(...)` in the shell's
+// The panels that cover the content area - Settings, the sound sheet, the
+// capture pane - were each a bare `if (_open) Sheet(...)` in the shell's
 // Stack, which meant they appeared and vanished between two frames. That reads
 // as a glitch rather than as a panel: nothing tells the eye where the thing
 // came from, and on the way out the content behind it seems to flash.
@@ -24,9 +24,9 @@
 // The exit is the half that needs the machinery. A widget removed from the tree
 // cannot animate itself out, so this keeps the last child it built and goes on
 // showing it until the reverse finishes - which is also why the builder is a
-// callback rather than a widget. The sublist sheet is built from `_sublist!`,
-// and that goes null the instant it is closed; without the cached child the
-// closing animation would rebuild from a null and crash.
+// callback rather than a widget: a sheet built from a nullable field - the
+// capture pane's, say - would rebuild from a null the instant it was closed,
+// and the closing animation would crash rather than run.
 
 import 'package:flutter/material.dart';
 

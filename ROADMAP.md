@@ -144,6 +144,50 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### 0.25.0 — a night, a phone, and one menu that names what you are doing
+
+Marco's list from a week of using the phone build, in his order.
+
+- [x] **Block sublists removed** (`ui/sublist_sheet.dart`, `_openSublist`,
+      `EventAction.plan`, `AppState.addTaskForEvent`). Shipped in 0.17.0 and
+      annoying in practice: a second add field, reachable from three places,
+      competing with the planning it sat next to. **Planning is untouched** —
+      the block's tick list and dragging a row onto a block both still write
+      `event_uuid`, which is all a sublist ever was. It is in FEATURES.md's
+      backlog rather than deleted from the record, with the two things it would
+      need to come back: somewhere on the block itself rather than a sheet, and
+      an answer to what a todo written *into* a block is once the block is
+      gone. The session view's empty state now says so and stops, which is the
+      honest version of what the button was for.
+- [x] **A block that crosses midnight stays in the grid.** `spansDays` asked
+      whether the two ends fell on different dates, which promoted every night
+      shift - and everything ending at 00:00 - into the all-day band, where it
+      lost both the hour it started and the hour it ended. `spansWholeDay` asks
+      whether a midnight-to-midnight day fits *inside* it, which is the case the
+      band actually exists for. → `sync/models.dart`, `_timedByDay` and
+      `EventBlock.continuesBefore/After` in `ui/calendar/time_grid.dart`, and a
+      roll-forward on the end time in `ui/calendar/event_editor.dart`.
+- [x] **The phone's side-thought bar is gone.** `ThoughtFooter.showPressure`
+      alongside `showCaptureButton`; the count, the tint and the pulse moved
+      onto `ThoughtBubble`, and a swipe up on it opens the pile. The escalation
+      is shared through `ui/thought_pressure.dart` rather than copied. →
+      `ui/thought_bubble.dart`, `ui/footer.dart`, `main.dart` `_footer`.
+- [x] **The quick-action menu names the task in focus**, and the entry appends a
+      line to its notes. Dynamic shortcut items are supported on both platforms
+      and survive the app being killed, which is what forced the two rules
+      worth keeping: re-read the task, and *append* rather than save. →
+      `quick_actions.dart`, `AppState.appendToNotes`, `main.dart`
+      `_noteOnActiveTask`, `ui/thought_sheet.dart` (three strings, same pane).
+- [x] **"Add workspace…" works from the ▾ menu.** It was valued `null`, and
+      `PopupMenuButton` reads a null result as a dismissal and never calls
+      `onSelected` - so the entry could be pressed all day and report nothing.
+      A named sentinel instead. Only ever broken on the narrow layout, since
+      the rail's Add is an ordinary button. → `ui/workspace_bar.dart`.
+- [x] **Ctrl+wheel zooms the timeline.** The pinch has been there since 0.24.0
+      and a mouse had no way to ask. The listener has to sit *inside* the scroll
+      view or the wheel is resolved by the scrollable first. →
+      `ui/calendar/time_grid.dart`, `ui/calendar/calendar_view.dart`.
+
 ### 0.24.1 — a version handshake between app and server
 
 Built; see FEATURES.md for what it does and CLAUDE.md for how it works. The
@@ -187,10 +231,9 @@ Both built; see FEATURES.md for what they do.
 All six built; see FEATURES.md for what they do and the changelog for the shape
 of the release.
 
-- [x] **The "Now" tile takes you to the block, workspace and all** — and offers
-      *Sublist* instead of an empty session view when nothing is planned into
-      the running block. → `main.dart` `_openSession` / `_openSublist`,
-      `ui/sublist_sheet.dart`.
+- [x] **The "Now" tile takes you to the block, workspace and all.** →
+      `main.dart` `_openSession`. It also offered *Sublist* instead of an empty
+      session view; **that half was removed in 0.25.0** — see *Shipped*.
 - [x] **Space between the workspace bar and the tile** at phone width. The gap
       belongs to the banner, not the bar: the bar is drawn on every screen and
       the tile is not. → `main.dart` `_sessionBanner`.

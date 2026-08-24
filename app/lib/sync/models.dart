@@ -1228,12 +1228,33 @@ class CalendarEvent implements SyncRow {
 
   Duration get duration => end.difference(start);
 
-  /// Whether this covers more than one calendar day, which is what moves it out
-  /// of the hour grid and into the spanning band at the top.
-  bool get spansDays {
+  /// Whether a whole calendar day - one midnight to the next - falls inside
+  /// this, which is what moves it out of the hour grid and into the spanning
+  /// band at the top.
+  ///
+  /// **Crossing midnight is not enough**, and that is the whole point of the
+  /// test. A shift from 22:00 to 04:00 is a night, not a multi-day event; in
+  /// the band it loses the hour it starts and the hour it ends, which is all
+  /// anybody wanted to know about it. The grid draws it as the two segments it
+  /// actually is. What genuinely cannot be drawn in the columns is a block with
+  /// a day *entirely* inside it - that one would be 24 hours of scrolling past
+  /// the same block, which is what the band is for.
+  ///
+  /// An all-day event satisfies this by construction (midnight to the next
+  /// midnight is exactly one whole day), so nothing special is needed for the
+  /// single-day case. The grid still tests [allDay] as well, because that is
+  /// the question being asked and leaning on the coincidence would trap
+  /// whoever changes this next.
+  bool get spansWholeDay {
     final s = start;
-    final e = end;
-    return e.year != s.year || e.month != s.month || e.day != s.day;
+    final midnight = DateTime(s.year, s.month, s.day);
+    // The first midnight at or after the start. Built from the parts rather
+    // than by adding a Duration: a day is 23 or 25 hours twice a year.
+    final from = midnight.isAtSameMomentAs(s)
+        ? midnight
+        : DateTime(s.year, s.month, s.day + 1);
+    final to = DateTime(from.year, from.month, from.day + 1);
+    return !to.isAfter(end);
   }
 
   /// Resolved lead time, given the calendar this sits on. Null means silent.

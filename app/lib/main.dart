@@ -4,7 +4,6 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
-import 'dart:async' show unawaited;
 import 'dart:convert' show utf8;
 import 'dart:io' show File, Platform;
 
@@ -52,7 +51,6 @@ import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/task_composer.dart';
 import 'ui/task_drag.dart';
-import 'ui/sublist_sheet.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/thought_sheet.dart';
@@ -250,17 +248,15 @@ class _WidgetShellState extends State<WidgetShell>
   /// ui/thought_sheet.dart for why a phone does not get the inline field.
   bool _thoughtCapture = false;
 
+  /// The task a line is being added to, from the home-screen quick action.
+  /// Null the rest of the time, which is nearly always: this is one field
+  /// opened from outside the app and closed again.
+  Task? _noteOn;
+
   /// A journal entry is being read or edited, rather than the note list being
   /// shown. On touch the shell hands that entry the whole screen - see
   /// [_noteTakesScreen].
   bool _noteOpen = false;
-
-  /// The block whose sublist is open, and what that sheet is showing. Loaded
-  /// rather than read off [AppState.sessionTasks]: the sheet is also reachable
-  /// from a block that is not running, where there is no session to read.
-  CalendarEvent? _sublist;
-  List<Task> _sublistPlanned = [];
-  List<Task> _sublistCandidates = [];
 
   /// One key per visible row, so a row can be measured for the hero flight.
   final _rowKeys = <String, GlobalKey>{};
@@ -275,11 +271,14 @@ class _WidgetShellState extends State<WidgetShell>
     onAddThought: _jumpToAddThought,
   );
 
-  /// The phone's equivalent of the global shortcuts: the same two capture
-  /// paths, reached by long-pressing the app icon.
+  /// The phone's equivalent of the global shortcuts: the same capture paths,
+  /// reached by long-pressing the app icon. The third one names whichever task
+  /// is in focus, so the menu is rebuilt whenever that changes - see
+  /// [_onState].
   late final AppQuickActions _quickActions = AppQuickActions(
     onAddTask: _jumpToAddTask,
     onAddThought: _jumpToAddThought,
+    onNoteOnActive: _noteOnActiveTask,
   );
 
   late final AppTray _tray = AppTray(
@@ -414,70 +413,12 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.focusTask != null) _exitFocus();
     _closeSound();
     _closeSettings();
-    _closeSublist();
     // Leaving the calendar ends quick-add too, so anything placed and not yet
     // written goes in now. Same rule as the bolt and the mode switch: a block
     // you laid down is never lost by leaving in a way you did not think of.
     if (s.showCalendar) await s.commitPendingBlocks();
     await s.toggleCalendar();
   }
-
-  // ---------------------------------------------------------- block sublists
-
-  /// Open the list belonging to one block of time.
-  ///
-  /// Switches to the block's workspace on the way in. A block names a workspace
-  /// through its calendar, and writing that block's todos while looking at some
-  /// other workspace's list is how a todo ends up in the wrong one - the tasks
-  /// the sheet offers to plan in are that workspace's, so the list underneath
-  /// has to be the same list.
-  Future<void> _openSublist(CalendarEvent e) async {
-    _closeSound();
-    _closeSettings();
-    if (s.focusTask != null) await _exitFocus();
-    if (!mounted) return;
-
-    final ws = s.workspaceForEvent(e);
-    if (ws != null && ws != s.currentWorkspaceUuid) {
-      await s.selectWorkspace(ws);
-      if (!mounted) return;
-    }
-
-    setState(() => _sublist = e);
-    await _loadSublist();
-  }
-
-  /// Reload what the sheet shows. Called after every write from it rather than
-  /// leaning on the state's notify, because the sheet's two lists are a
-  /// different question than "what is on the current list".
-  Future<void> _loadSublist() async {
-    final e = _sublist;
-    if (e == null) return;
-    final planned = await s.tasksForEvent(e.uuid);
-    final candidates = await s.plannableTasks(e);
-    // A second sheet may have been opened while these were in flight.
-    if (!mounted || _sublist?.uuid != e.uuid) return;
-    setState(() {
-      _sublistPlanned = planned;
-      _sublistCandidates = candidates;
-    });
-  }
-
-  void _closeSublist() {
-    if (_sublist == null) return;
-    setState(() {
-      _sublist = null;
-      _sublistPlanned = [];
-      _sublistCandidates = [];
-    });
-  }
-
-  /// The line under a block's title, wherever one is shown on its own: whose
-  /// calendar it is and when it runs.
-  String _describeEvent(CalendarEvent e) => [
-    if (_calendarNameForEvent(e).isNotEmpty) _calendarNameForEvent(e),
-    '${hhmm(e.start)}–${hhmm(e.end)}',
-  ].join(' · ');
 
   Future<void> _createEvent(DateTime start, DateTime end) async {
     final calendars = s.visibleCalendars;
@@ -549,9 +490,9 @@ class _WidgetShellState extends State<WidgetShell>
     await _runEventAction(event, action);
   }
 
-  /// Right-click, or long-press on a phone. The same three things the details
-  /// card offers, without having to open it first - which is the whole point of
-  /// a context menu: it is for when you already know what you want to do.
+  /// Right-click, or long-press on a phone. The same things the details card
+  /// offers, without having to open it first - which is the whole point of a
+  /// context menu: it is for when you already know what you want to do.
   Future<void> _eventMenu(CalendarEvent event, Offset at) async {
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
@@ -585,7 +526,6 @@ class _WidgetShellState extends State<WidgetShell>
         ),
         const PopupMenuDivider(),
         _menuItem(EventAction.edit, Icons.edit_outlined, 'Edit'),
-        _menuItem(EventAction.plan, Icons.playlist_add_rounded, 'Todos…'),
         _menuItem(
           EventAction.delete,
           Icons.delete_outline,
@@ -621,8 +561,6 @@ class _WidgetShellState extends State<WidgetShell>
     switch (action) {
       case EventAction.edit:
         await _editEvent(event);
-      case EventAction.plan:
-        await _openSublist(event);
       case EventAction.delete:
         await _deleteEvent(event);
     }
@@ -825,7 +763,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (!mounted) return false;
     _closeSound();
     _closeSettings();
-    _closeSublist();
+    _closeNoteOn();
     if (leaveFocus && s.focusTask != null) await _exitFocus();
     return mounted;
   }
@@ -857,6 +795,29 @@ class _WidgetShellState extends State<WidgetShell>
       return;
     }
     _footerKey.currentState?.openAndFocus();
+  }
+
+  /// The quick action for the task in focus was picked.
+  ///
+  /// Reads the task *now* rather than trusting the menu: the entry is stored by
+  /// the OS and survives the app being killed, so it can name a task that has
+  /// since been finished or deleted. With nothing in focus this falls back to
+  /// the add field - the user asked to write something down, and the honest
+  /// answer to "that task is gone" is a place to put it, not a dead press.
+  Future<void> _noteOnActiveTask() async {
+    final task = s.focusTask;
+    if (task == null) {
+      await _jumpToAddTask();
+      return;
+    }
+    // leaveFocus: false - the whole point is the task you are on, and dropping
+    // out of focus mode to write a line about it would be backwards.
+    if (!await _surfaceForCapture(leaveFocus: false)) return;
+    setState(() => _noteOn = task);
+  }
+
+  void _closeNoteOn() {
+    if (_noteOn != null) setState(() => _noteOn = null);
   }
 
   // ------------------------------------------------- side thoughts in focus
@@ -897,12 +858,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// elsewhere.
   late final _taskbar = TaskbarTransport(widget.sound);
 
-  /// Closes the sublist first: it is added to the shell's `Stack` *after* this
-  /// sheet, so opening one behind it would leave ♪ toggling a panel nobody can
-  /// see - and the Esc ladder, which checks [_soundOpen] first, would then
-  /// spend a press closing it.
   void _toggleSound() {
-    _closeSublist();
     setState(() => _soundOpen = !_soundOpen);
   }
 
@@ -936,26 +892,12 @@ class _WidgetShellState extends State<WidgetShell>
 
   void _onState() {
     _noteCompatibility();
+    // The quick-action menu names the task in focus. Cheap to call on every
+    // notify - it compares the title it would print and does nothing unless it
+    // has moved - and there is no single write to hang it off instead, since a
+    // task can leave focus by being completed, deleted, parked or merged away.
+    _quickActions.setActiveTask(s.focusTask?.text);
     setState(() {});
-    // A merge from sync can tombstone the block this sheet is about, and a
-    // remote delete never runs the local delete path - so nothing else would
-    // notice. Left open, its add field writes tasks whose event_uuid points at
-    // a dead row: they stay on the list but can never turn up in a session, and
-    // _releaseEventTasks will never reach them because the delete happened
-    // elsewhere.
-    if (_sublist != null) unawaited(_dropSublistIfGone());
-  }
-
-  /// Close the sublist if its block no longer exists.
-  Future<void> _dropSublistIfGone() async {
-    final open = _sublist;
-    if (open == null) return;
-
-    final live = await s.store.eventByUuid(open.uuid);
-    // Re-checked after the await: the sheet may have been closed or replaced
-    // while the lookup was in flight.
-    if (!mounted || _sublist?.uuid != open.uuid) return;
-    if (live == null || live.isDeleted) _closeSublist();
   }
 
   // ------------------------------------------------------------ close guard
@@ -979,7 +921,6 @@ class _WidgetShellState extends State<WidgetShell>
     if (!mounted) return;
     _closeSound();
     _closeSettings();
-    _closeSublist();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
     _flashBlocked();
@@ -1184,12 +1125,12 @@ class _WidgetShellState extends State<WidgetShell>
           }
           if (_updateOpen) {
             _closeUpdateSheet();
+          } else if (_noteOn != null) {
+            _closeNoteOn();
           } else if (_settingsOpen) {
             _closeSettings();
           } else if (_soundOpen) {
             _closeSound();
-          } else if (_sublist != null) {
-            _closeSublist();
           } else if (_focusThoughtOpen) {
             _closeFocusThought();
           } else if (s.focusTask != null) {
@@ -1278,6 +1219,25 @@ class _WidgetShellState extends State<WidgetShell>
           ),
         ),
 
+        // The same pane, pointed at a task's notes instead of the pile. The
+        // task is captured here rather than read from the field inside the
+        // callbacks: the pane is animating out by the time the last write
+        // lands, and by then the field is null.
+        SheetTransition(
+          open: _noteOn != null,
+          builder: (_) {
+            final task = _noteOn!;
+            return ThoughtSheet(
+              accent: ws,
+              glyph: '📝',
+              title: task.text,
+              hint: 'Add a line to its notes…',
+              onAdd: (text) async => s.appendToNotes(task, text),
+              onClose: _closeNoteOn,
+            );
+          },
+        ),
+
         SheetTransition(
           open: _settingsOpen,
           builder: (_) => SettingsSheet(
@@ -1285,34 +1245,6 @@ class _WidgetShellState extends State<WidgetShell>
             accent: ws,
             onClose: _closeSettings,
             startup: isDesktop && StartupSetting.supported ? _startup : null,
-          ),
-        ),
-
-        // Above the focus overlay for the same reason the sound sheet is: it
-        // is opened from the tile that sits over the list, and it is about the
-        // block you are in rather than about the task you are on.
-        SheetTransition(
-          open: _sublist != null,
-          builder: (_) => SublistSheet(
-            event: _sublist!,
-            subtitle: _describeEvent(_sublist!),
-            color: s.colorForEvent(_sublist!),
-            accent: ws,
-            planned: _sublistPlanned,
-            candidates: _sublistCandidates,
-            onAdd: (text) async {
-              await s.addTaskForEvent(_sublist!, text);
-              await _loadSublist();
-            },
-            onPlan: (t, into) async {
-              await s.setTaskEvent(t, into ? _sublist!.uuid : null);
-              await _loadSublist();
-            },
-            onComplete: (t) async {
-              await s.completeTask(t);
-              await _loadSublist();
-            },
-            onClose: _closeSublist,
           ),
         ),
 
@@ -1411,16 +1343,6 @@ class _WidgetShellState extends State<WidgetShell>
     s.toggleSession();
   }
 
-  /// The tile above the list was pressed.
-  ///
-  /// Two things happen that a plain toggle would not do. It **switches to the
-  /// block's workspace** first, because the tile is the one control in the app
-  /// that talks about a workspace other than the one on screen - opening its
-  /// todos beside a different workspace's list is how you plan into the wrong
-  /// one. And when nothing is planned into the block it deliberately does *not*
-  /// open the session view: that view's whole body would be the sentence the
-  /// tile just said. The list stays, and the tile's own "Sublist" button is the
-  /// way to answer it.
   /// Bring in events from an .ics file another application produced.
   ///
   /// A file picker rather than the share sheet, and for now that is the whole
@@ -1486,23 +1408,16 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
+  /// The tile above the list was pressed.
+  ///
+  /// One thing happens that a plain toggle would not do: it **switches to the
+  /// block's workspace** first, because the tile is the one control in the app
+  /// that talks about a workspace other than the one on screen - showing its
+  /// todos beside a different workspace's list is how you read the wrong one.
   Future<void> _openSession() async {
     if (_clearOverlays()) return;
     final first = s.liveEvents.isEmpty ? null : s.liveEvents.first;
     if (first == null) return;
-
-    // Nothing planned into the running block: hand over to the sublist, which
-    // is what the tile's own Sublist button does and what this feature's answer
-    // to "nothing planned" is meant to be.
-    //
-    // Checked *before* the workspace switch below, and it has to be: the tile
-    // body is a full-width tap target while the button covers only its right
-    // end, so returning here after switching meant a tap could replace the
-    // whole list with another workspace's and then open nothing, with no
-    // visible cause and nothing on the tile to undo it. ([sessionTaskList] is
-    // derived from the live events, not from the current workspace, so it reads
-    // the same either side of the switch.) _openSublist does its own switch.
-    if (s.sessionTaskList.isEmpty) return _openSublist(first);
 
     final ws = s.workspaceForEvent(first);
     if (ws != null && ws != s.currentWorkspaceUuid) {
@@ -1589,16 +1504,16 @@ class _WidgetShellState extends State<WidgetShell>
       _closeThoughtCapture();
       return true;
     }
+    if (_noteOn != null) {
+      _closeNoteOn();
+      return true;
+    }
     if (_settingsOpen) {
       _closeSettings();
       return true;
     }
     if (_soundOpen) {
       _closeSound();
-      return true;
-    }
-    if (_sublist != null) {
-      _closeSublist();
       return true;
     }
     if (s.focusTask != null) {
@@ -1650,9 +1565,6 @@ class _WidgetShellState extends State<WidgetShell>
 
   Future<void> _openSettings() async {
     _closeSound();
-    // Same reason as _toggleSound: this sheet is below the sublist in the
-    // Stack, so it has to take the sublist down rather than open under it.
-    _closeSublist();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
     setState(() => _settingsOpen = !_settingsOpen);
@@ -1742,7 +1654,10 @@ class _WidgetShellState extends State<WidgetShell>
                       bottom: ThoughtBubble.margin,
                       child: ThoughtBubble(
                         accent: ws,
+                        count: s.thoughts.length,
+                        listOpen: s.showThoughts,
                         onTap: _openThoughtCapture,
+                        onToggleList: s.toggleThoughts,
                       ),
                     ),
                   ],
@@ -1826,7 +1741,14 @@ class _WidgetShellState extends State<WidgetShell>
   Widget _footer(Color ws) => ThoughtFooter(
     key: _footerKey,
     onCapture: _layout.touch ? _openThoughtCapture : null,
+    // Wherever the bubble is drawn it is the whole control - the button, the
+    // count and the escalation - and this bar has nothing of its own left to
+    // say. It stays in the tree rather than being dropped from it because the
+    // field is still what [openAndFocus] focuses and the refusal is still what
+    // the close guard flashes; it simply takes no height until one of those
+    // happens.
     showCaptureButton: !_thoughtBubbleShows,
+    showPressure: !_thoughtBubbleShows,
     thoughts: s.thoughts,
     workspaceColor: ws,
     blockedMessage: _blockedMessage,
@@ -1991,13 +1913,7 @@ class _WidgetShellState extends State<WidgetShell>
                     ],
                   ),
                 ),
-                // With something planned, the tile is a way in to that list.
-                // With nothing planned there is no list yet, so the tile offers
-                // to start one instead of pointing at an empty view.
-                if (left == 0)
-                  _SublistButton(color: color, onTap: () => _openSublist(first))
-                else
-                  const Icon(Icons.chevron_right, size: 16, color: T.muted),
+                const Icon(Icons.chevron_right, size: 16, color: T.muted),
               ],
             ),
           ),
@@ -2112,7 +2028,6 @@ class _WidgetShellState extends State<WidgetShell>
         onDelete: s.deleteTask,
         onFocus: (t) => _startFocus(t),
         onUnplan: (t) => s.setTaskEvent(t, null),
-        onCreateSublist: _openSublist,
         onBack: _toggleSession,
       );
     }
@@ -2146,7 +2061,6 @@ class _WidgetShellState extends State<WidgetShell>
     if (blobs == null) return;
     _closeSound();
     _closeSettings();
-    _closeSublist();
     await showAttachments(
       context,
       task: t,
@@ -2662,50 +2576,6 @@ class _WidgetShellState extends State<WidgetShell>
       uuid: existing?.uuid,
       name: result.name,
       color: result.color,
-    );
-  }
-}
-
-/// "Sublist" on the live-block tile: the way to give a block a list when it has
-/// none. A labelled button rather than a bare ＋ because it is the one control
-/// on that tile whose meaning is not obvious from the tile itself, and it is
-/// only ever drawn in the case where the tile has nothing else to offer.
-class _SublistButton extends StatelessWidget {
-  const _SublistButton({required this.color, required this.onTap});
-
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Give this block a list of its own',
-      child: Material(
-        color: color.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(7),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(7),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(7, 4, 8, 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.playlist_add_rounded, size: 14, color: color),
-                const SizedBox(width: 4),
-                const Text(
-                  'Sublist',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: T.text,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

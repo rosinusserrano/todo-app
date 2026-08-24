@@ -201,9 +201,9 @@ void main() {
       expect(find.text('the third pass at the layout'), findsOneWidget);
       expect(find.textContaining('18 Aug'), findsOneWidget);
 
-      // And all four ways out are present and finger-sized, which is what the
+      // And every way out is present and finger-sized, which is what the
       // OverflowBar could not do across 393pt.
-      for (final label in ['Delete', 'Todos', 'Edit']) {
+      for (final label in ['Delete', 'Edit']) {
         expect(find.text(label), findsOneWidget);
         expect(tester.getSize(find.text(label)).height > 0, isTrue);
       }

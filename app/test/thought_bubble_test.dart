@@ -1,12 +1,15 @@
 // Capturing a side thought on a phone: the bubble, and where the pane it opens
 // is allowed to start.
 //
-// Two things are worth pinning, and both are about controls colliding rather
-// than about the field itself.
+// Three things are worth pinning, and two of them are about controls colliding
+// rather than about the field itself.
 //
 // There must be exactly **one** way in on touch. The bubble and the footer's
 // 💭 are the same door, and a build that drew both would have the capture
-// button in one place on the task list and another in the thoughts panel.
+// button in one place on the task list and another in the thoughts panel. The
+// bar goes further than that on a phone and draws nothing whatever, so the
+// count has to ride on the bubble - and the swipe up has to be what opens the
+// pile, since there is no badge down there to press any more.
 //
 // And the pane it opens must start below the title bar. It used to start at the
 // top of the window and be drawn *under* the bar - the bar sits above every
@@ -33,6 +36,7 @@ void main() {
 
   Widget footer({
     required bool showCaptureButton,
+    bool? showPressure,
     List<SideThought> thoughts = const [],
     String? blockedMessage,
     VoidCallback? onCapture,
@@ -49,8 +53,37 @@ void main() {
                 onAdd: (_) async {},
                 onCapture: onCapture,
                 showCaptureButton: showCaptureButton,
+                // The shell only ever moves these two together, so a test that
+                // says nothing about the second means "the same as the first".
+                showPressure: showPressure ?? showCaptureButton,
                 listOpen: false,
                 onToggleList: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget bubble({
+    int count = 0,
+    bool listOpen = false,
+    VoidCallback? onTap,
+    VoidCallback? onToggleList,
+  }) =>
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                right: ThoughtBubble.margin,
+                bottom: ThoughtBubble.margin,
+                child: ThoughtBubble(
+                  accent: T.accent,
+                  count: count,
+                  listOpen: listOpen,
+                  onTap: onTap ?? () {},
+                  onToggleList: onToggleList ?? () {},
+                ),
               ),
             ],
           ),
@@ -60,21 +93,7 @@ void main() {
   group('the bubble', () {
     testWidgets('is one tap, and says what it is', (tester) async {
       var taps = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Stack(
-              children: [
-                Positioned(
-                  right: ThoughtBubble.margin,
-                  bottom: ThoughtBubble.margin,
-                  child: ThoughtBubble(accent: T.accent, onTap: () => taps++),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(bubble(onTap: () => taps++));
 
       expect(
         tester.getSemantics(find.byType(ThoughtBubble)).label,
@@ -85,21 +104,71 @@ void main() {
     });
 
     testWidgets('is finger-sized, and bigger than a bar icon', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: ThoughtBubble(accent: T.accent, onTap: () {}),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(bubble());
 
       final box = tester.getSize(find.byType(ThoughtBubble));
       expect(box.width, ThoughtBubble.side);
       expect(box.height, ThoughtBubble.side);
       // Before UiScale magnifies it, and already past the 40 a row action gets.
       expect(ThoughtBubble.side, greaterThan(40));
+    });
+
+    testWidgets('carries the count once the footer has stopped', (tester) async {
+      await tester.pumpWidget(bubble(count: 3));
+      expect(find.text('3'), findsOneWidget);
+      // And says so out loud, since the badge itself is not a control.
+      expect(
+        tester.getSemantics(find.byType(ThoughtBubble)).label,
+        contains('3 waiting'),
+      );
+    });
+
+    testWidgets('says nothing with an empty pile', (tester) async {
+      await tester.pumpWidget(bubble());
+      expect(find.text('0'), findsNothing);
+    });
+
+    testWidgets('a swipe up opens the pile', (tester) async {
+      var opened = 0;
+      await tester.pumpWidget(bubble(count: 2, onToggleList: () => opened++));
+
+      // Past the touch slop *and* past the commit distance on top of it; a
+      // thumb flick clears both several times over.
+      await tester.drag(find.byType(ThoughtBubble), const Offset(0, -70));
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+    });
+
+    testWidgets('a nudge that changes its mind does not', (tester) async {
+      // Short of the commit distance and slow enough not to be a fling: the
+      // bubble goes back where it was and the pile stays shut. Without this the
+      // gesture would fire on any brush past it while scrolling the list.
+      var opened = 0;
+      await tester.pumpWidget(bubble(count: 2, onToggleList: () => opened++));
+
+      final from = tester.getCenter(find.byType(ThoughtBubble));
+      final gesture = await tester.startGesture(from);
+      await gesture.moveBy(const Offset(0, -8));
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(opened, 0);
+    });
+
+    testWidgets('and a tap still captures rather than opening it',
+        (tester) async {
+      var taps = 0;
+      var opened = 0;
+      await tester.pumpWidget(bubble(
+        count: 2,
+        onTap: () => taps++,
+        onToggleList: () => opened++,
+      ));
+
+      await tester.tap(find.byType(ThoughtBubble));
+      await tester.pumpAndSettle();
+      expect(taps, 1);
+      expect(opened, 0);
     });
   });
 
@@ -109,12 +178,15 @@ void main() {
       expect(find.text('💭'), findsOneWidget);
     });
 
-    testWidgets('drops its 💭 where the bubble is the way in', (tester) async {
-      // One door. The count badge is a different control and carries its own
-      // number with it, so it is not what this looks for.
-      await tester.pumpWidget(
-        footer(showCaptureButton: false, thoughts: [thought('a book')]),
-      );
+    testWidgets('drops its 💭 but keeps the pile where it still owns it',
+        (tester) async {
+      // A tablet: wide enough for the rail, so no bubble is drawn and the
+      // footer's own button is gone, but this bar is still the meter.
+      await tester.pumpWidget(footer(
+        showCaptureButton: false,
+        showPressure: true,
+        thoughts: [thought('a book')],
+      ));
       expect(find.text('💭'), findsNothing);
       expect(find.text('💭 1'), findsOneWidget);
     });
@@ -124,14 +196,15 @@ void main() {
       expect(tester.getSize(find.byType(ThoughtFooter)).height, 0);
     });
 
-    testWidgets('comes back the moment a thought is pending', (tester) async {
+    testWidgets('and none once the bubble owns the pile either',
+        (tester) async {
+      // The phone. Thoughts pending and still no bar: a strip along the bottom
+      // edge repeating what the badge on the bubble already says is the third
+      // row of chrome on the smallest screen there is.
       await tester.pumpWidget(
         footer(showCaptureButton: false, thoughts: [thought('a book')]),
       );
-      expect(
-        tester.getSize(find.byType(ThoughtFooter)).height,
-        greaterThan(0),
-      );
+      expect(tester.getSize(find.byType(ThoughtFooter)).height, 0);
     });
 
     testWidgets('and for a refusal, which has nothing to do with the count',

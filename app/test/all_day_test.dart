@@ -118,7 +118,7 @@ void main() {
     test('one whole day already counts as spanning', () {
       // Which is what puts it in the band rather than in an hour column - the
       // grid needs no separate rule for the one-day case.
-      expect(oneDay.spansDays, true);
+      expect(oneDay.spansWholeDay, true);
     });
 
     test('it is still found by the window query for its own day', () async {

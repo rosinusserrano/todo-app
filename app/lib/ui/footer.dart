@@ -4,13 +4,9 @@
 // workspace does not clear it or hide it. Switching used to be *blocked* while
 // thoughts were pending, which is what made the pile impossible to ignore. That
 // block is gone - it punished the wrong action, since moving between workspaces
-// is not what lets a thought rot - so the bar itself now has to carry the whole
-// signal, and the escalation below is tuned harder than it was:
-//
-//   1  thought   the bar starts tinting at all
-//   4           it begins to pulse
-//   12          full intensity, fastest pulse, and the count is boxed in the
-//               alarm colour rather than merely coloured by it
+// is not what lets a thought rot - so the control has to carry the whole
+// signal, and the escalation is tuned harder than it was. The numbers live in
+// thought_pressure.dart, because [ThoughtBubble] runs the same one.
 //
 // The alarm colour is the complement of the active workspace colour, so it
 // always reads against the window tint rather than blending into it.
@@ -23,11 +19,13 @@
 // The bar carries two 💭 controls and they do different jobs: the one on the
 // left opens the capture field, the count on the right opens the panel.
 //
-// On touch the left one is gone, because it is the wrong end of the phone for
-// the control used in the biggest hurry - capturing moved to [ThoughtBubble],
-// floating above the view bar where the thumb is. What is left down here is the
-// meter and the count, and with the pile empty that is nothing at all, so the
-// bar takes no height rather than reserving a strip to say so.
+// On a phone it carries neither, and draws nothing at all. Both were at the
+// wrong end of the screen - a strip *below* the view bar, furthest from the
+// hand, for the control used in the biggest hurry - and both moved onto
+// [ThoughtBubble], which floats above the view bar where the thumb already is
+// and carries the count and the escalation with them. What is left of this bar
+// there is the refusal message, which is a desktop close guard and so never
+// fires, and the field itself, which the desktop hotkey can still open.
 
 import 'dart:math' as math;
 
@@ -36,6 +34,7 @@ import 'package:flutter/services.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
+import 'thought_pressure.dart';
 
 class ThoughtFooter extends StatefulWidget {
   const ThoughtFooter({
@@ -46,6 +45,7 @@ class ThoughtFooter extends StatefulWidget {
     required this.onAdd,
     this.onCapture,
     this.showCaptureButton = true,
+    this.showPressure = true,
     required this.listOpen,
     required this.onToggleList,
   });
@@ -76,11 +76,17 @@ class ThoughtFooter extends StatefulWidget {
   /// happens rather than whether this bar offers it - a tablet wide enough for
   /// the rail has no bubble and still wants the pane rather than the inline
   /// field.
-  ///
-  /// With it false and nothing pending, the bar draws nothing at all: what is
-  /// left of it is the pressure meter, and an empty meter is 36 points of a
-  /// phone screen spent saying there is nothing to say.
   final bool showCaptureButton;
+
+  /// Whether the meter and the count belong to this bar. False on a phone,
+  /// where the bubble wears them: a strip along the bottom edge saying how many
+  /// thoughts are waiting, under a bar that already says which view you are in,
+  /// is the third row of chrome on the smallest screen there is - and it says
+  /// it inches below a circle that could say it instead.
+  ///
+  /// With this and [showCaptureButton] both false the bar has nothing of its
+  /// own left and takes no height at all.
+  final bool showPressure;
 
   @override
   State<ThoughtFooter> createState() => ThoughtFooterState();
@@ -92,10 +98,7 @@ class ThoughtFooterState extends State<ThoughtFooter>
   final _focus = FocusNode();
   bool _expanded = false;
 
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  );
+  late final ThoughtPulse _pulse = ThoughtPulse(this);
   late final AnimationController _shake = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1600),
@@ -103,46 +106,22 @@ class ThoughtFooterState extends State<ThoughtFooter>
 
   int get _count => widget.thoughts.length;
 
-  /// Where the escalation tops out, and where it starts to move. Both were
-  /// roughly twice this before the workspace-switch block was removed; the bar
-  /// is now the only thing saying anything, so it has to say it sooner.
-  static const _peak = 12;
-  static const _pulseFrom = 4;
+  double get _intensity => ThoughtPulse.intensityOf(_count);
 
-  /// 0 at empty, 1 at [_peak] pending thoughts.
-  double get _intensity => math.min(_count / _peak, 1);
-
-  bool get _pulsing => _count >= _pulseFrom;
+  bool get _pulsing => ThoughtPulse.pulsingAt(_count);
 
   @override
   void initState() {
     super.initState();
-    _syncPulse();
+    _pulse.sync(_count);
   }
 
   @override
   void didUpdateWidget(ThoughtFooter oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncPulse();
+    _pulse.sync(_count);
     if (widget.blockedMessage != null && oldWidget.blockedMessage == null) {
       _shake.forward(from: 0);
-    }
-  }
-
-  /// Pulse speeds up from ~1.8s at [_pulseFrom] thoughts to 0.5s at [_peak].
-  void _syncPulse() {
-    if (_pulsing) {
-      final span = (_peak - _pulseFrom).toDouble();
-      final t = math.min((_count - _pulseFrom) / span, 1);
-      final next = Duration(milliseconds: (1800 - 1300 * t).round());
-      if (_pulse.duration != next) {
-        _pulse.duration = next;
-        if (_pulse.isAnimating) _pulse.repeat(reverse: true);
-      }
-      if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
-    } else if (_pulse.isAnimating) {
-      _pulse.stop();
-      _pulse.value = 0;
     }
   }
 
@@ -178,7 +157,7 @@ class ThoughtFooterState extends State<ThoughtFooter>
     }
   }
 
-  /// Nothing to draw: the bubble owns capturing, the pile is empty and no
+  /// Nothing to draw: the bubble owns both the button and the pile, and no
   /// refusal is being explained. Returning early rather than drawing a 36px
   /// strip of nothing above the home indicator.
   /// [_expanded] is in there because the field can be opened from outside
@@ -186,8 +165,8 @@ class ThoughtFooterState extends State<ThoughtFooter>
   /// just told to focus would swallow the keystroke.
   bool get _silent =>
       !widget.showCaptureButton &&
+      !widget.showPressure &&
       !_expanded &&
-      _count == 0 &&
       widget.blockedMessage == null;
 
   @override
@@ -197,9 +176,9 @@ class ThoughtFooterState extends State<ThoughtFooter>
     final alarm = T.complementary(widget.workspaceColor);
 
     return AnimatedBuilder(
-      animation: Listenable.merge([_pulse, _shake]),
+      animation: Listenable.merge([_pulse.controller, _shake]),
       builder: (context, child) {
-        final glow = Curves.easeInOut.transform(_pulse.value);
+        final glow = Curves.easeInOut.transform(_pulse.controller.value);
         return Transform.translate(
           offset: Offset(_shakeOffset(), 0),
           child: Container(

@@ -21,12 +21,119 @@ Rules for keeping it honest:
 
 ## Now
 
-**Nothing.** Step 17 landed as 0.24.1. Everything on this list is done,
-committed and pushed; the design that produced it has moved to `ROADMAP.md`'s
-*Shipped*.
+**Nothing.** Steps 18-23 landed as 0.25.0. Everything on this list is done and
+committed; the design that produced it has moved to `ROADMAP.md`'s *Shipped*.
 
-One thing the handshake found while it was being built and could not fix from
-here: the fake servers in the test suite are stand-ins for a real one, so they
+**Not yet pushed, and not yet installed on the phone** - the three mobile items
+(19, 20, 21) can only really be judged there.
+
+---
+
+## Done — 0.25.0, Marco's list from a week on the phone
+
+Agreed 2026-08-24, in his order. Checks were run over the batch rather than per
+step: `flutter analyze` clean, `flutter test` 492 passed / 6 skipped (the
+integration file, correctly gated behind `--dart-define=SYNC_URL`),
+`node --test server/` untouched by any of it and green.
+
+### 18. Remove block sublists  `[x]`
+
+"It needs more thought and is rather annoying." Delete the feature, keep the
+record.
+
+- [x] `ui/sublist_sheet.dart` deleted, with `_openSublist` / `_loadSublist` /
+      `_closeSublist` / `_dropSublistIfGone`, the sheet in the shell's `Stack`,
+      its rung on the Esc ladder and in `_clearOverlays`, and every path that
+      had to close it on the way past.
+- [x] `EventAction.plan` and its two ways in (the details card's *Todos*, the
+      context menu's *Todos…*), the "Now" tile's `_SublistButton`, and
+      `SessionView.onCreateSublist`.
+- [x] `AppState.addTaskForEvent`. `plannableTasks` and `tasksForEvent` stay -
+      the editor's tick list is planning, which is not what was removed.
+- [x] The empty session block says "Nothing planned into this block. Plan todos
+      into it from the calendar." and stops there, rather than offering a
+      button. `_openSession` therefore always opens the view: a tile that looks
+      pressable has to be pressable.
+- [x] FEATURES.md: bullet out of *Calendar*, entry into *Ideas / backlog* with
+      what it would need to come back. ROADMAP's 0.17.0 line amended rather
+      than rewritten.
+
+### 19. A block that crosses midnight is not a multi-day event  `[x]`
+
+Reported: an entry ending at 00:00 gets promoted to the all-day band. 22:00-04:00
+has to be possible and has to be drawn where it happens.
+
+- [x] `CalendarEvent.spansDays` → `spansWholeDay`: is there a whole
+      midnight-to-midnight day *inside* this, rather than do the two ends fall
+      on different dates. Calendar arithmetic, not `Duration(days: 1)`.
+- [x] `_timedByDay` puts an event in **every** column it overlaps instead of
+      breaking at the first; `_positionedEvents` already clamped to the day, so
+      the clipping was free. `EventBlock.continuesBefore` / `continuesAfter`
+      square off the cut end.
+- [x] The editor rolls an end time that is not after the start to the next day,
+      so 22:00-04:00 is two taps.
+- [x] `test/overnight_event_test.dart` - two columns for a night, one for a
+      block ending at midnight, none for a block with a day inside it. The two
+      `spansDays` assertions in `calendar_test` / `all_day_test` rewritten.
+
+### 20. The side-thought bar off the phone  `[x]`
+
+"I don't want to have this bar in mobile. Rather make the bubble flash and make
+sliding it up open the thoughts view."
+
+- [x] `ThoughtFooter.showPressure` beside `showCaptureButton`; with both false
+      the bar takes no height at any pile size. Kept in the tree for
+      `openAndFocus` and the close guard's refusal, neither of which a phone
+      reaches.
+- [x] `ui/thought_pressure.dart` (`ThoughtPulse`) - the escalation, owned by
+      both controls rather than copied into the second one.
+- [x] `ThoughtBubble` gains the count on its shoulder, the warm-to-alarm tint,
+      the pulse, and a vertical drag that lifts it and toggles the pile on
+      distance or velocity.
+- [x] `test/thought_bubble_test.dart` extended: the count, the swipe, a nudge
+      that does not commit, and that a tap still captures.
+
+### 21. A quick action for the task you are on  `[x]`
+
+Asked as a question - "is it possible to make iOS home screen quick actions
+dynamic?" - and it is: `setShortcutItems` can be called at any time and both
+platforms keep the list across launches. iOS shows four at most.
+
+- [x] `AppQuickActions.setActiveTask(title)`, re-registering only when the
+      title moves; driven from `_onState`, since a task can leave focus by
+      being completed, deleted, parked or merged away.
+- [x] `AppState.appendToNotes` - re-reads the row, appends a line, moves
+      `focusTask` with it. The menu outlives the process, so the press can
+      arrive long after the copy the shell is holding went stale.
+- [x] The pane is `ThoughtSheet` with a glyph, a title and a hint passed in.
+      Same problem, same widget.
+- [x] A stale entry falls back to the add field rather than doing nothing.
+- [x] `test/active_task_note_test.dart`.
+
+### 22. "Add workspace…" from the ▾ menu  `[x]`
+
+- [x] It was `value: null`, and `PopupMenuButton` treats a null result as a
+      dismissal - `onSelected` is never called for one. A named sentinel and an
+      `Object`-typed menu. Broken only on the narrow layout; the rail's Add is
+      an ordinary button.
+
+### 23. Ctrl+wheel zooms the calendar's timeline  `[x]`
+
+- [x] A `Listener` **inside** `SingleChildScrollView`, registering with
+      `pointerSignalResolver` - dispatch runs deepest-first and the first
+      registration wins, so wrapped around the scroll view it would lose the
+      wheel and the day would zoom *and* scroll.
+- [x] A ratio per notch about the pointer, `onZoom` passed unconditionally
+      rather than on `layout.touch`.
+- [x] `test/calendar_zoom_test.dart` - it zooms with Ctrl, and a plain wheel
+      still scrolls.
+
+---
+
+## Older
+
+One thing step 17's handshake found while it was being built, and could not fix
+from here: the fake servers in the test suite are stand-ins for a real one, so they
 have to answer `/api/health` now. `server_swap_test` was taught to;
 `change_stream_test` never talks to `SyncService`, so it did not need it. A new
 fake server that omits the route will hang for the client timeout rather than

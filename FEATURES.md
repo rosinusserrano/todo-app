@@ -364,6 +364,14 @@ Three tiers, none of which need an account, an API key, or a licence:
   become. Switching target is one tap on another chip; ⚡ again, or the ✕ on the
   strip, leaves the mode. Anything a block needs beyond a span — a note, a
   reminder, a different title — is one tap on the block afterwards.
+- **A block can run past midnight.** 22:00 to 04:00 is a night, and it is drawn
+  as one: two hours at the foot of one day and four at the head of the next,
+  cut square where midnight divides them so the halves read as one block. Only
+  a block with a whole day *inside* it — midnight to midnight, so a conference
+  or a holiday — goes into the multi-day band at the top, since that is the one
+  that would otherwise be 24 hours of scrolling past the same thing. Picking an
+  end time earlier than the start means the next day, so an overnight block
+  takes two taps rather than a trip through the date picker.
 - **An event is** a title (required), plus an optional description, an optional
   attachment, todos planned into it, and a start and end. Its blob on the grid
   shows the title, the first lines of the description, a count of its open
@@ -378,13 +386,6 @@ Three tiers, none of which need an account, an API key, or a licence:
   elsewhere says so rather than being hidden. Deleting the block releases its
   todos — they are still things to do, they have only lost the time set aside
   for them.
-- **A block can have a list of its own — "Sublist".** Rather than only choosing
-  among tasks you already have, you can write a block's todos straight into it:
-  the sheet has an add field at the top ("print the slides") and folds the rest
-  of the workspace's open list underneath, one tap each to take one in. It is
-  reached from the "Now" tile when the running block is empty, from the session
-  view, and from *Todos* in an event's right-click menu. Nothing new is stored —
-  a sublist is simply the tasks pointing at that block.
 - **"Now" — the session view.** While a block is running, a banner appears above
   the task list saying what it is, when it ends and how much is left on it.
   Opening it shows **only** the todos planned into that block, with a live
@@ -395,8 +396,9 @@ Three tiers, none of which need an account, an API key, or a licence:
     its calendar, and it is the one control in the app that talks about a
     workspace other than the one on screen — so pressing it takes you there,
     rather than showing that block's todos beside a different list.
-  - If the running block has **nothing** planned into it, the tile does not open
-    an empty view; it stays on your list and offers **Sublist** instead.
+  - A block with **nothing** planned into it says so and leaves it there:
+    planning is choosing among todos you already have, and both ways of doing
+    it are in the calendar.
   - There is no permanent button for it because for most of the day there is no
     answer: the way in appears when a block starts and the view hands the
     content area back when the last one ends. Esc closes it like the other
@@ -471,11 +473,12 @@ Three tiers, none of which need an account, an API key, or a licence:
   not on screen. The edges only wake up once the block has been somewhere that
   is not an edge, so picking up Monday's block to move it two hours down does
   not send you back a week.
-- **Pinch to zoom the day.** Two fingers make an hour taller or shorter, from a
-  compressed overview down to a day you can drop a 15-minute block into
-  precisely. The time between your fingers stays where it is while the grid
-  grows around it, and the zoom is remembered per device — it is about the
-  screen in front of you, so it is not synced.
+- **Zoom the day.** Two fingers on a phone, **Ctrl and the wheel** with a
+  mouse: an hour gets taller or shorter, from a compressed overview down to a
+  day you can drop a 15-minute block into precisely. Whatever is under your
+  fingers — or under the pointer — stays where it is while the grid grows
+  around it. A plain wheel still scrolls the day, and the zoom is remembered
+  per device: it is about the screen in front of you, so it is not synced.
 - **The calendar fits the window you have.** Opening it never moves or resizes
   the widget. Instead the views change shape:
   - The **week stays a week** — seven real columns you can drag on — right down
@@ -602,16 +605,22 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 - **Capture a thought** — the 💭 button on the *left* of the footer expands a
   field to jot a quick note.
-- **On a phone it is a bubble instead**, floating over the list just above the
-  Tasks / Notes / Parked / History bar — the shape every chat widget on the web
-  uses, and for the same reason: the control used in the biggest hurry should be
-  where the thumb already is, not in the thinnest strip at the very bottom of
-  the screen. It is the *only* door there — the footer drops its own 💭 rather
-  than offering a second one — and with no thoughts pending the footer then has
-  nothing left to say and takes no height at all, giving the row back to the
-  list.
-- **Review them on demand** — the 💭 count on the *right* of the footer opens
-  the parked-thoughts panel, which slides up and **takes over the content area
+- **On a phone the bubble is the whole thing**, floating over the list just
+  above the Tasks / Notes / Parked / History bar — the shape every chat widget
+  on the web uses, and for the same reason: the control used in the biggest
+  hurry should be where the thumb already is, not in the thinnest strip at the
+  very bottom of the screen. The footer bar is simply **not drawn** there, at
+  any pile size, so the bubble carries everything it used to say:
+  - **Tap** to capture, which opens the full-screen pane below.
+  - **The count rides on the bubble**, on its shoulder, and the circle warms
+    towards the alarm colour and begins to pulse as the pile grows — the same
+    escalation on the same numbers the footer bar runs under a pointer.
+  - **Swipe up** to open the pile. The bubble lifts with the finger and drops
+    back if you change your mind. A phone already has one obvious gesture for
+    "there is more above this", and it saves a second target overlapping the
+    first.
+- **Review them on demand** — the 💭 count on the *right* of the footer (a
+  swipe up on the bubble, on a phone) opens the parked-thoughts panel, which slides up and **takes over the content area
   in place of the tasks**. Thoughts are not shown otherwise: a parked thought is
   something you deal with deliberately, not a list that should be eating room
   above your tasks the whole time. Press it again (or Esc) to go back.
@@ -634,12 +643,14 @@ at the screen gives nothing away) and its lock is **opt-in**.
   and all the block did was make the app feel stuck during the one activity —
   looking around your own lists — that tells you where a parked thought belongs.
   Closing still blocks; that is the path where the pile leaves the screen.
-- **Pressure meter** — with the switch block gone, the footer bar carries the
+- **Pressure meter** — with the switch block gone, the control carries the
   whole signal, and it escalates harder than it used to: it tints from the first
   thought, starts pulsing at 4, and reaches full intensity and its fastest pulse
   at 12. Past that the count is boxed in the alarm colour and grown, rather than
   merely tinted. The live 💭 count is always visible even though the thoughts
-  themselves are not, so the pile can nag you without occupying the window.
+  themselves are not, so the pile can nag you without occupying the window. The
+  footer bar and the phone's bubble run the same escalation off the same
+  numbers — it is one signal, drawn wherever the layout put the control.
 
 ## Window & look
 
@@ -838,6 +849,21 @@ simply stretched.
   global shortcuts, and it exists for the same reason — capture speed. (Not a
   WidgetKit home-screen *widget*, which is a separate app extension and cannot
   host a text field at all.)
+- **The menu names the task you are on.** Put a task into focus mode and a third
+  entry appears in it — *Note on “rewrite the importer”* — which opens a
+  full-screen field and **appends** what you write to that task's notes. It is
+  the same pane the side-thought bubble opens, pointed somewhere else: one line,
+  saved, the phone back in your pocket, without finding the task first. The
+  entry follows focus mode, so it changes when you change task and goes away
+  when nothing is in focus.
+  - It is **appended**, never overwritten, and the row is re-read at the moment
+    you save. The menu is stored by the operating system and outlives the app,
+    so the line can arrive long after anything else was written to that task —
+    including from another device.
+  - A stale entry is therefore possible (the task was finished on the laptop an
+    hour ago). Pressing it then opens the ordinary add field rather than doing
+    nothing: you meant to write something down.
+  - iOS shows at most four entries, so three is the whole budget.
 - **Sized for a thumb on the phone** — the layout is deliberately the same one
   as on the desktop, drawn about a quarter larger. It is one zoom applied to
   the whole widget rather than a second set of mobile paddings, so the two
@@ -890,11 +916,52 @@ reminders are both there now**, queued for 0.18.0.
   `PUT/GET /blob/:sha256`, content-addressed, plus an upload/download queue with
   its own retry and progress. The metadata layer is built for it already: the
   digest is the address, and "not on this device" is the state it would clear.
+- **A list that belongs to a block of time.** Shipped in 0.17.0 as *Sublist* and
+  **removed again in 0.25.0**: writing a block's todos into a sheet of their own
+  put a second add field in the app, reachable from three places, and in use it
+  was mostly in the way. Planning — ticking todos you already have into a block,
+  or dragging one onto it — is untouched and is what the feature was competing
+  with. If it comes back it needs a different shape: probably somewhere on the
+  block itself rather than a sheet, and an answer to what a todo written into a
+  block *is* when the block is deleted.
 
 ---
 
 ## Changelog
 
+- **0.25.0** — **A night is a night, and a phone stops repeating itself.**
+  Six things, five of them from using the app on a phone for a week.
+  - **A block of time can cross midnight and still be a block of time.** 22:00
+    to 04:00 is drawn where it happens — two hours at the foot of one day, four
+    at the head of the next, cut square where midnight divides them — instead of
+    being promoted into the all-day band, which printed neither the hour it
+    started nor the hour it ended. Anything ending *at* 00:00 stays in the day
+    it started, and only a block with a whole day inside it (a conference, a
+    holiday) still goes to the band. Picking an end time earlier than the start
+    now means the next day, so an overnight block is two taps rather than a trip
+    through the date picker.
+  - **The side-thought bar is gone from the phone.** It was a third strip of
+    chrome along the bottom edge, below the view bar, saying what a badge could
+    say. The bubble carries all of it now: the count sits on its shoulder, the
+    circle warms and pulses as the pile grows, and a **swipe up** opens the pile
+    — the bubble lifts with your finger and drops back if you change your mind.
+  - **The quick-action menu names the task you are on.** Long-press the app icon
+    while a task is in focus and there is an entry for it; it opens one field
+    and appends what you write to that task's notes. The line is appended to
+    whatever the row says at that moment, not to the copy the app was holding,
+    because the menu outlives the app and the press can arrive hours later.
+  - **Ctrl and the wheel zoom the calendar's timeline**, which pinching has done
+    on a phone since 0.24.0 and a mouse had no way to ask for. The hour under
+    the pointer stays put; a plain wheel still scrolls the day.
+  - **"Add workspace…" works from the dropdown.** On a window too narrow for the
+    rail that entry was the only way to make a workspace, and pressing it did
+    nothing whatever — the menu reported the press as a dismissal and threw it
+    away.
+  - **Block sublists are removed.** Writing a block's todos into a sheet of
+    their own was reachable from three places and mostly in the way; planning —
+    ticking in todos you already have, or dragging one onto a block — is
+    untouched, and is what it was competing with. It is in the backlog with a
+    note on what it would need to come back.
 - **0.24.1** — **The app and the server check they still speak the same
   language.** Both ends now declare a version of the sync protocol itself, and
   if they disagree the app stops syncing and says which of the two has to be

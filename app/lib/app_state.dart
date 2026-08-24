@@ -533,32 +533,6 @@ class AppState extends ChangeNotifier {
   String? workspaceForEvent(CalendarEvent e) =>
       calendarsByUuid[e.calendarUuid]?.workspaceUuid;
 
-  /// Capture a todo straight into a block of time.
-  ///
-  /// The workspace comes from the *block's* calendar rather than from whatever
-  /// list happens to be on screen: a session can be running on a calendar you
-  /// are not currently looking at, and a todo written into that block belongs
-  /// with the rest of that workspace's work. A standalone calendar has no
-  /// workspace, so there the current one is the only sensible answer - the same
-  /// guess [plannableTasks] makes.
-  Future<void> addTaskForEvent(CalendarEvent e, String text) async {
-    final ws = workspaceForEvent(e) ?? currentWorkspaceUuid;
-    if (ws == null || text.trim().isEmpty) return;
-    await _store.putTask(
-      Task(
-        uuid: newId(),
-        workspaceUuid: ws,
-        text: text.trim(),
-        createdAt: nowStamp(),
-        sortOrder: await _store.nextSortOrder(ws),
-        eventUuid: e.uuid,
-        updatedAt: nowStamp(),
-      ),
-    );
-    await refreshTasks();
-    _mutated();
-  }
-
   /// What can be planned into [e]: the open, unshelved tasks of the workspace
   /// the event's calendar belongs to.
   ///
@@ -823,6 +797,36 @@ class AppState extends ChangeNotifier {
     await _store.putGroup(g.copyWith(deletedAt: stamp, updatedAt: stamp));
     await refreshTasks();
     _mutated();
+  }
+
+  /// Add one line to the end of a task's notes.
+  ///
+  /// Written as an *append* rather than as an edit, and the row is re-read from
+  /// the store first, because of where this is called from: the home-screen
+  /// quick action, whose whole point is that it lands on a task you have not
+  /// looked at. The [Task] the caller is holding may be minutes old and may
+  /// have been edited on another device since - saving its `notes` back
+  /// wholesale would then quietly drop whatever else had arrived.
+  ///
+  /// Returns the task it wrote to, or null when there was nothing to write to
+  /// (the row is gone) or nothing to write.
+  Future<Task?> appendToNotes(Task t, String line) async {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) return null;
+
+    final live = await _store.taskByUuid(t.uuid);
+    if (live == null || live.isDeleted) return null;
+
+    final notes =
+        live.notes.isEmpty ? trimmed : '${live.notes}\n$trimmed';
+    final row = live.copyWith(notes: notes, updatedAt: nowStamp());
+    await _store.putTask(row);
+    // The focus tile prints the notes under the title, so the copy the shell is
+    // holding has to move with the row or the line lands invisibly.
+    if (focusTask?.uuid == row.uuid) focusTask = row;
+    await refreshTasks();
+    _mutated();
+    return row;
   }
 
   // ---------------------------------------------------------------- focus

@@ -282,10 +282,12 @@ class CalendarView extends StatelessWidget {
       // step the arrows and the swipe use, so all three agree on what one step
       // means in the current mode.
       onStep: state.stepCalendar,
-      // Pinch to zoom, on touch only: there is no two-finger gesture with a
-      // mouse, and the fixed grid is what the desktop has always had.
+      // Zoom the hour height: a pinch on touch, Ctrl and the wheel with a
+      // mouse. Handed over unconditionally now that there are two gestures for
+      // it - the grid decides which one it is looking at, and a desktop with a
+      // touchscreen gets both without this having to guess which it will be.
       hourHeight: state.hourHeight,
-      onZoom: layout.touch ? state.setHourHeight : null,
+      onZoom: state.setHourHeight,
     );
   }
 }

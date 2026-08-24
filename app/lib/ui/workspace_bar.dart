@@ -257,17 +257,21 @@ class _SwitcherMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Nullable, with null meaning "a new one". `onSelected` never fires for a
-    // dismissed menu, so null here can only ever be the entry below.
-    return PopupMenuButton<Workspace?>(
+    // A sentinel object for "a new one", **not** null, and that is the whole of
+    // the bug this used to have: `PopupMenuButton` treats a null result as a
+    // dismissal and never calls `onSelected` for one, so the entry below could
+    // be pressed all day and nothing would happen. It only ever failed on the
+    // narrow layout, because the rail's Add is an ordinary button.
+    return PopupMenuButton<Object>(
       tooltip: 'Switch workspace',
       color: T.bgSolid,
       position: PopupMenuPosition.under,
       borderRadius: BorderRadius.only(topRight: radius, bottomRight: radius),
-      onSelected: (ws) => ws == null ? onCreate() : onSelect(ws),
+      onSelected: (picked) =>
+          picked == _addWorkspace ? onCreate() : onSelect(picked as Workspace),
       itemBuilder: (context) => [
         for (final ws in others)
-          PopupMenuItem<Workspace?>(
+          PopupMenuItem<Object>(
             value: ws,
             height: 38,
             child: Row(
@@ -290,8 +294,8 @@ class _SwitcherMenu extends StatelessWidget {
         // already exists, this one makes something. Only entry in the menu
         // that is a verb.
         if (others.isNotEmpty) const PopupMenuDivider(),
-        const PopupMenuItem<Workspace?>(
-          value: null,
+        const PopupMenuItem<Object>(
+          value: _addWorkspace,
           height: 38,
           child: Row(
             children: [
@@ -316,6 +320,13 @@ class _SwitcherMenu extends StatelessWidget {
     );
   }
 }
+
+/// What the ▾ menu returns for its one entry that is not a workspace.
+///
+/// A named sentinel rather than null: null is how a `PopupMenuButton` says the
+/// menu was dismissed, so an entry valued null is a press that reports itself
+/// as nothing having happened.
+const _addWorkspace = Object();
 
 /// The active workspace's pill. Since only the active one is ever drawn there
 /// is no inactive styling left - the tab is always the current workspace.

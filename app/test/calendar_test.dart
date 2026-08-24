@@ -453,12 +453,30 @@ void main() {
   });
 
   group('multi-day', () {
-    test('spansDays is false within one day and true across midnight', () {
-      final sameDay = event('a', DateTime(2026, 7, 30, 9), DateTime(2026, 7, 30, 17));
+    test('a night is not a multi-day event', () {
+      // The band is for blocks with a whole day inside them. Crossing midnight
+      // is not that: 22:00-02:00 drawn as a band would lose both the hour it
+      // starts and the hour it ends, which is all there is to know about it.
+      final sameDay =
+          event('a', DateTime(2026, 7, 30, 9), DateTime(2026, 7, 30, 17));
       final overnight =
           event('b', DateTime(2026, 7, 30, 22), DateTime(2026, 7, 31, 2));
-      expect(sameDay.spansDays, isFalse);
-      expect(overnight.spansDays, isTrue);
+      final toMidnight =
+          event('c', DateTime(2026, 7, 30, 22), DateTime(2026, 7, 31));
+      expect(sameDay.spansWholeDay, isFalse);
+      expect(overnight.spansWholeDay, isFalse);
+      expect(toMidnight.spansWholeDay, isFalse);
+    });
+
+    test('a whole day inside it is', () {
+      // Tuesday is covered end to end, so there is a column that would be
+      // nothing but this block from top to bottom.
+      final twoNights =
+          event('a', DateTime(2026, 7, 30, 22), DateTime(2026, 8, 1, 4));
+      // Exactly midnight to midnight - the shortest thing that qualifies.
+      final oneDay = event('b', DateTime(2026, 7, 30), DateTime(2026, 7, 31));
+      expect(twoNights.spansWholeDay, isTrue);
+      expect(oneDay.spansWholeDay, isTrue);
     });
   });
 

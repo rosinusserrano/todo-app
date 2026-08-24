@@ -6,22 +6,22 @@
 // poor way to read, as well as one stray keystroke away from changing what you
 // only meant to look at.
 //
-// So a click reads and the ways to write are named: Edit, Plan todos, Delete,
-// on this card and in the right-click / long-press menu that offers the same
-// four things without opening anything first.
+// So a click reads and the ways to write are named: Edit and Delete, on this
+// card and in the right-click / long-press menu that offers the same things
+// without opening anything first.
 //
 // It stays a modal *route* rather than a sheet in the shell's Stack, unlike
-// Settings and the sublist: it is a glance that is gone in seconds, which is
+// Settings and the sound sheet: it is a glance that is gone in seconds, which is
 // exactly the case the sheet rule in main.dart carves out. Nothing here takes
 // typing, so there is no state to lose to the barrier.
 //
 // It is drawn on the same panel as the two forms (form_sheet.dart) rather than
-// as an `AlertDialog`, and that is not only for the look. As a dialog its four
+// as an `AlertDialog`, and that is not only for the look. As a dialog its
 // named actions went into Material's `OverflowBar` with a `Spacer` between
 // them, which on a phone gave the title, Delete, and then a tall empty slab of
 // Material's own surface running to the bottom of the screen - the card's own
 // content squeezed into nothing above it. The panel lays the actions out in a
-// Wrap that takes a second line when four finger-sized buttons do not fit.
+// Wrap that takes a second line when the finger-sized buttons do not fit.
 
 import 'package:flutter/material.dart';
 
@@ -34,7 +34,7 @@ import 'time_grid.dart' show hhmm;
 
 /// What the user asked for on the way out. Null (the dialog dismissed) is
 /// "nothing", which is the common case for a view whose job is to be read.
-enum EventAction { edit, plan, delete }
+enum EventAction { edit, delete }
 
 Future<EventAction?> showEventDetails(
   BuildContext context, {
@@ -184,11 +184,6 @@ class _DetailsDialogState extends State<_DetailsDialog> {
         FormSheet.dangerButton(
           touch: touch,
           onTap: () => Navigator.pop(context, EventAction.delete),
-        ),
-        FormSheet.plainButton(
-          touch: touch,
-          label: 'Todos',
-          onTap: () => Navigator.pop(context, EventAction.plan),
         ),
         FormSheet.saveButton(
           touch: touch,

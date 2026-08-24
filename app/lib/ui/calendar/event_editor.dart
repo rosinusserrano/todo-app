@@ -281,7 +281,15 @@ class _EventDialogState extends State<_EventDialog> {
         _start = moved;
         _end = moved.add(length);
       } else {
-        _end = moved;
+        // An end time that is not after the start means the next day: 22:00 to
+        // 04:00 is a night, and making somebody move the end *date* as well to
+        // say so is the long way round to the commonest overnight block there
+        // is. Built from the parts rather than by adding 24 hours, so a shift
+        // across the clocks changing keeps the time that was picked.
+        _end = moved.isAfter(_start)
+            ? moved
+            : DateTime(moved.year, moved.month, moved.day + 1, moved.hour,
+                moved.minute);
       }
     });
   }

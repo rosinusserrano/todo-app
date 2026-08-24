@@ -273,6 +273,19 @@ draggable — and the collision was exact: the pane's ✕ sat on the
 concentration-sound button. Nothing is lost by stopping, because what it hides
 is the workspace name and the tasks and both are below the bar.
 
+**On a phone `ThoughtBubble` is the whole side-thought control, and the footer
+draws nothing.** `ThoughtFooter` has two flags, not one: `showCaptureButton`
+gave up its 💭, and `showPressure` gives up the meter and the count as well, so
+where both are false the bar takes no height at any pile size. It stays in the
+tree rather than being dropped from it because two things still reach for it -
+`openAndFocus` (the desktop hotkey) and the close guard's refusal - and both are
+things a phone never does. The escalation itself moved to
+`ui/thought_pressure.dart` (`ThoughtPulse`), which both controls own one of: it
+is one signal drawn wherever the layout put the control, and two copies of
+"when does this start pulsing" drift apart one literal at a time. The bubble's
+swipe up is a plain `onVerticalDrag`, committed on distance **or** velocity, and
+it toggles rather than opens - it is the same press the footer's badge was.
+
 **On touch the way *into* that pane is `ThoughtBubble`, not the footer.** It
 floats in the bottom-right of the content area, above the view bar, and the
 footer drops its own 💭 (`ThoughtFooter.showCaptureButton`) so there is one
@@ -380,16 +393,34 @@ time on one. The rules that are not obvious from the schema:
     that converts - a person picking "ends 20 Aug" means the 20th included.
     Print the stored end anywhere user-facing and every all-day event gains a
     day.
-  - **One whole day already satisfies `spansDays`** (midnight to the next
-    midnight is two calendar days), so it lands in the band with no separate
-    rule. The grid still tests `allDay || spansDays`, because that is the
-    question being asked and relying on the coincidence would be a trap for
-    whoever changes `spansDays`.
+  - **One whole day already satisfies `spansWholeDay`** (midnight to the next
+    midnight is exactly one whole day), so it lands in the band with no
+    separate rule. The grid still tests `allDay || spansWholeDay`, because that
+    is the question being asked and relying on the coincidence would be a trap
+    for whoever changes `spansWholeDay`.
   - **An all-day event does not inherit its calendar's lead time**
     (`notifyLead`). That rule is minutes before a start and an all-day start is
     midnight, so inheriting "an hour before" fires at 23:00 the night before
     for every birthday. A lead set on the event itself is still honoured -
     that is the only place someone can have meant it.
+- **The band is for a whole day *inside* the event, not for two dates.**
+  `spansWholeDay` asks whether a midnight-to-midnight day fits between the
+  instants; it was `spansDays`, which asked whether the two ends fell on
+  different dates, and so promoted every night shift and everything ending at
+  00:00 into a band that then printed neither the hour it started nor the hour
+  it ended. An overnight block is drawn in the grid, in **every column it
+  overlaps** (`_timedByDay` adds it to each rather than breaking at the first),
+  clipped into each by the clamp that `_positionedEvents` was already doing;
+  `EventBlock.continuesBefore` / `continuesAfter` square off the cut end so the
+  halves read as one thing. What genuinely cannot be drawn in a column is a
+  block with a day entirely inside it - that one is 24 hours of scrolling past
+  the same block. The agenda has always used this same overlap test, and
+  `AgendaView._on` is where the shape came from.
+- **The editor rolls an end time back over midnight.** Picking an end that is
+  not after the start moves it to the next day rather than warning, because
+  22:00-04:00 is the commonest overnight block there is and making somebody
+  move the end *date* to say so is the long way round. Calendar arithmetic, not
+  `Duration(days: 1)`.
 - `notify_minutes` on an event is a **three-state column**: null inherits the
   calendar's rule, `CalendarEvent.notifySilent` (-1) overrides it to quiet, any
   other value is a lead time. One column rather than a flag plus a value,
@@ -551,8 +582,18 @@ time on one. The rules that are not obvious from the schema:
   inside the left zone and would otherwise step back a week before the finger
   moved. `_edgeStop` runs on drop, on leaving the grid and on dispose - a timer
   that outlives its gesture walks the calendar on its own.
+- **Ctrl+wheel zooms, and its `Listener` must be *inside* the scroll view.**
+  A scroll signal goes to whichever handler registers with
+  `pointerSignalResolver` first and dispatch runs deepest-first, so a listener
+  wrapped *around* `SingleChildScrollView` always loses the wheel to it - the
+  day would zoom and scroll at once. From inside, claiming the event is what
+  keeps it away from the scrollable, and an unmodified wheel is never claimed at
+  all. `onZoom` is now passed unconditionally rather than on `layout.touch`:
+  there are two gestures for it and the grid is what knows which one it is
+  looking at.
 - **The hour height is a value, not a constant** (`TimeGridView.hourHeight`),
-  pinched on touch and stored device-locally in `settings`. Everything vertical
+  pinched on touch, Ctrl+wheeled with a mouse, and stored device-locally in
+  `settings`. Everything vertical
   reads it - painter, labels, blocks, `_pointToSlot` - for the same reason
   nothing may read `kGutter` directly. The pinch is a **`Listener`, not a
   `GestureDetector`**: a `ScaleGestureRecognizer` enters the arena against the
@@ -658,6 +699,30 @@ this device" rather than hiding it or failing. Two consequences worth keeping:
 - A row tombstoned on another device arrives as a *merge*, so the local delete
   path never runs. `AppState.sweepAttachments()` at startup is the only thing
   that ever collects those bytes.
+
+### The quick-action menu is data, not a manifest
+
+`quick_actions.dart` re-registers its items whenever the focused task changes -
+`_onState` calls `setActiveTask(s.focusTask?.text)` on every notify and the
+class drops the call unless the *title* it would print has moved. Three things
+about it:
+
+- **`in_progress` is already "the active task".** It is exclusive and global by
+  construction, so naming one in the menu needed no column and no second
+  concept. Focus mode is how you set it.
+- **The menu outlives the process.** Both platforms keep the last list handed to
+  `setShortcutItems`, so a press can arrive naming a task that was completed on
+  another device hours ago. `_noteOnActiveTask` therefore re-reads `focusTask`
+  rather than trusting the entry, and falls back to the add field; and
+  `AppState.appendToNotes` re-reads the *row* before writing, because the copy
+  the shell is holding may be older than what sync has since brought in. It
+  appends - a whole-field save from that path would drop whatever arrived.
+- **iOS shows four items at most**, static and dynamic together. Three is the
+  budget spent.
+
+The pane it opens is `ThoughtSheet` with three strings changed. That widget is
+the answer to "one line, written blind, on a phone held in front of people", and
+this is the second thing that is; a copy would have drifted.
 
 ### Reminders fire differently per platform
 
@@ -921,8 +986,8 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   be translatable. The exit is the part with machinery: a widget removed from
   the tree cannot animate itself out, so the host caches the last child it built
   and keeps showing it until the reverse finishes — which is also why the
-  builder is a callback. `SublistSheet` is built from `_sublist!`, and that goes
-  null the instant it closes. Its `AnimationController` is built in `initState`,
+  builder is a callback. A sheet built from a nullable field - the quick
+  action's `_noteOn!`, say - loses it the instant it closes. Its `AnimationController` is built in `initState`,
   **not** as a `late final`: a sheet never opened never reads it from `build`,
   so a lazy field is first touched by `dispose`, where `vsync: this` looks up
   `TickerMode.of(context)` on a deactivated element and throws.

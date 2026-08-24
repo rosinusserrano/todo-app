@@ -18,7 +18,7 @@
 // with the caret in it.
 //
 // A modal *route* rather than a sheet in the shell's Stack, unlike Settings and
-// the sublist. The rule in main.dart is about things that live on screen while
+// the sound sheet. The rule in main.dart is about things that live on screen while
 // you work around them - a sheet leaves the title bar reachable so the window
 // can still be dragged and closed. This is modal by nature (it is one task's
 // fields, saved or cancelled) and it is the same shape as the event and

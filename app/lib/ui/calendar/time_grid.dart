@@ -23,8 +23,14 @@
 
 import 'dart:async';
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show
+        GestureBinding,
+        PointerDeviceKind,
+        PointerScrollEvent,
+        PointerSignalEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../sync/models.dart';
 import '../../theme.dart';
@@ -34,11 +40,16 @@ import '../task_drag.dart';
 /// vertical is derived from it.
 const double kHourHeight = 44;
 
-/// What a pinch can zoom to. The floor is the point where a 15-minute block is
+/// What a zoom can reach. The floor is the point where a 15-minute block is
 /// still a tappable sliver; the ceiling is about "one hour fills a phone",
 /// which is as far as anyone reads a day.
 const double kHourHeightMin = 24;
 const double kHourHeightMax = 160;
+
+/// What one notch of Ctrl+wheel multiplies the hour height by. About seven
+/// notches from the floor to the ceiling, which is a comfortable turn of a
+/// wheel rather than a job.
+const double kWheelZoomStep = 1.3;
 
 /// The time-of-day gutter down the left edge.
 const double kGutter = 38;
@@ -153,8 +164,8 @@ class TimeGridView extends StatefulWidget {
   /// [gutter] for the same rule.
   final double hourHeight;
 
-  /// A pinch asked for a new hour height. Null leaves the grid fixed, which is
-  /// what a mouse gets: there is no two-finger gesture to make.
+  /// A pinch, or Ctrl and the wheel, asked for a new hour height. Null leaves
+  /// the grid fixed.
   final void Function(double height)? onZoom;
 
   @override
@@ -370,6 +381,58 @@ class _TimeGridViewState extends State<TimeGridView> {
     if (_pointers.length < 2) _pinchFrom = null;
   }
 
+  /// Ctrl (or Cmd) and the wheel: the same zoom the pinch does, for the input
+  /// device that has no second finger.
+  ///
+  /// Registering with the resolver rather than acting on the spot is what makes
+  /// this exclusive - the winner of a scroll signal is the first to claim it,
+  /// and this Listener sits below the scroll view precisely so that is us. A
+  /// plain wheel is not claimed at all and scrolls the day as it always did.
+  void _pointerSignal(PointerSignalEvent e) {
+    final zoom = widget.onZoom;
+    if (zoom == null || e is! PointerScrollEvent) return;
+    final keys = HardwareKeyboard.instance;
+    // Cmd as well: it is the zoom modifier on a Mac, and reading both costs
+    // nothing on a platform where neither is.
+    if (!keys.isControlPressed && !keys.isMetaPressed) return;
+
+    GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+      _wheelZoom(event as PointerScrollEvent);
+    });
+  }
+
+  /// One notch of the wheel, about the pointer.
+  ///
+  /// A ratio per notch rather than a number of points, so a zoomed-out grid
+  /// does not take twice as many turns to get back as it took to get there.
+  void _wheelZoom(PointerScrollEvent e) {
+    final zoom = widget.onZoom;
+    if (zoom == null) return;
+
+    final step = e.scrollDelta.dy > 0 ? 1 / kWheelZoomStep : kWheelZoomStep;
+    final height =
+        (widget.hourHeight * step).clamp(kHourHeightMin, kHourHeightMax);
+    if ((height - widget.hourHeight).abs() < 0.5) return;
+
+    // The pointer is over the *content*, which already includes the scroll
+    // offset - so the instant under it needs no separate anchor the way the
+    // pinch's does, and the point to hold still is where it sits in the
+    // viewport.
+    final minutes = e.localPosition.dy / widget.hourHeight * 60;
+    final inViewport = e.localPosition.dy - _scroll.offset;
+
+    zoom(height);
+
+    // After the frame that draws the new height, for the same reason the pinch
+    // does it: until then the scroll view still has the old extent and would
+    // clamp the jump.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final target = minutes / 60 * height - inViewport;
+      _scroll.jumpTo(target.clamp(0.0, _scroll.position.maxScrollExtent));
+    });
+  }
+
   void _pinchBegin() {
     final points = _pointers.values.toList();
     _pinchFrom = (points[0] - points[1]).distance;
@@ -455,29 +518,35 @@ class _TimeGridViewState extends State<TimeGridView> {
   }
 
   /// Events that sit inside the hour grid, split per column.
+  ///
+  /// An event lands in **every** column it overlaps, not only the one it
+  /// starts in, and is clipped into each of them by [_positionedEvents]. That
+  /// is what draws 22:00-04:00 as the night it is: two hours at the foot of one
+  /// day and four at the head of the next. The agenda has always listed those
+  /// days this way, on the same overlap test.
   List<List<CalendarEvent>> get _timedByDay {
     final out = [for (var i = 0; i < widget.days.length; i++) <CalendarEvent>[]];
     for (final e in widget.events) {
       // A whole day belongs in the band even when it is only one day: drawn in
       // the column it would be a block from midnight to midnight, which is
       // 24 hours of scrolling past the same event.
-      if (e.allDay || e.spansDays) continue;
+      if (e.allDay || e.spansWholeDay) continue;
       for (var i = 0; i < widget.days.length; i++) {
         final day = widget.days[i];
-        final next = day.add(const Duration(days: 1));
-        if (!e.start.isBefore(day) && e.start.isBefore(next)) {
+        // An event ending exactly at midnight belongs to the day before, not
+        // to the one it touches for zero minutes - hence the strict isAfter.
+        if (e.start.isBefore(_nextDay(day)) && e.end.isAfter(day)) {
           out[i].add(e);
-          break;
         }
       }
     }
     return out;
   }
 
-  /// Events crossing a day boundary, and whole days, which are drawn in the
-  /// band on top.
+  /// Events with a whole day inside them, and whole days, which are drawn in
+  /// the band on top.
   List<CalendarEvent> get _spanning =>
-      [for (final e in widget.events) if (e.allDay || e.spansDays) e];
+      [for (final e in widget.events) if (e.allDay || e.spansWholeDay) e];
 
   @override
   Widget build(BuildContext context) {
@@ -514,7 +583,16 @@ class _TimeGridViewState extends State<TimeGridView> {
                 onPointerCancel: (e) => _pointerUp(e.pointer),
                 child: SingleChildScrollView(
                 controller: _scroll,
-                child: SizedBox(
+                // **Inside** the scroll view, and that is the whole trick.
+                // Flutter resolves a scroll signal by handing it to whichever
+                // handler registers first, and dispatch runs deepest-first - so
+                // a Listener wrapped around the scroll view would always lose
+                // the wheel to it and the day would zoom *and* scroll. From in
+                // here we get asked first, and taking the event is what keeps
+                // it away from the scrollable.
+                child: Listener(
+                  onPointerSignal: _pointerSignal,
+                  child: SizedBox(
                   height: 24 * widget.hourHeight,
                   child: _GridBody(
                     days: widget.days,
@@ -547,6 +625,7 @@ class _TimeGridViewState extends State<TimeGridView> {
                     hourHeight: widget.hourHeight,
                     compact: _compact,
                   ),
+                ),
                 ),
               ),
               ),
@@ -825,6 +904,7 @@ class _GridBody extends StatelessWidget {
     required double width,
   }) {
     final placed = packOverlaps(events);
+    final next = _nextDay(day);
     return [
       for (final p in placed)
         () {
@@ -852,12 +932,21 @@ class _GridBody extends StatelessWidget {
               // Two events side by side in a phone column are ~22px each, so
               // the blob's own ornament goes by its slot, not by the day's.
               compact: compact || slotWidth < kCompactColumn,
+              // Squared off where midnight cut the block, so the two halves of
+              // a night read as one thing continuing rather than as two blocks
+              // that happen to touch the edges of their columns.
+              continuesBefore: p.event.start.isBefore(day),
+              continuesAfter: p.event.end.isAfter(next),
             ),
           );
         }(),
     ];
   }
 }
+
+/// The midnight that ends [day]. Built from the parts because adding 24 hours
+/// to a date lands at 23:00 or 01:00 on the two days a year the clocks move.
+DateTime _nextDay(DateTime day) => DateTime(day.year, day.month, day.day + 1);
 
 bool _isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
@@ -947,6 +1036,8 @@ class EventBlock extends StatelessWidget {
     this.onDropTask,
     this.taskCount = 0,
     this.compact = false,
+    this.continuesBefore = false,
+    this.continuesAfter = false,
   });
 
   final CalendarEvent event;
@@ -973,19 +1064,31 @@ class EventBlock extends StatelessWidget {
   /// away in the event itself, and the title is what makes the block findable.
   final bool compact;
 
+  /// This block runs on past the top or the bottom of the column it is drawn
+  /// in - the two halves of an overnight event. The cut end is drawn square,
+  /// and that is the whole of the cue: a rounded corner says "it stops here",
+  /// and it does not stop here.
+  final bool continuesBefore;
+  final bool continuesAfter;
+
   @override
   Widget build(BuildContext context) {
+    final radius = BorderRadius.vertical(
+      top: Radius.circular(continuesBefore ? 0 : 4),
+      bottom: Radius.circular(continuesAfter ? 0 : 4),
+    );
+
     final blob = Padding(
       padding: const EdgeInsets.only(right: 1, bottom: 1),
       child: Material(
         color: Color.lerp(T.bgSolid, color, 0.34),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: radius,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: radius,
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: radius,
               // The calendar's colour, stated once down the leading edge. A
               // fully saturated fill at this size drowns the text.
               border: Border(

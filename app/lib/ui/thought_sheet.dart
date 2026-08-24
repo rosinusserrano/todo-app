@@ -19,6 +19,12 @@
 // it): a barrier you can see through still shows the list. This is opaque and
 // full height.
 //
+// It takes a glyph, a title and a hint because the *other* thing captured
+// blind on a phone wants exactly this pane: the line added to the task you are
+// on, from the home-screen quick action. Same shape, same reasoning - a phone
+// pulled out mid-conversation to write one line down - so it is the same widget
+// with three strings in it rather than a second copy that would drift.
+//
 // Full height *below the title bar*, that is. It used to start at the top of
 // the window and be drawn under the bar, which is above every sheet in the
 // shell's Stack - so this pane's ✕ landed exactly under the concentration-sound
@@ -38,9 +44,20 @@ class ThoughtSheet extends StatefulWidget {
     required this.accent,
     required this.onAdd,
     required this.onClose,
+    this.glyph = '💭',
+    this.title = 'Side thought',
+    this.hint = 'What just came to mind…',
   });
 
   final Color accent;
+
+  /// What this pane is for, in the header. Defaults to a side thought, which is
+  /// what it was built for and still mostly is.
+  final String glyph;
+  final String title;
+
+  /// The empty field's prompt.
+  final String hint;
 
   /// Returns once the thought is stored. The sheet stays open on an empty
   /// submit rather than closing on nothing.
@@ -110,12 +127,14 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                   padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
                   child: Row(
                     children: [
-                      const Text('💭', style: TextStyle(fontSize: 17)),
+                      Text(widget.glyph, style: const TextStyle(fontSize: 17)),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Side thought',
-                          style: TextStyle(
+                          widget.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: T.text,
@@ -165,8 +184,8 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
                       style: const TextStyle(fontSize: 15, height: 1.35),
-                      decoration: const InputDecoration(
-                        hintText: 'What just came to mind…',
+                      decoration: InputDecoration(
+                        hintText: widget.hint,
                         border: InputBorder.none,
                       ),
                       // Enter makes a new line here, unlike the footer's one-

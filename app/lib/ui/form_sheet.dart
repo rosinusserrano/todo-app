@@ -28,7 +28,7 @@
 // rather than covered by it (`viewInsets`), which is what makes the last row of
 // controls reachable while a field has the caret.
 //
-// A modal *route*, unlike Settings and the sublist. The rule in main.dart is
+// A modal *route*, unlike Settings and the sound sheet. The rule in main.dart is
 // about things that live on screen while you work around them - a sheet leaves
 // the title bar reachable so the window can still be dragged and closed. A form
 // is modal by nature: it is one row's fields, saved or cancelled.

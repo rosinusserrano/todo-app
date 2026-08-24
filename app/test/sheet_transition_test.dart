@@ -86,9 +86,9 @@ void main() {
   });
 
   testWidgets('the child survives its own data disappearing', (tester) async {
-    // The sublist sheet is built from `_sublist!`, which goes null the moment
-    // it closes. The builder must not be called again on the way out, or the
-    // exit animation crashes on a null.
+    // A sheet built from a nullable field - `_thing!` - loses it the moment it
+    // closes. The builder must not be called again on the way out, or the exit
+    // animation crashes on a null.
     var built = 0;
     Widget shell(bool open) => MaterialApp(
           home: Stack(

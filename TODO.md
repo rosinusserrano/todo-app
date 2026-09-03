@@ -21,11 +21,60 @@ Rules for keeping it honest:
 
 ## Now
 
-**Nothing.** Steps 18-23 landed as 0.25.0. Everything on this list is done and
-committed; the design that produced it has moved to `ROADMAP.md`'s *Shipped*.
+**Nothing.** Step 24 landed as 0.26.0; steps 18-23 as 0.25.0. Everything on
+this list is done; the design that produced it has moved to `ROADMAP.md`'s
+*Shipped*.
 
-**Not yet pushed, and not yet installed on the phone** - the three mobile items
-(19, 20, 21) can only really be judged there.
+**Step 24 is not committed yet** - the working tree holds it, checks green.
+**Not pushed, and not installed on either device.** 0.25.0's three mobile items
+(19, 20, 21) and all of 24 can only really be judged there - 24's touch half
+especially, since the whole of it is which gesture does what.
+
+---
+
+## Done — 0.26.0, the task row
+
+Agreed 2026-09-03. One rework, both platforms. `flutter analyze` clean,
+`flutter test` 498 passed / 6 skipped (the integration file, correctly gated
+behind `--dart-define=SYNC_URL`). Nothing here touches the server or the wire.
+
+### 24. The actions come off the row  `[x]`
+
+"I don't want it visible in the normal state." On desktop it should not take up
+space either - in a narrow window the invisible bar was most of the row's
+width. On mobile it should pop up on a short tap on the text.
+
+- [x] `ui/task_actions.dart` - `TaskAction`, `TaskActionItem`,
+      `showTaskActions`, `taskActionAnchor`. A floating icon bar, not a menu of
+      labelled rows: same glyphs, same order, so the muscle memory built on the
+      old bar still points at the right thing.
+- [x] The anchor is a rect **in the overlay's space**. `UiScale` is above the
+      `Navigator`, so `localToGlobal` with no ancestor reports scaled screen
+      pixels and the bar would open a fifth of the way down a phone.
+- [x] `TaskRow`: `_IconAction`, `_TouchAction` and `_TouchActions` deleted.
+      What is left inline is `_StateMarks` - the bell, the paperclip, the
+      planned mark - which are **not pressable**.
+- [x] Right-click opens the bar under a pointer (`onSecondaryTapUp`, opaque, so
+      the blank space right of a short title is part of the target); a tap on
+      the text opens it on touch.
+- [x] A left-click on the title expands instead of opening the composer.
+      Editing is the pencil in the bar on both, which is what freed the click.
+- [x] `ui/task_detail.dart` - `TaskDetail` (chips + rendered Markdown, read
+      only) and `TaskDetailScreen` (the same with a header and a scroll).
+- [x] Expansion is two shapes of one action: in place under a pointer, the
+      whole content area on a phone via `TaskRow.onExpand` + the shell's
+      `_expandedTaskUuid` / `_taskTakesScreen` / `_takesScreen`. Guarded
+      structurally, not by every path that opens another view.
+- [x] Esc collapses it, alongside the rest of the ladder.
+- [x] Reordering: `dragHandle` on the **right** and pointer-only;
+      `ReorderableDelayedDragStartListener` around the whole row on touch.
+- [x] `test/touch_task_row_test.dart` rewritten around the new shape (15
+      tests); `widget_test.dart`'s flagged-row test now asserts the bar's
+      glyph and the row's red bar rather than an `AnimatedOpacity` that no
+      longer exists.
+- [x] `FEATURES.md` (Tasks, Attachments, Parked, Reminders, Calendar, plus a
+      0.26.0 changelog entry), `CLAUDE.md` (*The task row, and where its actions
+      went*), `ROADMAP.md`, and `pubspec.yaml` to 0.26.0+13.
 
 ---
 

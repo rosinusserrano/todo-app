@@ -606,6 +606,67 @@ time on one. The rules that are not obvious from the schema:
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it
   adaptive again to save a row of pixels.
 
+### The task row, and where its actions went
+
+`TaskRow` (`app/lib/ui/task_row.dart`) is a tick box, a title and the task's
+**marks** — and nothing else. The actions live in an overlay bar
+(`ui/task_actions.dart`), and the read-only long form in `ui/task_detail.dart`.
+
+The row used to carry them inline in two shapes: hover-revealed icons at the
+right-hand end under a pointer, and an always-visible bar of fingertips below
+the title on touch. Both paid for the actions **with the row's own width, all
+the time**. The desktop icons were invisible at rest but deliberately *kept in
+the layout* (revealing one must not reflow the text), so in a narrow window most
+of a row belonged to controls that were not on screen; the touch bar was a
+second line under every row on the smallest screen there is, and wrapped to a
+third on a task that asked for everything.
+
+- **One gesture per pointer, and it is the spare one.** Right-click with a
+  mouse, a short tap on the text with a finger. A left-click *expands* the row;
+  editing is the pencil inside the bar on both. The table in the file header is
+  the authority — keep it true.
+- **The bar resolves to a `TaskAction`, and the row turns that back into a
+  callback.** That is what keeps the reminder menu and the park picker — both of
+  which want anchors of their own — out of a widget whose job is to draw nine
+  icons. An action whose callback is null is simply not in the list, which is
+  how the session view's rows come out with four buttons and the list's with
+  nine (same shape as `onPlanTask` and `onDrop`).
+- **The anchor is a rect in the *overlay's* coordinate space**, not the screen's
+  (`taskActionAnchor`). `UiScale` sits above the `Navigator`, so a route lays
+  out in layout units while `localToGlobal` with no ancestor reports scaled
+  screen pixels — anchoring on the latter puts the bar a fifth of the way down
+  the screen from its row on a phone. The reminder menu and the park picker are
+  anchored off the same helper now that neither has an icon to hang from.
+- **The bar is placed by a `SingleChildLayoutDelegate`**, not a `Positioned`:
+  where it goes depends on how big it turned out to be (the item list is per row
+  and the `Wrap` picks its own line count), and a delegate is handed the child's
+  size. Below the row if it fits, above it if not, pinned to the bottom edge
+  only as a last resort — a bar half off the screen is a bar with a missing
+  delete.
+- **What stays on the row is state, not actions** (`_StateMarks`): an armed
+  bell, a paperclip, a planned-into mark, and the flagged task's red bar. They
+  are not pressable. They were lit-up *buttons* before precisely because they
+  were state as much as controls; only the state half is left.
+- **Expanding is two implementations of one action, and the row picks by
+  whether it was handed `onExpand`.** Null means grow in place (a pointer: the
+  list scrolls past it and the rows around it stay put). Non-null means the
+  **shell** takes it — on a phone the read view gets the whole content area, the
+  way an open journal entry does, which a row inside a scrolling list cannot do
+  for itself. `main.dart` passes it only where `_expandsToScreen`.
+- **The shell holds the expanded task as a uuid**, not a `Task`: the list is
+  reloaded under it constantly and a held row would be a copy that went stale.
+  `_taskTakesScreen` is guarded **structurally** — no view open, no calendar, no
+  focus mode — rather than by every path that opens something else, because a
+  rule each call site has to remember is the rule that gets missed (see the
+  quick-add commit rule for how that goes).
+- **Reordering is per pointer too.** A pointer gets `dragHandle` on the *right*
+  (it was on the left, indenting the title of every row for a control only a
+  mouse can use); touch gets no handle at all and a
+  `ReorderableDelayedDragStartListener` around the whole row. Safe to take the
+  long press: the row's own gestures are a tap and — only where something is
+  beside the list — a *horizontal* drag, which never happens on a screen that
+  narrow.
+
 ### Dragging a task somewhere (`app/lib/ui/task_drag.dart`)
 
 There are two things a task can be dragged onto — a calendar block ("do this
@@ -622,7 +683,8 @@ of dependency, and a second copy would have been worse.
   where it is let go, and the two can never be on screen at once (the calendar
   replaces the content area the parked panel lives in).
 - **`affinity: Axis.horizontal`** is what keeps it out of the list's way: a
-  vertical drag still scrolls and the ≡ handle still reorders.
+  vertical drag still scrolls, and reordering keeps its own gesture — the ⠿ grip
+  under a pointer, a long press on touch.
 - **A null `onDrop` makes the target its child and nothing more.** That is how a
   panel with no list beside it simply has no drop targets, rather than inert ones
   — the same shape as the calendar's `onPlanTask`.
@@ -1072,7 +1134,9 @@ state and a 3px pointer and the other has neither. It exists because pretending
 otherwise had already cost real function — every action on a task row was drawn
 behind `visible: _hovered`, so on a phone reminders, parking, focus and delete
 were not small, they were **absent**, and no width would ever have revealed
-them. It is a field on `Layout` (set from `!isDesktop`, default false) rather
+them. (The actions have since moved off the row entirely — see *The task row* —
+but the axis is what decides which gesture opens them and how big they are
+drawn.) It is a field on `Layout` (set from `!isDesktop`, default false) rather
 than a `Platform` check at the point of use, so there is one place to read, one
 to change, and a test can pump a touch layout on a desktop machine. `tapTarget`
 and `actionIcon` hang off it; 40 rather than Apple's 44 because the number is

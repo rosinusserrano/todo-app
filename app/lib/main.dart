@@ -50,6 +50,7 @@ import 'ui/settings_sheet.dart';
 import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/task_composer.dart';
+import 'ui/task_detail.dart';
 import 'ui/task_drag.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
@@ -257,6 +258,19 @@ class _WidgetShellState extends State<WidgetShell>
   /// shown. On touch the shell hands that entry the whole screen - see
   /// [_noteTakesScreen].
   bool _noteOpen = false;
+
+  /// The task whose read-only long form has the content area, by uuid.
+  ///
+  /// The uuid rather than the row, because the list is reloaded under this
+  /// constantly - a sync merge, a completion elsewhere, a reminder firing -
+  /// and a held [Task] would be a copy that quietly went stale. It resolves
+  /// through [_expandedTask], which is also how a task that was completed or
+  /// deleted on another device simply stops being expanded.
+  ///
+  /// Only ever set where the shell is the one that can give a view the screen
+  /// (see [_expandsToScreen]); under a pointer the row expands inside itself
+  /// and the shell is not involved at all.
+  String? _expandedTaskUuid;
 
   /// One key per visible row, so a row can be measured for the hero flight.
   final _rowKeys = <String, GlobalKey>{};
@@ -1135,6 +1149,8 @@ class _WidgetShellState extends State<WidgetShell>
             _closeFocusThought();
           } else if (s.focusTask != null) {
             _exitFocus();
+          } else if (_taskTakesScreen) {
+            _collapseTask();
           } else if (s.showCalendar) {
             _toggleCalendar();
           } else if (s.showThoughts) {
@@ -1635,8 +1651,8 @@ class _WidgetShellState extends State<WidgetShell>
 
     final middle = Column(
       children: [
-        if (!_layout.hasRail && !_noteTakesScreen) _workspaceBar(ws),
-        if (s.hasLiveSession && !s.showSession && !_noteTakesScreen)
+        if (!_layout.hasRail && !_takesScreen) _workspaceBar(ws),
+        if (s.hasLiveSession && !s.showSession && !_takesScreen)
           _sessionBanner(),
         // The bubble floats over the content rather than sitting in a row of
         // its own: it is deliberately in the thumb's corner, and a strip
@@ -1699,14 +1715,14 @@ class _WidgetShellState extends State<WidgetShell>
         // Below the content, above the footer. The footer is about the global
         // thought pile and stays the bottom-most thing in the window; this bar
         // is about the workspace above it, so it sits between the two.
-        if (_layout.touch && !_layout.hasRail && !_noteTakesScreen)
+        if (_layout.touch && !_layout.hasRail && !_takesScreen)
           ViewBar(
             accent: ws,
             openView: _openView,
             onSelect: _selectView,
             parkedReviewDue: s.groupsDueForReview.isNotEmpty,
           ),
-        if (!_noteTakesScreen) _footer(ws),
+        if (!_takesScreen) _footer(ws),
       ],
     );
   }
@@ -1724,6 +1740,49 @@ class _WidgetShellState extends State<WidgetShell>
   bool get _noteTakesScreen =>
       _layout.touch && !_layout.hasRail && s.showJournal && _noteOpen;
 
+  /// Where expanding a task is the *shell's* job rather than the row's.
+  ///
+  /// The same condition the note follows, for the same reason: on a phone a
+  /// task's notes and details want the height the workspace pill, the view bar
+  /// and the footer are using, and a row inside a scrolling list cannot take
+  /// them. Anywhere else the row grows in place, which keeps the list around
+  /// it - scroll past an expanded task on a desktop and the next one is there.
+  bool get _expandsToScreen => _layout.touch && !_layout.hasRail;
+
+  /// The expanded task, or null if nothing is expanded or the row it named has
+  /// since left the list (completed here, or merged away by sync).
+  Task? get _expandedTask {
+    final uuid = _expandedTaskUuid;
+    if (uuid == null) return null;
+    for (final t in s.tasks) {
+      if (t.uuid == uuid) return t;
+    }
+    return null;
+  }
+
+  /// Whether that expanded task is what the content area is showing.
+  ///
+  /// Guarded **structurally** rather than by every path that opens something
+  /// else: a view, the calendar and focus mode all own the content area, and a
+  /// rule each of them had to remember to apply is the rule that gets missed
+  /// (see the quick-add commit rule for how that goes). Opening any of them
+  /// simply stops this being true; coming back to the tasks lands where you
+  /// were reading, which is what the calendar's remembered date does too.
+  bool get _taskTakesScreen =>
+      _expandsToScreen &&
+      _openView == null &&
+      !s.showSession &&
+      !s.showCalendar &&
+      s.focusTask == null &&
+      _expandedTask != null;
+
+  /// Anything that has taken the whole screen off the workspace's chrome.
+  bool get _takesScreen => _noteTakesScreen || _taskTakesScreen;
+
+  void _expandTask(Task t) => setState(() => _expandedTaskUuid = t.uuid);
+
+  void _collapseTask() => setState(() => _expandedTaskUuid = null);
+
   /// Where the way into the capture pane is a bubble over the list rather than
   /// the 💭 on the footer.
   ///
@@ -1733,7 +1792,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// taken the screen is not a surface to float a button over - it has no
   /// chrome at all by then.
   bool get _thoughtBubbleShows =>
-      _layout.touch && !_layout.hasRail && !_noteTakesScreen;
+      _layout.touch && !_layout.hasRail && !_takesScreen;
 
   /// Outside the rail and outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
@@ -1941,6 +2000,19 @@ class _WidgetShellState extends State<WidgetShell>
   /// replacing it and open beside it instead - the same views, no longer a
   /// trade against seeing what you are meant to be doing.
   Widget _contentArea(Color ws) {
+    // An expanded task owns the area outright wherever it is drawn at all -
+    // not even the add field, which is a second thing to read on a screen
+    // being used to read one.
+    final expanded = _taskTakesScreen ? _expandedTask : null;
+    if (expanded != null) {
+      return TaskDetailScreen(
+        task: expanded,
+        accent: ws,
+        attachmentCount: s.attachmentCounts[expanded.uuid] ?? 0,
+        onCollapse: _collapseTask,
+      );
+    }
+
     final secondary = _secondaryView(ws);
     if (secondary == null) return _taskColumn(ws);
 
@@ -2240,36 +2312,59 @@ class _WidgetShellState extends State<WidgetShell>
       itemBuilder: (context, i) {
         final t = s.tasks[i];
         final key = _rowKeys.putIfAbsent(t.uuid, () => GlobalKey());
+        final row = _plannable(
+          t,
+          ws,
+          TaskRow(
+            key: key,
+            task: t,
+            accent: ws,
+            onComplete: () => s.completeTask(t),
+            onDelete: () => s.deleteTask(t),
+            onFocus: () => _startFocus(t),
+            onSetReminder: (at) => s.setReminder(t, at),
+            onPark: (anchor) => _parkTask(t, anchor),
+            // Only ever offered on a task that *is* planned, where the row also
+            // draws the mark saying so - the list is otherwise unchanged by
+            // planning.
+            onUnplan: () => s.setTaskEvent(t, null),
+            onOpenAttachments: () => _openAttachments(t),
+            onSetPriority: (high) => s.setPriority(t, high),
+            onOpen: () => _openTask(t),
+            // Null under a pointer, which is how the row knows to expand
+            // inside itself instead - see [_expandsToScreen].
+            onExpand: _expandsToScreen ? () => _expandTask(t) : null,
+            attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
+            // On the right, and only where there is a pointer to aim it with.
+            // A finger picks the row up by pressing and holding it, so the
+            // six-dot glyph would be a permanent mark for a gesture that needs
+            // no target - and it was sitting where it pushed the title of every
+            // row in the list inwards.
+            dragHandle: _layout.touch
+                ? null
+                : ReorderableDragStartListener(
+                    index: i,
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 14,
+                        color: T.muted,
+                      ),
+                    ),
+                  ),
+          ),
+        );
+
         return KeyedSubtree(
           key: ValueKey(t.uuid),
-          child: _plannable(
-            t,
-            ws,
-            TaskRow(
-              key: key,
-              task: t,
-              accent: ws,
-              onComplete: () => s.completeTask(t),
-              onDelete: () => s.deleteTask(t),
-              onFocus: () => _startFocus(t),
-              onSetReminder: (at) => s.setReminder(t, at),
-              onPark: (anchor) => _parkTask(t, anchor),
-              // Only ever drawn on a task that *is* planned, where it doubles as
-              // the mark saying so - the list is otherwise unchanged by planning.
-              onUnplan: () => s.setTaskEvent(t, null),
-              onOpenAttachments: () => _openAttachments(t),
-              onSetPriority: (high) => s.setPriority(t, high),
-              onOpen: () => _openTask(t),
-              attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
-              dragHandle: ReorderableDragStartListener(
-                index: i,
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 4),
-                  child: Icon(Icons.drag_indicator, size: 14, color: T.muted),
-                ),
-              ),
-            ),
-          ),
+          // The whole row is the grip on touch. Safe to take the long press
+          // here: the row's own gestures are a tap (which opens the action
+          // bar) and, where there is something beside the list, a *horizontal*
+          // drag - and that one never happens on a screen this narrow.
+          child: _layout.touch
+              ? ReorderableDelayedDragStartListener(index: i, child: row)
+              : row,
         );
       },
     );

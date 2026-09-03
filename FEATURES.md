@@ -8,11 +8,42 @@ Newest changes are noted in the changelog at the bottom.
 - **Add a task** — type in the top field and press Enter.
 - **Check off a task** — click the circle; it plays a slide-out animation, then
   gets logged to history (not deleted).
-- **Delete a task** — the ✕ on hover removes it *without* logging (a plain dismiss).
+- **The actions live in a bar you ask for.** A row is a tick box, a title and
+  whatever the task is carrying — nothing else. **Right-click it** with a mouse,
+  or **tap its text** with a finger, and the row's actions appear as a floating
+  bar over it: remind, flag, attach, unplan, park, focus, expand, edit, delete.
+  They used to be drawn on the row itself — invisible until hovered on a
+  desktop, and a permanent second line under every row on a phone — which meant
+  that in a narrow window most of a row's width belonged to controls that were
+  not on screen, and that the smallest screen in the house spent a line per task
+  on buttons. The bar is drawn at the size the pointer needs, because it is no
+  longer competing with the title for room.
+- **Delete a task** — the ✕ in that bar removes it *without* logging (a plain
+  dismiss).
 - **Empty state** — friendly "Nothing left" message when the list is clear.
-- **Park a task** — the 📥 on hover shelves it in a parked group (see below),
+- **Park a task** — the 📥 in the bar shelves it in a parked group (see below),
   taking it off the current list without deleting it.
-- **Attach a document** — the 📎 on hover; see Attachments.
+- **Attach a document** — the 📎 in the bar; see Attachments.
+- **Expand a task and read it** — ⤢ in the bar, or simply **left-click the
+  title** with a mouse. The task opens *read-only*: its notes rendered as
+  Markdown — headings, lists, links, maths — and a line of chips for everything
+  the row can only hint at, so "Reminder tomorrow 09:00", "Every week", "Planned
+  into a block", "2 documents", "Added 3 Sep 2026" are spelled out rather than
+  standing for icons. Nothing in it can be changed; the pencil is next door if
+  that is what you wanted. On a desktop the row **grows in place** and the list
+  scrolls past it, so the tasks above and below stay where they were. On a phone
+  it takes the **whole screen**, the way an open note does, and the back arrow —
+  or Esc — collapses it.
+- **Reorder the list** — with a mouse, drag the ⠿ grip at the **right** end of a
+  row. On a phone there is no grip: **press and hold anywhere on the row** and
+  drag it. The grip moved off the left edge, where it was pushing the title of
+  every row in the list inwards for the sake of a control only a pointer can
+  use.
+- **A row still says what it is carrying, without being asked** — a red bar down
+  the leading edge of a flagged task, a bell once a reminder is armed (red when
+  it is overdue), a 📎 when it holds documents, a 📅 when it is planned into a
+  calendar block. Those are marks, not buttons: pressing anywhere on the row
+  opens the bar, which is where the matching action is.
 - **The long form — Ctrl+D, or the ⤢ in the add field.** Opens a bigger
   composer for the task that needs more than a line: **notes**, a **priority
   flag** and a **reminder**, all set before it ever reaches the list. Whatever
@@ -20,14 +51,14 @@ Newest changes are noted in the changelog at the bottom.
   in the notes box, so the shortcut never costs you the line you were writing.
   Cancelling leaves the quick field exactly as it was.
 - **Notes stay readable.** A task carrying notes previews their first line under
-  its title, and clicking the title reopens the composer on that task. A note
-  you can only write is a note you will not write.
+  its title; expanding the row shows all of them, rendered. A note you can only
+  write is a note you will not write.
 - **Notes are Markdown, and open rendered.** Reopening a task that already has
   notes shows them formatted, with an *Edit* toggle (or a tap on the text) back
   to the raw source; a task with no notes yet opens straight into the field, so
   Ctrl+D still puts the caret where you were about to type. See **Markdown &
   maths**.
-- **High priority** — the ⚑ on hover flags a task: a red bar down its leading
+- **High priority** — the ⚑ in the action bar flags a task: a red bar down its leading
   edge and a red border, so it reads as urgent from across the room. The bar is
   a separate channel from the overdue-reminder red and the focus tint, so a task
   can be flagged, overdue *and* in progress without any of the three hiding
@@ -80,7 +111,7 @@ Documents attached to a task — a quote, a scan, a spec.
   and stays where it was.
 - **Open / remove** — from the same list. Removing tombstones the row, so the
   removal reaches your other devices.
-- **A task carrying documents shows its 📎 without hovering**, tinted in the
+- **A task carrying documents shows its 📎 on the row**, tinted in the
   workspace colour, the same way an armed reminder keeps its bell.
 - **Stored content-addressed** — files are named by the SHA-256 of their
   contents rather than by their filename. Attaching the same document to two
@@ -118,16 +149,17 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
 - **Open them** — "Parked" in the ▾ views menu on the workspace bar swaps the
   content area for the parked view, the same way History and Thoughts do. Click
   the "← Parked" header, press Esc, or pick "Parked" again to go back.
-- **Park a task** — the 📥 on a task row opens a picker of this workspace's
-  groups, plus "New group…", which creates one and parks straight into it.
+- **Park a task** — the 📥 in a task's action bar opens a picker of this
+  workspace's groups, plus "New group…", which creates one and parks straight
+  into it.
 - **Or drag it there.** When the window is wide enough that the parked panel
   sits *beside* the list rather than replacing it, a task can be dragged
   sideways out of the list and dropped on a group. The group lights up while the
   task is over it and opens when the task lands, so you can see where it went
   rather than watching a count tick up on a closed shelf. Any group is a target,
   open or collapsed or empty — the collapsed ones are exactly what you are most
-  likely putting something away into. A vertical drag still scrolls and the ≡
-  handle still reorders; only a drag *towards the panel* means "put this away".
+  likely putting something away into. A vertical drag still scrolls and the ⠿
+  grip still reorders; only a drag *towards the panel* means "put this away".
   Narrower windows keep the 📥 picker, which works at every size.
 - **Unpark one** — ↗ on a parked task puts it back at the *bottom* of the current
   list. ✓ checks it off from where it sits, straight into history.
@@ -282,9 +314,9 @@ Three tiers, none of which need an account, an API key, or a licence:
   - Turning it off is *Once* in the composer, which stops the series — there is
     only ever one occurrence in front of you, so there is nothing else to
     cancel.
-- **Always visible once set** — an armed bell stays on the row without hovering
-  (it is state the task is carrying, not an action offered on demand), and its
-  tooltip says when: "in 26m", "tomorrow 09:00".
+- **Always visible once set** — an armed bell stays on the row (it is state the
+  task is carrying, not an action offered on demand). What it says is in the
+  action bar and in the expanded view: "in 26m", "tomorrow 09:00".
 - **When it comes due, on desktop** — the widget puts *itself* in front of you:
   the window surfaces (from the tray, from minimised, from behind whatever you
   were doing), switches to the workspace the task lives in, and leaves focus
@@ -453,7 +485,7 @@ Three tiers, none of which need an account, an API key, or a licence:
   the calendar takes the rest. **Drag a task onto a block** to plan it into that
   block — the block lights up as you come over it, and letting go is the same
   thing ticking it in the event editor does, reached from where you are actually
-  looking at the task. Dragging *down* still scrolls the list and the ≡ handle
+  looking at the task. Dragging *down* still scrolls the list and the ⠿ grip
   still reorders it; only a drag towards the calendar means "plan this". Like
   every other adaptation here this is a size, not a mode — there is nothing to
   switch on, and below that width the calendar behaves exactly as it always has.
@@ -928,6 +960,30 @@ reminders are both there now**, queued for 0.18.0.
 ---
 
 ## Changelog
+
+- **0.26.0** — **The task row gives its width back.**
+  One change, at both sizes: the actions came off the row and into a bar you
+  ask for.
+  - **Right-click a task** (or **tap its text** on a phone) and its actions
+    appear as a floating bar over the row. Nothing is drawn on the row itself
+    any more. The desktop icons were invisible until hovered but **still took
+    their space**, so in a narrow window most of a row's width belonged to
+    controls that were not on screen; the phone's bar was a permanent second
+    line under every task, and a third one on a task that carried everything.
+  - **Editing is the pencil in that bar**, on both. A left-click on the title
+    with a mouse now *expands* the task instead of opening the editor.
+  - **Expand a task to read it** — ⤢ in the bar. Notes rendered as Markdown,
+    and everything the row can only hint at spelled out: "Reminder tomorrow
+    09:00", "Every week", "Planned into a block", "2 documents". Read-only.
+    A desktop row grows in place and the list scrolls past it; on a phone it
+    takes the whole screen and the back arrow or Esc collapses it.
+  - **Reordering on a phone is a press and hold** anywhere on the row, and the
+    six-dot grip is gone from it — a permanent mark for a gesture that needs no
+    target. With a mouse the grip moved to the **right** end of the row, off the
+    left edge where it was indenting the title of every task in the list.
+  - **A row still shows what it is carrying** without being asked: the flagged
+    task's red bar, an armed bell, a 📎 for documents, a 📅 for a planned block.
+    Those are marks now, not buttons.
 
 - **0.25.0** — **A night is a night, and a phone stops repeating itself.**
   Six things, five of them from using the app on a phone for a week.

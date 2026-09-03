@@ -5,7 +5,7 @@
 // a test binding. The logic worth testing lives in AppState and the row
 // widgets, neither of which touches the window.
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -314,8 +314,7 @@ void main() {
   });
 
   group('TaskRow', () {
-    testWidgets('renders the task text and reveals actions on hover',
-        (tester) async {
+    testWidgets('renders the task text', (tester) async {
       final task = Task(
         uuid: 't1',
         workspaceUuid: 'ws',
@@ -828,7 +827,7 @@ void main() {
       expect(s.tasks.single.hasNotes, isFalse);
     });
 
-    testWidgets('a flagged row shows the flag without being hovered',
+    testWidgets('a flagged row says so, and its action reads as the undo',
         (tester) async {
       Widget row(int priority) => MaterialApp(
             home: Scaffold(
@@ -852,25 +851,34 @@ void main() {
 
       await tester.pumpWidget(row(Task.priorityHigh));
       await tester.pumpAndSettle();
-      final flagged = tester.widget<AnimatedOpacity>(
-        find.ancestor(
-          of: find.byIcon(Icons.flag_rounded),
-          matching: find.byType(AnimatedOpacity),
-        ),
-      );
-      expect(flagged.opacity, 1);
 
-      // An unflagged one keeps the control in the layout but hides it, the
-      // same way the rest of the row's actions behave.
+      // The flag itself is not on the row - nothing is - but the red bar down
+      // the leading edge is, and it is the mark that survives an overdue
+      // reminder and focus mode both wanting the same row's colour.
+      expect(find.byIcon(Icons.flag_rounded), findsNothing);
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).color == T.danger),
+        findsOneWidget,
+      );
+
+      // Opened, the action is offered as "clear it": filled glyph, danger red.
+      await tester.tap(find.text('urgent thing'), buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.flag_rounded), findsOneWidget);
+      expect(find.byTooltip('Clear high priority'), findsOneWidget);
+      await tester.tapAt(const Offset(5, 5)); // dismiss the bar
+      await tester.pumpAndSettle();
+
+      // An unflagged one offers the outline, and the row has no bar.
       await tester.pumpWidget(row(0));
       await tester.pumpAndSettle();
-      final plain = tester.widget<AnimatedOpacity>(
-        find.ancestor(
-          of: find.byIcon(Icons.outlined_flag_rounded),
-          matching: find.byType(AnimatedOpacity),
-        ),
-      );
-      expect(plain.opacity, 0);
+      await tester.tap(find.text('urgent thing'), buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.outlined_flag_rounded), findsOneWidget);
+      expect(find.byTooltip('Flag as high priority'), findsOneWidget);
     });
 
     testWidgets('Ctrl+Enter saves from the notes box', (tester) async {

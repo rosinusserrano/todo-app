@@ -1,17 +1,19 @@
-// The task row on a touch device.
+// The task row's two shapes, and the one thing they have in common: the row
+// itself carries no actions at all.
 //
-// The regression this file exists for is not cosmetic and was live for the
-// whole life of the mobile build: every action on a row was drawn behind
-// `visible: _hovered`, and a fingertip produces no hover. Reminders, parking,
-// focus, attachments and delete were therefore not *small* on a phone, they
-// were unreachable - the row rendered them at zero opacity behind an
-// IgnorePointer and there was no gesture that would ever reveal them.
+// The regression this file was written for is still worth stating, because the
+// rule that came out of it is what the current design has to keep obeying:
+// every action on a row used to be drawn behind `visible: _hovered`, and a
+// fingertip produces no hover - so reminders, parking, focus, attachments and
+// delete were not *small* on a phone, they were unreachable, and no width would
+// ever have revealed them.
 //
-// So what is pinned here is reachability first and layout second: on a touch
-// layout each action must be present, opaque, hittable and at least a
-// fingertip across. The desktop shape is pinned alongside it, because the fix
-// must not quietly cost the mouse its nine-across row.
+// The actions have since moved off the row entirely, into an overlay bar. So
+// what is pinned here is that each pointer has a gesture that opens that bar,
+// that everything the row used to offer is inside it at a size that pointer can
+// hit, and that the row at rest is a tick box, a title and its state marks.
 
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,16 +21,24 @@ import 'package:todo_widget/layout.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
 import 'package:todo_widget/ui/markdown_text.dart';
+import 'package:todo_widget/ui/task_detail.dart';
 import 'package:todo_widget/ui/task_row.dart';
 
 void main() {
-  Task task({String notes = '', int priority = 0, String? event}) => Task(
+  Task task({
+    String notes = '',
+    int priority = 0,
+    String? event,
+    String? remindAt,
+  }) =>
+      Task(
         uuid: 't1',
         workspaceUuid: 'ws',
         text: 'inspect the layers',
         notes: notes,
         priority: priority,
         eventUuid: event,
+        remindAt: remindAt,
         createdAt: nowStamp(),
         updatedAt: nowStamp(),
       );
@@ -41,7 +51,9 @@ void main() {
     Task? of,
     VoidCallback? onOpen,
     VoidCallback? onFocus,
+    VoidCallback? onExpand,
     Future<void> Function(bool)? onSetPriority,
+    int attachmentCount = 0,
     bool dragHandle = false,
   }) =>
       MaterialApp(
@@ -59,78 +71,107 @@ void main() {
               onSetPriority: onSetPriority ?? (_) async {},
               onOpenAttachments: () {},
               onUnplan: () async {},
+              onExpand: onExpand,
+              attachmentCount: attachmentCount,
               dragHandle: dragHandle
-                  ? const Padding(
-                      padding: EdgeInsets.only(right: 4),
-                      child: Icon(Icons.drag_indicator, size: 14),
-                    )
+                  ? const Icon(Icons.drag_indicator, size: 14)
                   : null,
               // Defaulted rather than left null: a null onOpen is "this row
-              // has no long form" (the history list), which would take the
-              // pencil out of the bar and quietly weaken most of these tests.
+              // has no long form" (the session view's rows), which would take
+              // the pencil out of the bar and quietly weaken these tests.
               onOpen: onOpen ?? () {},
             ),
           ),
         ),
       );
 
-  /// Every icon the row draws, mapped to whether it is actually visible.
-  ///
-  /// The desktop row keeps hidden actions *in the layout* at zero opacity, so
-  /// `find.byIcon` finding one proves nothing on its own - this is what tells
-  /// "present" apart from "reachable".
-  bool visible(WidgetTester tester, IconData icon) {
-    final fades = find.ancestor(
-      of: find.byIcon(icon),
-      matching: find.byType(AnimatedOpacity),
-    );
-    if (fades.evaluate().isEmpty) return true; // not hover-gated at all
-    return tester.widget<AnimatedOpacity>(fades.first).opacity == 1;
+  /// Every action the bar can offer, in the order it offers them.
+  const actions = [
+    Icons.notifications_none_rounded, // remind
+    Icons.outlined_flag_rounded, // priority
+    Icons.attach_file_rounded, // attachments
+    Icons.inbox_rounded, // park
+    Icons.play_arrow_rounded, // focus
+    Icons.open_in_full_rounded, // expand
+    Icons.edit_outlined, // edit
+    Icons.close_rounded, // delete
+  ];
+
+  /// A right-click, which is what opens the bar under a pointer.
+  Future<void> rightClick(WidgetTester tester, Finder at) async {
+    await tester.tap(at, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
   }
 
-  group('touch', () {
-    testWidgets('every action is reachable without a hover', (tester) async {
-      await tester.pumpWidget(row(touch: true));
+  group('the row at rest', () {
+    for (final touch in [true, false]) {
+      testWidgets('carries no actions (touch: $touch)', (tester) async {
+        await tester.pumpWidget(row(touch: touch, of: task(notes: 'a note')));
+        await tester.pumpAndSettle();
+
+        // Not hidden, not faded out, not behind an IgnorePointer: absent. The
+        // row's whole width belongs to its text again.
+        for (final icon in actions) {
+          expect(find.byIcon(icon), findsNothing, reason: '$icon is on the row');
+        }
+        expect(find.text('inspect the layers'), findsOneWidget);
+      });
+    }
+
+    testWidgets('still shows what the task is carrying', (tester) async {
+      await tester.pumpWidget(row(
+        touch: false,
+        of: task(
+          remindAt: reminderStamp(DateTime.now().add(const Duration(hours: 2))),
+          event: 'e1',
+        ),
+        attachmentCount: 2,
+      ));
       await tester.pumpAndSettle();
 
-      for (final icon in [
-        Icons.notifications_none_rounded, // remind
-        Icons.outlined_flag_rounded, // priority
-        Icons.attach_file_rounded, // attachments
-        Icons.inbox_rounded, // park
-        Icons.play_arrow_rounded, // focus
-        Icons.close_rounded, // delete
-      ]) {
+      // Marks, not controls: an armed reminder, documents and a slot in the
+      // calendar are state, and the row said so before the actions moved out.
+      expect(find.byIcon(Icons.notifications_active_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.attach_file_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.event_available_rounded), findsOneWidget);
+    });
+  });
+
+  group('touch', () {
+    testWidgets('a tap on the text opens the actions', (tester) async {
+      await tester.pumpWidget(row(touch: true));
+      await tester.tap(find.text('inspect the layers'));
+      await tester.pumpAndSettle();
+
+      for (final icon in actions) {
         expect(find.byIcon(icon), findsOneWidget, reason: '$icon is missing');
-        expect(visible(tester, icon), isTrue, reason: '$icon is not visible');
       }
     });
 
     testWidgets('the actions are at least a fingertip across', (tester) async {
       await tester.pumpWidget(row(touch: true));
+      await tester.tap(find.text('inspect the layers'));
       await tester.pumpAndSettle();
 
       // Measured on the tap target, not the glyph: a 20px icon inside a 40px
       // button is the point, and asserting on the icon would pass while the
       // button around it was 16px.
-      final target = tester.getSize(
-        find.ancestor(
-          of: find.byIcon(Icons.play_arrow_rounded),
-          matching: find.byType(SizedBox),
-        ).first,
-      );
-      expect(target.width, greaterThanOrEqualTo(Layout.touchTargetSide));
-      expect(target.height, greaterThanOrEqualTo(Layout.touchTargetSide));
+      for (final icon in actions) {
+        final box = tester.getSize(
+          find
+              .ancestor(of: find.byIcon(icon), matching: find.byType(SizedBox))
+              .first,
+        );
+        expect(box.width, greaterThanOrEqualTo(Layout.touchTargetSide),
+            reason: '$icon is below a fingertip');
+        expect(box.height, greaterThanOrEqualTo(Layout.touchTargetSide));
+      }
     });
 
-    testWidgets('the fullest row still fits the design width', (tester) async {
-      // The touch row draws its actions at [Layout.touchTargetSide] rather than
-      // the pointer size, so the bar is nearly twice as wide as the desktop
-      // one - and it has to survive the row that asks for the most: a reminder,
-      // a flag, attachments, an unplan, a park, focus, edit, an expander and
-      // delete. Nine fingertips is 360 units against a phone's ~340 (see
-      // UiScale), so this overflowed by 68 pixels and clipped its own delete
-      // button until the bar learned to wrap.
+    testWidgets('the fullest bar still fits the design width', (tester) async {
+      // Nine fingertips is 360 units against a phone's ~340 (see UiScale), so
+      // the bar has to wrap rather than shrink - a tap target below a fingertip
+      // is an action the phone does not really have.
       tester.view.physicalSize = const Size(T.designWidth, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -138,84 +179,30 @@ void main() {
       await tester.pumpWidget(row(
         touch: true,
         of: task(notes: 'a note', priority: 1, event: 'e1'),
-        dragHandle: true,
+        attachmentCount: 1,
       ));
+      await tester.tap(find.text('inspect the layers'));
       await tester.pumpAndSettle();
 
       // A RenderFlex overflow is reported as an exception rather than a failed
       // layout, so nothing else here would notice one.
       expect(tester.takeException(), isNull);
-
-      // And it wrapped rather than dropping or shrinking anything.
-      for (final icon in [
-        Icons.notifications_none_rounded, // remind
-        Icons.flag_rounded, // priority, filled because this row is flagged
-        Icons.attach_file_rounded, // attachments
-        Icons.event_available_rounded, // unplan
-        Icons.inbox_rounded, // park
-        Icons.play_arrow_rounded, // focus
-        Icons.edit_outlined, // edit
-        Icons.keyboard_arrow_down_rounded, // expand the notes
-        Icons.close_rounded, // delete
-      ]) {
-        expect(find.byIcon(icon), findsOneWidget, reason: '$icon went missing');
-        final box = tester.getSize(find
-            .ancestor(of: find.byIcon(icon), matching: find.byType(SizedBox))
-            .first);
-        expect(box.width, greaterThanOrEqualTo(Layout.touchTargetSide),
-            reason: '$icon shrank below a fingertip');
-      }
+      expect(find.byIcon(Icons.event_busy_rounded), findsOneWidget); // unplan
+      expect(find.byIcon(Icons.close_rounded), findsOneWidget); // and delete
     });
 
     testWidgets('an action actually fires when tapped', (tester) async {
-      // The opacity assertions above would all pass on a row wrapped in an
-      // IgnorePointer, which is exactly what the broken version was.
       var focused = false;
       await tester.pumpWidget(row(touch: true, onFocus: () => focused = true));
+      await tester.tap(find.text('inspect the layers'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.play_arrow_rounded));
       await tester.pumpAndSettle();
       expect(focused, isTrue);
-    });
 
-    testWidgets('tapping the title expands the notes in place', (tester) async {
-      await tester.pumpWidget(
-        row(touch: true, of: task(notes: 'weights **before** and after')),
-      );
-      await tester.pumpAndSettle();
-
-      // Closed: the one-line preview, which is a plain Text flattened out of
-      // Markdown - no renderer involved.
-      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
-      expect(find.byType(MarkdownText), findsNothing);
-      expect(find.text('weights before and after'), findsOneWidget);
-
-      await tester.tap(find.text('inspect the layers'));
-      await tester.pumpAndSettle();
-
-      // Open: the chevron flips and the body is now really rendered, so the
-      // `**before**` is bold rather than literal.
-      expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
-      expect(find.byType(MarkdownText), findsOneWidget);
-
-      // Still exactly once. The preview gave way to the body rather than
-      // sitting above it, or the row would show the same sentence twice.
-      expect(find.text('weights before and after'), findsOneWidget);
-
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_up_rounded));
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
-    });
-
-    testWidgets('a task with no notes offers no expander', (tester) async {
-      await tester.pumpWidget(row(touch: true));
-      await tester.pumpAndSettle();
-
-      // Nothing to expand into. The pencil is how notes get added, which is
-      // why it is not conditional the way this is.
-      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsNothing);
-      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      // And the bar closed behind it, rather than sitting over the list.
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
     });
 
     testWidgets('the pencil is the way to the composer', (tester) async {
@@ -223,10 +210,6 @@ void main() {
       await tester.pumpWidget(
         row(touch: true, of: task(notes: 'x'), onOpen: () => opened = true),
       );
-      await tester.pumpAndSettle();
-
-      // Tapping the title expands rather than editing, so the editor needs its
-      // own affordance or it is unreachable.
       await tester.tap(find.text('inspect the layers'));
       await tester.pumpAndSettle();
       expect(opened, isFalse);
@@ -235,32 +218,125 @@ void main() {
       await tester.pumpAndSettle();
       expect(opened, isTrue);
     });
+
+    testWidgets('expand is handed to the shell when it offers to take it',
+        (tester) async {
+      // On a phone the read view takes the whole screen, which a row inside a
+      // scrolling list cannot do for itself.
+      var expanded = false;
+      await tester.pumpWidget(row(
+        touch: true,
+        of: task(notes: 'weights'),
+        onExpand: () => expanded = true,
+      ));
+      await tester.tap(find.text('inspect the layers'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.open_in_full_rounded));
+      await tester.pumpAndSettle();
+
+      expect(expanded, isTrue);
+      // And it did *not* also grow in place, which would be the same view twice.
+      expect(find.byType(TaskDetail), findsNothing);
+    });
   });
 
   group('pointer', () {
-    testWidgets('actions stay hidden until hovered', (tester) async {
-      // The desktop row is nine controls across a 340px window and only works
-      // because they are invisible at rest. The touch bar must not leak into
-      // it.
+    testWidgets('a right-click opens the actions', (tester) async {
       await tester.pumpWidget(row(touch: false));
-      await tester.pumpAndSettle();
+      await rightClick(tester, find.text('inspect the layers'));
 
-      expect(visible(tester, Icons.play_arrow_rounded), isFalse);
-      expect(visible(tester, Icons.close_rounded), isFalse);
-      expect(find.byIcon(Icons.edit_outlined), findsNothing);
-      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsNothing);
+      for (final icon in actions) {
+        expect(find.byIcon(icon), findsOneWidget, reason: '$icon is missing');
+      }
     });
 
-    testWidgets('tapping the title still opens the composer', (tester) async {
-      var opened = false;
+    testWidgets('they are pointer-sized, and named', (tester) async {
+      await tester.pumpWidget(row(touch: false));
+      await rightClick(tester, find.text('inspect the layers'));
+
+      final box = tester.getSize(
+        find
+            .ancestor(
+              of: find.byIcon(Icons.play_arrow_rounded),
+              matching: find.byType(SizedBox),
+            )
+            .first,
+      );
+      expect(box.width, Layout.pointerTargetSide);
+
+      // A mouse gets tooltips, which is what carries the wording a fingertip
+      // only ever hears through Semantics.
+      expect(
+        find.byTooltip('Work on this — hides everything else'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a left-click expands the row in place', (tester) async {
       await tester.pumpWidget(
-        row(touch: false, of: task(notes: 'x'), onOpen: () => opened = true),
+        row(touch: false, of: task(notes: 'weights **before** and after')),
       );
       await tester.pumpAndSettle();
 
+      // Closed: the one-line preview, which is a plain Text flattened out of
+      // Markdown - no renderer involved.
+      expect(find.byType(MarkdownText), findsNothing);
+      expect(find.text('weights before and after'), findsOneWidget);
+
       await tester.tap(find.text('inspect the layers'));
       await tester.pumpAndSettle();
-      expect(opened, isTrue);
+
+      // Open: the details and the body, really rendered, so the `**before**`
+      // is bold rather than literal.
+      expect(find.byType(TaskDetail), findsOneWidget);
+      expect(find.byType(MarkdownText), findsOneWidget);
+
+      // Still exactly once. The preview gave way to the body rather than
+      // sitting above it, or the row would show the same sentence twice - what
+      // this finds now is the rendered body's own plain text.
+      expect(find.text('weights before and after'), findsOneWidget);
+
+      await tester.tap(find.text('inspect the layers'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TaskDetail), findsNothing);
+    });
+
+    testWidgets('a task with no notes still expands', (tester) async {
+      // There is always something to read: when it was added, whether it is
+      // flagged, what it is planned into.
+      await tester.pumpWidget(row(touch: false));
+      await tester.tap(find.text('inspect the layers'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskDetail), findsOneWidget);
+      expect(find.text('No notes on this one.'), findsOneWidget);
+    });
+
+    testWidgets('the bar can collapse it again', (tester) async {
+      await tester.pumpWidget(row(touch: false, of: task(notes: 'x')));
+      await tester.tap(find.text('inspect the layers'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TaskDetail), findsOneWidget);
+
+      await rightClick(tester, find.text('inspect the layers'));
+      // The action reads as its opposite while the row is open.
+      expect(find.byIcon(Icons.open_in_full_rounded), findsNothing);
+      await tester.tap(find.byIcon(Icons.close_fullscreen_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TaskDetail), findsNothing);
+    });
+
+    testWidgets('the reorder grip is drawn where it is given', (tester) async {
+      await tester.pumpWidget(row(touch: false, dragHandle: true));
+      await tester.pumpAndSettle();
+
+      // On the right: past the title, not between the edge and the tick box
+      // where it used to indent every row in the list.
+      final grip = tester.getCenter(find.byIcon(Icons.drag_indicator));
+      final title = tester.getCenter(find.text('inspect the layers'));
+      expect(grip.dx, greaterThan(title.dx));
     });
   });
 }

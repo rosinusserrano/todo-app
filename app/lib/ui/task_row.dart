@@ -6,23 +6,35 @@
 // twitchy, and keeping the animation inside the row means the duration lives in
 // one place instead of being mirrored between CSS and a setTimeout.
 //
-// **The row has two shapes, and the axis is the pointer, not the width.** With
-// a mouse the actions are hover-revealed and sit in the row's right-hand end:
-// nine controls fit across 340px precisely *because* they are invisible until
-// the pointer is on the row, and hovering costs nothing.
+// **The row is a tick box, a title and its marks, and nothing else.** The
+// actions are not here at all any more - they live in an overlay bar
+// (task_actions.dart), asked for by the one gesture each pointer has spare:
+// right-click with a mouse, a short tap on the text with a finger. What that
+// bought, at both sizes:
 //
-// A fingertip has no hover. That did not make the icons small on a phone, it
-// made them **absent** - `visible: _hovered` is never true there, so setting a
-// reminder, parking, focusing and deleting a task had no way in at all, and no
-// amount of extra width would have produced one. So on touch the same actions
-// are laid out *below* the title as a real bar of finger-sized targets, always
-// visible, and the row expands in place to show its notes. See [Layout.touch].
+//   - The nine hover icons were invisible at rest but **still in the layout**,
+//     which was the right call while they were on the row (revealing an icon
+//     must not reflow the text) and the wrong shape overall: in a narrow
+//     window most of a row's width belonged to controls that were not on
+//     screen, and the title got the remainder.
+//   - The touch bar was a second line under every row - on the screen with the
+//     least height of any - and wrapped to a third on a task that carried
+//     everything.
 //
-// Tapping the title therefore means different things on the two: on desktop it
-// opens the composer (unchanged - the hover icons already make everything else
-// reachable), on touch it expands the row, and the composer gets an explicit
-// pencil in the bar. A tap that opened a modal editor would be a poor use of
-// the one gesture a phone has most of.
+// What is left inline is **state, not actions**: an armed bell, a paperclip, a
+// planned-into mark, the flagged task's red bar. Those say what the task is
+// carrying and are not pressable; pressing anything means opening the bar.
+//
+// The two pointers therefore differ only in which gesture opens what:
+//
+//   | | mouse | finger |
+//   | tap / left-click on the text | expand the row in place | open the actions |
+//   | right-click | open the actions | - |
+//   | long press | - | pick the row up to reorder it (the list's) |
+//
+// Editing is the pencil inside that bar on both, and expanding is an action in
+// it on both - a phone has no left-click to spare and a mouse has no reason to
+// give up a cheap way into the read view.
 
 import 'package:flutter/material.dart';
 
@@ -31,6 +43,8 @@ import '../sync/models.dart';
 import '../theme.dart';
 import 'markdown_text.dart';
 import 'reminder_menu.dart';
+import 'task_actions.dart';
+import 'task_detail.dart';
 
 class TaskRow extends StatefulWidget {
   const TaskRow({
@@ -46,6 +60,7 @@ class TaskRow extends StatefulWidget {
     this.onOpenAttachments,
     this.onSetPriority,
     this.onOpen,
+    this.onExpand,
     this.attachmentCount = 0,
     this.dragHandle,
   });
@@ -59,14 +74,13 @@ class TaskRow extends StatefulWidget {
   /// Null on the history list, where arming a reminder makes no sense.
   final Future<void> Function(DateTime?)? onSetReminder;
 
-  /// Shelve this task in a parked group. Takes the anchor of the button that
-  /// opened it so the picker lands under the icon rather than at the pointer.
+  /// Shelve this task in a parked group. Takes the anchor of the row that
+  /// opened it so the picker lands under the task rather than at the pointer.
   final Future<void> Function(RelativeRect anchor)? onPark;
 
-  /// Take this task back out of the calendar block it is planned into. The
-  /// icon it drives appears **only** on a task that is planned - it is a mark
-  /// saying so first and an action second, which is why it does not fade in on
-  /// hover like the rest of them.
+  /// Take this task back out of the calendar block it is planned into. Offered
+  /// only on a task that *is* planned, which is also the only case where the
+  /// row draws the mark saying so.
   final Future<void> Function()? onUnplan;
 
   /// Opens the attachment list. Null on history, where attaching a document to
@@ -76,15 +90,32 @@ class TaskRow extends StatefulWidget {
   /// Flag or unflag. Null on history, where "urgent" no longer means anything.
   final Future<void> Function(bool high)? onSetPriority;
 
-  /// Open the task's long form - the composer, with its notes. The way in is
-  /// the text itself: the row's icons are all *actions*, and the one thing a
-  /// title is obviously a handle for is the task it names.
+  /// Open the task's long form - the composer, with its fields. Reached from
+  /// the pencil in the action bar; the row's own text is the *read* view now.
   final VoidCallback? onOpen;
 
-  /// Drives the paperclip. Like the armed bell, a task carrying documents shows
-  /// it without hovering - it is state, not an action offered on demand.
+  /// Show the task's read-only long form somewhere the row cannot reach.
+  ///
+  /// Non-null only where the **shell** owns that view: on a phone the expanded
+  /// task takes the whole content area, which a row inside a scrolling list
+  /// cannot do for itself. Null means the row expands in place, which is what
+  /// a pointer gets - the tasks above and below stay where they were and the
+  /// list scrolls past them.
+  final VoidCallback? onExpand;
+
+  /// Drives the paperclip mark. A task carrying documents says so without being
+  /// asked - it is state, not an action offered on demand.
   final int attachmentCount;
 
+  /// The reorder grip, on the **right**. It was on the left, where it sat
+  /// between the edge of the row and the tick box and pushed both the title and
+  /// the notes in by its own width on every row in the list. Nothing else is
+  /// over there any more, and a grip is the one control that does not need to
+  /// be near the text it moves.
+  ///
+  /// Null on touch, where a long press anywhere on the row picks it up and a
+  /// permanent six-dot glyph would be a mark for a gesture that does not need
+  /// one.
   final Widget? dragHandle;
 
   @override
@@ -98,13 +129,14 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
   );
   bool _hovered = false;
 
-  /// Showing its notes in place. Touch only, and deliberately per-row state
-  /// rather than something the list owns: several open at once is the normal
-  /// way to read a checklist, and nothing outside the row needs to know.
+  /// Showing its details in place. Deliberately per-row state rather than
+  /// something the list owns: several open at once is a normal way to read a
+  /// checklist, and nothing outside the row needs to know.
   bool _expanded = false;
 
-  final _bellKey = GlobalKey();
-  final _parkKey = GlobalKey();
+  /// The row's own box - what the action bar, the reminder menu and the park
+  /// picker are anchored to now that none of them has an icon to hang off.
+  final _rowKey = GlobalKey();
 
   @override
   void dispose() {
@@ -121,27 +153,24 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     await action();
   }
 
-  /// Where a menu opened from [key] should appear. Anchored to the button
-  /// rather than the pointer, so it lands in the same place whether it was
-  /// opened by mouse or keyboard.
-  RelativeRect? _anchor(GlobalKey key) {
-    final box = key.currentContext?.findRenderObject() as RenderBox?;
+  /// Where a menu opened from the row should appear.
+  RelativeRect? _menuAnchor() {
+    final rect = taskActionAnchor(context, key: _rowKey);
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (box == null || overlay == null) return null;
+    if (rect == null || overlay == null) return null;
 
-    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
     return RelativeRect.fromLTRB(
-      topLeft.dx,
-      topLeft.dy + box.size.height,
-      overlay.size.width - topLeft.dx,
+      rect.left,
+      rect.bottom,
+      overlay.size.width - rect.left,
       0,
     );
   }
 
   Future<void> _openReminderMenu() async {
     final onSet = widget.onSetReminder;
-    final at = _anchor(_bellKey);
+    final at = _menuAnchor();
     if (onSet == null || at == null) return;
 
     await showReminderMenu(
@@ -154,9 +183,143 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
 
   Future<void> _openParkMenu() async {
     final onPark = widget.onPark;
-    final at = _anchor(_parkKey);
+    final at = _menuAnchor();
     if (onPark == null || at == null) return;
     await onPark(at);
+  }
+
+  /// Read the task. In place under a pointer, whole-screen where the shell has
+  /// said it will take it ([TaskRow.onExpand]).
+  void _toggleExpanded() {
+    final elsewhere = widget.onExpand;
+    if (elsewhere != null) {
+      elsewhere();
+      return;
+    }
+    setState(() => _expanded = !_expanded);
+  }
+
+  /// What the bar offers for this row. An action whose callback is null is not
+  /// in the list at all, which is how the session view's rows come out with
+  /// four buttons and the task list's with nine.
+  List<TaskActionItem> _actions() {
+    final task = widget.task;
+    final armed = task.remindAtTime;
+    final due = task.isDue();
+    final high = task.isHighPriority;
+
+    return [
+      // The order the old bar had, and it is the order they are reached for:
+      // the two that change what the task *is*, then its documents, then the
+      // ones that move it somewhere, then reading and writing it, then the
+      // destructive one last.
+      if (widget.onSetReminder != null)
+        TaskActionItem(
+          action: TaskAction.remind,
+          icon: armed == null
+              ? Icons.notifications_none_rounded
+              : Icons.notifications_active_rounded,
+          label: armed == null
+              ? 'Remind me'
+              : 'Reminder ${describeReminder(armed)}',
+          color: due ? T.danger : (armed != null ? widget.accent : T.muted),
+        ),
+      if (widget.onSetPriority != null)
+        TaskActionItem(
+          action: TaskAction.priority,
+          icon: high ? Icons.flag_rounded : Icons.outlined_flag_rounded,
+          label: high ? 'Clear high priority' : 'Flag as high priority',
+          color: high ? T.danger : T.muted,
+        ),
+      if (widget.onOpenAttachments != null)
+        TaskActionItem(
+          action: TaskAction.attach,
+          icon: Icons.attach_file_rounded,
+          label: widget.attachmentCount == 0
+              ? 'Attach a document'
+              : '${widget.attachmentCount} attached',
+          color: widget.attachmentCount > 0 ? widget.accent : T.muted,
+        ),
+      if (widget.onUnplan != null && task.isPlanned)
+        TaskActionItem(
+          action: TaskAction.unplan,
+          icon: Icons.event_busy_rounded,
+          label: 'Take it out of its calendar block',
+          color: widget.accent,
+        ),
+      if (widget.onPark != null)
+        const TaskActionItem(
+          action: TaskAction.park,
+          icon: Icons.inbox_rounded,
+          label: 'Park it in a group — off the list, not gone',
+        ),
+      TaskActionItem(
+        action: TaskAction.focus,
+        icon: Icons.play_arrow_rounded,
+        label: 'Work on this — hides everything else',
+        color: task.inProgress ? widget.accent : T.muted,
+      ),
+      TaskActionItem(
+        action: TaskAction.expand,
+        icon: _expanded
+            ? Icons.close_fullscreen_rounded
+            : Icons.open_in_full_rounded,
+        label: _expanded ? 'Collapse' : 'Expand — notes and details',
+      ),
+      if (widget.onOpen != null)
+        const TaskActionItem(
+          action: TaskAction.edit,
+          icon: Icons.edit_outlined,
+          label: 'Edit task and notes',
+        ),
+      const TaskActionItem(
+        action: TaskAction.delete,
+        icon: Icons.close_rounded,
+        label: "Delete (don't log)",
+        color: T.danger,
+      ),
+    ];
+  }
+
+  /// Open the bar, then run whatever was pressed.
+  ///
+  /// The bar itself knows nothing about tasks - it resolves to an enum and the
+  /// row is what turns that back into a callback, which is what keeps a park
+  /// picker and a reminder menu (both of which want an anchor of their own)
+  /// out of it.
+  Future<void> _openActions({Offset? at}) async {
+    final layout = Layout.of(context);
+    final anchor = taskActionAnchor(context, key: _rowKey, at: at);
+    if (anchor == null) return;
+
+    final chosen = await showTaskActions(
+      context,
+      anchor: anchor,
+      items: _actions(),
+      layout: layout,
+    );
+    if (chosen == null || !mounted) return;
+
+    switch (chosen) {
+      case TaskAction.remind:
+        await _openReminderMenu();
+      case TaskAction.priority:
+        await widget.onSetPriority?.call(!widget.task.isHighPriority);
+      case TaskAction.attach:
+        widget.onOpenAttachments?.call();
+      case TaskAction.unplan:
+        await widget.onUnplan?.call();
+      case TaskAction.park:
+        await _openParkMenu();
+      case TaskAction.focus:
+        widget.onFocus();
+      case TaskAction.expand:
+        _toggleExpanded();
+      case TaskAction.edit:
+        widget.onOpen?.call();
+      case TaskAction.delete:
+        await _leave(widget.onDelete);
+    }
   }
 
   @override
@@ -187,431 +350,178 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
-          decoration: BoxDecoration(
-            // A due reminder outranks focus for the row's colour: focus is a
-            // state you chose and can see, an overdue reminder is the thing
-            // asking for attention.
-            color: due
-                ? T.danger.withValues(alpha: 0.14)
-                : widget.task.inProgress
-                    ? widget.accent.withValues(alpha: 0.16)
-                    : high
-                        ? T.danger.withValues(alpha: 0.09)
-                        : (_hovered ? T.surfaceHover : T.surface),
-            borderRadius: BorderRadius.circular(9),
-            // Three states want this border and only one can have it. Due
-            // outranks focus for the reason above; priority comes last because
-            // it is the one of the three that also has a mark of its own - the
-            // bar below - so it is still legible when it loses the border.
-            border: due
-                ? Border.all(color: T.danger.withValues(alpha: 0.55))
-                : widget.task.inProgress
-                    ? Border.all(color: widget.accent.withValues(alpha: 0.5))
-                    : high
-                        ? Border.all(color: T.danger.withValues(alpha: 0.45))
-                        : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-            children: [
-              if (widget.dragHandle != null) widget.dragHandle!,
-              // The invariant mark of a flagged task: a bar down the leading
-              // edge, which is the one channel neither the overdue nor the
-              // focus state uses. A row can therefore say "urgent, overdue and
-              // being worked on" without any of the three overwriting another.
-              if (high) ...[
-                Container(
-                  width: 3,
-                  height: 17,
-                  decoration: BoxDecoration(
-                    color: T.danger,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        child: GestureDetector(
+          // Anywhere on the row, not only on the text: a right-click is aimed
+          // at the row, and the text is a fraction of it on a short title.
+          // Opaque so the blank space to the right of a title is part of the
+          // target rather than a hole in it.
+          behavior: HitTestBehavior.opaque,
+          onSecondaryTapUp:
+              touch ? null : (d) => _openActions(at: d.globalPosition),
+          child: Container(
+            key: _rowKey,
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+            decoration: BoxDecoration(
+              // A due reminder outranks focus for the row's colour: focus is a
+              // state you chose and can see, an overdue reminder is the thing
+              // asking for attention.
+              color: due
+                  ? T.danger.withValues(alpha: 0.14)
+                  : widget.task.inProgress
+                      ? widget.accent.withValues(alpha: 0.16)
+                      : high
+                          ? T.danger.withValues(alpha: 0.09)
+                          : (_hovered ? T.surfaceHover : T.surface),
+              borderRadius: BorderRadius.circular(9),
+              // Three states want this border and only one can have it. Due
+              // outranks focus for the reason above; priority comes last
+              // because it is the one of the three that also has a mark of its
+              // own - the bar below - so it is still legible when it loses the
+              // border.
+              border: due
+                  ? Border.all(color: T.danger.withValues(alpha: 0.55))
+                  : widget.task.inProgress
+                      ? Border.all(color: widget.accent.withValues(alpha: 0.5))
+                      : high
+                          ? Border.all(color: T.danger.withValues(alpha: 0.45))
+                          : null,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    // The invariant mark of a flagged task: a bar down the
+                    // leading edge, which is the one channel neither the
+                    // overdue nor the focus state uses. A row can therefore say
+                    // "urgent, overdue and being worked on" without any of the
+                    // three overwriting another.
+                    if (high) ...[
+                      Container(
+                        width: 3,
+                        height: 17,
+                        decoration: BoxDecoration(
+                          color: T.danger,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                    ],
+                    _Checkbox(
+                      accent: widget.accent,
+                      onChanged: () => _leave(widget.onComplete),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _TaskText(
+                        task: widget.task,
+                        // The preview is what the expansion replaces, so it
+                        // only earns its line while the row is closed.
+                        showPreview: !_expanded,
+                        // A finger asks for the actions, a mouse reads the
+                        // task - see the table in the file header.
+                        onTap: touch ? () => _openActions() : _toggleExpanded,
+                      ),
+                    ),
+                    _StateMarks(
+                      accent: widget.accent,
+                      size: touch ? 15 : 13,
+                      due: due,
+                      armed: armed != null,
+                      attached: widget.attachmentCount > 0,
+                      planned: widget.task.isPlanned,
+                    ),
+                    if (widget.dragHandle != null) widget.dragHandle!,
+                  ],
                 ),
-                const SizedBox(width: 7),
-              ],
-              _Checkbox(
-                accent: widget.accent,
-                onChanged: () => _leave(widget.onComplete),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TaskText(
-                  task: widget.task,
-                  // The notes preview is what the expansion replaces, so it
-                  // only earns its line while the row is closed.
-                  showPreview: !(touch && _expanded),
-                  onOpen: touch && widget.task.hasNotes
-                      ? () => setState(() => _expanded = !_expanded)
-                      : widget.onOpen,
-                ),
-              ),
-              if (!touch) ...[
-              if (widget.onSetReminder != null)
-                _IconAction(
-                  key: _bellKey,
-                  tooltip: armed == null
-                      ? 'Remind me'
-                      : 'Reminder ${describeReminder(armed)}',
-                  icon: armed == null
-                      ? Icons.notifications_none_rounded
-                      : Icons.notifications_active_rounded,
-                  color: due
-                      ? T.danger
-                      : (armed != null ? widget.accent : T.muted),
-                  // An armed reminder stays visible without hovering: it is
-                  // state the row is carrying, not an action offered on demand.
-                  visible: _hovered || armed != null,
-                  onPressed: _openReminderMenu,
-                ),
-              if (widget.onOpenAttachments != null)
-                _IconAction(
-                  tooltip: widget.attachmentCount == 0
-                      ? 'Attach a document'
-                      : '${widget.attachmentCount} attached',
-                  icon: Icons.attach_file_rounded,
-                  color: widget.attachmentCount > 0
-                      ? widget.accent
-                      : T.muted,
-                  visible: _hovered || widget.attachmentCount > 0,
-                  onPressed: widget.onOpenAttachments!,
-                ),
-              if (widget.onUnplan != null && widget.task.isPlanned)
-                _IconAction(
-                  tooltip: 'Planned into a calendar block — click to take it out',
-                  icon: Icons.event_available_rounded,
-                  color: widget.accent,
-                  visible: true,
-                  onPressed: () => widget.onUnplan!(),
-                ),
-              if (widget.onSetPriority != null)
-                _IconAction(
-                  tooltip: high
-                      ? 'High priority — click to clear'
-                      : 'Flag as high priority',
-                  icon: high
-                      ? Icons.flag_rounded
-                      : Icons.outlined_flag_rounded,
-                  color: high ? T.danger : T.muted,
-                  // Lit without hovering once set, like the armed bell: it is
-                  // state the row is carrying.
-                  visible: _hovered || high,
-                  onPressed: () => widget.onSetPriority!(!high),
-                ),
-              if (widget.onPark != null)
-                _IconAction(
-                  key: _parkKey,
-                  tooltip: 'Park it in a group — off the list, not gone',
-                  icon: Icons.inbox_rounded,
-                  color: T.muted,
-                  visible: _hovered,
-                  onPressed: _openParkMenu,
-                ),
-              _IconAction(
-                tooltip: 'Work on this — hides everything else',
-                icon: Icons.play_arrow_rounded,
-                color: widget.task.inProgress ? widget.accent : T.muted,
-                visible: _hovered || widget.task.inProgress,
-                onPressed: widget.onFocus,
-              ),
-              _IconAction(
-                tooltip: "Delete (don't log)",
-                icon: Icons.close_rounded,
-                color: T.danger,
-                visible: _hovered,
-                onPressed: () => _leave(widget.onDelete),
-              ),
-              ],
-            ],
-          ),
 
-              // The notes, in place. Reachable only on touch, where tapping
-              // the title is what opened it - on desktop the same text is one
-              // click away in the composer and the row stays one line tall.
-              if (touch && _expanded && widget.task.hasNotes)
-                Padding(
-                  padding: EdgeInsets.only(
-                    left: _textInset(high),
-                    right: 4,
-                    top: 4,
-                    bottom: 2,
-                  ),
-                  child: MarkdownText(
-                    widget.task.notes,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: T.muted,
-                      height: 1.35,
+                // The read view, in place. Only ever reached under a pointer:
+                // on touch [TaskRow.onExpand] hands this to the shell, which
+                // gives it the screen.
+                if (_expanded)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: _textInset(high),
+                      right: 4,
+                      top: 6,
+                      bottom: 2,
+                    ),
+                    child: TaskDetail(
+                      task: widget.task,
+                      accent: widget.accent,
+                      attachmentCount: widget.attachmentCount,
                     ),
                   ),
-                ),
-
-              // Full width, unlike the notes above, which line up under the
-              // title. The bar is a toolbar for the row rather than a
-              // continuation of its text, and the indent was costing it a
-              // whole tap target: at [_textInset] a seven-action row wrapped
-              // its delete onto a line of its own with the width to hold it
-              // sitting empty alongside. The icons carry their own padding
-              // inside a [Layout.tapTarget] box, so the first glyph still
-              // lands under the tick box rather than against the edge.
-              if (touch)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: _TouchActions(
-                    task: widget.task,
-                    accent: widget.accent,
-                    layout: layout,
-                    due: due,
-                    armed: armed,
-                    high: high,
-                    expanded: _expanded,
-                    attachmentCount: widget.attachmentCount,
-                    bellKey: _bellKey,
-                    parkKey: _parkKey,
-                    onToggleExpanded: widget.task.hasNotes
-                        ? () => setState(() => _expanded = !_expanded)
-                        : null,
-                    onEdit: widget.onOpen,
-                    onReminder:
-                        widget.onSetReminder == null ? null : _openReminderMenu,
-                    onPark: widget.onPark == null ? null : _openParkMenu,
-                    onSetPriority: widget.onSetPriority,
-                    onOpenAttachments: widget.onOpenAttachments,
-                    onUnplan: widget.onUnplan,
-                    onFocus: widget.onFocus,
-                    onDelete: () => _leave(widget.onDelete),
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Where the title starts, so the notes and the action bar line up under it
-  /// rather than under the tick box.
+  /// Where the title starts, so the expanded detail lines up under it rather
+  /// than under the tick box.
   double _textInset(bool high) {
     var inset = 18.0 + 8; // the checkbox and its gap
-    if (widget.dragHandle != null) inset += 18;
     if (high) inset += 10; // the priority bar and its gap
     return inset;
   }
 }
 
-/// The actions, as a bar under the title.
+/// What the task is carrying, drawn small and **not pressable**.
 ///
-/// Everything here is also in the row's hover icons on desktop; what differs is
-/// that these are always visible and [Layout.tapTarget] across. The order is
-/// the order they are reached for: the two that change what the task *is*
-/// (reminder, priority), then the ones that move it somewhere (park, focus),
-/// then editing, then the destructive one last and set apart.
-class _TouchActions extends StatelessWidget {
-  const _TouchActions({
-    required this.task,
+/// These were actions once - the bell, the paperclip and the planned mark were
+/// all lit-up buttons that stayed visible without a hover because they were
+/// state as much as controls. With the actions gone into the bar, only the
+/// state half is left: it answers "does this have a reminder / documents / a
+/// slot" at a glance, and pressing anything on the row opens the bar, which is
+/// where the matching action is.
+class _StateMarks extends StatelessWidget {
+  const _StateMarks({
     required this.accent,
-    required this.layout,
+    required this.size,
     required this.due,
     required this.armed,
-    required this.high,
-    required this.expanded,
-    required this.attachmentCount,
-    required this.bellKey,
-    required this.parkKey,
-    required this.onToggleExpanded,
-    required this.onEdit,
-    required this.onReminder,
-    required this.onPark,
-    required this.onSetPriority,
-    required this.onOpenAttachments,
-    required this.onUnplan,
-    required this.onFocus,
-    required this.onDelete,
+    required this.attached,
+    required this.planned,
   });
 
-  final Task task;
   final Color accent;
-  final Layout layout;
+  final double size;
   final bool due;
-  final DateTime? armed;
-  final bool high;
-  final bool expanded;
-  final int attachmentCount;
-  final GlobalKey bellKey;
-  final GlobalKey parkKey;
-  final VoidCallback? onToggleExpanded;
-  final VoidCallback? onEdit;
-  final VoidCallback? onReminder;
-  final VoidCallback? onPark;
-  final Future<void> Function(bool high)? onSetPriority;
-  final VoidCallback? onOpenAttachments;
-  final Future<void> Function()? onUnplan;
-  final VoidCallback onFocus;
-  final VoidCallback onDelete;
+  final bool armed;
+  final bool attached;
+  final bool planned;
 
   @override
   Widget build(BuildContext context) {
-    final leading = <Widget>[
-        if (onReminder != null)
-          _TouchAction(
-            key: bellKey,
-            layout: layout,
-            semantics: armed == null
-                ? 'Remind me'
-                : 'Reminder ${describeReminder(armed!)}',
-            icon: armed == null
-                ? Icons.notifications_none_rounded
-                : Icons.notifications_active_rounded,
-            color: due ? T.danger : (armed != null ? accent : T.muted),
-            onPressed: onReminder!,
-          ),
-        if (onSetPriority != null)
-          _TouchAction(
-            layout: layout,
-            semantics: high ? 'Clear high priority' : 'Flag as high priority',
-            icon: high ? Icons.flag_rounded : Icons.outlined_flag_rounded,
-            color: high ? T.danger : T.muted,
-            onPressed: () => onSetPriority!(!high),
-          ),
-        if (onOpenAttachments != null)
-          _TouchAction(
-            layout: layout,
-            semantics: attachmentCount == 0
-                ? 'Attach a document'
-                : '$attachmentCount attached',
-            icon: Icons.attach_file_rounded,
-            color: attachmentCount > 0 ? accent : T.muted,
-            onPressed: onOpenAttachments!,
-          ),
-        if (onUnplan != null && task.isPlanned)
-          _TouchAction(
-            layout: layout,
-            semantics: 'Take it out of its calendar block',
-            icon: Icons.event_available_rounded,
-            color: accent,
-            onPressed: () => onUnplan!(),
-          ),
-        if (onPark != null)
-          _TouchAction(
-            key: parkKey,
-            layout: layout,
-            semantics: 'Park it in a group',
-            icon: Icons.inbox_rounded,
-            color: T.muted,
-            onPressed: onPark!,
-          ),
-        _TouchAction(
-          layout: layout,
-          semantics: 'Work on this',
-          icon: Icons.play_arrow_rounded,
-          color: task.inProgress ? accent : T.muted,
-          onPressed: onFocus,
+    final marks = <Widget>[
+      if (armed)
+        Icon(
+          due
+              ? Icons.notification_important_rounded
+              : Icons.notifications_active_rounded,
+          size: size,
+          color: due ? T.danger : accent,
         ),
-        if (onEdit != null)
-          _TouchAction(
-            layout: layout,
-            semantics: 'Edit task and notes',
-            icon: Icons.edit_outlined,
-            color: T.muted,
-            onPressed: onEdit!,
-          ),
+      if (attached)
+        Icon(Icons.attach_file_rounded, size: size, color: accent),
+      if (planned)
+        Icon(Icons.event_available_rounded, size: size, color: accent),
     ];
+    if (marks.isEmpty) return const SizedBox.shrink();
 
-    final trailing = <Widget>[
-        if (onToggleExpanded != null)
-          _TouchAction(
-            layout: layout,
-            semantics: expanded ? 'Hide notes' : 'Show notes',
-            icon: expanded
-                ? Icons.keyboard_arrow_up_rounded
-                : Icons.keyboard_arrow_down_rounded,
-            color: T.muted,
-            onPressed: onToggleExpanded!,
-          ),
-        _TouchAction(
-          layout: layout,
-          semantics: "Delete (don't log)",
-          icon: Icons.close_rounded,
-          color: T.danger,
-          onPressed: onDelete,
-        ),
-    ];
-
-    // A fingertip is [Layout.touchTargetSide] wide and there are up to nine of
-    // these, which is more than a phone has room for on one line: every phone
-    // lays out at about [T.designWidth] units (that is what [UiScale] is for),
-    // and nine times forty overruns it before the indent under the title is
-    // counted. A row that asked for the lot - planned, flagged, with notes -
-    // overflowed by 68 pixels and clipped its own delete button.
-    //
-    // So the bar wraps rather than shrinking: the alternative is a tap target
-    // below a fingertip, and this whole file exists because actions that cannot
-    // be hit reliably are actions the phone does not have. Measured from its
-    // own box rather than [Layout], the way the time grid picks its geometry -
-    // the bar is indented under the title, so the window's width is not the
-    // width it was given.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final needed = (leading.length + trailing.length) * layout.tapTarget;
-        if (needed <= constraints.maxWidth) {
-          return Row(
-            children: [
-              ...leading,
-              // Pushed to the far end rather than sitting next to the others:
-              // it is the one press here with nothing behind it, and a
-              // fingertip is wide.
-              const Spacer(),
-              ...trailing,
-            ],
-          );
-        }
-        // Wrapped, the delete is simply last. It keeps the gap that sets it
-        // apart whenever the final line is not full, and there is nowhere
-        // further from the reaching thumb to put it.
-        return Wrap(children: [...leading, ...trailing]);
-      },
-    );
-  }
-}
-
-/// One always-visible, finger-sized action.
-class _TouchAction extends StatelessWidget {
-  const _TouchAction({
-    super.key,
-    required this.layout,
-    required this.semantics,
-    required this.icon,
-    required this.color,
-    required this.onPressed,
-  });
-
-  final Layout layout;
-  final String semantics;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    // Semantics rather than a Tooltip: a tooltip needs a hover or a long press,
-    // and the long press here belongs to dragging the row.
-    return Semantics(
-      label: semantics,
-      button: true,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: layout.tapTarget,
-          height: layout.tapTarget,
-          child: Icon(icon, size: layout.actionIcon, color: color),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final m in marks)
+            Padding(padding: const EdgeInsets.only(left: 2), child: m),
+        ],
       ),
     );
   }
@@ -619,19 +529,19 @@ class _TouchAction extends StatelessWidget {
 
 /// The title, and the first line of its notes when it has any.
 ///
-/// The preview is how notes stay *readable* without a second icon on a row that
-/// is already nine controls wide at 340px: it costs no horizontal space, and it
-/// answers the question the icon would only have offered to answer. Tapping
-/// either opens the long form.
+/// The preview is how notes stay *readable* without opening anything: it costs
+/// no horizontal space, and it answers the question an icon would only have
+/// offered to answer. Tapping it does whatever this pointer's tap does - see
+/// the table in the file header.
 class _TaskText extends StatelessWidget {
   const _TaskText({
     required this.task,
-    required this.onOpen,
+    required this.onTap,
     this.showPreview = true,
   });
 
   final Task task;
-  final VoidCallback? onOpen;
+  final VoidCallback? onTap;
 
   /// False while the row is expanded, where the full notes are directly below
   /// and a one-line preview of them would be the same sentence twice.
@@ -665,9 +575,9 @@ class _TaskText extends StatelessWidget {
       ],
     );
 
-    if (onOpen == null) return body;
+    if (onTap == null) return body;
     return InkWell(
-      onTap: onOpen,
+      onTap: onTap,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
@@ -697,47 +607,6 @@ class _Checkbox extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: accent.withValues(alpha: 0.7), width: 1.5),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Hover-revealed action. Kept in the layout at all times rather than being
-/// inserted on hover, so revealing it cannot reflow the row's text.
-class _IconAction extends StatelessWidget {
-  const _IconAction({
-    super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.color,
-    required this.visible,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final Color color;
-  final bool visible;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: visible ? 1 : 0,
-      duration: const Duration(milliseconds: 120),
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: Tooltip(
-          message: tooltip,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Icon(icon, size: 16, color: color),
-            ),
           ),
         ),
       ),

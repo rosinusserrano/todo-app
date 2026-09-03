@@ -144,6 +144,36 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### 0.26.0 — the task row gives its width back
+
+Marco, 2026-09-03: the action bar should not be visible in the normal state, on
+either platform — and on desktop it should not be *taking the space* either,
+because in a narrow window the invisible bar was most of the row.
+
+- [x] **The actions moved into an overlay** (`ui/task_actions.dart`), opened by
+      the one gesture each pointer had spare: right-click with a mouse, a short
+      tap on the text with a finger. The row is a tick box, a title and its
+      marks. Two costs went away with it — the desktop icons that were hidden
+      but still laid out (correct while they were on the row: revealing one
+      must not reflow the text), and the phone's permanent second line under
+      every task, which wrapped to a third on a task carrying everything.
+- [x] **A left-click expands rather than editing**, because the pencil in the
+      bar is now the way to the composer on both platforms and the click was
+      free. Marco's call between four options.
+- [x] **Expand is a real read view** (`ui/task_detail.dart`): Markdown rendered
+      properly, and the state the row can only hint at spelled out in chips.
+      Read-only on purpose — the composer is a form, and reading a checklist in
+      a form is being one keystroke from editing it. In place under a pointer
+      (the list scrolls past it); the whole content area on a phone, which the
+      shell owns because a row inside a scrolling list cannot take it.
+- [x] **Reordering per pointer**: the grip moved to the right and is drawn only
+      for a mouse; a phone presses and holds the row. The grip on the left was
+      indenting the title of every row in the list for a control touch cannot
+      use at all.
+- [x] What stays on the row is **state, not actions**. The bell, the paperclip
+      and the planned mark were lit-up buttons before *because* they were state
+      as much as controls; only that half is left, and it is not pressable.
+
 ### 0.25.0 — a night, a phone, and one menu that names what you are doing
 
 Marco's list from a week of using the phone build, in his order.

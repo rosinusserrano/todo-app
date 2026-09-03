@@ -25,10 +25,10 @@ Rules for keeping it honest:
 this list is done; the design that produced it has moved to `ROADMAP.md`'s
 *Shipped*.
 
-**Step 24 is not committed yet** - the working tree holds it, checks green.
-**Not pushed, and not installed on either device.** 0.25.0's three mobile items
-(19, 20, 21) and all of 24 can only really be judged there - 24's touch half
-especially, since the whole of it is which gesture does what.
+**Committed, pushed and installed on Windows** (2026-09-03, `52963f8`).
+**Not on the phone yet**: 0.25.0's three mobile items (19, 20, 21) and the
+touch half of 24 can only really be judged there, since the whole of 24 is
+which gesture does what.
 
 ---
 

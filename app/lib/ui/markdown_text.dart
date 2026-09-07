@@ -99,7 +99,7 @@ class MarkdownText extends StatelessWidget {
   }
 
   static MarkdownStyleSheet _styleSheet(TextStyle base) {
-    final size = base.fontSize ?? 12.5;
+    final size = base.fontSize ?? T.fsLabel;
     // Monospace for code, by family list rather than by name: the three
     // platforms this runs on do not agree on one, and naming a font that is not
     // there gets the proportional default back, which is the one thing a code
@@ -112,7 +112,7 @@ class MarkdownText extends StatelessWidget {
     );
     TextStyle heading(double scale) => base.copyWith(
           fontSize: size * scale,
-          fontWeight: FontWeight.w600,
+          fontWeight: T.wStrong,
           height: 1.25,
           color: T.text,
         );
@@ -122,7 +122,7 @@ class MarkdownText extends StatelessWidget {
       pPadding: EdgeInsets.zero,
       a: base.copyWith(color: T.accent, decoration: TextDecoration.underline),
       em: base.copyWith(fontStyle: FontStyle.italic),
-      strong: base.copyWith(fontWeight: FontWeight.w700),
+      strong: base.copyWith(fontWeight: T.wStrong),
       del: base.copyWith(decoration: TextDecoration.lineThrough, color: T.muted),
       code: code,
       // Headings step down gently. This is a 340px window; an h1 at the usual
@@ -147,7 +147,7 @@ class MarkdownText extends StatelessWidget {
       codeblockPadding: const EdgeInsets.all(8),
       codeblockDecoration: BoxDecoration(
         color: T.surface,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(T.radius),
       ),
       horizontalRuleDecoration: const BoxDecoration(
         border: Border(top: BorderSide(color: T.surfaceHover, width: 1)),
@@ -157,7 +157,7 @@ class MarkdownText extends StatelessWidget {
       listIndent: 16,
       checkbox: base.copyWith(color: T.accent),
       blockSpacing: 6,
-      tableHead: base.copyWith(fontWeight: FontWeight.w600),
+      tableHead: base.copyWith(fontWeight: T.wStrong),
       tableBody: base,
       tableBorder: TableBorder.all(color: T.surfaceHover, width: 0.5),
       tableCellsPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),

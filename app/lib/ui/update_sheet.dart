@@ -59,7 +59,7 @@ class UpdateSheet extends StatelessWidget {
             top: BorderSide(color: T.danger.withValues(alpha: 0.45)),
           ),
           borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(12),
+            top: Radius.circular(T.radius),
             bottom: Radius.circular(T.radius),
           ),
           boxShadow: const [
@@ -73,7 +73,7 @@ class UpdateSheet extends StatelessWidget {
         // Scrolls its own body: this window is 480px tall and resizable, and a
         // Column that merely overflows becomes an unusable smear.
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s4, T.s4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -89,8 +89,8 @@ class UpdateSheet extends StatelessWidget {
                     child: Text(
                       compatibility.title,
                       style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
+                        fontSize: T.fsBody,
+                        fontWeight: T.wMedium,
                         color: T.text,
                       ),
                     ),
@@ -101,7 +101,7 @@ class UpdateSheet extends StatelessWidget {
               Text(
                 compatibility.summary(server),
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: T.fsLabel,
                   height: 1.4,
                   color: T.text,
                 ),
@@ -112,17 +112,17 @@ class UpdateSheet extends StatelessWidget {
               // tasks", and the answer - right here, all of them, still being
               // saved - is what stops this being frightening.
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(T.s2),
                 decoration: BoxDecoration(
                   color: T.surface,
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(T.radius),
                 ),
                 child: const Text(
                   'Nothing is lost. Everything on this device still works and '
                   'still saves; changes are queued and will go up on their own '
                   'once the two versions match again.',
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: T.fsMeta,
                     height: 1.4,
                     color: T.muted,
                   ),
@@ -158,8 +158,8 @@ class UpdateSheet extends StatelessWidget {
                   child: const Text(
                     'Got it',
                     style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
+                      fontSize: T.fsLabel,
+                      fontWeight: T.wMedium,
                     ),
                   ),
                 ),
@@ -190,15 +190,15 @@ class _Fact extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 11.5, color: T.muted),
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
             ),
           ),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 11.5,
+              fontSize: T.fsMeta,
               color: T.text,
-              fontWeight: FontWeight.w600,
+              fontWeight: T.wMedium,
             ),
           ),
         ],

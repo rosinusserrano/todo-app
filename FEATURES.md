@@ -739,6 +739,22 @@ at the screen gives nothing away) and its lock is **opt-in**.
   a full-bleed variant, since it applies its own rounded mask and a tile inside
   a tile looks like a mistake; the tray art drops most of the padding, which is
   wasted at the 16px the notification area actually draws.
+- **One set of design tokens** — the widget is drawn from a single scale
+  rather than from numbers picked per control: one corner radius, one spacing
+  scale (4/8/12/16/24), four type sizes and two weights. It replaced six
+  radii, six font sizes inside a 4.5-point range, and paddings chosen widget by
+  widget — so the add field's fill now lands exactly over the task rows' fills
+  instead of being a pixel out, and a task's text sits the same distance from
+  the window edge as everything else. Two deliberate exceptions: **bold** in a
+  note is genuinely bold, and text drawn *inside* the calendar grid has its own
+  smaller size, because a 15-minute block's height is its duration and the type
+  has to fit what the clock chose.
+- **Colour says one thing at a time** — red means destructive and nothing else.
+  An overdue reminder and a sync that will retry are warm amber (attention, not
+  alarm), a flagged task keeps its own muted red bar, and the workspace palette
+  runs at about 60% of its old saturation with the window tint down from 16% to
+  6%. Same eight hues in the same order, so a workspace is still the colour you
+  know it by — the window has just stopped glowing in it.
 - **Font** — Segoe UI Variable (Windows 11 optical sizes).
 
 ## Adapting to the window
@@ -960,6 +976,24 @@ reminders are both there now**, queued for 0.18.0.
 ---
 
 ## Changelog
+
+- **0.27.0** — **Quieter, and on a scale.**
+  A look pass, no behaviour changes. Five directions were drawn at true size
+  and compared before anything was written; this is the one that keeps today's
+  shape and puts a real system under it.
+  - **One radius, one spacing scale, four type sizes, two weights.** Six radii
+    and six font sizes inside a 4.5-point range became one and four. Paddings
+    now come from a 4/8/12/16/24 scale instead of being chosen per control, so
+    things that should line up do.
+  - **The colour is turned down.** Workspace colours run at about 60% of their
+    old saturation — same hues, same order, so your workspaces are still the
+    colours you know — and the window tint behind them drops from 16% to 6%.
+  - **Red means destructive now, and only that.** An overdue reminder and a
+    failed-but-retrying sync are a warm amber; a flagged task keeps a muted red
+    bar of its own. Previously one full-strength red said "this will be gone
+    for ever" and "this was due at nine" in the same window.
+  - **Notes preview half a point larger** (11 rather than 10.5), which is the
+    size below which the fallback faces on Android stop hinting cleanly.
 
 - **0.26.0** — **The task row gives its width back.**
   One change, at both sizes: the actions came off the row and into a bar you

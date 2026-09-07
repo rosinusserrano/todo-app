@@ -43,16 +43,16 @@ class PanelHeader extends StatelessWidget {
     return Padding(
       // Tighter on the left than the old plain label, so the arrow starts where
       // the text used to and the title lands just right of it.
-      padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
+      padding: const EdgeInsets.fromLTRB(T.s2, 2, T.s2, T.s2),
       child: Row(
         children: [
           Tooltip(
             message: backTooltip,
             child: InkWell(
               onTap: onBack,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(T.radius),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(6, 3, 8, 3),
+                padding: const EdgeInsets.fromLTRB(T.s2, 3, T.s2, 3),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -65,9 +65,9 @@ class PanelHeader extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: T.fsLabel,
                         color: T.muted,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: T.wMedium,
                       ),
                     ),
                   ],

@@ -65,7 +65,7 @@ class _ImportDialogState extends State<_ImportDialog> {
       backgroundColor: T.bgSolid,
       title: Text(
         events.length == 1 ? 'Add this event?' : 'Add ${events.length} events?',
-        style: const TextStyle(fontSize: 15),
+        style: const TextStyle(fontSize: T.fsMenu),
       ),
       content: SizedBox(
         width: 320,
@@ -86,7 +86,7 @@ class _ImportDialogState extends State<_ImportDialog> {
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           '…and ${events.length - 8} more',
-                          style: const TextStyle(fontSize: 11, color: T.muted),
+                          style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                         ),
                       ),
                   ],
@@ -97,9 +97,9 @@ class _ImportDialogState extends State<_ImportDialog> {
             const Text(
               'Add to',
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: T.fsMeta,
                 color: T.muted,
-                fontWeight: FontWeight.w600,
+                fontWeight: T.wMedium,
                 letterSpacing: 0.4,
               ),
             ),
@@ -107,7 +107,7 @@ class _ImportDialogState extends State<_ImportDialog> {
             if (calendars.isEmpty)
               const Text(
                 'No calendars yet — make one first.',
-                style: TextStyle(fontSize: 11.5, color: T.danger),
+                style: TextStyle(fontSize: T.fsMeta, color: T.danger),
               )
             else
               Wrap(
@@ -118,7 +118,7 @@ class _ImportDialogState extends State<_ImportDialog> {
                     ChoiceChip(
                       label: Text(
                         widget.state.calendarName(c),
-                        style: const TextStyle(fontSize: 11.5),
+                        style: const TextStyle(fontSize: T.fsMeta),
                       ),
                       selected: _target == c.uuid,
                       onSelected: (_) => setState(() => _target = c.uuid),
@@ -131,13 +131,13 @@ class _ImportDialogState extends State<_ImportDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+          child: const Text('Cancel', style: TextStyle(fontSize: T.fsLabel)),
         ),
         FilledButton(
           onPressed: _target == null
               ? null
               : () => Navigator.pop(context, _target),
-          child: const Text('Add', style: TextStyle(fontSize: 12.5)),
+          child: const Text('Add', style: TextStyle(fontSize: T.fsLabel)),
         ),
       ],
     );
@@ -186,7 +186,7 @@ class _EventLine extends StatelessWidget {
             event.summary,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12.5, color: T.text),
+            style: const TextStyle(fontSize: T.fsLabel, color: T.text),
           ),
           Text(
             // The recurrence note belongs here, next to the event, rather than
@@ -199,7 +199,7 @@ class _EventLine extends StatelessWidget {
                 : event.recur != null
                     ? '$_when · ${Recur.label(event.recur!).toLowerCase()}'
                     : '$_when · repeats (first only)',
-            style: const TextStyle(fontSize: 11, color: T.muted),
+            style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
           ),
         ],
       ),

@@ -162,12 +162,12 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
         builder: (context) => AlertDialog(
           backgroundColor: T.bgSolid,
           title: const Text('That is a different file',
-              style: TextStyle(fontSize: 15)),
+              style: TextStyle(fontSize: T.fsMenu)),
           content: Text(
             'Its contents do not match "${a.filename}", so it is not the '
             'document this attachment is waiting for. Attach it as a new one?',
             style: const TextStyle(
-                fontSize: 12.5, color: T.muted, height: 1.4),
+                fontSize: T.fsLabel, color: T.muted, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -211,7 +211,7 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
         widget.task.text,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 14),
+        style: const TextStyle(fontSize: T.fsBody),
       ),
       content: SizedBox(
         width: 300,
@@ -221,7 +221,7 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
           children: [
             if (items == null)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 18),
+                padding: EdgeInsets.symmetric(vertical: T.s4),
                 child: Center(
                   child: SizedBox(
                     width: 18,
@@ -232,10 +232,10 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
               )
             else if (items.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+                padding: EdgeInsets.symmetric(vertical: T.s4),
                 child: Text(
                   'Nothing attached yet.',
-                  style: TextStyle(fontSize: 12.5, color: T.muted),
+                  style: TextStyle(fontSize: T.fsLabel, color: T.muted),
                 ),
               )
             else
@@ -262,7 +262,7 @@ class _AttachmentDialogState extends State<_AttachmentDialog> {
               const SizedBox(height: 8),
               Text(
                 _error!,
-                style: const TextStyle(fontSize: 11.5, color: T.danger),
+                style: const TextStyle(fontSize: T.fsMeta, color: T.danger),
               ),
             ],
           ],
@@ -316,10 +316,10 @@ class _Row extends StatelessWidget {
       opacity: here ? 1 : 0.55,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
         decoration: BoxDecoration(
           color: T.surface,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(T.radius),
         ),
         child: Row(
           children: [
@@ -337,14 +337,14 @@ class _Row extends StatelessWidget {
                     a.filename,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5, color: T.text),
+                    style: const TextStyle(fontSize: T.fsLabel, color: T.text),
                   ),
                   Text(
                     here
                         ? AttachmentStore.formatSize(a.size)
                         : '${AttachmentStore.formatSize(a.size)} · '
                             'not on this device',
-                    style: const TextStyle(fontSize: 10.5, color: T.muted),
+                    style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                   ),
                 ],
               ),
@@ -354,9 +354,9 @@ class _Row extends StatelessWidget {
                 message: 'Locate this file on this device',
                 child: InkWell(
                   onTap: onLocate,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(T.radius),
                   child: const Padding(
-                    padding: EdgeInsets.all(4),
+                    padding: EdgeInsets.all(T.s1),
                     child: Icon(Icons.travel_explore_rounded,
                         size: 14, color: T.muted),
                   ),
@@ -367,9 +367,9 @@ class _Row extends StatelessWidget {
                 message: 'Open',
                 child: InkWell(
                   onTap: onOpen,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(T.radius),
                   child: const Padding(
-                    padding: EdgeInsets.all(4),
+                    padding: EdgeInsets.all(T.s1),
                     child: Icon(Icons.open_in_new_rounded,
                         size: 14, color: T.muted),
                   ),
@@ -381,9 +381,9 @@ class _Row extends StatelessWidget {
               message: 'Remove',
               child: InkWell(
                 onTap: onRemove,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(T.radius),
                 child: const Padding(
-                  padding: EdgeInsets.all(4),
+                  padding: EdgeInsets.all(T.s1),
                   child: Icon(Icons.close_rounded, size: 14, color: T.danger),
                 ),
               ),

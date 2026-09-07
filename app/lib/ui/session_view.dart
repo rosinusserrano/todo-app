@@ -72,7 +72,7 @@ class SessionView extends StatelessWidget {
         PanelHeader(title: 'Now', onBack: onBack),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+            padding: const EdgeInsets.fromLTRB(T.s2, 0, T.s2, T.s3),
             children: [
               for (final e in events)
                 _Block(
@@ -135,17 +135,17 @@ class _Block extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: T.s3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
             decoration: BoxDecoration(
               color: Color.lerp(T.bgSolid, color, 0.2),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(T.radius),
               border: Border(left: BorderSide(color: color, width: 3)),
             ),
-            padding: const EdgeInsets.fromLTRB(9, 7, 9, 7),
+            padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -154,8 +154,8 @@ class _Block extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: T.fsBody,
+                    fontWeight: T.wMedium,
                     color: T.text,
                   ),
                 ),
@@ -168,7 +168,7 @@ class _Block extends StatelessWidget {
                   ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10.5, color: T.muted),
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                 ),
               ],
             ),
@@ -180,11 +180,11 @@ class _Block extends StatelessWidget {
             // list, and dragging a row onto it - are in the calendar, which is
             // one press away and is where the block can actually be seen.
             const Padding(
-              padding: EdgeInsets.fromLTRB(6, 6, 6, 2),
+              padding: EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, 2),
               child: Text(
                 'Nothing planned into this block. Plan todos into it from the '
                 'calendar.',
-                style: TextStyle(fontSize: 11, color: T.muted, height: 1.35),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.35),
               ),
             )
           else

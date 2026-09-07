@@ -528,12 +528,12 @@ class _WidgetShellState extends State<WidgetShell>
           child: Row(
             children: [
               const Icon(Icons.info_outline, size: 15, color: T.muted),
-              const SizedBox(width: 9),
+              const SizedBox(width: T.s2),
               Text(
                 event.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: T.muted),
+                style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
               ),
             ],
           ),
@@ -564,8 +564,8 @@ class _WidgetShellState extends State<WidgetShell>
       child: Row(
         children: [
           Icon(icon, size: 15, color: color == T.text ? T.muted : color),
-          const SizedBox(width: 9),
-          Text(label, style: TextStyle(fontSize: 12.5, color: color)),
+          const SizedBox(width: T.s2),
+          Text(label, style: TextStyle(fontSize: T.fsLabel, color: color)),
         ],
       ),
     );
@@ -592,12 +592,12 @@ class _WidgetShellState extends State<WidgetShell>
         builder: (context) => AlertDialog(
           backgroundColor: T.bgSolid,
           title: const Text('Delete every occurrence?',
-              style: TextStyle(fontSize: 15)),
+              style: TextStyle(fontSize: T.fsMenu)),
           content: Text(
             '"${event.title}" repeats ${Recur.label(event.recur!).toLowerCase()}. '
             'Deleting it removes the whole series, not just this one.',
             style: const TextStyle(
-                fontSize: 12.5, color: T.muted, height: 1.4),
+                fontSize: T.fsLabel, color: T.muted, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -982,10 +982,10 @@ class _WidgetShellState extends State<WidgetShell>
                 height: 13,
                 child: CircularProgressIndicator(strokeWidth: 1.8, color: ws),
               ),
-              const SizedBox(width: 9),
+              const SizedBox(width: T.s2),
               const Text(
                 'Closing…',
-                style: TextStyle(fontSize: 12, color: T.muted),
+                style: TextStyle(fontSize: T.fsLabel, color: T.muted),
               ),
             ],
           ),
@@ -1412,12 +1412,12 @@ class _WidgetShellState extends State<WidgetShell>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: Text(title, style: const TextStyle(fontSize: 15)),
-        content: Text(body, style: const TextStyle(fontSize: 12.5)),
+        title: Text(title, style: const TextStyle(fontSize: T.fsMenu)),
+        content: Text(body, style: const TextStyle(fontSize: T.fsLabel)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(fontSize: 12.5)),
+            child: const Text('OK', style: TextStyle(fontSize: T.fsLabel)),
           ),
         ],
       ),
@@ -1597,8 +1597,8 @@ class _WidgetShellState extends State<WidgetShell>
     SyncStatus.off => T.muted,
     SyncStatus.idle => T.muted,
     SyncStatus.syncing => T.accent,
-    SyncStatus.ok => const Color(0xFF7EE3A1),
-    SyncStatus.error => const Color(0xFFFFCF6C),
+    SyncStatus.ok => T.ok,
+    SyncStatus.error => T.warn,
     SyncStatus.blocked => T.danger,
     // Red like blocked: both are states that will not recover on their own.
     // What differs is the sentence, which the settings sheet and the alert
@@ -1933,19 +1933,19 @@ class _WidgetShellState extends State<WidgetShell>
       // is drawn on every screen and this is not, so padding on the bar would
       // be a hole in the layout whenever no block is running. At phone width
       // the tab and the tile are otherwise touching.
-      padding: const EdgeInsets.fromLTRB(10, 7, 10, 5),
+      padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s1),
       child: Material(
         color: Color.lerp(T.bgSolid, color, 0.22),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(T.radius),
         child: InkWell(
           onTap: _openSession,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(T.radius),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(T.radius),
               border: Border(left: BorderSide(color: color, width: 3)),
             ),
-            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+            padding: const EdgeInsets.all(T.s2),
             child: Row(
               children: [
                 Expanded(
@@ -1957,8 +1957,8 @@ class _WidgetShellState extends State<WidgetShell>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontSize: T.fsLabel,
+                          fontWeight: T.wMedium,
                           color: T.text,
                         ),
                       ),
@@ -1967,7 +1967,7 @@ class _WidgetShellState extends State<WidgetShell>
                         '${left == 0 ? 'nothing planned' : '$left to do'}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 10, color: T.muted),
+                        style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                       ),
                     ],
                   ),
@@ -2221,7 +2221,7 @@ class _WidgetShellState extends State<WidgetShell>
     final field = TextField(
       controller: _addController,
       focusNode: _addFocus,
-      style: const TextStyle(fontSize: 13),
+      style: const TextStyle(fontSize: T.fsBody),
       decoration: InputDecoration(
         isDense: true,
         hintText: 'Add a task…',
@@ -2233,7 +2233,7 @@ class _WidgetShellState extends State<WidgetShell>
           message: 'More: notes, priority, reminder (Ctrl+D)',
           child: InkWell(
             onTap: _openComposer,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(T.radius),
             child: const Icon(
               Icons.open_in_full_rounded,
               size: 14,
@@ -2245,16 +2245,13 @@ class _WidgetShellState extends State<WidgetShell>
           minWidth: 34,
           minHeight: 30,
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
-        ),
+        contentPadding: const EdgeInsets.all(T.s2),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(T.radius),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(T.radius),
           borderSide: BorderSide(color: ws.withValues(alpha: 0.6)),
         ),
       ),
@@ -2274,7 +2271,11 @@ class _WidgetShellState extends State<WidgetShell>
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+      // The window column is inset by one step, and so is the inside of a
+      // task row - which puts a task's text at two steps from the window
+      // edge and this field's fill exactly over the rows' fills. They were
+      // 12 and 10 before, misaligned by a pixel nobody could name.
+      padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
       // The shortcut is bound around the field rather than globally: Ctrl+D is
       // only unambiguous while the caret is in here, and a global binding would
       // fire from inside the journal editor or a note.
@@ -2293,13 +2294,13 @@ class _WidgetShellState extends State<WidgetShell>
       return const Center(
         child: Text(
           'Nothing left. Nice. ✨',
-          style: TextStyle(color: T.muted, fontSize: 12.5),
+          style: TextStyle(color: T.muted, fontSize: T.fsLabel),
         ),
       );
     }
 
     return ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2),
       buildDefaultDragHandles: false,
       itemCount: s.tasks.length,
       // onReorderItem (unlike the deprecated onReorder) already accounts for
@@ -2408,23 +2409,23 @@ class _WidgetShellState extends State<WidgetShell>
               ? const Center(
                   child: Text(
                     'No completed tasks yet.',
-                    style: TextStyle(color: T.muted, fontSize: 12.5),
+                    style: TextStyle(color: T.muted, fontSize: T.fsLabel),
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: T.s2),
                   itemCount: s.historyTasks.length,
                   itemBuilder: (context, i) {
                     final t = s.historyTasks[i];
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(vertical: T.s1),
                       child: Row(
                         children: [
                           Expanded(
                             child: Text(
                               t.text,
                               style: const TextStyle(
-                                fontSize: 12.5,
+                                fontSize: T.fsLabel,
                                 color: T.muted,
                                 decoration: TextDecoration.lineThrough,
                               ),
@@ -2433,7 +2434,7 @@ class _WidgetShellState extends State<WidgetShell>
                           Text(
                             _formatWhen(t.completedAt),
                             style: const TextStyle(
-                              fontSize: 10.5,
+                              fontSize: T.fsMeta,
                               color: T.muted,
                             ),
                           ),
@@ -2505,7 +2506,7 @@ class _WidgetShellState extends State<WidgetShell>
                         child: TextField(
                           controller: _focusThoughtController,
                           focusNode: _focusThoughtFocus,
-                          style: const TextStyle(fontSize: 12.5),
+                          style: const TextStyle(fontSize: T.fsLabel),
                           decoration: InputDecoration(
                             isDense: true,
                             hintText: 'Park a thought…',
@@ -2516,11 +2517,11 @@ class _WidgetShellState extends State<WidgetShell>
                               vertical: 9,
                             ),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(9),
+                              borderRadius: BorderRadius.circular(T.radius),
                               borderSide: BorderSide.none,
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(9),
+                              borderRadius: BorderRadius.circular(T.radius),
                               borderSide: BorderSide(
                                 color: ws.withValues(alpha: 0.6),
                               ),
@@ -2548,7 +2549,7 @@ class _WidgetShellState extends State<WidgetShell>
                           : _openFocusThought(),
                       child: Text(
                         s.thoughtCount > 0 ? '💭 ${s.thoughtCount}' : '💭',
-                        style: const TextStyle(fontSize: 12),
+                        style: const TextStyle(fontSize: T.fsLabel),
                       ),
                     ),
                   ),
@@ -2574,7 +2575,7 @@ class _WidgetShellState extends State<WidgetShell>
                 label: Text(
                   'Nudge',
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: T.fsMeta,
                     color: s.nudgeEnabled ? ws : T.muted,
                   ),
                 ),
@@ -2600,7 +2601,11 @@ class _WidgetShellState extends State<WidgetShell>
       builder: (context, _) {
         final v = T.heroEase.transform(_hero.value);
         final rect = Rect.lerp(from, to, v)!;
-        final fontSize = 13 + (20 - 13) * v;
+        // Grows out of the row's own body size into the one display size in
+        // the app - focus mode is one task and a whole window, so it is the
+        // one place a fifth size earns itself.
+        const focused = 20.0;
+        final fontSize = T.fsBody + (focused - T.fsBody) * v;
         return Positioned(
           left: rect.left,
           top: rect.top,
@@ -2614,10 +2619,10 @@ class _WidgetShellState extends State<WidgetShell>
 
   Widget _tile(String text, Color ws, double fontSize) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      padding: const EdgeInsets.all(T.s4),
       decoration: BoxDecoration(
         color: Color.lerp(T.bgSolid, ws, 0.22),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(T.radius),
         border: Border.all(color: ws.withValues(alpha: 0.45)),
         boxShadow: [
           BoxShadow(
@@ -2634,9 +2639,9 @@ class _WidgetShellState extends State<WidgetShell>
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: fontSize,
-          fontWeight: FontWeight.w600,
+          fontWeight: T.wMedium,
           color: T.text,
-          height: 1.25,
+          height: 1.3,
         ),
       ),
     );

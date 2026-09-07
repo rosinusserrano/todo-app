@@ -228,9 +228,9 @@ class ThoughtFooterState extends State<ThoughtFooter>
       return Text(
         widget.blockedMessage!,
         style: TextStyle(
-          fontSize: 11.5,
+          fontSize: T.fsMeta,
           color: alarm,
-          fontWeight: FontWeight.w600,
+          fontWeight: T.wMedium,
         ),
       );
     }
@@ -247,12 +247,12 @@ class ThoughtFooterState extends State<ThoughtFooter>
       message: widget.listOpen ? 'Back to tasks' : 'Review parked thoughts',
       child: InkWell(
         onTap: widget.onToggleList,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(T.radius),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: 3),
           decoration: BoxDecoration(
             color: fill,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(T.radius),
             border: Border.all(
               color: widget.listOpen
                   ? Colors.transparent
@@ -262,13 +262,13 @@ class ThoughtFooterState extends State<ThoughtFooter>
           child: Text(
             '💭 $_count',
             style: TextStyle(
-              fontSize: 11.5 + hot * 1.5,
+              fontSize: T.fsMeta + hot * 1.5,
               color: widget.listOpen
                   ? T.text
                   : Color.lerp(T.muted, alarm, hot),
               fontWeight: widget.listOpen || hot > 0.5
-                  ? FontWeight.w600
-                  : FontWeight.normal,
+                  ? T.wMedium
+                  : T.wNormal,
             ),
           ),
         ),
@@ -278,7 +278,7 @@ class ThoughtFooterState extends State<ThoughtFooter>
 
   Widget _bar(Color alarm) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s2),
       child: Row(
         children: [
           if (widget.showCaptureButton)
@@ -294,10 +294,10 @@ class ThoughtFooterState extends State<ThoughtFooter>
                   setState(() => _expanded = !_expanded);
                   if (_expanded) _focus.requestFocus();
                 },
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(T.radius),
                 child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Text('💭', style: TextStyle(fontSize: 15)),
+                  padding: EdgeInsets.all(T.s1),
+                  child: Text('💭', style: TextStyle(fontSize: T.fsMenu)),
                 ),
               ),
             ),
@@ -307,11 +307,11 @@ class ThoughtFooterState extends State<ThoughtFooter>
               curve: Curves.easeOut,
               child: _expanded
                   ? Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: T.s2),
                       child: TextField(
                         controller: _controller,
                         focusNode: _focus,
-                        style: const TextStyle(fontSize: 12.5),
+                        style: const TextStyle(fontSize: T.fsLabel),
                         decoration: const InputDecoration(
                           isDense: true,
                           hintText: 'Side thought…',
@@ -388,19 +388,19 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(14, 2, 14, 6),
+              padding: EdgeInsets.fromLTRB(T.s3, 2, T.s3, T.s2),
               child: Text(
                 'Parked thoughts',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: T.fsLabel,
                   color: T.muted,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: T.wMedium,
                 ),
               ),
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+                padding: const EdgeInsets.symmetric(horizontal: T.s2),
                 children: [
                   for (final t in widget.thoughts)
                     _ThoughtTile(
@@ -433,17 +433,17 @@ class _ThoughtTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
       decoration: BoxDecoration(
         color: T.surface,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(T.radius),
       ),
       child: Row(
         children: [
           Expanded(
             child: Text(
               thought.text,
-              style: const TextStyle(fontSize: 12, color: T.muted),
+              style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
             ),
           ),
           Tooltip(
@@ -451,7 +451,7 @@ class _ThoughtTile extends StatelessWidget {
             child: InkWell(
               onTap: onPromote,
               child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
+                padding: EdgeInsets.symmetric(horizontal: T.s1),
                 child: Icon(Icons.arrow_upward_rounded, size: 14, color: T.muted),
               ),
             ),
@@ -461,7 +461,7 @@ class _ThoughtTile extends StatelessWidget {
             child: InkWell(
               onTap: onDiscard,
               child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
+                padding: EdgeInsets.symmetric(horizontal: T.s1),
                 child: Icon(Icons.close_rounded, size: 14, color: T.danger),
               ),
             ),

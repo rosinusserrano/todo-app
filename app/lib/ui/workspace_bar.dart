@@ -156,13 +156,13 @@ class _ViewsMenu extends StatelessWidget {
           trailing: parkedReviewDue
               ? Text('review due',
                   style: TextStyle(
-                      fontSize: 10.5, color: dueTint, fontWeight: FontWeight.w600))
+                      fontSize: T.fsMeta, color: dueTint, fontWeight: T.wMedium))
               : null,
         ),
         _item(2, Icons.history_rounded, 'History', WorkspaceView.history),
       ],
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -209,19 +209,19 @@ class _ViewsMenu extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 16, color: open ? accent : T.muted),
-          const SizedBox(width: 10),
+          const SizedBox(width: T.s2),
           Text(
             label,
             style: TextStyle(
-              fontSize: 12.5,
+              fontSize: T.fsLabel,
               color: open ? accent : T.text,
-              fontWeight: open ? FontWeight.w600 : FontWeight.normal,
+              fontWeight: open ? T.wMedium : T.wNormal,
             ),
           ),
           if (trailing != null) ...[const Spacer(), trailing],
           if (open) ...[
             if (trailing == null) const Spacer(),
-            const SizedBox(width: 6),
+            const SizedBox(width: T.s1),
             Icon(Icons.check_rounded, size: 14, color: accent),
           ],
         ],
@@ -284,9 +284,9 @@ class _SwitcherMenu extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: T.s2),
                 Text(ws.name,
-                    style: const TextStyle(fontSize: 12.5, color: T.text)),
+                    style: const TextStyle(fontSize: T.fsLabel, color: T.text)),
               ],
             ),
           ),
@@ -303,9 +303,9 @@ class _SwitcherMenu extends StatelessWidget {
                 width: 8,
                 child: Icon(Icons.add_rounded, size: 14, color: T.muted),
               ),
-              SizedBox(width: 10),
+              SizedBox(width: T.s2),
               Text('Add workspace…',
-                  style: TextStyle(fontSize: 12.5, color: T.muted)),
+                  style: TextStyle(fontSize: T.fsLabel, color: T.muted)),
             ],
           ),
         ),
@@ -313,7 +313,7 @@ class _SwitcherMenu extends StatelessWidget {
       // Smaller than the free-standing views ▾: this one is a detail on a
       // control that is already there, not a button in its own right.
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 5, 5, 5),
+        padding: const EdgeInsets.fromLTRB(T.s1, T.s1, T.s1 + 1, T.s1),
         child: Icon(Icons.expand_more_rounded,
             size: 15, color: T.text.withValues(alpha: 0.75)),
       ),
@@ -352,15 +352,15 @@ class _Tab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = T.parseHex(workspace.color);
-    const radius = Radius.circular(7);
+    const radius = Radius.circular(T.radius);
 
     return Padding(
-      padding: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.only(right: T.s1),
       child: Container(
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.18),
+          color: color.withValues(alpha: 0.16),
           borderRadius: const BorderRadius.all(radius),
-          border: Border.all(color: color.withValues(alpha: 0.5)),
+          border: Border.all(color: color.withValues(alpha: 0.42)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -380,7 +380,7 @@ class _Tab extends StatelessWidget {
                   bottomRight: Radius.zero,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(9, 5, 7, 5),
+                  padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -390,15 +390,15 @@ class _Tab extends StatelessWidget {
                         decoration:
                             BoxDecoration(color: color, shape: BoxShape.circle),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: T.s1),
                       Flexible(
                         child: Text(
                           workspace.name,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: T.fsLabel,
                             color: T.text,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: T.wMedium,
                           ),
                         ),
                       ),
@@ -494,7 +494,7 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
       backgroundColor: T.bgSolid,
       title: Text(
         widget.existing == null ? 'New workspace' : 'Edit workspace',
-        style: const TextStyle(fontSize: 15),
+        style: const TextStyle(fontSize: T.fsMenu),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -504,17 +504,17 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
             controller: _name,
             autofocus: true,
             maxLength: 24,
-            style: const TextStyle(fontSize: 13),
+            style: const TextStyle(fontSize: T.fsBody),
             decoration: const InputDecoration(
               hintText: 'Workspace name…',
               counterText: '',
             ),
             onSubmitted: (_) => _save(),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: T.s4),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: T.s2,
+            runSpacing: T.s2,
             children: [
               for (final c in T.workspaceColors)
                 InkWell(

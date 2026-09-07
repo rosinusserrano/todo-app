@@ -208,7 +208,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
               children: [
                 TextField(
                   controller: _title,
-                  style: const TextStyle(fontSize: 13.5),
+                  style: const TextStyle(fontSize: T.fsBody),
                   decoration: const InputDecoration(hintText: 'What is it?'),
                   textInputAction: TextInputAction.next,
                 ),
@@ -239,7 +239,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                     ChoiceChip(
                       label: const Text(
                         'No reminder',
-                        style: TextStyle(fontSize: 11.5),
+                        style: TextStyle(fontSize: T.fsMeta),
                       ),
                       selected: _remindAt == null,
                       onSelected: (_) => setState(() => _remindAt = null),
@@ -248,7 +248,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                       ChoiceChip(
                         label: Text(
                           describeReminder(_remindAt!, _openedAt),
-                          style: const TextStyle(fontSize: 11.5),
+                          style: const TextStyle(fontSize: T.fsMeta),
                         ),
                         selected: true,
                         onSelected: (_) {},
@@ -257,7 +257,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                       ChoiceChip(
                         label: Text(
                           p.label,
-                          style: const TextStyle(fontSize: 11.5),
+                          style: const TextStyle(fontSize: T.fsMeta),
                         ),
                         selected: _remindAt == p.at,
                         onSelected: (_) => setState(() => _remindAt = p.at),
@@ -271,7 +271,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                       avatar: const Icon(Icons.event_rounded, size: 14),
                       label: const Text(
                         'Pick…',
-                        style: TextStyle(fontSize: 11.5),
+                        style: TextStyle(fontSize: T.fsMeta),
                       ),
                       onPressed: () async {
                         final at = await showReminderPicker(
@@ -300,7 +300,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                       ChoiceChip(
                         label: const Text(
                           'Once',
-                          style: TextStyle(fontSize: 11.5),
+                          style: TextStyle(fontSize: T.fsMeta),
                         ),
                         selected: _recur == null,
                         onSelected: (_) => setState(() => _recur = null),
@@ -309,7 +309,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                         ChoiceChip(
                           label: Text(
                             Recur.label(r),
-                            style: const TextStyle(fontSize: 11.5),
+                            style: const TextStyle(fontSize: T.fsMeta),
                           ),
                           selected: _recur == r,
                           onSelected: (_) => setState(() => _recur = r),
@@ -344,7 +344,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
             autofocus: true,
             minLines: 4,
             maxLines: 10,
-            style: const TextStyle(fontSize: 12.5, height: 1.35),
+            style: const TextStyle(fontSize: T.fsLabel, height: 1.35),
             decoration: const InputDecoration(
               hintText: 'Notes — Markdown, links, what "done" means…',
             ),
@@ -352,19 +352,19 @@ class _ComposerSheetState extends State<_ComposerSheet> {
         else
           InkWell(
             onTap: _editNotes,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(T.radius),
             child: Container(
               width: double.infinity,
               constraints: const BoxConstraints(minHeight: 64),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
               decoration: BoxDecoration(
                 color: T.surface,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(T.radius),
               ),
               child: MarkdownText(
                 _notes.text,
                 style: const TextStyle(
-                    fontSize: 12.5, height: 1.35, color: T.text),
+                    fontSize: T.fsLabel, height: 1.35, color: T.text),
                 // The body is as good a handle as the toggle. Links inside it
                 // still open rather than switching to the editor - MarkdownBody
                 // hands a tap on a link to onTapLink instead of this.
@@ -392,12 +392,12 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                 ),
                 label: Text(
                   _editingNotes ? 'Preview' : 'Edit',
-                  style: const TextStyle(fontSize: 11.5),
+                  style: const TextStyle(fontSize: T.fsMeta),
                 ),
                 style: TextButton.styleFrom(
                   foregroundColor: T.muted,
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      const EdgeInsets.symmetric(horizontal: T.s2, vertical: 2),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -417,7 +417,7 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Text(text, style: const TextStyle(fontSize: 11.5, color: T.muted));
+      Text(text, style: const TextStyle(fontSize: T.fsMeta, color: T.muted));
 }
 
 /// The high-priority toggle. A flag rather than a slider of levels: the column
@@ -431,34 +431,34 @@ class _Flag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: on ? T.danger.withValues(alpha: 0.18) : T.surface,
-      borderRadius: BorderRadius.circular(8),
+      color: on ? T.flagged.withValues(alpha: 0.16) : T.surface,
+      borderRadius: BorderRadius.circular(T.radius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(T.radius),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(T.radius),
             border: Border.all(
-              color: on ? T.danger.withValues(alpha: 0.8) : Colors.transparent,
+              color: on ? T.flagged.withValues(alpha: 0.7) : Colors.transparent,
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 on ? Icons.flag_rounded : Icons.outlined_flag_rounded,
                 size: 15,
-                color: on ? T.danger : T.muted,
+                color: on ? T.flagged : T.muted,
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: T.s1),
               Text(
                 'High priority',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: T.fsLabel,
                   color: on ? T.text : T.muted,
-                  fontWeight: on ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: on ? T.wMedium : T.wNormal,
                 ),
               ),
             ],

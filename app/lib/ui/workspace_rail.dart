@@ -69,7 +69,7 @@ class WorkspaceRail extends StatelessWidget {
 
     return Container(
       width: Layout.railWidth,
-      padding: const EdgeInsets.fromLTRB(8, 2, 6, 8),
+      padding: const EdgeInsets.fromLTRB(T.s2, 2, T.s2, T.s2),
       decoration: const BoxDecoration(
         border: Border(right: BorderSide(color: Color(0x14FFFFFF))),
       ),
@@ -149,8 +149,8 @@ class WorkspaceRail extends StatelessWidget {
               trailing: Text(
                 '$thoughtCount',
                 style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: T.fsMeta,
+                  fontWeight: T.wMedium,
                   color: dueTint,
                 ),
               ),
@@ -169,13 +169,13 @@ class _RailLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+      padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s1),
       child: Text(
         text.toUpperCase(),
         style: const TextStyle(
-          fontSize: 9,
+          fontSize: T.fsMeta,
           letterSpacing: 0.8,
-          fontWeight: FontWeight.w700,
+          fontWeight: T.wMedium,
           color: T.muted,
         ),
       ),
@@ -204,18 +204,18 @@ class _WorkspaceRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
         color: current ? color.withValues(alpha: 0.18) : Colors.transparent,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(T.radius),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(T.radius),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(T.radius),
               border: Border.all(
                 color: current ? color.withValues(alpha: 0.5) : Colors.transparent,
               ),
             ),
-            padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+            padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s1, T.s2),
             child: Row(
               children: [
                 Container(
@@ -231,9 +231,9 @@ class _WorkspaceRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: T.fsLabel,
                       color: T.text,
-                      fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: current ? T.wMedium : FontWeight.w400,
                     ),
                   ),
                 ),
@@ -242,7 +242,7 @@ class _WorkspaceRow extends StatelessWidget {
                     message: 'Edit workspace',
                     child: InkWell(
                       onTap: onEdit,
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(T.radius),
                       child: const Padding(
                         padding: EdgeInsets.all(3),
                         child: Icon(Icons.edit, size: 11, color: T.muted),
@@ -287,12 +287,12 @@ class _RailItem extends StatelessWidget {
 
     return Material(
       color: selected ? accent.withValues(alpha: 0.14) : Colors.transparent,
-      borderRadius: BorderRadius.circular(7),
+      borderRadius: BorderRadius.circular(T.radius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(T.radius),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+          padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s2),
           child: Row(
             children: [
               Icon(icon, size: 14, color: selected ? accent : T.muted),
@@ -303,9 +303,9 @@ class _RailItem extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: T.fsLabel,
                     color: color,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: selected ? T.wMedium : FontWeight.w400,
                   ),
                 ),
               ),

@@ -163,7 +163,7 @@ class _DayHeader extends StatelessWidget {
         Expanded(
           child: InkWell(
             onTap: onOpen,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(T.radius),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Row(
@@ -171,8 +171,8 @@ class _DayHeader extends StatelessWidget {
                   Text(
                     label,
                     style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: T.fsMeta,
+                      fontWeight: T.wMedium,
                       color: isToday ? T.accent : T.text,
                     ),
                   ),
@@ -180,7 +180,7 @@ class _DayHeader extends StatelessWidget {
                     const SizedBox(width: 8),
                     const Text(
                       'free',
-                      style: TextStyle(fontSize: 10.5, color: T.muted),
+                      style: TextStyle(fontSize: T.fsMeta, color: T.muted),
                     ),
                   ],
                 ],
@@ -192,7 +192,7 @@ class _DayHeader extends StatelessWidget {
           message: 'New event on this day',
           child: InkWell(
             onTap: onCreate,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(T.radius),
             child: const Padding(
               padding: EdgeInsets.all(4),
               child: Icon(Icons.add, size: 14, color: T.muted),
@@ -256,13 +256,13 @@ class _AgendaRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 3),
       child: Material(
         color: Color.lerp(T.bgSolid, color, 0.22),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(T.radius),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(T.radius),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(T.radius),
               border: Border(left: BorderSide(color: color, width: 2.5)),
             ),
             padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
@@ -274,7 +274,7 @@ class _AgendaRow extends StatelessWidget {
                   child: Text(
                     _when,
                     style: const TextStyle(
-                      fontSize: 9.5,
+                      fontSize: T.fsMeta,
                       height: 1.25,
                       color: T.muted,
                     ),
@@ -289,9 +289,9 @@ class _AgendaRow extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11.5,
+                          fontSize: T.fsMeta,
                           height: 1.2,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: T.wMedium,
                           color: T.text,
                         ),
                       ),
@@ -306,7 +306,7 @@ class _AgendaRow extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: T.fsMeta,
                             height: 1.2,
                             color: T.muted,
                           ),
@@ -324,7 +324,7 @@ class _AgendaRow extends StatelessWidget {
                             size: 10, color: T.muted),
                         Text('$taskCount',
                             style:
-                                const TextStyle(fontSize: 9.5, color: T.muted)),
+                                const TextStyle(fontSize: T.fsMeta, color: T.muted)),
                       ],
                     ),
                   ),

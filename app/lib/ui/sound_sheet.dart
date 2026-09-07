@@ -75,7 +75,7 @@ class _SoundSheetState extends State<SoundSheet> {
           color: Color.lerp(T.bgSolid, ws, 0.14),
           border: Border(top: BorderSide(color: ws.withValues(alpha: 0.35))),
           borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(12),
+            top: Radius.circular(T.radius),
             bottom: Radius.circular(T.radius),
           ),
           boxShadow: const [
@@ -96,14 +96,14 @@ class _SoundSheetState extends State<SoundSheet> {
 
   Widget _head() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 6, 2),
+      padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, 2),
       child: Row(
         children: [
           const Text(
             'Sound',
             style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
+              fontSize: T.fsLabel,
+              fontWeight: T.wMedium,
               color: T.muted,
               letterSpacing: 0.2,
             ),
@@ -111,9 +111,9 @@ class _SoundSheetState extends State<SoundSheet> {
           const Spacer(),
           InkWell(
             onTap: widget.onClose,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(T.radius),
             child: const Padding(
-              padding: EdgeInsets.all(6),
+              padding: EdgeInsets.all(T.s2),
               child: Icon(Icons.close, size: 15, color: T.muted),
             ),
           ),
@@ -130,17 +130,17 @@ class _SoundSheetState extends State<SoundSheet> {
           onTap: () => setState(() => _tab = tier),
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 2),
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: T.s2),
             decoration: BoxDecoration(
               color: active ? Color.lerp(T.surface, ws, 0.30) : T.surface,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(T.radius),
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
+                fontSize: T.fsMeta,
+                fontWeight: T.wMedium,
                 color: active ? T.text : T.muted,
               ),
             ),
@@ -150,7 +150,7 @@ class _SoundSheetState extends State<SoundSheet> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 2, 10, 8),
+      padding: const EdgeInsets.fromLTRB(T.s2, 2, T.s2, T.s2),
       child: Row(
         children: [
           tab(SoundTier.noise, 'Noise'),
@@ -174,7 +174,7 @@ class _SoundSheetState extends State<SoundSheet> {
 
   Widget _noiseList(Color ws) {
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2),
       children: [
         for (final kind in NoiseKind.values)
           _Row(
@@ -190,14 +190,14 @@ class _SoundSheetState extends State<SoundSheet> {
 
   Widget _ambienceList(Color ws) {
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2),
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+          padding: EdgeInsets.fromLTRB(T.s1, 0, T.s1, T.s2),
           child: Text(
             'Public-domain field recordings from the Internet Archive. '
             'Tap again for a different one.',
-            style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.35),
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.35),
           ),
         ),
         for (final preset in AmbiencePreset.all)
@@ -216,7 +216,7 @@ class _SoundSheetState extends State<SoundSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+          padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s2),
           child: Wrap(
             spacing: 4,
             runSpacing: 4,
@@ -225,7 +225,7 @@ class _SoundSheetState extends State<SoundSheet> {
                 GestureDetector(
                   onTap: () => _selectGenre(g),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
                     decoration: BoxDecoration(
                       color: _genre == g
                           ? Color.lerp(T.surface, ws, 0.34)
@@ -235,8 +235,8 @@ class _SoundSheetState extends State<SoundSheet> {
                     child: Text(
                       g.label,
                       style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                        fontSize: T.fsMeta,
+                        fontWeight: T.wMedium,
                         color: _genre == g ? T.text : T.muted,
                       ),
                     ),
@@ -262,24 +262,24 @@ class _SoundSheetState extends State<SoundSheet> {
     }
     if (_genre == null || _stations == null) {
       return const Center(
-        child: Text('Pick a genre.', style: TextStyle(fontSize: 11.5, color: T.muted)),
+        child: Text('Pick a genre.', style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
       );
     }
     if (_stationError != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: T.s4),
           child: Text(
             _stationError!,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 11.5, color: T.muted),
+            style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
           ),
         ),
       );
     }
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2),
       children: [
         for (final station in _stations!)
           _Row(
@@ -295,7 +295,7 @@ class _SoundSheetState extends State<SoundSheet> {
 
   Widget _transport(Color ws) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 10, 10),
+      padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, T.s2),
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: Color(0x14FFFFFF))),
       ),
@@ -306,7 +306,7 @@ class _SoundSheetState extends State<SoundSheet> {
               s.transportLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: T.muted),
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
             ),
           ),
           if (s.isPlaying)
@@ -314,9 +314,9 @@ class _SoundSheetState extends State<SoundSheet> {
               message: 'Stop',
               child: InkWell(
                 onTap: s.stop,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(T.radius),
                 child: const Padding(
-                  padding: EdgeInsets.all(4),
+                  padding: EdgeInsets.all(T.s1),
                   child: Icon(Icons.stop_rounded, size: 16, color: T.text),
                 ),
               ),
@@ -366,10 +366,10 @@ class _Row extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.only(bottom: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
         decoration: BoxDecoration(
           color: active ? accent.withValues(alpha: 0.20) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(T.radius),
           border: Border(
             left: BorderSide(
               color: active ? accent : Colors.transparent,
@@ -383,8 +383,8 @@ class _Row extends StatelessWidget {
             Text(
               title,
               style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
+                fontSize: T.fsLabel,
+                fontWeight: T.wMedium,
                 color: T.text,
               ),
             ),
@@ -393,7 +393,7 @@ class _Row extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 1),
                 child: Text(
                   subtitle!,
-                  style: const TextStyle(fontSize: 10.5, color: T.muted),
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                 ),
               ),
           ],

@@ -113,9 +113,9 @@ class _ParkedPanelState extends State<ParkedPanel>
                   message: 'New group',
                   child: InkWell(
                     onTap: widget.onCreateGroup,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(T.radius),
                     child: const Padding(
-                      padding: EdgeInsets.all(4),
+                      padding: EdgeInsets.all(T.s1),
                       child: Icon(Icons.add, size: 15, color: T.muted),
                     ),
                   ),
@@ -133,18 +133,18 @@ class _ParkedPanelState extends State<ParkedPanel>
 
   Widget _empty() => const Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 26),
+          padding: EdgeInsets.symmetric(horizontal: T.s5),
           child: Text(
             'No groups yet.\nMake one for the things you are not doing now.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: T.muted, fontSize: 12.5, height: 1.5),
+            style: TextStyle(color: T.muted, fontSize: T.fsLabel, height: 1.5),
           ),
         ),
       );
 
   Widget _list() {
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2),
       children: [
         for (final g in widget.groups)
           _Group(
@@ -203,14 +203,14 @@ Future<bool> _confirmActivate(
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: T.bgSolid,
-      title: const Text('Activate this group?', style: TextStyle(fontSize: 15)),
+      title: const Text('Activate this group?', style: TextStyle(fontSize: T.fsMenu)),
       content: Text(
         count == 1
             ? 'The one todo in "${group.title}" will be put onto the active '
                 'todo list.'
             : 'All $count todos in "${group.title}" will be put onto the '
                 'active todo list.',
-        style: const TextStyle(fontSize: 12.5, color: T.muted, height: 1.4),
+        style: const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
       ),
       actions: [
         TextButton(
@@ -269,7 +269,7 @@ class _Group extends StatelessWidget {
     // Container, so the highlight is drawn around the card and not around the
     // card plus six pixels of nothing.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: T.s2),
       child: TaskDropTarget(
         onDrop: onDrop,
         color: accent,
@@ -283,7 +283,7 @@ class _Group extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: T.surface,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(T.radius),
         border: Border.all(
           color: due ? tint.withValues(alpha: 0.55) : Colors.transparent,
         ),
@@ -293,9 +293,9 @@ class _Group extends StatelessWidget {
         children: [
           InkWell(
             onTap: onToggle,
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(T.radius),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
+              padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s2),
               child: Row(
                 children: [
                   Icon(
@@ -311,24 +311,24 @@ class _Group extends StatelessWidget {
                       group.title,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: T.fsLabel,
                         color: due ? tint : T.text,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: T.wMedium,
                       ),
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     '${tasks.length}',
-                    style: const TextStyle(fontSize: 11, color: T.muted),
+                    style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                   ),
                   const Spacer(),
                   Text(
                     _reviewLabel(group),
                     style: TextStyle(
-                      fontSize: 10.5,
+                      fontSize: T.fsMeta,
                       color: due ? tint : T.muted,
-                      fontWeight: due ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: due ? T.wMedium : T.wNormal,
                     ),
                   ),
                   // The same ↗ a single parked row carries, meaning the same
@@ -342,10 +342,10 @@ class _Group extends StatelessWidget {
                           : 'Put all ${tasks.length} back onto the list',
                       child: InkWell(
                         onTap: onActivate,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(T.radius),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 2),
+                              horizontal: T.s1, vertical: 2),
                           child: Icon(
                             Icons.north_east_rounded,
                             size: 15,
@@ -356,9 +356,9 @@ class _Group extends StatelessWidget {
                     ),
                   InkWell(
                     onTap: onEdit,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(T.radius),
                     child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      padding: EdgeInsets.symmetric(horizontal: T.s1, vertical: 2),
                       child: Icon(Icons.more_horiz, size: 15, color: T.muted),
                     ),
                   ),
@@ -376,27 +376,27 @@ class _Group extends StatelessWidget {
               ),
             if (tasks.isEmpty)
               const Padding(
-                padding: EdgeInsets.fromLTRB(24, 0, 10, 8),
+                padding: EdgeInsets.fromLTRB(T.s5, 0, T.s2, T.s2),
                 child: Text(
                   'Empty.',
-                  style: TextStyle(fontSize: 11.5, color: T.muted),
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted),
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 8, 6),
+              padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, T.s2),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   onPressed: onReviewed,
                   style: TextButton.styleFrom(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        const EdgeInsets.symmetric(horizontal: T.s2, vertical: 0),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Text(
                     due ? 'Mark reviewed' : 'Reviewed now',
-                    style: TextStyle(fontSize: 11, color: due ? tint : T.muted),
+                    style: TextStyle(fontSize: T.fsMeta, color: due ? tint : T.muted),
                   ),
                 ),
               ),
@@ -435,22 +435,22 @@ class _ParkedRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 1, 6, 1),
+      padding: const EdgeInsets.fromLTRB(T.s5, 1, T.s2, 1),
       child: Row(
         children: [
           Expanded(
             child: Text(
               task.text,
-              style: const TextStyle(fontSize: 12, color: T.muted, height: 1.35),
+              style: const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.35),
             ),
           ),
           Tooltip(
             message: 'Back onto the list',
             child: InkWell(
               onTap: onUnpark,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(T.radius),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: T.s1, vertical: 3),
                 child: Icon(Icons.north_east_rounded, size: 14, color: accent),
               ),
             ),
@@ -459,9 +459,9 @@ class _ParkedRow extends StatelessWidget {
             message: 'Check it off from here',
             child: InkWell(
               onTap: onComplete,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(T.radius),
               child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                padding: EdgeInsets.symmetric(horizontal: T.s1, vertical: 3),
                 child: Icon(Icons.check_rounded, size: 14, color: T.muted),
               ),
             ),
@@ -534,7 +534,7 @@ class _GroupDialogState extends State<_GroupDialog> {
       backgroundColor: T.bgSolid,
       title: Text(
         widget.existing == null ? 'New group' : 'Edit group',
-        style: const TextStyle(fontSize: 15),
+        style: const TextStyle(fontSize: T.fsMenu),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -544,7 +544,7 @@ class _GroupDialogState extends State<_GroupDialog> {
             controller: _title,
             autofocus: true,
             maxLength: 28,
-            style: const TextStyle(fontSize: 13),
+            style: const TextStyle(fontSize: T.fsBody),
             decoration: const InputDecoration(
               hintText: 'Backlog, Future ideas…',
               counterText: '',
@@ -554,7 +554,7 @@ class _GroupDialogState extends State<_GroupDialog> {
           const SizedBox(height: 14),
           const Text(
             'Review this group',
-            style: TextStyle(fontSize: 11.5, color: T.muted),
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -563,7 +563,7 @@ class _GroupDialogState extends State<_GroupDialog> {
             children: [
               for (final e in _options.entries)
                 ChoiceChip(
-                  label: Text(e.value, style: const TextStyle(fontSize: 11.5)),
+                  label: Text(e.value, style: const TextStyle(fontSize: T.fsMeta)),
                   selected: _days == e.key,
                   onSelected: (_) => setState(() => _days = e.key),
                 ),
@@ -608,13 +608,13 @@ Future<String?> showParkPicker(
         PopupMenuItem(
           value: g.uuid,
           height: 34,
-          child: Text(g.title, style: const TextStyle(fontSize: 12.5)),
+          child: Text(g.title, style: const TextStyle(fontSize: T.fsLabel)),
         ),
       if (groups.isNotEmpty) const PopupMenuDivider(),
       const PopupMenuItem(
         value: newGroup,
         height: 34,
-        child: Text('New group…', style: TextStyle(fontSize: 12.5)),
+        child: Text('New group…', style: TextStyle(fontSize: T.fsLabel)),
       ),
     ],
   );

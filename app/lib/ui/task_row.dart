@@ -222,14 +222,14 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           label: armed == null
               ? 'Remind me'
               : 'Reminder ${describeReminder(armed)}',
-          color: due ? T.danger : (armed != null ? widget.accent : T.muted),
+          color: due ? T.warn : (armed != null ? widget.accent : T.muted),
         ),
       if (widget.onSetPriority != null)
         TaskActionItem(
           action: TaskAction.priority,
           icon: high ? Icons.flag_rounded : Icons.outlined_flag_rounded,
           label: high ? 'Clear high priority' : 'Flag as high priority',
-          color: high ? T.danger : T.muted,
+          color: high ? T.flagged : T.muted,
         ),
       if (widget.onOpenAttachments != null)
         TaskActionItem(
@@ -360,31 +360,32 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
               touch ? null : (d) => _openActions(at: d.globalPosition),
           child: Container(
             key: _rowKey,
-            margin: const EdgeInsets.symmetric(vertical: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+            // Half a step, so the gap between two rows is one whole one.
+            margin: const EdgeInsets.symmetric(vertical: T.s1 / 2),
+            padding: const EdgeInsets.all(T.s2),
             decoration: BoxDecoration(
               // A due reminder outranks focus for the row's colour: focus is a
               // state you chose and can see, an overdue reminder is the thing
               // asking for attention.
               color: due
-                  ? T.danger.withValues(alpha: 0.14)
+                  ? T.warn.withValues(alpha: 0.14)
                   : widget.task.inProgress
                       ? widget.accent.withValues(alpha: 0.16)
                       : high
-                          ? T.danger.withValues(alpha: 0.09)
+                          ? T.flagged.withValues(alpha: 0.09)
                           : (_hovered ? T.surfaceHover : T.surface),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(T.radius),
               // Three states want this border and only one can have it. Due
               // outranks focus for the reason above; priority comes last
               // because it is the one of the three that also has a mark of its
               // own - the bar below - so it is still legible when it loses the
               // border.
               border: due
-                  ? Border.all(color: T.danger.withValues(alpha: 0.55))
+                  ? Border.all(color: T.warn.withValues(alpha: 0.55))
                   : widget.task.inProgress
                       ? Border.all(color: widget.accent.withValues(alpha: 0.5))
                       : high
-                          ? Border.all(color: T.danger.withValues(alpha: 0.45))
+                          ? Border.all(color: T.flagged.withValues(alpha: 0.45))
                           : null,
             ),
             child: Column(
@@ -403,17 +404,17 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                         width: 3,
                         height: 17,
                         decoration: BoxDecoration(
-                          color: T.danger,
+                          color: T.flagged,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: T.s1),
                     ],
                     _Checkbox(
                       accent: widget.accent,
                       onChanged: () => _leave(widget.onComplete),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: T.s2),
                     Expanded(
                       child: _TaskText(
                         task: widget.task,
@@ -444,9 +445,9 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                   Padding(
                     padding: EdgeInsets.only(
                       left: _textInset(high),
-                      right: 4,
-                      top: 6,
-                      bottom: 2,
+                      right: T.s1,
+                      top: T.s2,
+                      bottom: T.s1 / 2,
                     ),
                     child: TaskDetail(
                       task: widget.task,
@@ -465,8 +466,8 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
   /// Where the title starts, so the expanded detail lines up under it rather
   /// than under the tick box.
   double _textInset(bool high) {
-    var inset = 18.0 + 8; // the checkbox and its gap
-    if (high) inset += 10; // the priority bar and its gap
+    var inset = 18.0 + T.s2; // the checkbox and its gap
+    if (high) inset += 3 + T.s1; // the priority bar and its gap
     return inset;
   }
 }
@@ -505,7 +506,7 @@ class _StateMarks extends StatelessWidget {
               ? Icons.notification_important_rounded
               : Icons.notifications_active_rounded,
           size: size,
-          color: due ? T.danger : accent,
+          color: due ? T.warn : accent,
         ),
       if (attached)
         Icon(Icons.attach_file_rounded, size: size, color: accent),
@@ -515,12 +516,12 @@ class _StateMarks extends StatelessWidget {
     if (marks.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsets.only(left: T.s1),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final m in marks)
-            Padding(padding: const EdgeInsets.only(left: 2), child: m),
+            Padding(padding: const EdgeInsets.only(left: T.s1 / 2), child: m),
         ],
       ),
     );
@@ -555,11 +556,11 @@ class _TaskText extends StatelessWidget {
       children: [
         Text(
           task.text,
-          style: const TextStyle(fontSize: 13, color: T.text, height: 1.3),
+          style: const TextStyle(fontSize: T.fsBody, color: T.text, height: 1.4),
         ),
         if (task.hasNotes && showPreview)
           Padding(
-            padding: const EdgeInsets.only(top: 1),
+            padding: const EdgeInsets.only(top: T.s1 / 2),
             child: Text(
               // One line of it, whitespace flattened - a note written as a
               // paragraph would otherwise preview as its first six words and a
@@ -569,7 +570,8 @@ class _TaskText extends StatelessWidget {
               markdownPlainText(task.notes),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: T.muted, height: 1.25),
+              style:
+                  const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.35),
             ),
           ),
       ],
@@ -578,7 +580,7 @@ class _TaskText extends StatelessWidget {
     if (onTap == null) return body;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(T.radius),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: body,

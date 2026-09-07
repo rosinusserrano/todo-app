@@ -154,7 +154,7 @@ class _ServerUsersViewState extends State<ServerUsersView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: Text(title, style: const TextStyle(fontSize: 14)),
+        title: Text(title, style: const TextStyle(fontSize: T.fsBody)),
         content: SizedBox(
           width: 300,
           child: Column(
@@ -162,13 +162,13 @@ class _ServerUsersViewState extends State<ServerUsersView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(help,
-                  style: const TextStyle(fontSize: 11.5, color: T.muted, height: 1.4)),
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4)),
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
                 autofocus: true,
                 maxLength: 60,
-                style: const TextStyle(fontSize: 13),
+                style: const TextStyle(fontSize: T.fsBody),
                 decoration: InputDecoration(
                   hintText: hint,
                   isDense: true,
@@ -200,26 +200,26 @@ class _ServerUsersViewState extends State<ServerUsersView> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: const Text('Token', style: TextStyle(fontSize: 14)),
+        title: const Text('Token', style: TextStyle(fontSize: T.fsBody)),
         content: SizedBox(
           width: 300,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(subtitle, style: const TextStyle(fontSize: 11.5, color: T.muted)),
+              Text(subtitle, style: const TextStyle(fontSize: T.fsMeta, color: T.muted)),
               const SizedBox(height: 10),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(T.s2),
                 decoration: BoxDecoration(
                   color: T.surface,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(T.radius),
                 ),
                 child: SelectableText(
                   issued.token,
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: T.fsLabel,
                     height: 1.35,
                     fontFamily: 'Consolas',
                     fontFamilyFallback: ['Menlo', 'monospace'],
@@ -230,12 +230,12 @@ class _ServerUsersViewState extends State<ServerUsersView> {
               const Text(
                 'The server keeps only a hash of this, so it cannot be shown '
                 'again. If it is lost, issue another and revoke this one.',
-                style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.4),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
               ),
               const SizedBox(height: 8),
               const Text(
                 'They enter it in Settings, with the same server address.',
-                style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.4),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
               ),
             ],
           ),
@@ -266,11 +266,11 @@ class _ServerUsersViewState extends State<ServerUsersView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: Text(title, style: const TextStyle(fontSize: 14)),
+        title: Text(title, style: const TextStyle(fontSize: T.fsBody)),
         content: SizedBox(
           width: 300,
           child: Text(body,
-              style: const TextStyle(fontSize: 11.5, color: T.muted, height: 1.4)),
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4)),
         ),
         actions: [
           TextButton(
@@ -298,16 +298,16 @@ class _ServerUsersViewState extends State<ServerUsersView> {
         if (_busy || _users == null) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+            padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, T.s2),
             children: [
               const Text(
                 'Each account has its own tasks, notes, journal and calendar. '
                 'Nothing is shared between them.',
-                style: TextStyle(fontSize: 11.5, color: T.muted, height: 1.4),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
-                Text(_error!, style: const TextStyle(fontSize: 11.5, color: T.danger)),
+                Text(_error!, style: const TextStyle(fontSize: T.fsMeta, color: T.danger)),
               ],
               const SizedBox(height: 12),
               for (final user in _users ?? const <ServerUser>[]) _userTile(user, me),
@@ -315,7 +315,7 @@ class _ServerUsersViewState extends State<ServerUsersView> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          padding: const EdgeInsets.fromLTRB(T.s2, 0, T.s2, T.s2),
           child: Row(
             children: [
               TextButton(onPressed: widget.onBack, child: const Text('Back')),
@@ -335,7 +335,7 @@ class _ServerUsersViewState extends State<ServerUsersView> {
     final isMe = user.id == me;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: T.s3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -346,17 +346,17 @@ class _ServerUsersViewState extends State<ServerUsersView> {
                   TextSpan(children: [
                     TextSpan(
                       text: user.label,
-                      style: const TextStyle(fontSize: 13, color: T.text),
+                      style: const TextStyle(fontSize: T.fsBody, color: T.text),
                     ),
                     if (isMe)
                       const TextSpan(
                         text: '  you',
-                        style: TextStyle(fontSize: 10.5, color: T.accent),
+                        style: TextStyle(fontSize: T.fsMeta, color: T.accent),
                       ),
                     if (user.admin)
                       const TextSpan(
                         text: '  admin',
-                        style: TextStyle(fontSize: 10.5, color: T.muted),
+                        style: TextStyle(fontSize: T.fsMeta, color: T.muted),
                       ),
                   ]),
                   overflow: TextOverflow.ellipsis,
@@ -376,7 +376,7 @@ class _ServerUsersViewState extends State<ServerUsersView> {
                   const PopupMenuItem(
                     value: 'token',
                     height: 36,
-                    child: Text('Add a device', style: TextStyle(fontSize: 12.5)),
+                    child: Text('Add a device', style: TextStyle(fontSize: T.fsLabel)),
                   ),
                   // The server refuses both of these anyway; greying them out
                   // is so the refusal is not the first time anyone hears of it.
@@ -391,7 +391,7 @@ class _ServerUsersViewState extends State<ServerUsersView> {
                               ? 'Delete (drop admin first)'
                               : 'Delete account…',
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: T.fsLabel,
                         color: (isMe || user.admin) ? T.muted : T.danger,
                       ),
                     ),
@@ -402,14 +402,14 @@ class _ServerUsersViewState extends State<ServerUsersView> {
           ),
           for (final token in user.tokens)
             Padding(
-              padding: const EdgeInsets.only(left: 4, top: 2),
+              padding: const EdgeInsets.only(left: T.s1, top: 2),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       '${token.label} · ${token.describe()}',
                       style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: T.fsMeta,
                         height: 1.3,
                         color: token.revoked ? T.muted.withValues(alpha: 0.5) : T.muted,
                         decoration: token.revoked ? TextDecoration.lineThrough : null,
@@ -432,10 +432,10 @@ class _ServerUsersViewState extends State<ServerUsersView> {
             ),
           if (user.activeTokens == 0)
             const Padding(
-              padding: EdgeInsets.only(left: 4, top: 2),
+              padding: EdgeInsets.only(left: T.s1, top: 2),
               child: Text(
                 'No working token — add a device to let them back in.',
-                style: TextStyle(fontSize: 10.5, color: T.danger, height: 1.3),
+                style: TextStyle(fontSize: T.fsMeta, color: T.danger, height: 1.3),
               ),
             ),
         ],

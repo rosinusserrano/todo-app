@@ -132,7 +132,7 @@ class _MonthTile extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: T.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(T.radius),
       ),
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       child: Column(
@@ -141,8 +141,8 @@ class _MonthTile extends StatelessWidget {
           Text(
             kMonthNames[month - 1],
             style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontSize: T.fsMeta,
+              fontWeight: T.wMedium,
               color: T.text,
             ),
           ),
@@ -194,9 +194,9 @@ class _DayCell extends StatelessWidget {
             child: Text(
               '${day.day}',
               style: TextStyle(
-                fontSize: 9,
+                fontSize: T.fsGrid,
                 color: isToday ? T.bgSolid : T.text,
-                fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                fontWeight: isToday ? T.wMedium : FontWeight.w400,
               ),
             ),
           ),

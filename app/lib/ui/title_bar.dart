@@ -95,12 +95,12 @@ class TitleBar extends StatelessWidget {
       height: height,
       child: Row(
         children: [
-          const SizedBox(width: 14),
+          const SizedBox(width: T.s3),
           const Text(
             'Todo',
             style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
+              fontSize: T.fsBody,
+              fontWeight: T.wMedium,
               letterSpacing: 0.2,
             ),
           ),
@@ -309,10 +309,11 @@ class _VolumePanelState extends State<_VolumePanel> {
       child: Material(
         color: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+          padding: const EdgeInsets.symmetric(
+              horizontal: T.s2, vertical: T.s1),
           decoration: BoxDecoration(
             color: T.bgSolid,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(T.radius),
             border: Border.all(color: const Color(0x1FFFFFFF)),
             boxShadow: const [
               BoxShadow(
@@ -394,7 +395,7 @@ class _Btn extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(T.radius),
         child: SizedBox(
           width: side,
           height: side,

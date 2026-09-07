@@ -1110,7 +1110,7 @@ class EventBlock extends StatelessWidget {
                         style: TextStyle(
                           fontSize: compact ? 9.5 : 10.5,
                           height: 1.15,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: T.wMedium,
                           color: T.text,
                         ),
                       ),
@@ -1120,7 +1120,7 @@ class EventBlock extends StatelessWidget {
                           size: 9, color: T.muted),
                       Text(
                         '$taskCount',
-                        style: const TextStyle(fontSize: 9, color: T.muted),
+                        style: const TextStyle(fontSize: T.fsGrid, color: T.muted),
                       ),
                     ],
                     if (!compact && hasAttachment)
@@ -1137,7 +1137,7 @@ class EventBlock extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 9.5,
+                        fontSize: T.fsGrid,
                         height: 1.15,
                         color: T.muted,
                       ),
@@ -1327,7 +1327,7 @@ class _PendingBlockState extends State<_PendingBlock> {
         decoration: BoxDecoration(
           color: tint.withValues(alpha: 0.16),
           border: Border.all(color: tint.withValues(alpha: 0.85), width: 1.5),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(T.radius),
         ),
         child: Stack(
           children: [
@@ -1343,8 +1343,8 @@ class _PendingBlockState extends State<_PendingBlock> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
+                        fontSize: T.fsGrid,
+                        fontWeight: T.wMedium,
                         color: tint,
                       ),
                     ),
@@ -1353,7 +1353,7 @@ class _PendingBlockState extends State<_PendingBlock> {
                         ? '${hhmm(widget.from)}\n${hhmm(widget.to)}'
                         : '${hhmm(widget.from)} – ${hhmm(widget.to)}',
                     style: TextStyle(
-                      fontSize: 9.5,
+                      fontSize: T.fsGrid,
                       height: 1.15,
                       color: tint.withValues(alpha: 0.9),
                     ),
@@ -1471,7 +1471,7 @@ class _DraftBlock extends StatelessWidget {
                 style: TextStyle(
                   fontSize: compact ? 9 : 10,
                   height: 1.15,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: T.wMedium,
                   color: T.text,
                 ),
               ),
@@ -1612,7 +1612,7 @@ class _DayHeaderRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: compact ? 9.5 : 10.5,
                       color: isToday ? T.accent : T.muted,
-                      fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: isToday ? T.wMedium : FontWeight.w500,
                     ),
                   ),
                 );
@@ -1746,7 +1746,7 @@ class _SpanBar extends StatelessWidget {
               if (showStart && !event.allDay)
                 Text(
                   hhmm(event.start),
-                  style: const TextStyle(fontSize: 9, color: T.muted),
+                  style: const TextStyle(fontSize: T.fsGrid, color: T.muted),
                 ),
               if (showStart && !event.allDay) const SizedBox(width: 5),
               Expanded(
@@ -1755,8 +1755,8 @@ class _SpanBar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                    fontSize: T.fsGrid,
+                    fontWeight: T.wMedium,
                     color: T.text,
                   ),
                 ),
@@ -1765,7 +1765,7 @@ class _SpanBar extends StatelessWidget {
               if (showEnd && !event.allDay)
                 Text(
                   hhmm(event.end),
-                  style: const TextStyle(fontSize: 9, color: T.muted),
+                  style: const TextStyle(fontSize: T.fsGrid, color: T.muted),
                 ),
             ],
           ),

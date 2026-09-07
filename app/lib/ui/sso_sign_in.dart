@@ -120,7 +120,7 @@ class _SignInDialogState extends State<_SignInDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: T.bgSolid,
-      title: const Text('Sign in', style: TextStyle(fontSize: 15)),
+      title: const Text('Sign in', style: TextStyle(fontSize: T.fsMenu)),
       content: SizedBox(width: 300, child: _body()),
       actions: [
         TextButton(
@@ -128,14 +128,14 @@ class _SignInDialogState extends State<_SignInDialog> {
             _cancelled = true;
             Navigator.pop(context);
           },
-          child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+          child: const Text('Cancel', style: TextStyle(fontSize: T.fsLabel)),
         ),
         if (_code != null && _error == null) ...[
           TextButton(
             onPressed: _copyLink,
             child: Text(
               _copied ? 'Copied' : 'Copy link',
-              style: const TextStyle(fontSize: 12.5),
+              style: const TextStyle(fontSize: T.fsLabel),
             ),
           ),
           // The primary action once the browser is already open is to open it
@@ -145,7 +145,7 @@ class _SignInDialogState extends State<_SignInDialog> {
             onPressed: () => _open(_code!),
             child: Text(
               _opened ? 'Open again' : 'Open browser',
-              style: const TextStyle(fontSize: 12.5),
+              style: const TextStyle(fontSize: T.fsLabel),
             ),
           ),
         ],
@@ -157,7 +157,7 @@ class _SignInDialogState extends State<_SignInDialog> {
     if (_error != null) {
       return Text(
         _error!,
-        style: const TextStyle(fontSize: 12, color: T.danger, height: 1.4),
+        style: const TextStyle(fontSize: T.fsLabel, color: T.danger, height: 1.4),
       );
     }
 
@@ -171,7 +171,7 @@ class _SignInDialogState extends State<_SignInDialog> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           SizedBox(width: 10),
-          Text('Asking the provider…', style: TextStyle(fontSize: 12.5)),
+          Text('Asking the provider…', style: TextStyle(fontSize: T.fsLabel)),
         ],
       );
     }
@@ -186,20 +186,20 @@ class _SignInDialogState extends State<_SignInDialog> {
                     '— check that the code below matches.'
               : 'Your browser did not open. Go to this address on any device '
                     'and enter the code:',
-          style: const TextStyle(fontSize: 12, color: T.muted, height: 1.4),
+          style: const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
         ),
         const SizedBox(height: 12),
         SelectableText(
           code.verificationUri,
-          style: const TextStyle(fontSize: 12.5, color: T.accent),
+          style: const TextStyle(fontSize: T.fsLabel, color: T.accent),
         ),
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: T.s3),
           decoration: BoxDecoration(
             color: T.surface,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(T.radius),
           ),
           child: Center(
             // Selectable, because the browser may be on this machine and
@@ -208,7 +208,7 @@ class _SignInDialogState extends State<_SignInDialog> {
               code.userCode,
               style: const TextStyle(
                 fontSize: 22,
-                fontWeight: FontWeight.w700,
+                fontWeight: T.wMedium,
                 letterSpacing: 3,
                 color: T.text,
               ),
@@ -226,7 +226,7 @@ class _SignInDialogState extends State<_SignInDialog> {
             SizedBox(width: 8),
             Text(
               'Waiting for approval…',
-              style: TextStyle(fontSize: 11.5, color: T.muted),
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted),
             ),
           ],
         ),

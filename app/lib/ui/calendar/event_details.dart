@@ -229,7 +229,7 @@ class _DetailsDialogState extends State<_DetailsDialog> {
                 MarkdownText(
                   e.description,
                   style: const TextStyle(
-                      fontSize: 12.5, color: T.text, height: 1.35),
+                      fontSize: T.fsLabel, color: T.text, height: 1.35),
                 ),
               ],
               const SizedBox(height: 12),
@@ -288,7 +288,7 @@ class _Line extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 12, color: T.text, height: 1.3),
+              style: const TextStyle(fontSize: T.fsLabel, color: T.text, height: 1.3),
             ),
           ),
         ],
@@ -317,13 +317,13 @@ class _Section extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11.5, color: T.muted)),
+        Text(label, style: const TextStyle(fontSize: T.fsMeta, color: T.muted)),
         const SizedBox(height: 4),
         if (loading)
-          const Text('…', style: TextStyle(fontSize: 11.5, color: T.muted))
+          const Text('…', style: TextStyle(fontSize: T.fsMeta, color: T.muted))
         else if (empty)
           Text(emptyText,
-              style: const TextStyle(fontSize: 11.5, color: T.muted))
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted))
         else
           ...children,
       ],
@@ -350,7 +350,7 @@ class _Bullet extends StatelessWidget {
               text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: T.text),
+              style: const TextStyle(fontSize: T.fsLabel, color: T.text),
             ),
           ),
         ],

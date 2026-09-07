@@ -158,7 +158,7 @@ class FormSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 10, 8),
+              padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s2, T.s2),
               child: Row(
                 children: [
                   Expanded(
@@ -167,8 +167,8 @@ class FormSheet extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                        fontSize: T.fsMenu,
+                        fontWeight: T.wMedium,
                         color: T.text,
                       ),
                     ),
@@ -181,7 +181,7 @@ class FormSheet extends StatelessWidget {
                     button: true,
                     child: InkWell(
                       onTap: onClose,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(T.radius),
                       child: SizedBox(
                         width: touch ? 40 : 28,
                         height: touch ? 40 : 28,
@@ -198,12 +198,12 @@ class FormSheet extends StatelessWidget {
             ),
             Flexible(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, 0),
                 child: child,
               ),
             ),
             Padding(
-              padding: EdgeInsets.fromLTRB(16, 14, 16, touch ? 18 : 14),
+              padding: EdgeInsets.fromLTRB(T.s4, T.s3, T.s4, touch ? T.s4 : T.s3),
               // Wrapped rather than a Row: four named actions at
               // finger-size do not fit across a phone, and shrinking them
               // below a fingertip to keep one line is the trade this app
@@ -264,7 +264,7 @@ class FormSheet extends StatelessWidget {
       foregroundColor: T.muted,
       minimumSize: Size(0, touch ? 44 : 32),
     ),
-    child: Text(label, style: const TextStyle(fontSize: 12.5)),
+    child: Text(label, style: const TextStyle(fontSize: T.fsLabel)),
   );
 
   /// The one that commits, in the panel's own colour.
@@ -282,7 +282,7 @@ class FormSheet extends StatelessWidget {
     ),
     child: Text(
       label,
-      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+      style: const TextStyle(fontSize: T.fsLabel, fontWeight: T.wMedium),
     ),
   );
 
@@ -297,7 +297,7 @@ class FormSheet extends StatelessWidget {
       foregroundColor: T.danger,
       minimumSize: Size(0, touch ? 44 : 32),
     ),
-    child: Text(label, style: const TextStyle(fontSize: 12.5)),
+    child: Text(label, style: const TextStyle(fontSize: T.fsLabel)),
   );
 
   /// A named action that is neither the commit nor a way out - *Edit* and
@@ -310,7 +310,7 @@ class FormSheet extends StatelessWidget {
   }) => TextButton.icon(
     onPressed: onTap,
     icon: icon == null ? null : Icon(icon, size: touch ? 17 : 14),
-    label: Text(label, style: const TextStyle(fontSize: 12.5)),
+    label: Text(label, style: const TextStyle(fontSize: T.fsLabel)),
     style: TextButton.styleFrom(
       foregroundColor: T.text,
       minimumSize: Size(0, touch ? 44 : 32),

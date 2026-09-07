@@ -124,7 +124,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
+                  padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, T.s1),
                   child: Row(
                     children: [
                       Text(widget.glyph, style: const TextStyle(fontSize: 17)),
@@ -135,21 +135,21 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                            fontSize: T.fsMenu,
+                            fontWeight: T.wMedium,
                             color: T.text,
                           ),
                         ),
                       ),
                       if (_added > 0)
                         Padding(
-                          padding: const EdgeInsets.only(right: 6),
+                          padding: const EdgeInsets.only(right: T.s2),
                           child: Text(
                             _added == 1 ? '1 saved' : '$_added saved',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: T.fsMeta,
                               color: widget.accent,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: T.wMedium,
                             ),
                           ),
                         ),
@@ -158,7 +158,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                         button: true,
                         child: InkWell(
                           onTap: widget.onClose,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(T.radius),
                           child: const SizedBox(
                             width: 40,
                             height: 40,
@@ -175,7 +175,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                    padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s1),
                     child: TextField(
                       controller: _controller,
                       focusNode: _focus,
@@ -183,7 +183,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                       maxLines: null,
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
-                      style: const TextStyle(fontSize: 15, height: 1.35),
+                      style: const TextStyle(fontSize: T.fsMenu, height: 1.35),
                       decoration: InputDecoration(
                         hintText: widget.hint,
                         border: InputBorder.none,
@@ -197,7 +197,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                  padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s3),
                   child: Row(
                     children: [
                       // Chaining, for the case this exists for: somebody lists
@@ -211,7 +211,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                         ),
                         child: const Text(
                           'Save & another',
-                          style: TextStyle(fontSize: 12.5),
+                          style: TextStyle(fontSize: T.fsLabel),
                         ),
                       ),
                       const Spacer(),
@@ -225,8 +225,8 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                         child: const Text(
                           'Save',
                           style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
+                            fontSize: T.fsLabel,
+                            fontWeight: T.wMedium,
                           ),
                         ),
                       ),

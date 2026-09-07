@@ -144,6 +144,54 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### 0.27.0 — one scale, and the colour turned down
+
+Marco, 2026-09-07: the widget read as "too standard productivity app" and the
+colour was too loud, but workspaces still have to be told apart by colour. Five
+directions were drawn at true size and compared side by side - a Swiss hairline
+ledger, a mono technical readout, a warm paper-and-serif, a Braun-style
+instrument panel, and **Quiet**, which is this one: today's structure with a
+real system put back under it. Quiet was the pick.
+
+Worth writing down, because it is the thing the next design change has to
+answer: Quiet fixes *loud*, not *standard*. Nothing about the shape of the app
+changed. If the widget still reads as generic after living with it, the
+cheapest step from here is the ledger's row treatment - drop the card fill,
+separate rows with one full-bleed hairline - because every other token here
+already lines up with it.
+
+- [x] **One radius.** `T.radius` is 8 and is the only one; 14, 9, 8, 7, 6 and
+      20 had no rule saying which belonged where. A thing that wants a
+      different shape asks for a *shape* (`BoxShape.circle` on the tick box),
+      not a fourth number.
+- [x] **One spacing scale** (`T.s1`-`T.s5`, 4/8/12/16/24). Paddings were picked
+      per widget - 6/7 on a row, 9/5/7/5 on a workspace pill, 8/4 in the title
+      bar - and a 1px difference repeated down a column is exactly what makes a
+      layout feel approximate. The window column is inset one step and a row's
+      inside is one step, so a task's text sits two steps from the window edge
+      and the add field's fill lands exactly over the rows' fills. They were 12
+      and 10 before: misaligned by a pixel nobody could name.
+- [x] **Four type sizes, two weights** (`T.fsBody` 13 / `T.fsLabel` 12 /
+      `T.fsMeta` 11 / `T.fsMenu` 15; `w400` and `w500`). There were six sizes
+      between 10.5 and 15 - 13 and 13.5 sat in the same window and only one of
+      them can have been deliberate. Weight 600 is gone from the chrome.
+      Two escapes, both stated rather than assumed: `T.wStrong` for *content*
+      emphasis, because Markdown's `**bold**` has to look bold; and
+      `T.fsGrid` (9.5) for text laid into the calendar, where the box is sized
+      by duration and column count rather than by its contents.
+- [x] **Colour stopped doing five jobs.** `danger` was destructive *and*
+      overdue *and* flagged, which is most of why nothing read as a signal. It
+      is now three tokens: `danger` for what cannot be undone, `warn` (warm
+      amber) for attention that costs nothing - an overdue reminder, a sync
+      that will retry - and `flagged` for the priority bar. `ok` exists too,
+      because the settings sheet was carrying a raw `0xFF7EE3A1` that stayed
+      the *old* mint through two palette changes.
+- [x] **The workspace palette, at about 60% chroma**, same hues in the same
+      order - a workspace is stored as an index, so nobody has to re-learn
+      which one is theirs - and the window tint down from 16% to 6%. At 16 the
+      tint was the loudest thing in the window and was repeating the coloured
+      pill an inch above it.
+
 ### 0.26.0 — the task row gives its width back
 
 Marco, 2026-09-03: the action bar should not be visible in the normal state, on

@@ -57,7 +57,7 @@ class TaskDetail extends StatelessWidget {
         const _Chip(
           icon: Icons.flag_rounded,
           label: 'High priority',
-          color: T.danger,
+          color: T.flagged,
         ),
       if (armed != null)
         _Chip(
@@ -65,7 +65,7 @@ class TaskDetail extends StatelessWidget {
               ? Icons.notification_important_rounded
               : Icons.notifications_active_rounded,
           label: 'Reminder ${describeReminder(armed)}',
-          color: due ? T.danger : accent,
+          color: due ? T.warn : accent,
         ),
       if (task.recur != null)
         _Chip(
@@ -106,10 +106,10 @@ class TaskDetail extends StatelessWidget {
           Text(
             task.text,
             style: const TextStyle(
-              fontSize: 16,
+              fontSize: T.fsMenu,
               height: 1.3,
               color: T.text,
-              fontWeight: FontWeight.w600,
+              fontWeight: T.wMedium,
             ),
           ),
           const SizedBox(height: 8),
@@ -122,12 +122,12 @@ class TaskDetail extends StatelessWidget {
           // for reading rather than for a one-line preview.
           MarkdownText(
             task.notes,
-            style: const TextStyle(fontSize: 13, color: T.text, height: 1.45),
+            style: const TextStyle(fontSize: T.fsBody, color: T.text, height: 1.45),
           )
         else
           const Text(
             'No notes on this one.',
-            style: TextStyle(fontSize: 12, color: T.muted, height: 1.35),
+            style: TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.35),
           ),
       ],
     );
@@ -174,7 +174,7 @@ class TaskDetailScreen extends StatelessWidget {
         ),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+            padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s4),
             child: TaskDetail(
               task: task,
               accent: accent,
@@ -198,17 +198,17 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: 3),
       decoration: BoxDecoration(
         color: T.surface,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(T.radius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: color)),
+          Text(label, style: TextStyle(fontSize: T.fsMeta, color: color)),
         ],
       ),
     );

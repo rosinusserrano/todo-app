@@ -344,7 +344,7 @@ class _BlockStrip extends StatelessWidget {
             message: 'Leave time-block mode',
             child: InkWell(
               onTap: onOff,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(T.radius),
               child: const Padding(
                 padding: EdgeInsets.all(4),
                 child: Icon(Icons.close, size: 13, color: T.muted),
@@ -376,13 +376,13 @@ class _BlockChip extends StatelessWidget {
       padding: const EdgeInsets.only(right: 4),
       child: Material(
         color: selected ? Color.lerp(T.bgSolid, color, 0.4) : T.surface,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(T.radius),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(T.radius),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(T.radius),
               border: Border.all(
                 color: selected ? color : Colors.transparent,
                 width: 1,
@@ -406,8 +406,8 @@ class _BlockChip extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: T.fsMeta,
+                    fontWeight: selected ? T.wMedium : FontWeight.w500,
                     color: selected ? T.text : T.muted,
                   ),
                 ),
@@ -506,8 +506,8 @@ class _Header extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: T.fsLabel,
+                fontWeight: T.wMedium,
                 color: T.text,
               ),
             ),
@@ -526,7 +526,7 @@ class _Header extends StatelessWidget {
             message: 'Back to tasks (Esc)',
             child: InkWell(
               onTap: onClose,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(T.radius),
               child: const Padding(
                 padding: EdgeInsets.all(5),
                 child: Icon(Icons.arrow_back_rounded, size: 14, color: T.muted),
@@ -551,8 +551,8 @@ class _Header extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
+                fontSize: T.fsLabel,
+                fontWeight: T.wMedium,
                 color: T.text,
               ),
             ),
@@ -572,7 +572,7 @@ class _Header extends StatelessWidget {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('Today', style: TextStyle(fontSize: 11.5)),
+              child: const Text('Today', style: TextStyle(fontSize: T.fsMeta)),
             ),
           const Spacer(),
           _IconBtn(
@@ -642,7 +642,7 @@ class _Header extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             minimumSize: Size(0, layout.tapTarget),
           ),
-          child: const Text('Today', style: TextStyle(fontSize: 12.5)),
+          child: const Text('Today', style: TextStyle(fontSize: T.fsLabel)),
         ),
       ];
 
@@ -707,7 +707,7 @@ class _IconBtn extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(T.radius),
         child: size == null
             ? Padding(
                 padding: const EdgeInsets.all(4),
@@ -747,7 +747,7 @@ class _ModeSwitch extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: T.surface,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(T.radius),
       ),
       padding: const EdgeInsets.all(2),
       child: Row(
@@ -777,7 +777,7 @@ class _ModeSwitch extends StatelessWidget {
                     m.name[0].toUpperCase(),
                     style: TextStyle(
                       fontSize: height == null ? 11 : 13,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: T.wMedium,
                       color: selected ? T.bgSolid : T.muted,
                     ),
                   ),
@@ -857,7 +857,7 @@ class _FilterMenu extends StatelessWidget {
                   s == CalendarScope.workspace
                       ? 'This workspace'
                       : 'All workspaces',
-                  style: const TextStyle(fontSize: 12),
+                  style: const TextStyle(fontSize: T.fsLabel),
                 ),
               ],
             ),
@@ -882,7 +882,7 @@ class _FilterMenu extends StatelessWidget {
                     nameFor(c),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: T.fsLabel),
                   ),
                 ),
                 // Only standalone calendars are editable here - a workspace
@@ -909,7 +909,7 @@ class _FilterMenu extends StatelessWidget {
             children: [
               Icon(Icons.add, size: 14, color: T.muted),
               SizedBox(width: 8),
-              Text('New calendar', style: TextStyle(fontSize: 12)),
+              Text('New calendar', style: TextStyle(fontSize: T.fsLabel)),
             ],
           ),
         ),
@@ -920,7 +920,7 @@ class _FilterMenu extends StatelessWidget {
             children: [
               Icon(Icons.file_download_outlined, size: 14, color: T.muted),
               SizedBox(width: 8),
-              Text('Import .ics…', style: TextStyle(fontSize: 12)),
+              Text('Import .ics…', style: TextStyle(fontSize: T.fsLabel)),
             ],
           ),
         ),

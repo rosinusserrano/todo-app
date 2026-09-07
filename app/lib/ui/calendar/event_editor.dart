@@ -380,7 +380,7 @@ class _EventDialogState extends State<_EventDialog> {
               TextField(
                 controller: _title,
                 autofocus: true,
-                style: const TextStyle(fontSize: 13),
+                style: const TextStyle(fontSize: T.fsBody),
                 decoration: const InputDecoration(hintText: 'Title'),
                 onSubmitted: (_) => _save(),
               ),
@@ -389,7 +389,7 @@ class _EventDialogState extends State<_EventDialog> {
                 controller: _description,
                 minLines: 2,
                 maxLines: 4,
-                style: const TextStyle(fontSize: 12.5),
+                style: const TextStyle(fontSize: T.fsLabel),
                 decoration: const InputDecoration(
                   hintText: 'Description (optional)',
                 ),
@@ -400,7 +400,7 @@ class _EventDialogState extends State<_EventDialog> {
                   const SizedBox(
                     width: 46,
                     child: Text('All day',
-                        style: TextStyle(fontSize: 11.5, color: T.muted)),
+                        style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
                   ),
                   Switch(
                     value: _allDay,
@@ -430,7 +430,7 @@ class _EventDialogState extends State<_EventDialog> {
               ),
               const SizedBox(height: 14),
               const Text('Calendar',
-                  style: TextStyle(fontSize: 11.5, color: T.muted)),
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -440,7 +440,7 @@ class _EventDialogState extends State<_EventDialog> {
                     ChoiceChip(
                       label: Text(
                         widget.nameFor(c),
-                        style: const TextStyle(fontSize: 11.5),
+                        style: const TextStyle(fontSize: T.fsMeta),
                       ),
                       avatar: CircleAvatar(
                         backgroundColor: widget.colorFor(c),
@@ -453,7 +453,7 @@ class _EventDialogState extends State<_EventDialog> {
               ),
               const SizedBox(height: 14),
               const Text('Notify',
-                  style: TextStyle(fontSize: 11.5, color: T.muted)),
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -462,7 +462,7 @@ class _EventDialogState extends State<_EventDialog> {
                   for (final e in _notifyOptions.entries)
                     ChoiceChip(
                       label: Text(e.value,
-                          style: const TextStyle(fontSize: 11.5)),
+                          style: const TextStyle(fontSize: T.fsMeta)),
                       selected: _notify == e.key,
                       onSelected: (_) => setState(() => _notify = e.key),
                     ),
@@ -470,7 +470,7 @@ class _EventDialogState extends State<_EventDialog> {
               ),
               const SizedBox(height: 14),
               const Text('Repeats',
-                  style: TextStyle(fontSize: 11.5, color: T.muted)),
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -478,14 +478,14 @@ class _EventDialogState extends State<_EventDialog> {
                 children: [
                   ChoiceChip(
                     label: const Text('Once',
-                        style: TextStyle(fontSize: 11.5)),
+                        style: TextStyle(fontSize: T.fsMeta)),
                     selected: _recur == null,
                     onSelected: (_) => setState(() => _recur = null),
                   ),
                   for (final r in Recur.rules)
                     ChoiceChip(
                       label: Text(Recur.label(r),
-                          style: const TextStyle(fontSize: 11.5)),
+                          style: const TextStyle(fontSize: T.fsMeta)),
                       selected: _recur == r,
                       onSelected: (_) => setState(() => _recur = r),
                     ),
@@ -501,7 +501,7 @@ class _EventDialogState extends State<_EventDialog> {
                 const SizedBox(height: 6),
                 const Text(
                   'Changes apply to the whole series.',
-                  style: TextStyle(fontSize: 11, color: T.muted),
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted),
                 ),
               ],
               if (editing && widget.loadTasks != null) ...[
@@ -585,7 +585,7 @@ class _WhenRow extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: T.fsMeta,
               color: warn ? T.danger : T.muted,
             ),
           ),
@@ -603,7 +603,7 @@ class _WhenRow extends StatelessWidget {
               '${at.day} ${_months[at.month - 1]} ${at.year}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
+              style: const TextStyle(fontSize: T.fsLabel),
             ),
           ),
         ),
@@ -611,7 +611,7 @@ class _WhenRow extends StatelessWidget {
           const SizedBox(width: 6),
           OutlinedButton(
             onPressed: onTime,
-            child: Text(hhmm(at), style: const TextStyle(fontSize: 12)),
+            child: Text(hhmm(at), style: const TextStyle(fontSize: T.fsLabel)),
           ),
         ],
       ],
@@ -649,24 +649,24 @@ class _TodosSection extends StatelessWidget {
         Row(
           children: [
             const Text('Todos in this block',
-                style: TextStyle(fontSize: 11.5, color: T.muted)),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
             const Spacer(),
             if (planned > 0)
               Text('$planned',
-                  style: const TextStyle(fontSize: 11.5, color: T.muted)),
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted)),
           ],
         ),
         if (list == null)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 4),
-            child: Text('…', style: TextStyle(fontSize: 11.5, color: T.muted)),
+            child: Text('…', style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
           )
         else if (list.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 4),
             child: Text(
               'This workspace has nothing open to plan.',
-              style: TextStyle(fontSize: 11.5, color: T.muted),
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted),
             ),
           )
         else
@@ -711,7 +711,7 @@ class _TodoTick extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onPlan == null ? null : () => onPlan!(task, !here),
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(T.radius),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
         child: Row(
@@ -728,7 +728,7 @@ class _TodoTick extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: T.fsLabel,
                   color: here ? T.text : T.muted,
                 ),
               ),
@@ -766,26 +766,26 @@ class _AttachmentsSection extends StatelessWidget {
         Row(
           children: [
             const Text('Attachments',
-                style: TextStyle(fontSize: 11.5, color: T.muted)),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
             const Spacer(),
             if (onAdd != null)
               TextButton.icon(
                 onPressed: onAdd,
                 icon: const Icon(Icons.add, size: 14),
-                label: const Text('Add', style: TextStyle(fontSize: 11.5)),
+                label: const Text('Add', style: TextStyle(fontSize: T.fsMeta)),
               ),
           ],
         ),
         if (list == null)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 4),
-            child: Text('…', style: TextStyle(fontSize: 11.5, color: T.muted)),
+            child: Text('…', style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
           )
         else if (list.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 4),
             child: Text('None',
-                style: TextStyle(fontSize: 11.5, color: T.muted)),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
           )
         else
           for (final a in list)
@@ -800,7 +800,7 @@ class _AttachmentsSection extends StatelessWidget {
                       a.filename,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11.5),
+                      style: const TextStyle(fontSize: T.fsMeta),
                     ),
                   ),
                   if (onRemove != null)

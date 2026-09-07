@@ -194,13 +194,13 @@ class _ActionsBar extends StatelessWidget {
       color: T.bgSolid,
       elevation: 10,
       shadowColor: const Color(0x88000000),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(T.radius),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(T.radius),
           border: Border.all(color: const Color(0x1FFFFFFF)),
         ),
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(T.s1),
         // Wraps rather than shrinking, for the reason the touch bar used to:
         // nine fingertips is wider than a phone, and a tap target below a
         // fingertip is an action the phone does not really have.
@@ -228,7 +228,7 @@ class _ActionButton extends StatelessWidget {
       button: true,
       child: InkWell(
         onTap: () => Navigator.of(context).pop(item.action),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(T.radius),
         child: SizedBox(
           width: layout.tapTarget,
           height: layout.tapTarget,

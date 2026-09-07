@@ -97,7 +97,7 @@ Future<void> showReminderMenu({
           height: 30,
           child: Text(
             'Reminder ${describeReminder(armed, now)}',
-            style: const TextStyle(fontSize: 11, color: T.muted),
+            style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
           ),
         ),
         const PopupMenuItem<Object>(
@@ -105,7 +105,7 @@ Future<void> showReminderMenu({
           height: 34,
           child: Text(
             'Clear reminder',
-            style: TextStyle(fontSize: 12.5, color: T.danger),
+            style: TextStyle(fontSize: T.fsLabel, color: T.danger),
           ),
         ),
         const PopupMenuDivider(),
@@ -114,7 +114,7 @@ Future<void> showReminderMenu({
         PopupMenuItem<Object>(
           value: p.at,
           height: 34,
-          child: Text(p.label, style: const TextStyle(fontSize: 12.5)),
+          child: Text(p.label, style: const TextStyle(fontSize: T.fsLabel)),
         ),
       const PopupMenuDivider(),
       // Last, and deliberately: the presets are the right answer most of the
@@ -123,7 +123,7 @@ Future<void> showReminderMenu({
       const PopupMenuItem<Object>(
         value: _pick,
         height: 34,
-        child: Text('Pick a date and time…', style: TextStyle(fontSize: 12.5)),
+        child: Text('Pick a date and time…', style: TextStyle(fontSize: T.fsLabel)),
       ),
     ],
   );

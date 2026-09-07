@@ -21,14 +21,38 @@ Rules for keeping it honest:
 
 ## Now
 
-**Nothing.** Step 24 landed as 0.26.0; steps 18-23 as 0.25.0. Everything on
-this list is done; the design that produced it has moved to `ROADMAP.md`'s
-*Shipped*.
+**Nothing.** Step 25 landed as 0.27.0; step 24 as 0.26.0; steps 18-23 as
+0.25.0. Everything on this list is done; the design that produced it has moved
+to `ROADMAP.md`'s *Shipped*.
 
-**Committed, pushed and installed on Windows** (2026-09-03, `52963f8`).
-**Not on the phone yet**: 0.25.0's three mobile items (19, 20, 21) and the
-touch half of 24 can only really be judged there, since the whole of 24 is
-which gesture does what.
+**Not installed on Windows yet** — 0.27.0 is a look pass and the only way to
+judge it is to run it: `install-windows.ps1`, then live with it for a day.
+**Not on the phone yet** either: 0.25.0's three mobile items (19, 20, 21), the
+touch half of 24, and now 25 - the type scale matters most at the size where
+everything is drawn 1.28x larger.
+
+---
+
+## Done — 0.27.0, one scale and quieter colour
+
+Agreed 2026-09-07, after five directions were drawn at true size and compared.
+`flutter analyze` clean, `flutter test` 498 passed / 6 skipped. Nothing here
+touches the server, the wire or the schema. Reasoning in `ROADMAP.md`.
+
+- [x] **25.1** Token layer in `theme.dart`: `radius` (one number), `s1`-`s5`,
+      `fsBody`/`fsLabel`/`fsMeta`/`fsMenu`, `wNormal`/`wMedium`, and the two
+      stated escapes `wStrong` (content emphasis) and `fsGrid` (text sized by
+      the calendar's geometry, not by the scale).
+- [x] **25.2** Colour split: `danger` is destructive only; `warn` is the warm
+      amber for an overdue reminder or a retrying sync; `flagged` is the
+      priority bar; `ok` replaces a raw hex that had gone stale.
+- [x] **25.3** `workspaceColors` at ~60% chroma, same hues and order, and
+      `tintedBackground` from 16% to 6%.
+- [x] **25.4** Every widget repointed at the tokens - the task row, both bars,
+      the shell, the sheets, the panels and the calendar. `T.fsGrid` exists
+      because the pending calendar block overflowed by 5px when its labels went
+      onto the general scale, which is the test suite catching exactly the
+      thing it should.
 
 ---
 

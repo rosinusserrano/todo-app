@@ -151,8 +151,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
   }
 
   Color _statusColor() => switch (widget.sync.status) {
-    SyncStatus.ok => const Color(0xFF7EE3A1),
-    SyncStatus.error => const Color(0xFFFFCF6C),
+    SyncStatus.ok => T.ok,
+    SyncStatus.error => T.warn,
     // A version mismatch is red for the same reason a bad token is: neither
     // recovers on its own. `describe()` is what says which of the two it is,
     // and it names the machine that has to change.
@@ -174,7 +174,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           color: Color.lerp(T.bgSolid, ws, 0.14),
           border: Border(top: BorderSide(color: ws.withValues(alpha: 0.35))),
           borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(12),
+            top: Radius.circular(T.radius),
             bottom: Radius.circular(T.radius),
           ),
           boxShadow: const [
@@ -204,23 +204,23 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   Widget _head() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 6, 2),
+      padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, 2),
       child: Row(
         children: [
           if (_showUsers)
             InkWell(
               onTap: () => setState(() => _showUsers = false),
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(T.radius),
               child: const Padding(
-                padding: EdgeInsets.only(right: 6),
+                padding: EdgeInsets.only(right: T.s2),
                 child: Icon(Icons.arrow_back, size: 14, color: T.muted),
               ),
             ),
           Text(
             _showUsers ? 'People on this server' : 'Settings',
             style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
+              fontSize: T.fsLabel,
+              fontWeight: T.wMedium,
               color: T.muted,
               letterSpacing: 0.2,
             ),
@@ -228,9 +228,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           const Spacer(),
           InkWell(
             onTap: widget.onClose,
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(T.radius),
             child: const Padding(
-              padding: EdgeInsets.all(6),
+              padding: EdgeInsets.all(T.s2),
               child: Icon(Icons.close, size: 15, color: T.muted),
             ),
           ),
@@ -313,7 +313,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   Widget _tokenField() => TextField(
     controller: _token,
-    style: const TextStyle(fontSize: 13),
+    style: const TextStyle(fontSize: T.fsBody),
     obscureText: true,
     decoration: const InputDecoration(labelText: 'Token', isDense: true),
   );
@@ -329,7 +329,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       return Text(
         'The server uses single sign-on but cannot reach its provider right '
         'now. Try again in a moment.',
-        style: const TextStyle(fontSize: 11.5, color: T.danger, height: 1.4),
+        style: const TextStyle(fontSize: T.fsMeta, color: T.danger, height: 1.4),
       );
     }
 
@@ -339,7 +339,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Expanded(
             child: Text(
               'Signed in as ${widget.sync.identity?.label ?? 'this account'}.',
-              style: const TextStyle(fontSize: 12, color: T.muted),
+              style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
             ),
           ),
           const SizedBox(width: 8),
@@ -348,7 +348,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               await widget.sync.signOut();
               if (mounted) setState(() {});
             },
-            child: const Text('Sign out', style: TextStyle(fontSize: 12.5)),
+            child: const Text('Sign out', style: TextStyle(fontSize: T.fsLabel)),
           ),
         ],
       );
@@ -366,14 +366,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
           icon: const Icon(Icons.login_rounded, size: 16),
           label: const Text(
             'Sign in with your account',
-            style: TextStyle(fontSize: 12.5),
+            style: TextStyle(fontSize: T.fsLabel),
           ),
         ),
         const SizedBox(height: 6),
         const Text(
           'Opens your browser. Your account is created the first time you '
           'sign in.',
-          style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.35),
+          style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.35),
         ),
       ],
     );
@@ -384,7 +384,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
     final config = _authConfig;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+      padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, T.s3),
       children: [
         Text(switch (config?.mode) {
           'oidc' =>
@@ -399,7 +399,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           _ =>
             'Sync keeps your devices in step through a server you run. '
                 'Enter its address to see how it wants you to sign in.',
-        }, style: const TextStyle(fontSize: 11.5, color: T.muted, height: 1.4)),
+        }, style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4)),
         const SizedBox(height: 14),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -407,7 +407,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             Expanded(
               child: TextField(
                 controller: _url,
-                style: const TextStyle(fontSize: 13),
+                style: const TextStyle(fontSize: T.fsBody),
                 decoration: const InputDecoration(
                   labelText: 'Server address',
                   hintText: 'todo.example.com',
@@ -430,7 +430,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               onPressed: _checking ? null : _checkAuthMode,
               child: Text(
                 _checking ? '…' : 'Connect',
-                style: const TextStyle(fontSize: 12.5),
+                style: const TextStyle(fontSize: T.fsLabel),
               ),
             ),
           ],
@@ -440,7 +440,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Text(
             _connectError!,
             style: const TextStyle(
-              fontSize: 11.5,
+              fontSize: T.fsMeta,
               color: T.danger,
               height: 1.4,
             ),
@@ -468,7 +468,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             Expanded(
               child: Text(
                 sync.describe(),
-                style: TextStyle(fontSize: 11.5, color: _statusColor()),
+                style: TextStyle(fontSize: T.fsMeta, color: _statusColor()),
               ),
             ),
           ],
@@ -478,8 +478,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Text(
             _testMessage!,
             style: TextStyle(
-              fontSize: 11.5,
-              color: _testOk ? const Color(0xFF7EE3A1) : T.danger,
+              fontSize: T.fsMeta,
+              color: _testOk ? T.ok : T.danger,
             ),
           ),
         ],
@@ -509,7 +509,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         const SizedBox(height: 4),
         const Text(
           'Syncs automatically every minute and shortly after each change.',
-          style: TextStyle(fontSize: 10.5, color: T.muted),
+          style: TextStyle(fontSize: T.fsMeta, color: T.muted),
         ),
 
         // Only for the account the server calls an admin, and only once a sync
@@ -524,7 +524,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               const Expanded(
                 child: Text(
                   'People on this server',
-                  style: TextStyle(fontSize: 12.5),
+                  style: TextStyle(fontSize: T.fsLabel),
                 ),
               ),
               TextButton(
@@ -536,7 +536,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Text(
             'You are an admin of this server. Give someone their own account '
             'and token — signed in as ${sync.identity?.label ?? 'you'}.',
-            style: const TextStyle(fontSize: 10.5, color: T.muted, height: 1.4),
+            style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
           ),
         ],
 
@@ -549,7 +549,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               const Expanded(
                 child: Text(
                   'Start with Windows',
-                  style: TextStyle(fontSize: 12.5),
+                  style: TextStyle(fontSize: T.fsLabel),
                 ),
               ),
               Switch(value: _launchAtStartup, onChanged: _setStartup),
@@ -558,7 +558,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           const Text(
             'Opens the widget when you sign in. It also lives in the tray, '
             'so it can be hidden without being closed.',
-            style: TextStyle(fontSize: 10.5, color: T.muted, height: 1.4),
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
           ),
         ],
       ],

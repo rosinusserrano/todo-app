@@ -80,11 +80,11 @@ class TaskDragFeedback extends StatelessWidget {
       color: Colors.transparent,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 220),
-        margin: const EdgeInsets.only(left: 10, top: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        margin: const EdgeInsets.only(left: T.s2, top: T.s2),
+        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
         decoration: BoxDecoration(
           color: Color.lerp(T.bgSolid, accent, 0.4),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(T.radius),
           border: Border.all(color: accent.withValues(alpha: 0.7)),
           boxShadow: const [
             BoxShadow(color: Color(0x66000000), blurRadius: 12),
@@ -94,7 +94,7 @@ class TaskDragFeedback extends StatelessWidget {
           task.text,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, color: T.text),
+          style: const TextStyle(fontSize: T.fsLabel, color: T.text),
         ),
       ),
     );

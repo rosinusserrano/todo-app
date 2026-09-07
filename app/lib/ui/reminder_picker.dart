@@ -104,7 +104,7 @@ class _PickerDialogState extends State<_PickerDialog> {
       },
       child: AlertDialog(
         backgroundColor: T.bgSolid,
-        title: const Text('Remind me', style: TextStyle(fontSize: 15)),
+        title: const Text('Remind me', style: TextStyle(fontSize: T.fsMenu)),
         content: SizedBox(
           width: 300,
           child: SingleChildScrollView(
@@ -134,9 +134,9 @@ class _PickerDialogState extends State<_PickerDialog> {
                 const Text(
                   'Time',
                   style: TextStyle(
-                    fontSize: 10.5,
+                    fontSize: T.fsMeta,
                     color: T.muted,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: T.wMedium,
                     letterSpacing: 0.4,
                   ),
                 ),
@@ -166,7 +166,7 @@ class _PickerDialogState extends State<_PickerDialog> {
                       ActionChip(
                         label: Text(
                           _hhmm(t[0], t[1]),
-                          style: const TextStyle(fontSize: 11.5),
+                          style: const TextStyle(fontSize: T.fsMeta),
                         ),
                         onPressed: () => setState(() {
                           _hour = t[0];
@@ -179,7 +179,7 @@ class _PickerDialogState extends State<_PickerDialog> {
                   const SizedBox(height: 10),
                   const Text(
                     'That is in the past — it would fire straight away.',
-                    style: TextStyle(fontSize: 11, color: T.danger),
+                    style: TextStyle(fontSize: T.fsMeta, color: T.danger),
                   ),
                 ],
               ],
@@ -189,11 +189,11 @@ class _PickerDialogState extends State<_PickerDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+            child: const Text('Cancel', style: TextStyle(fontSize: T.fsLabel)),
           ),
           FilledButton(
             onPressed: _isPast ? null : _save,
-            child: const Text('Set', style: TextStyle(fontSize: 12.5)),
+            child: const Text('Set', style: TextStyle(fontSize: T.fsLabel)),
           ),
         ],
       ),
@@ -223,8 +223,8 @@ class _MonthHeader extends StatelessWidget {
           child: Text(
             label,
             style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
+              fontSize: T.fsLabel,
+              fontWeight: T.wMedium,
               color: T.text,
             ),
           ),
@@ -247,9 +247,9 @@ class _Step extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(T.radius),
       child: Padding(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(T.s1),
         child: Icon(icon, size: 18, color: T.muted),
       ),
     );
@@ -275,7 +275,7 @@ class _PickCell extends StatelessWidget {
     // once, because the day you are picking is very often today.
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(T.radius),
       child: Center(
         child: Container(
           width: 26,
@@ -291,9 +291,9 @@ class _PickCell extends StatelessWidget {
           child: Text(
             '${day.day}',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: T.fsLabel,
               color: selected ? T.bgSolid : T.text,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              fontWeight: selected ? T.wMedium : FontWeight.w400,
             ),
           ),
         ),
@@ -360,8 +360,8 @@ class _TimeFieldState extends State<_TimeField> {
       children: [
         _box(_h, 'HH'),
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 6),
-          child: Text(':', style: TextStyle(fontSize: 15, color: T.muted)),
+          padding: EdgeInsets.symmetric(horizontal: T.s2),
+          child: Text(':', style: TextStyle(fontSize: T.fsMenu, color: T.muted)),
         ),
         _box(_m, 'MM'),
       ],
@@ -375,12 +375,12 @@ class _TimeFieldState extends State<_TimeField> {
       keyboardType: TextInputType.number,
       textAlign: TextAlign.center,
       maxLength: 2,
-      style: const TextStyle(fontSize: 14),
+      style: const TextStyle(fontSize: T.fsBody),
       decoration: InputDecoration(
         counterText: '',
         hintText: hint,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(vertical: T.s2),
       ),
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       onChanged: (_) => _emit(),

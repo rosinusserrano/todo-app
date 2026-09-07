@@ -182,10 +182,10 @@ class _JournalViewState extends State<JournalView> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: const Text('Remove password?', style: TextStyle(fontSize: 15)),
+        title: const Text('Remove password?', style: TextStyle(fontSize: T.fsMenu)),
         content: const Text(
           'The notes will be stored unencrypted and readable without a password.',
-          style: TextStyle(fontSize: 12.5, color: T.muted, height: 1.4),
+          style: TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -378,14 +378,14 @@ class _JournalViewState extends State<JournalView> {
   /// variant is cancelable (it is reached on purpose, not forced).
   Widget _gate({required bool setup}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: T.s5),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             setup ? 'Set a password to lock these notes.' : 'Locked.',
-            style: const TextStyle(fontSize: 13, color: T.text),
+            style: const TextStyle(fontSize: T.fsBody, color: T.text),
           ),
           const SizedBox(height: 12),
           _field(
@@ -407,7 +407,7 @@ class _JournalViewState extends State<JournalView> {
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!,
-                style: const TextStyle(fontSize: 11.5, color: T.danger)),
+                style: const TextStyle(fontSize: T.fsMeta, color: T.danger)),
           ],
           const SizedBox(height: 14),
           Row(
@@ -435,7 +435,7 @@ class _JournalViewState extends State<JournalView> {
             const SizedBox(height: 12),
             const Text(
               'If you forget it, these notes cannot be recovered.',
-              style: TextStyle(fontSize: 11, color: T.muted, height: 1.4),
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
             ),
           ],
         ],
@@ -469,11 +469,11 @@ class _JournalViewState extends State<JournalView> {
               ? const Center(
                   child: Text(
                     'Empty.',
-                    style: TextStyle(color: T.muted, fontSize: 12.5),
+                    style: TextStyle(color: T.muted, fontSize: T.fsLabel),
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: T.s2),
                   itemCount: widget.items.length,
                   itemBuilder: (context, i) => _row(widget.items[i]),
                 ),
@@ -489,13 +489,13 @@ class _JournalViewState extends State<JournalView> {
         : (untitled ? 'Untitled' : item.title.trim());
     return InkWell(
       onTap: () => _openExisting(item),
-      borderRadius: BorderRadius.circular(7),
+      borderRadius: BorderRadius.circular(T.radius),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
         decoration: BoxDecoration(
           color: T.surface,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(T.radius),
         ),
         child: Row(
           children: [
@@ -509,7 +509,7 @@ class _JournalViewState extends State<JournalView> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12.5,
+                  fontSize: T.fsLabel,
                   color: (untitled || item.locked) ? T.muted : T.text,
                 ),
               ),
@@ -517,7 +517,7 @@ class _JournalViewState extends State<JournalView> {
             const SizedBox(width: 8),
             Text(
               _stamp(item.createdAtTime),
-              style: const TextStyle(fontSize: 10.5, color: T.muted),
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
             ),
           ],
         ),
@@ -549,15 +549,15 @@ class _JournalViewState extends State<JournalView> {
         ),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s3),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   untitled ? 'Untitled' : _title.text.trim(),
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontSize: T.fsBody,
+                    fontWeight: T.wMedium,
                     color: untitled ? T.muted : T.text,
                   ),
                 ),
@@ -568,7 +568,7 @@ class _JournalViewState extends State<JournalView> {
                 MarkdownText(
                   _body.text,
                   style: const TextStyle(
-                      fontSize: 13, color: T.text, height: 1.4),
+                      fontSize: T.fsBody, color: T.text, height: 1.4),
                   onTapText: _edit,
                 ),
               ],
@@ -583,7 +583,7 @@ class _JournalViewState extends State<JournalView> {
 
   Widget _editor() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 10),
+      padding: const EdgeInsets.fromLTRB(T.s3, 2, T.s3, T.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -594,12 +594,12 @@ class _JournalViewState extends State<JournalView> {
             // one being revised: the title of an existing entry is the part
             // that is already right.
             autofocus: _editing == null,
-            style: const TextStyle(fontSize: 14, color: T.text),
+            style: const TextStyle(fontSize: T.fsBody, color: T.text),
             decoration: const InputDecoration(
               isDense: true,
               hintText: 'Title',
               border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 6),
+              contentPadding: EdgeInsets.symmetric(vertical: T.s2),
             ),
             // Enter in a one-line field does nothing, so it may as well do the
             // obvious thing. Ctrl+Enter does it too, from either field.
@@ -616,12 +616,12 @@ class _JournalViewState extends State<JournalView> {
               maxLines: null,
               minLines: null,
               textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(fontSize: 13, color: T.text, height: 1.4),
+              style: const TextStyle(fontSize: T.fsBody, color: T.text, height: 1.4),
               decoration: const InputDecoration(
                 isDense: true,
                 hintText: 'Markdown, if you want it.',
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 6),
+                contentPadding: EdgeInsets.symmetric(vertical: T.s2),
               ),
             ),
           ),
@@ -642,7 +642,7 @@ class _JournalViewState extends State<JournalView> {
                     backgroundColor: T.surfaceHover,
                     foregroundColor: T.text,
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: T.s3, vertical: T.s2),
                   ),
                   child: const Text('Save'),
                 ),
@@ -676,7 +676,7 @@ class _JournalViewState extends State<JournalView> {
         controller: controller,
         obscureText: obscure,
         autofocus: autofocus,
-        style: const TextStyle(fontSize: 13),
+        style: const TextStyle(fontSize: T.fsBody),
         onSubmitted: onSubmitted,
         decoration: InputDecoration(
           isDense: true,
@@ -684,9 +684,9 @@ class _JournalViewState extends State<JournalView> {
           filled: true,
           fillColor: T.surface,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(T.radius),
             borderSide: BorderSide.none,
           ),
         ),
@@ -697,9 +697,9 @@ class _JournalViewState extends State<JournalView> {
         message: tooltip,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(T.radius),
           child: Padding(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(T.s1),
             child: Icon(icon, size: 15, color: T.muted),
           ),
         ),
@@ -710,9 +710,9 @@ class _JournalViewState extends State<JournalView> {
         onPressed: onTap,
         style: TextButton.styleFrom(
           foregroundColor: color,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 12.5)),
+        child: Text(label, style: const TextStyle(fontSize: T.fsLabel)),
       );
 
   static const _months = [

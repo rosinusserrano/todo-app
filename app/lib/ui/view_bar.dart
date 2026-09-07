@@ -166,7 +166,7 @@ class _Entry extends StatelessWidget {
                   fontSize: 8.5,
                   height: 1,
                   color: color,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: selected ? T.wMedium : T.wNormal,
                 ),
               ),
             ],

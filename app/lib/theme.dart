@@ -11,16 +11,129 @@ import 'package:flutter/material.dart';
 
 class T {
   // --bg, --surface, --text, --muted, --accent, --danger
-  static const bg = Color(0xDB1C1C22); // rgba(28,28,34,0.86)
-  static const bgSolid = Color(0xFF1C1C22);
-  static const surface = Color(0x0FFFFFFF); // rgba(255,255,255,0.06)
-  static const surfaceHover = Color(0x1FFFFFFF); // rgba(255,255,255,0.12)
-  static const text = Color(0xFFF2F2F5);
-  static const muted = Color(0xFF9A9AA6);
-  static const accent = Color(0xFF6C8CFF);
-  static const danger = Color(0xFFFF6C6C);
+  static const bg = Color(0xDB18181D); // rgba(24,24,29,0.86)
+  static const bgSolid = Color(0xFF18181D);
+  static const surface = Color(0x0DFFFFFF); // rgba(255,255,255,0.05)
+  static const surfaceHover = Color(0x17FFFFFF); // rgba(255,255,255,0.09)
+  static const text = Color(0xFFEDEDF0);
+  static const muted = Color(0xFF90909A);
+  static const accent = Color(0xFF6F86CC);
 
-  static const radius = 14.0;
+  /// Destructive, and **only** destructive - delete, revoke, a failed sync.
+  ///
+  /// It used to be all three of destructive, overdue and flagged, which is
+  /// most of why the widget read as loud: the same full-strength red said
+  /// "this will be gone for ever" and "this was due at nine". Those are not
+  /// the same sentence and now do not share a colour. See [warn] and
+  /// [flagged].
+  static const danger = Color(0xFFCC7A7A);
+
+  /// Attention, not alarm: a reminder that has come due, a sync that failed
+  /// and will retry. Warm rather than red because nothing here is lost - the
+  /// task is fine, the clock has simply passed it, and the sync will come
+  /// round again in a minute.
+  ///
+  /// One token rather than one per caller, and this is the split that was
+  /// missing: [danger] is for the thing you cannot undo.
+  static const warn = Color(0xFFCC9A6A);
+
+  /// Something worked - a sync test that reached the server, a setting that
+  /// took. The mint from [workspaceColors], named, because it was written out
+  /// as a raw `0xFF7EE3A1` in the settings sheet and stayed the *old*,
+  /// brighter mint through two palette changes.
+  static const ok = Color(0xFF83C0A0);
+
+  /// The flagged task's bar down its leading edge. A muted red: it has to be
+  /// legible as urgency at 3px wide against the row's own fill, and it is the
+  /// one of the three states that is drawn as a solid shape rather than a
+  /// tint, so it can afford less saturation than the tint would need.
+  static const flagged = Color(0xFFCC7A7A);
+
+  /// **The** corner radius. One number, everywhere - the window, the sheets,
+  /// the rows, the fields, the pills.
+  ///
+  /// There were six (14, 9, 8, 7, 6, 20) with no rule for which belonged
+  /// where, which is the kind of thing nobody can name and everybody reads as
+  /// unconsidered. Anything that genuinely wants a different shape wants a
+  /// *shape* - a circle for the tick box, a stadium for a chip - and says so
+  /// with `BoxShape` or a pill radius rather than by picking a fourth number.
+  static const radius = 8.0;
+
+  // ---- The spacing scale ----
+  //
+  // Every padding, margin and gap in the widget is one of these five numbers.
+  // They were picked per widget before (6/7 on a row, 9/5/7/5 on a workspace
+  // pill, 8/4 in the title bar, 4/5/5 in a menu), which is why nothing lined
+  // up with anything: a 1px difference between two paddings is invisible on
+  // its own and, repeated down a column, is exactly what makes a layout feel
+  // approximate.
+  //
+  // Four rather than eight steps, because this is a 340px window - the two
+  // large ones exist for the gap *between* regions, not inside them.
+
+  /// Between two things that belong to each other - an icon and its label.
+  static const s1 = 4.0;
+
+  /// The default gap inside a row or a control.
+  static const s2 = 8.0;
+
+  /// The window gutter, and the padding inside a row.
+  static const s3 = 12.0;
+
+  /// Between two regions that are not the same thing.
+  static const s4 = 16.0;
+
+  /// Standoff at the top or bottom of a panel.
+  static const s5 = 24.0;
+
+  // ---- The type scale ----
+  //
+  // Four sizes and two weights. There were six sizes between 10.5 and 15,
+  // which is too close together to make a hierarchy and too many to be one -
+  // 13 and 13.5 sat next to each other in the same window and only one of
+  // them could have been deliberate.
+  //
+  // Weight 600 is gone entirely. What it was doing - saying "this is the
+  // label of the thing you are in" - is done by [wMedium] plus the colour it
+  // already had, and a 600 at 12px in Segoe UI Variable Text is a smear
+  // rather than an emphasis.
+
+  /// The title bar, a task's title, the add field. What you read.
+  static const fsBody = 13.0;
+
+  /// The workspace bar and the view bar. What you navigate by.
+  static const fsLabel = 12.0;
+
+  /// Notes previews, counts, times, marks. What you glance at.
+  ///
+  /// Half a point *up* from the 10.5 it replaces: below 11 the fallback faces
+  /// on Android stop hinting cleanly, and this is the size the notes preview
+  /// under a task title is set in.
+  static const fsMeta = 11.0;
+
+  /// Menu and picker items, which are targets before they are text.
+  static const fsMenu = 15.0;
+
+  /// Text laid *into* the calendar grid: the hour gutter, a weekday initial, a
+  /// day number in a month tile, the label inside a block.
+  ///
+  /// The one place the scale above cannot reach, and it is geometry that
+  /// stops it: every box here is sized by something other than its contents -
+  /// a block's height is its *duration*, a day column's width is a seventh of
+  /// what is left after the gutter - so the text has to fit what the clock and
+  /// the calendar chose. A 15-minute block at the default hour height is 14
+  /// pixels tall; [fsMeta] in it is an overflow, which is exactly how this
+  /// token came to exist.
+  static const fsGrid = 9.5;
+
+  static const wNormal = FontWeight.w400;
+  static const wMedium = FontWeight.w500;
+
+  /// **Content** emphasis, never chrome: Markdown's `**bold**` and the
+  /// headings inside a note. The rule above is about the widget's own labels
+  /// - a heavier weight there was decoration - but a note that says something
+  /// is bold has to look bold, and w500 against w400 is not that.
+  static const wStrong = FontWeight.w600;
 
   /// The **most** the whole widget is enlarged by on a phone. Every size in
   /// this app was picked for a 340x480 desktop window; on a phone that layout
@@ -80,15 +193,27 @@ class T {
     'system-ui',
   ];
 
+  /// The eight, at roughly 60% of the chroma they carried.
+  ///
+  /// The hues are unchanged and in the same order, which is the whole point:
+  /// a workspace keeps the colour its owner already knows it by, stored as an
+  /// index into this list, so nothing migrates and nobody has to re-learn
+  /// which one is which. What changes is that the window stops glowing - see
+  /// [tintedBackground], which now mixes 6% rather than 16%.
+  ///
+  /// Lightness is deliberately *not* equalised. These are labels, not a
+  /// sequential scale, and an amber and a violet at the same L are harder to
+  /// tell apart in the corner of your eye than the pair that keeps its
+  /// natural difference.
   static const workspaceColors = [
-    Color(0xFF6C8CFF), // accent blue
-    Color(0xFF7EE3A1), // mint
-    Color(0xFFFFCF6C), // amber
-    Color(0xFFFF6C6C), // red
-    Color(0xFFFF8CD9), // pink
-    Color(0xFFB28CFF), // violet
-    Color(0xFF6CD9FF), // cyan
-    Color(0xFFE0E0E0), // neutral
+    Color(0xFF6F86CC), // blue
+    Color(0xFF83C0A0), // mint
+    Color(0xFFD6BE86), // amber
+    Color(0xFFD08585), // red
+    Color(0xFFD096C4), // pink
+    Color(0xFFA691D6), // violet
+    Color(0xFF7FB4CC), // cyan
+    Color(0xFFC6C6CA), // neutral
   ];
 
   static Color parseHex(String hex) {
@@ -104,9 +229,16 @@ class T {
         '${ch(c.b).toRadixString(16).padLeft(2, '0')}';
   }
 
-  /// The window base tinted with a slice of the active workspace colour -
-  /// `color-mix(in srgb, var(--ws-color) 16%, var(--bg))`.
-  static Color tintedBackground(Color ws) => Color.lerp(bg, ws, 0.16)!;
+  /// The window base tinted with a slice of the active workspace colour.
+  ///
+  /// **6%, down from 16%.** At 16 the tint was the loudest thing in the
+  /// window and it was saying the least: the workspace's name is on the bar,
+  /// in its own colour, an inch from the tint that was repeating it. Six is
+  /// enough that switching workspaces is visibly a change of room and not
+  /// enough to sit under a task list all day. The same reasoning the calendar
+  /// chrome already used - see [calendarBackground], which mixes 12% because
+  /// grey has no hue to carry the signal.
+  static Color tintedBackground(Color ws) => Color.lerp(bg, ws, 0.06)!;
 
   static Color tintedBorder(Color ws) =>
       Color.lerp(const Color(0x14FFFFFF), ws, 0.30)!;

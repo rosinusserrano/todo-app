@@ -1088,8 +1088,20 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   is what stops the wait reading as a hang, and `_closing` is what stops a
   second click starting a second teardown. The player stop in there is bounded
   by a timeout on purpose — a hung stop must not be why the app cannot quit.
-- Design tokens live in `theme.dart` (`T.*`), ported from the old CSS. Durations
-  that used to be duplicated between CSS and JS now have exactly one copy each.
+- **Design tokens live in `theme.dart` (`T.*`) and nothing may pick its own
+  number.** One radius (`T.radius`), one spacing scale (`T.s1`-`T.s5`), four
+  type sizes (`T.fsBody`/`fsLabel`/`fsMeta`/`fsMenu`) and two weights. There
+  were six radii and six sizes inside a 4.5-point range before 0.27.0, which is
+  what "too standard productivity app" turned out to mean. Two escapes exist
+  and both are documented at the token: `T.wStrong` for **content** emphasis
+  (Markdown's `**bold**` has to look bold; the rule is about the widget's own
+  labels) and `T.fsGrid` for text laid *into* the calendar, where a box is
+  sized by duration or column count rather than by its contents - a 15-minute
+  block at the default hour height is 14px tall, and `fsMeta` in it is an
+  overflow the test suite catches. Colour is likewise one job per token:
+  `danger` is destructive **only**, `warn` is attention that costs nothing (an
+  overdue reminder, a retrying sync), `flagged` is the priority bar. Durations
+  that used to be duplicated between CSS and JS have exactly one copy each.
 - `UiScale` draws the whole widget larger on phones rather than forking every
   padding per platform. Keep it that way — a second set of mobile sizes would
   drift from the desktop one literal at a time. Two things about it are

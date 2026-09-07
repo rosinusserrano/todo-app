@@ -94,7 +94,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
       backgroundColor: T.bgSolid,
       title: Text(
         editing ? 'Edit calendar' : 'New calendar',
-        style: const TextStyle(fontSize: 15),
+        style: const TextStyle(fontSize: T.fsMenu),
       ),
       content: SizedBox(
         width: 300,
@@ -106,7 +106,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
               controller: _name,
               autofocus: true,
               maxLength: 24,
-              style: const TextStyle(fontSize: 13),
+              style: const TextStyle(fontSize: T.fsBody),
               decoration: const InputDecoration(
                 hintText: 'Workout, Gigs…',
                 counterText: '',
@@ -115,7 +115,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
             ),
             const SizedBox(height: 14),
             const Text('Colour',
-                style: TextStyle(fontSize: 11.5, color: T.muted)),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -146,7 +146,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
             ),
             const SizedBox(height: 14),
             const Text('Notify by default',
-                style: TextStyle(fontSize: 11.5, color: T.muted)),
+                style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
             const SizedBox(height: 6),
             Wrap(
               spacing: 6,
@@ -155,7 +155,7 @@ class _CalendarDialogState extends State<_CalendarDialog> {
                 for (final e in _notifyOptions.entries)
                   ChoiceChip(
                     label:
-                        Text(e.value, style: const TextStyle(fontSize: 11.5)),
+                        Text(e.value, style: const TextStyle(fontSize: T.fsMeta)),
                     selected: _notify == e.key,
                     onSelected: (_) => setState(() => _notify = e.key),
                   ),
@@ -170,15 +170,15 @@ class _CalendarDialogState extends State<_CalendarDialog> {
             onPressed: () =>
                 Navigator.pop(context, const CalendarEdit.delete()),
             child: const Text('Delete',
-                style: TextStyle(color: T.danger, fontSize: 12.5)),
+                style: TextStyle(color: T.danger, fontSize: T.fsLabel)),
           ),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+          child: const Text('Cancel', style: TextStyle(fontSize: T.fsLabel)),
         ),
         FilledButton(
           onPressed: _save,
-          child: const Text('Save', style: TextStyle(fontSize: 12.5)),
+          child: const Text('Save', style: TextStyle(fontSize: T.fsLabel)),
         ),
       ],
     );

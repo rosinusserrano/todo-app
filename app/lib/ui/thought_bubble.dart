@@ -217,11 +217,11 @@ class _ThoughtBubbleState extends State<ThoughtBubble>
       child: ExcludeSemantics(
         child: Container(
           constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: T.s1),
           decoration: BoxDecoration(
             color: widget.listOpen ? T.bgSolid : alarm,
             shape: BoxShape.rectangle,
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(T.radius),
             border: Border.all(color: T.bgSolid, width: 1.5),
           ),
           child: Center(
@@ -229,9 +229,9 @@ class _ThoughtBubbleState extends State<ThoughtBubble>
             child: Text(
               '${widget.count}',
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: T.fsMeta,
                 height: 1.1,
-                fontWeight: FontWeight.w700,
+                fontWeight: T.wMedium,
                 color: widget.listOpen ? alarm : T.bgSolid,
               ),
             ),

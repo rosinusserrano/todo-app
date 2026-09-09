@@ -90,14 +90,20 @@ green when it lands. Reasoning in `ROADMAP.md`.
 
 - [x] **32.1** Version bump to 0.28.0+15, `FEATURES.md` changelog,
       `ROADMAP.md` *Shipped*.
-- [ ] **32.2** **Deploy the server.** The four v15 columns do not move
-      `PROTOCOL` - they are optional - so an old server will not block a
-      device, it will silently drop `recur_from` and `recur_lead` and a repeat
-      set on one device will reach the other as the legacy shape. Same shape as
-      the 0.24.0 deploy, minus the version gate.
-- [ ] **32.3** `install-windows.ps1`, and put it on the phone - most of 0.25.0,
-      0.26.0 and 0.27.0 has still only been judged on a desktop, and 0.28.0's
-      repeat panel is a form with a lot in it at 390pt.
+- [x] **32.2** **Server deployed** 2026-09-09 - marco-apps at `5262256`, all
+      four v15 columns present on the live database, 126 task rows intact,
+      backup at `/var/lib/todo-sync/backups/sync-20260909-104254.db`. It had
+      been sitting three releases behind at `5dc947e`.
+      - **Note for the next deploy from that box:** ~680 lines of unpushed
+        subscribed-.ics work were in the way and are now `stash@{0}` in
+        `~/todo-app` on marco-apps, and exist nowhere else. `git stash pop`
+        before pulling there again. It calls itself client **v15**, which is
+        this release's number - renumber it to v16 before it lands, or a
+        database that reaches 15 by one route never runs the other's migration.
+- [x] **32.3a** `install-windows.ps1` - 0.28.0+15 installed and running.
+- [ ] **32.3b** Put it on the phone. Most of 0.25.0, 0.26.0 and 0.27.0 has still
+      only been judged on a desktop, and 0.28.0's repeat panel is a form with a
+      lot in it at 390pt.
 
 ---
 

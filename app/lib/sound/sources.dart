@@ -20,6 +20,12 @@ import 'package:http/http.dart' as http;
 
 const _userAgent = 'TodoWidget/0.10 (concentration sound)';
 
+/// The same string, for the ambience cache's own fetch - archive.org is asked
+/// for a byte range there rather than handed to the player, and a second user
+/// agent for the same app talking to the same host would be two things to keep
+/// in step.
+const ambienceUserAgent = _userAgent;
+
 // ------------------------------------------------------------------- ambience
 
 /// A preset is a keyword query into the aporee collection rather than a fixed
@@ -42,10 +48,22 @@ class AmbiencePreset {
 }
 
 class AmbienceTrack {
-  const AmbienceTrack({required this.title, required this.url});
+  const AmbienceTrack({
+    required this.title,
+    required this.url,
+    this.bytes = 0,
+    this.seconds = 0,
+  });
 
   final String title;
   final String url;
+
+  /// What the collection says the file weighs and how long it runs. Both are
+  /// zero when the metadata did not say, and both are only ever used to work
+  /// out how much of it is half an hour - see [AmbienceCache.boutBytes], which
+  /// falls back to an assumed bitrate rather than refusing to cache.
+  final int bytes;
+  final int seconds;
 }
 
 class ArchiveAmbience {
@@ -87,7 +105,32 @@ class ArchiveAmbience {
     return AmbienceTrack(
       title: (doc['title'] as String?) ?? id,
       url: 'https://archive.org/download/$id/$name',
+      bytes: int.tryParse('${mp3['size'] ?? ''}') ?? 0,
+      seconds: parseArchiveLength('${mp3['length'] ?? ''}'),
     );
+  }
+
+  /// The collection writes a file's duration either as plain seconds
+  /// ("1023.45") or as a clock ("17:03", "1:17:03"), depending on how the item
+  /// was derived. Both, or 0 for anything else - the caller has a fallback and
+  /// a wrong number here would size a bout wrong for the whole life of the
+  /// cache entry.
+  static int parseArchiveLength(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return 0;
+
+    if (!text.contains(':')) {
+      final seconds = double.tryParse(text);
+      return seconds == null || seconds <= 0 ? 0 : seconds.round();
+    }
+
+    var total = 0;
+    for (final part in text.split(':')) {
+      final n = double.tryParse(part.trim());
+      if (n == null || n < 0) return 0;
+      total = total * 60 + n.round();
+    }
+    return total;
   }
 }
 

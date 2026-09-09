@@ -300,10 +300,29 @@ Three tiers, none of which need an account, an API key, or a licence:
     three times louder than pink and the volume slider has to mean one thing;
   - the two channels are generated independently, which is what makes it sound
     wide rather than glued to the middle of your head.
-- **Ambience** — café, rain, city, forest, train and sea, streamed from the
-  Internet Archive's `radio-aporee-maps` collection: thousands of field
-  recordings, all CC0 or public-domain-mark. Each preset is a *query*, not a
-  fixed file, so tapping the same button again gives you a different café.
+- **Ambience** — café, rain, city, forest, train and sea, from the Internet
+  Archive's `radio-aporee-maps` collection: thousands of field recordings, all
+  CC0 or public-domain-mark. Each preset is a *query*, not a fixed file, so
+  tapping the same button again gives you a different café.
+  - **Thirty minutes of it is kept on the device**, which is the tier that used
+    to stall. A recording is finite and then looped for an hour, so every
+    re-buffer was paid for over and over; a stored **bout** — the first 30
+    minutes of one recording — starts instantly, cannot stall, and needs no
+    network at all. Half an hour is already far longer than any sitting, and it
+    is a bound, which a directory of four-hour recordings is not.
+  - **Nobody waits for it.** A preset with nothing stored streams exactly as it
+    always did and files a bout behind itself, so the cost is one extra
+    download the first time or two a preset is used and nothing afterwards.
+  - **The variety survives.** A couple of bouts are kept per preset and one is
+    picked at random, because "a different café every time" is the entire
+    reason a preset is a query. A preset that has one shows *on this device*
+    under its name.
+  - **A switch and a size**, at the foot of the Ambience list: *Keep 30 minutes
+    on this device*, how many bouts are stored and roughly how much disk they
+    are using, and **Clear** (which asks first — it is minutes of downloading
+    and there is no undo). Turning the switch off plays as before and leaves
+    what is already stored alone; those are two different acts and the sheet
+    offers both.
 - **Radio** — live stations from the Radio Browser directory, browsable by
   genre: ambient, drone, dub techno, minimal, techno, lo-fi. Near-duplicate
   entries for the same station are collapsed, and offline stations are filtered

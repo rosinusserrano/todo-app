@@ -203,12 +203,127 @@ class _SoundSheetState extends State<SoundSheet> {
         for (final preset in AmbiencePreset.all)
           _Row(
             title: preset.label,
+            subtitle: _cachedHint(preset),
             active: _isActive(SoundTier.ambience, preset.id),
             accent: ws,
             onTap: () => s.playAmbience(preset),
           ),
+        _keptOnDevice(ws),
       ],
     );
+  }
+
+  /// "on this device" under a preset that has a bout stored, and nothing under
+  /// one that does not. A count would be noise: what matters to whoever is
+  /// choosing is whether this one starts instantly.
+  String? _cachedHint(AmbiencePreset preset) {
+    if (!s.keepAmbience) return null;
+    final cache = s.ambience;
+    if (cache == null || cache.countFor(preset.id) == 0) return null;
+    return 'on this device';
+  }
+
+  /// What the cache is costing, and the two ways out of it. Below the presets
+  /// rather than above them: it is about the tier, not a way into it.
+  Widget _keptOnDevice(Color ws) {
+    final cache = s.ambience;
+    final mb = ((cache?.bytes ?? 0) / (1024 * 1024)).round();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s1, T.s3, T.s1, T.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Keep 30 minutes on this device',
+                  style: TextStyle(
+                    fontSize: T.fsLabel,
+                    color: cache == null ? T.muted : T.text,
+                  ),
+                ),
+              ),
+              Switch(
+                value: s.keepAmbience && cache != null,
+                onChanged:
+                    cache == null ? null : (on) => s.setKeepAmbience(on),
+                activeThumbColor: ws,
+              ),
+            ],
+          ),
+          Text(
+            cache == null
+                ? 'Not available on this device.'
+                : 'The first play of a preset streams and is stored behind '
+                    'itself; after that it starts instantly and needs no '
+                    'network.',
+            style: const TextStyle(
+              fontSize: T.fsMeta,
+              color: T.muted,
+              height: 1.35,
+            ),
+          ),
+          if (cache != null && cache.bouts.isNotEmpty) ...[
+            const SizedBox(height: T.s1),
+            Row(
+              children: [
+                Text(
+                  '${cache.bouts.length} stored, about $mb MB',
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+                ),
+                const SizedBox(width: T.s2),
+                TextButton(
+                  onPressed: _confirmClear,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: T.s1),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Clear',
+                    style: TextStyle(fontSize: T.fsMeta, color: T.danger),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Asked first: this is minutes of downloading and there is no undo. A
+  /// dialog rather than a sheet - modal by nature and gone in seconds, which is
+  /// the case the sheet rule in main.dart carves out.
+  Future<void> _confirmClear() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: T.bgSolid,
+        title: const Text(
+          'Clear stored sound?',
+          style: TextStyle(fontSize: T.fsMenu),
+        ),
+        content: const Text(
+          'The recordings will be downloaded again the next time you play '
+          'them.',
+          style: TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await s.clearAmbience();
   }
 
   Widget _radioList(Color ws) {

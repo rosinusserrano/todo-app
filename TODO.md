@@ -55,18 +55,18 @@ green when it lands. Reasoning in `ROADMAP.md`.
       in - except on an empty shelf, which is finished by being looked at.
 - [x] **29.3** Tests in `parked_panel_test.dart`.
 
-### 30. Keep 30 minutes of the concentration sound on the device  `[ ]`
+### 30. Keep 30 minutes of the concentration sound on the device  `[x]`
 
-- [ ] **30.1** `sound/ambience_cache.dart` - a bout is a byte prefix of the
+- [x] **30.1** `sound/ambience_cache.dart` - a bout is a byte prefix of the
       chosen recording, sized from the archive metadata's `length`/`size`, kept
       in a directory beside the database under an LRU byte budget.
-- [ ] **30.2** `SoundService.playAmbience` plays a cached bout instantly when
+- [x] **30.2** `SoundService.playAmbience` plays a cached bout instantly when
       there is one and fills the cache in the background when there is not, so
       variety survives ("a different cafe every time" is the preset's whole
       point).
-- [ ] **30.3** A line in the sound sheet: how much is stored, and a way to
+- [x] **30.3** A line in the sound sheet: how much is stored, and a way to
       clear it.
-- [ ] **30.4** Tests for the bookkeeping, with the fetch injected.
+- [x] **30.4** Tests for the bookkeeping, with the fetch injected.
 
 ### 31. Recurring todos, two kinds  `[ ]`
 

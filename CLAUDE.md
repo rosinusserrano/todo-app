@@ -878,6 +878,27 @@ slow archive.org lookup from landing after the user moved on.
 - `sources.dart` talks to archive.org and Radio Browser. Both are key-free;
   Radio Browser's client requirements (user agent, mirror fallback, play
   reporting) are honoured there.
+- `ambience_cache.dart` keeps **bouts** — 30-minute prefixes of a recording — on
+  disk beside `todo.db`. Tier 2 is the only one that had anything to gain: noise
+  is already local and a station is a live stream. Four things are load-bearing:
+  - **A prefix, asked for with a `Range` header**, sized from the `size` and
+    `length` the search already returns (`AmbienceCache.boutBytes`, with an
+    assumed 128kbps when the metadata says nothing). A truncated mp3 plays to
+    its last whole frame, which is what looping wants. The cap is applied on
+    the way *in* as well as asked for, because a server may ignore `Range`.
+  - **Several per preset, picked at random.** Caching one recording would buy
+    the latency and spend the variety, and the variety is what a preset *is* —
+    it is a query, not a file.
+  - **Filled behind the music, never waited on.** A play with nothing stored
+    streams as before and calls `store` afterwards; a play from the cache calls
+    `fill`. Making somebody wait for 29MB before any sound came out would trade
+    one kind of lag for a worse one.
+  - **The index is a file in the cache directory**, not a row and not a setting,
+    so the class needs a directory and an injected fetcher and nothing else —
+    which is what makes `test/ambience_cache_test.dart` possible without a
+    network. Filenames in it are bare, because the application support directory
+    moves between installs and an index of stale absolute paths is a cache that
+    empties itself.
 - Synthesis runs on a background isolate via `compute` — on the main isolate it
   drops frames.
 - **iOS needs two things to keep playing with the screen off, and one alone does

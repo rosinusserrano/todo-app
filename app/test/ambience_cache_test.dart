@@ -14,6 +14,7 @@ import 'package:todo_widget/sound/sources.dart';
 
 const cafe = AmbiencePreset('cafe', 'Café', 'cafe');
 const rain = AmbiencePreset('rain', 'Rain', 'rain');
+const city = AmbiencePreset('city', 'City', 'city');
 
 AmbienceTrack track(String id, {int bytes = 0, int seconds = 0}) =>
     AmbienceTrack(
@@ -202,33 +203,28 @@ void main() {
 
   group('the budget', () {
     test('evicts the least recently played first', () async {
-      // Three bouts of 100 bytes into a budget of 250.
+      // Three bouts of 100 bytes into a budget of 250, one per preset so that
+      // which one is picked is a fact and not a coin toss.
       final cache =
-          open(fetch: fake(size: 100).fetch, maxPerPreset: 3, budgetBytes: 250);
+          open(fetch: fake(size: 100).fetch, maxPerPreset: 1, budgetBytes: 250);
 
-      final a = await cache.store(cafe, track('a'));
-      await cache.store(cafe, track('b'));
-      // Playing a again makes b the oldest.
+      await cache.store(cafe, track('a'));
+      await cache.store(rain, track('b'));
+
+      // Playing the café again leaves the rain as the oldest thing here.
       await Future<void>.delayed(const Duration(milliseconds: 5));
       await cache.pick('cafe');
-      await cache.pick('cafe');
-      await cache.pick('cafe');
 
-      await cache.store(cafe, track('c'));
+      await cache.store(city, track('c'));
 
       expect(cache.bytes, lessThanOrEqualTo(250));
-      expect(cache.bouts, hasLength(2));
-      // Whatever went, the survivors' files are still on disk and the ones
-      // that went are not.
+      expect(cache.bouts.map((b) => b.preset).toSet(), {'cafe', 'city'});
+
+      // What went took its file with it, and what stayed still has one.
       for (final b in cache.bouts) {
         expect(cache.fileFor(b).existsSync(), isTrue);
       }
-      expect(
-        dir.listSync().where((e) => e.path.endsWith('.mp3')).length,
-        2,
-      );
-      // a was played after b was stored, so it is not the one to go.
-      expect(cache.bouts.any((b) => b.file == a!.file), isTrue);
+      expect(dir.listSync().where((e) => e.path.endsWith('.mp3')).length, 2);
     });
 
     test('a full preset is not topped up', () async {

@@ -28,6 +28,7 @@ import '../theme.dart';
 import 'markdown_text.dart';
 import 'panel_header.dart';
 import 'reminder_menu.dart';
+import 'repeat_editor.dart';
 
 /// The read-only body: the meta chips, then the notes.
 ///
@@ -67,10 +68,26 @@ class TaskDetail extends StatelessWidget {
           label: 'Reminder ${describeReminder(armed)}',
           color: due ? T.warn : accent,
         ),
+      // The rule, and - only when it is not the plain one - what it is measured
+      // from and when the next one turns up. Those two decide whether missing
+      // this occurrence leaves a second row on the list beside it, which is
+      // worth reading before you find out.
       if (task.recur != null)
         _Chip(
           icon: Icons.repeat_rounded,
-          label: Recur.label(task.recur!),
+          label: RepeatSpec(
+            recur: task.recur,
+            from: task.recurFrom,
+            lead: task.recurLead,
+          ).label,
+          color: accent,
+        ),
+      if (task.recur != null && task.recurLead != null)
+        _Chip(
+          icon: Icons.event_repeat_rounded,
+          label: task.recurLead == 0
+              ? 'Next one appears when due'
+              : 'Next one appears early',
           color: accent,
         ),
       if (task.inProgress)

@@ -13,6 +13,7 @@ import 'dart:ui' show Color;
 import 'package:flutter/foundation.dart';
 
 import 'journal_crypto.dart';
+import 'task_variables.dart';
 import 'notifications.dart';
 import 'sync/attachment_store.dart';
 import 'sync/ics.dart';
@@ -401,23 +402,37 @@ class AppState extends ChangeNotifier {
     int priority = 0,
     DateTime? remindAt,
     String? recur,
+    String recurFrom = RecurFrom.schedule,
+    int? recurLead,
     String? groupUuid,
   }) async {
     final ws = currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
+
+    final repeat = _resolveRepeat(
+      text: text.trim(),
+      notes: notes.trim(),
+      recur: recur,
+      recurFrom: recurFrom,
+      recurLead: recurLead,
+      remindAt: remindAt,
+    );
+
     await _store.putTask(
       Task(
         uuid: newId(),
         workspaceUuid: ws,
-        text: text.trim(),
+        text: repeat.text,
         createdAt: nowStamp(),
         sortOrder: await _store.nextSortOrder(ws),
-        notes: notes.trim(),
+        notes: repeat.notes,
         priority: priority,
         remindAt: remindAt == null ? null : reminderStamp(remindAt),
-        // Meaningless without something to count from, so it follows the
-        // reminder - the same rule saveTaskDetails applies.
-        recur: remindAt == null ? null : recur,
+        recur: repeat.recur,
+        recurFrom: repeat.recurFrom,
+        recurLead: repeat.recurLead,
+        recurText: repeat.recurText,
+        recurNotes: repeat.recurNotes,
         groupUuid: groupUuid,
         updatedAt: nowStamp(),
       ),
@@ -432,6 +447,10 @@ class AppState extends ChangeNotifier {
   /// task, and four writes would be four rows on the sync queue and four
   /// rebuilds of the list for one edit. A null [remindAt] clears the reminder,
   /// which is what the composer's "no reminder" chip means.
+  ///
+  /// [text] and [notes] are the **template** - what the composer was showing,
+  /// which for a repeating task is the unexpanded form. What lands on the row
+  /// is the expansion; see [_resolveRepeat].
   Future<void> saveTaskDetails(
     Task t, {
     required String text,
@@ -439,26 +458,104 @@ class AppState extends ChangeNotifier {
     required int priority,
     DateTime? remindAt,
     String? recur,
+    String recurFrom = RecurFrom.schedule,
+    int? recurLead,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+
+    final repeat = _resolveRepeat(
+      text: trimmed,
+      notes: notes.trim(),
+      recur: recur,
+      recurFrom: recurFrom,
+      recurLead: recurLead,
+      remindAt: remindAt,
+    );
+
     await _store.putTask(
       t.copyWith(
-        text: trimmed,
-        notes: notes.trim(),
+        text: repeat.text,
+        notes: repeat.notes,
         priority: priority,
         remindAt: remindAt == null ? null : reminderStamp(remindAt),
         clearReminder: remindAt == null,
-        // A recurrence with nothing to count from would never produce a second
-        // occurrence, so clearing the reminder clears the rule with it rather
-        // than leaving a rule that silently does nothing.
-        recur: remindAt == null ? null : recur,
-        clearRecur: recur == null || remindAt == null,
+        recur: repeat.recur,
+        clearRecur: repeat.recur == null,
+        recurFrom: repeat.recurFrom,
+        recurLead: repeat.recurLead,
+        clearLead: repeat.recurLead == null,
+        recurText: repeat.recurText,
+        recurNotes: repeat.recurNotes,
         updatedAt: nowStamp(),
       ),
     );
     await refreshTasks();
     _mutated();
+  }
+
+  /// Work out what a repeat actually means for the row being written: whether
+  /// the rule survives, and what the title and notes should say.
+  ///
+  /// Two rules, both of which exist so that no state can be stored that does
+  /// nothing:
+  ///
+  ///   - **A schedule-anchored rule needs a reminder.** The reminder *is* the
+  ///     schedule - it is the instant the period is measured from - so a rule
+  ///     without one would never produce a second occurrence. Clearing the
+  ///     reminder therefore clears the rule with it. A **completion**-anchored
+  ///     rule needs nothing: it counts from the tick, and "back on the list
+  ///     every fortnight after I do it" is a perfectly good task with no alarm
+  ///     attached.
+  ///   - **The template is stored only when there is a variable in it.** Null
+  ///     already means "the text is its own template", which is true of every
+  ///     task that uses none and of every row written before v15, so storing a
+  ///     copy of the title beside the title would be a second thing to keep in
+  ///     step for no gain.
+  ///
+  /// The expansion is against the occurrence's own due date - the reminder for
+  /// a scheduled repeat, and today for one that has no clock yet.
+  ({
+    String text,
+    String notes,
+    String? recur,
+    String recurFrom,
+    int? recurLead,
+    String? recurText,
+    String? recurNotes,
+  }) _resolveRepeat({
+    required String text,
+    required String notes,
+    required String? recur,
+    required String recurFrom,
+    required int? recurLead,
+    required DateTime? remindAt,
+  }) {
+    final keeps = recur != null &&
+        (remindAt != null || recurFrom == RecurFrom.completion);
+
+    if (!keeps) {
+      return (
+        text: text,
+        notes: notes,
+        recur: null,
+        recurFrom: RecurFrom.schedule,
+        recurLead: null,
+        recurText: null,
+        recurNotes: null,
+      );
+    }
+
+    final due = remindAt ?? DateTime.now();
+    return (
+      text: expandTaskVariables(text, due),
+      notes: expandTaskVariables(notes, due),
+      recur: recur,
+      recurFrom: recurFrom,
+      recurLead: recurLead,
+      recurText: hasTaskVariables(text) ? text : null,
+      recurNotes: hasTaskVariables(notes) ? notes : null,
+    );
   }
 
   /// Flag or unflag a task from its row.
@@ -486,18 +583,88 @@ class AppState extends ChangeNotifier {
   /// recurring task then sits overdue as one row instead of piling up thirty
   /// copies of a standup nobody attended.
   Future<void> completeTask(Task t) async {
-    await _store.putTask(
-      t.copyWith(
-        completedAt: nowStamp(),
-        inProgress: false,
-        updatedAt: nowStamp(),
-      ),
+    final done = t.copyWith(
+      completedAt: nowStamp(),
+      inProgress: false,
+      updatedAt: nowStamp(),
     );
+    await _store.putTask(done);
 
-    final next = t.nextOccurrence();
-    if (next != null) await _store.putTask(next);
+    // From the *completed* row, because that is what the two anchors are asked
+    // about: a schedule-anchored series measures from the due date either way,
+    // and a completion-anchored one has nothing to measure from until now.
+    // The sweep would reach the same answer within twenty seconds; doing it
+    // here is what makes a task with no lead reappear the instant it is ticked,
+    // which is what recurrence has always looked like.
+    await _spawnOccurrences([done]);
 
     if (focusTask?.uuid == t.uuid) focusTask = null;
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Lay down every occurrence whose creation moment has passed.
+  ///
+  /// Runs from [completeTask] with the one row that just changed, and from the
+  /// reminder poll with every series in the database ([sweepRecurrences]) -
+  /// because a rule-based repeat comes true because *time passed*, and nothing
+  /// is written when it does. A monthly report has to appear on the last day of
+  /// the month whether or not last month's was ever ticked, and only a clock
+  /// can notice that.
+  ///
+  /// Safe to call from both, and from two devices at once, because the
+  /// occurrence's uuid is **derived** from its parent and its own instant: a
+  /// row that exists is not written again, and two devices that both spawn
+  /// produce the same row rather than siblings. Tombstones count as existing,
+  /// so a deleted occurrence stays deleted.
+  ///
+  /// Returns how many rows it wrote.
+  Future<int> _spawnOccurrences(List<Task> seeds, [DateTime? now]) async {
+    final at = now ?? DateTime.now();
+
+    // Candidates first, in memory, then **one** question about which of them
+    // already exist. Per-candidate lookups would be a query per series per
+    // tick, for an answer that is almost always "yes, nothing to do".
+    final wanted = <String, Task>{};
+    for (final seed in seeds) {
+      for (final occurrence in seed.dueOccurrences(at)) {
+        wanted[occurrence.uuid] = occurrence;
+      }
+    }
+    if (wanted.isEmpty) return 0;
+
+    final existing = await _store.existingTaskUuids(wanted.keys.toList());
+    var written = 0;
+    for (final entry in wanted.entries) {
+      if (existing.contains(entry.key)) continue;
+      await _store.putTask(entry.value);
+      written++;
+    }
+    return written;
+  }
+
+  /// The whole database's worth, called from the reminder poll. Refreshes only
+  /// when something was actually written, so a quiet tick costs one query.
+  Future<int> sweepRecurrences([DateTime? now]) async {
+    final written =
+        await _spawnOccurrences(await _store.recurringSeeds(now), now);
+    if (written > 0) {
+      await refreshTasks();
+      _mutated();
+    }
+    return written;
+  }
+
+  /// Stop a series without touching the row it is on.
+  ///
+  /// The way out of a repeat that has no open occurrence left: the rule lives
+  /// on the last row the series produced, which after a completion is a row in
+  /// History, and taking the rule off it is what stops the next one being laid
+  /// down. Not a delete - the completed task is a record of work that was done
+  /// and stays in History exactly as it is.
+  Future<void> stopRepeating(Task t) async {
+    if (t.recur == null) return;
+    await _store.putTask(t.copyWith(clearRecur: true, updatedAt: nowStamp()));
     await refreshTasks();
     _mutated();
   }

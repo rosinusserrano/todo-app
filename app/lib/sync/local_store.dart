@@ -80,7 +80,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 14,
+        version: 15,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -191,6 +191,26 @@ class LocalStore {
       // as a very long meeting.
       await db.execute(
           'ALTER TABLE calendar_events ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0');
+    }
+    if (from < 15) {
+      // Recurrence grew from one column to four, and every default here is
+      // exactly what an existing recurring task already means:
+      //
+      //   recur_from  'schedule'  - it was always measured from the due date.
+      //   recur_lead  null        - the successor appeared when this one was
+      //                             ticked, which is what null goes on meaning.
+      //   recur_text  null        - the text is its own template; no row
+      //   recur_notes null          written before this had a variable in it.
+      //
+      // So there is nothing to backfill, and a task that has always repeated
+      // goes on repeating in exactly the way it did.
+      // Nullable rather than NOT NULL DEFAULT 'schedule' - see the note in
+      // _create. Task.fromMap is what turns null into 'schedule'.
+      await db.execute('ALTER TABLE tasks ADD COLUMN recur_from TEXT');
+      await db.execute('ALTER TABLE tasks ADD COLUMN recur_lead INTEGER');
+      await db.execute('ALTER TABLE tasks ADD COLUMN recur_text TEXT');
+      await db.execute('ALTER TABLE tasks ADD COLUMN recur_notes TEXT');
+      await db.execute(_tasksRecurIndex);
     }
   }
 
@@ -441,6 +461,12 @@ class LocalStore {
   static const _tasksEventIndex =
       'CREATE INDEX idx_tasks_event ON tasks (event_uuid)';
 
+  /// The recurrence sweep runs on the same timer and asks for every row that
+  /// carries a rule - a small fraction of the table, and one the planner can
+  /// only find cheaply with an index on the column being tested.
+  static const _tasksRecurIndex =
+      'CREATE INDEX idx_tasks_recur ON tasks (recur)';
+
   static Future<void> _create(Database db, int version) async {
     await db.execute('''
       CREATE TABLE workspaces (
@@ -465,6 +491,17 @@ class LocalStore {
         in_progress    INTEGER NOT NULL DEFAULT 0,
         remind_at      TEXT,
         recur          TEXT,
+        -- Nullable, unlike Task.recurFrom, which is not. applyRemote inserts a
+        -- server's row verbatim, and a server row written by a device that
+        -- predates this column carries recur_from: null - which a NOT NULL
+        -- would turn into a constraint failure that aborts the whole merge
+        -- transaction, so one old peer would stop every row arriving. Null is
+        -- read back as 'schedule' by Task.fromMap, which is what such a row
+        -- means, so there is still no third state in the model.
+        recur_from     TEXT,
+        recur_lead     INTEGER,
+        recur_text     TEXT,
+        recur_notes    TEXT,
         group_uuid     TEXT,
         event_uuid     TEXT,
         notes          TEXT NOT NULL DEFAULT '',
@@ -503,6 +540,7 @@ class LocalStore {
     await db.execute(_parkedGroupsIndex);
     await db.execute(_tasksGroupIndex);
     await db.execute(_tasksEventIndex);
+    await db.execute(_tasksRecurIndex);
     await db.execute(_attachmentsIndex);
     await db.execute(_attachmentsEventIndex);
     await db.execute(_journalIndex);
@@ -645,6 +683,50 @@ class LocalStore {
     final rows = await _db
         .query('tasks', where: 'uuid = ?', whereArgs: [uuid], limit: 1);
     return rows.isEmpty ? null : Task.fromMap(rows.first);
+  }
+
+  /// How far back a completed recurring task is still worth asking about.
+  ///
+  /// Every occurrence carries the rule, so *every* row a series has ever
+  /// produced is nominally a seed for the next one - which over a couple of
+  /// years of a daily task is a thousand rows to walk on a 20-second timer, for
+  /// an answer the newest row already gives. A series whose latest row is open
+  /// is always found, and one whose latest row was ticked has produced its
+  /// successor within the lead of the following occurrence; the only thing this
+  /// window loses is a series last touched over a year ago on a device that has
+  /// been off ever since, which is a series that has stopped.
+  static const recurringSeedWindow = Duration(days: 400);
+
+  /// Candidate rows for the recurrence sweep: everything carrying a rule that
+  /// could still owe an occurrence.
+  ///
+  /// Tombstones are excluded, and that is how a series is stopped from a row
+  /// that is already in History - deleting it takes the seed away.
+  Future<List<Task>> recurringSeeds([DateTime? now]) async {
+    final since =
+        (now ?? DateTime.now()).subtract(recurringSeedWindow);
+    final rows = await _db.query(
+      'tasks',
+      where: 'recur IS NOT NULL AND deleted_at IS NULL '
+          'AND (completed_at IS NULL OR completed_at >= ?)',
+      whereArgs: [stampOf(since)],
+    );
+    return rows.map(Task.fromMap).toList();
+  }
+
+  /// Which of [uuids] the table already holds, **tombstones included**.
+  ///
+  /// One question rather than one per candidate: the sweep asks about every
+  /// series at once, and a deleted occurrence has to read as "exists" or the
+  /// next sweep would put it straight back.
+  Future<Set<String>> existingTaskUuids(List<String> uuids) async {
+    if (uuids.isEmpty) return {};
+    final marks = List.filled(uuids.length, '?').join(',');
+    final rows = await _db.rawQuery(
+      'SELECT uuid FROM tasks WHERE uuid IN ($marks)',
+      uuids,
+    );
+    return {for (final r in rows) r['uuid'] as String};
   }
 
   Future<List<Attachment>> attachmentsFor(String taskUuid) async {

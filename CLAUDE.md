@@ -77,8 +77,9 @@ There **is** a test suite — `app/test/` covers the local store, the sync merge
 the legacy import, reminders, parked groups, attachments, the encrypted journal,
 the calendar, notification scheduling, the tray, the Markdown dialect, the
 journal pane's states and shortcuts, the parked panel's drag, activate, add and
-review funnel, the content area's identity across the chrome moving, and the
-noise synthesis. Run it.
+review funnel, the content area's identity across the chrome moving, the
+recurrence rules, template variables and the occurrence sweep, the ambience
+cache's byte maths and eviction, and the noise synthesis. Run it.
 
 `test/noise_test.dart` **pins the RNG seed** (`NoiseSynth.rng`), and that is
 what makes it reproducible. Unseeded it failed about a third of runs: at the
@@ -182,6 +183,60 @@ State flags rather than separate tables:
     a DST boundary; building the next `DateTime` from its parts keeps the
     reading. Month-length overflow clamps rather than normalising, or a monthly
     task on the 31st would quietly move to the 1st.
+- **`recur_from`, `recur_lead`, `recur_text` and `recur_notes` (v15) are the
+  rest of a repeat**, and every default is what a pre-v15 row already meant, so
+  the migration backfills nothing and a task that has always repeated goes on
+  repeating in exactly the way it did.
+  - **`recur_from`** is `RecurFrom.schedule` or `RecurFrom.completion`, and it
+    is the whole of the second kind of repeat: an interval counted from when
+    the task was *ticked* rather than from what it was due. Being late then
+    moves the series instead of leaving you behind it, and such a task needs no
+    reminder at all — `nextDueAt` measures from `completed_at`, at the
+    reminder's time of day when there is one.
+  - **`recur_lead`** is the three-state column, in the shape
+    `CalendarEvent.notifyMinutes` uses and for the same reason (two columns can
+    disagree after a merge): **null** writes the successor when this one is
+    ticked — today's behaviour, and incapable of piling up because making the
+    next needs finishing this one; **0** writes it when it falls due, ticked or
+    not, which is the rule-based half of the feature; **n** writes it n minutes
+    early with the due date still the rule's.
+  - **`recur_text` / `recur_notes`** carry the unexpanded template. Expansion
+    (`task_variables.dart`) happens **once, when the row is written**, against
+    that occurrence's own due date — so the September row goes on saying
+    September after October's exists, which is what makes History a record
+    rather than a template that re-renders. Stored only when the text actually
+    has a `$(...)` in it: null already means "the text is its own template".
+  - **`recur_from` is nullable in both databases and non-null in the model.**
+    The server's merge writes `row[field] ?? null` for every column in `TABLES`,
+    and `applyRemote` inserts a server row verbatim, so a peer on an older build
+    pushes a task with no `recur_from` — a NOT NULL would turn that into a
+    constraint failure that rejects the *whole* push and aborts the *whole*
+    merge, so one old device would stop every row moving. `Task.fromMap` reads
+    null as `schedule`, which is what such a row means, so there is still no
+    third state to reason about. Same rule `review_every_days` follows.
+  - **One spawner, two callers, idempotent through the derived uuid.**
+    `AppState._spawnOccurrences` runs from `completeTask` with the row that just
+    changed and from the reminder poll with `LocalStore.recurringSeeds`
+    (`sweepRecurrences`), because a rule-based repeat comes true *because time
+    passed* and nothing is written when it does. `Task.dueOccurrences` walks the
+    chain **in memory** and the caller then asks **one** batched question
+    (`existingTaskUuids`, tombstones included) about which of them already
+    exist — a lookup per candidate would be a query per series per 20-second
+    tick for an answer that is almost always "nothing to do".
+  - **Catch-up is capped at `Task.maxCatchUp`,** most-recent-first. A year off
+    with a daily rule owes 365 occurrences nobody was going to do, and a list of
+    365 of them is not a catch-up.
+  - **New rule forms are for tasks only.** `Recur.monthLast`,
+    `month-<ord>-<wd>` and `every-<n>-<unit>` are parsed rather than listed in
+    `Recur.rules`, and `Recur.nth` does not expand them — a calendar block's
+    occurrences come from `nth`, and nothing can give a block one of these. The
+    first two exist because a due date cannot stand for them: `monthly` from the
+    31st clamps to 28 February and then walks on from *there*, so one short
+    month rewrites the rule for ever.
+  - **History is the way out of a series with no open occurrence.** A
+    completion-anchored task is invisible between being ticked and coming back;
+    the ↻ on its History row names the rule and offers `stopRepeating`, which
+    clears `recur` and leaves the completed row exactly as it is.
 - `event_uuid` on a task is the **planned-into-a-block** pointer, and it follows
   `group_uuid`'s shape for the same reasons — except that it does **not** take
   the row off `activeTasks`. Planning says *when*, not "put this away"; a plan
@@ -961,9 +1016,14 @@ on the other device. Nothing said anything, and nothing could.
 
 - **What moves `PROTOCOL`.** A required field, a renamed one, a changed meaning,
   a different conflict rule, an endpoint the client cannot work without. **Not**
-  a new optional column (v13, v14) and **not** an optional endpoint — `/api/
-  events` returning 404 already means "no instant sync, carry on". `MIN_CLIENT`
-  moves far more rarely still: raising it cuts devices off until they update.
+  a new optional column (v13, v14, and the four v15 added for recurrence) and
+  **not** an optional endpoint — `/api/events` returning 404 already means "no
+  instant sync, carry on". `MIN_CLIENT` moves far more rarely still: raising it
+  cuts devices off until they update. Note what an un-deployed server *does*
+  cost in the v15 case: the rule still crosses, but `recur_from` and
+  `recur_lead` do not, so a repeat set on one device arrives on the other as the
+  legacy shape. That is a reason to deploy the server with the release, not a
+  reason to cut the devices off until it happens.
 - **An absent number is 1**, on both sides. Protocol 1 is what the wire was on
   the day the number was invented, so every server already deployed is protocol
   1 by definition and nothing had to be upgraded in lockstep. Without that rule

@@ -287,6 +287,15 @@ END:VCALENDAR
         'created_at': nowStamp(),
         'updated_at': nowStamp(),
       });
+      // ...and none of the four recurrence columns (v15). The index on `recur`
+      // has to go first: SQLite refuses to drop a column an index is built on,
+      // and although `recur` itself survives this rollback the index is what
+      // the v15 step will put back.
+      await store.raw.execute('DROP INDEX idx_tasks_recur');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_from');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_lead');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_text');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_notes');
       await store.raw
           .execute('ALTER TABLE calendar_events DROP COLUMN all_day');
       await store.raw.setVersion(13);

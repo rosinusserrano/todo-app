@@ -87,6 +87,24 @@ function init(db) {
       -- day is remind_at's. Unconstrained here for the same reason event_uuid
       -- is - the server does not interpret the rule, it carries it.
       recur          TEXT,
+      -- The rest of a repeat (client v15), and the server interprets none of
+      -- it either. recur_from is 'schedule' or 'completion'; recur_lead is
+      -- minutes before the due time at which the next occurrence is written,
+      -- with null meaning "when the last one is ticked"; recur_text and
+      -- recur_notes carry the unexpanded template, so $(month) is not eaten by
+      -- the first occurrence that renders it.
+      --
+      -- recur_from is **nullable here and NOT NULL on the client**, for the
+      -- same reason review_every_days is: the merge writes row[field] ?? null
+      -- for every column in TABLES, so a client that predates this column
+      -- pushes a task with no recur_from at all - and a NOT NULL would turn
+      -- that into a constraint failure that rejects the whole push, for every
+      -- task, from every device that has not been updated. Null reads back as
+      -- 'schedule', which is what such a row means.
+      recur_from     TEXT,
+      recur_lead     INTEGER,
+      recur_text     TEXT,
+      recur_notes    TEXT,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
@@ -231,6 +249,14 @@ function init(db) {
   addColumn(db, 'tasks', 'priority', 'INTEGER NOT NULL DEFAULT 0');
   // Recurrence. Nullable, and null is what every pre-v12 row means: a one-off.
   addColumn(db, 'tasks', 'recur', 'TEXT');
+  // The other three quarters of a repeat (client v15). A server that predates
+  // them has the table but not the columns, and would drop recur_from,
+  // recur_lead and the template on the floor - which is exactly the 0.24.0
+  // failure the protocol number exists to catch, and is silent without them.
+  addColumn(db, 'tasks', 'recur_from', 'TEXT');
+  addColumn(db, 'tasks', 'recur_lead', 'INTEGER');
+  addColumn(db, 'tasks', 'recur_text', 'TEXT');
+  addColumn(db, 'tasks', 'recur_notes', 'TEXT');
   // The same on a block of time (client v13). A repeating block stays one row -
   // the client expands its occurrences for display and never writes them - so
   // this column is the whole of the feature as far as the server is concerned.
@@ -284,6 +310,10 @@ export const TABLES = {
     'notes',
     'priority',
     'recur',
+    'recur_from',
+    'recur_lead',
+    'recur_text',
+    'recur_notes',
   ],
   attachments: [
     'task_uuid',

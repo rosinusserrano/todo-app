@@ -312,16 +312,23 @@ class _WidgetShellState extends State<WidgetShell>
     onTick: _onTick,
   );
 
-  /// The one poll. Two things need a clock and neither writes anything a
-  /// listener could hang off:
+  /// The one poll. Three things need a clock and none of them writes anything
+  /// a listener could hang off:
   ///
   ///   - a time block *starting*, which is why [AppState.refreshSessions] is
   ///     driven from here rather than from a write path;
+  ///   - a repeating task **falling due**, which for a rule-based repeat has
+  ///     nothing to do with anything being ticked - a monthly report appears on
+  ///     the last day of the month whether or not last month's was ever sent,
+  ///     and only a clock notices that;
   ///   - the window quietly losing always-on-top, which nothing reports at all.
   ///
-  /// One timer rather than two to keep in step, for the same reason `onTick`
+  /// One timer rather than three to keep in step, for the same reason `onTick`
   /// exists at all.
   Future<void> _onTick() async {
+    // Before the sessions: a task laid down here can be planned into the block
+    // the same tick is about to describe.
+    await s.sweepRecurrences();
     await s.refreshSessions();
     await _ensurePinned();
   }
@@ -2198,7 +2205,9 @@ class _WidgetShellState extends State<WidgetShell>
       notes: draft.notes,
       priority: draft.priority,
       remindAt: draft.remindAt,
-      recur: draft.recur,
+      recur: draft.repeat.recur,
+      recurFrom: draft.repeat.from,
+      recurLead: draft.repeat.lead,
     );
   }
 
@@ -2216,7 +2225,9 @@ class _WidgetShellState extends State<WidgetShell>
       notes: draft.notes,
       priority: draft.priority,
       remindAt: draft.remindAt,
-      recur: draft.recur,
+      recur: draft.repeat.recur,
+      recurFrom: draft.repeat.from,
+      recurLead: draft.repeat.lead,
     );
   }
 
@@ -2434,6 +2445,13 @@ class _WidgetShellState extends State<WidgetShell>
                               ),
                             ),
                           ),
+                          // The only place a repeat with no open occurrence can
+                          // be reached. A completion-anchored task is invisible
+                          // between being ticked and coming back, and a
+                          // scheduled one is invisible until its lead - so
+                          // without this the way to stop a repeat would be to
+                          // wait for it to come round again.
+                          if (t.recur != null) _stopRepeatingButton(t),
                           Text(
                             _formatWhen(t.completedAt),
                             style: const TextStyle(
@@ -2449,6 +2467,53 @@ class _WidgetShellState extends State<WidgetShell>
         ),
       ],
     );
+  }
+
+  /// The ↻ on a completed repeating task, and what it offers.
+  ///
+  /// It says the rule as well as being the way out of it - a row in History
+  /// that is going to produce another one should say so, and "Every month" is
+  /// the whole explanation of why this task keeps coming back.
+  Widget _stopRepeatingButton(Task t) {
+    return Tooltip(
+      message: '${Recur.label(t.recur!)} - stop repeating',
+      child: InkWell(
+        onTap: () => _confirmStopRepeating(t),
+        borderRadius: BorderRadius.circular(T.radius),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: T.s1, vertical: 2),
+          child: Icon(Icons.repeat_rounded, size: 13, color: T.muted),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmStopRepeating(Task t) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: T.bgSolid,
+        title: const Text('Stop repeating?', style: TextStyle(fontSize: T.fsMenu)),
+        content: Text(
+          '"${t.text}" repeats ${Recur.label(t.recur!).toLowerCase()}. '
+          'Stopping it leaves this one in history exactly as it is; no more '
+          'will be created.',
+          style:
+              const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Stop'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await s.stopRepeating(t);
   }
 
   static String _formatWhen(String? iso) {

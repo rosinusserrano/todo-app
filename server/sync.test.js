@@ -1092,6 +1092,111 @@ test('a server database predating recurrence gains tasks.recur', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('a server database predating the rest of a repeat gains the columns', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'todo-server-'));
+  const path = join(dir, 'sync.db');
+
+  // Tasks as they stood when a repeat was one column: the rule, and nothing
+  // about what it was measured from, when the next one appears, or what the
+  // title said before its variables were written out.
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE tasks (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      completed_at   TEXT,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      in_progress    INTEGER NOT NULL DEFAULT 0,
+      remind_at      TEXT,
+      group_uuid     TEXT,
+      event_uuid     TEXT,
+      notes          TEXT NOT NULL DEFAULT '',
+      priority       INTEGER NOT NULL DEFAULT 0,
+      recur          TEXT,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+    INSERT INTO tasks (uuid, user_id, workspace_uuid, text, created_at, updated_at, recur, seq)
+    VALUES ('t-standup', 'local', 'ws-1', 'stand-up', '2026-01-01T09:00:00Z',
+            '2026-01-01T09:00:00Z', 'daily', 1);
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  const { changes } = sync(db, USER, 0, {
+    tasks: [
+      {
+        uuid: 't-report',
+        workspace_uuid: 'ws-1',
+        text: 'Send working hours for September to management',
+        created_at: '2026-09-27T09:00:00+02:00',
+        completed_at: null,
+        sort_order: 0,
+        in_progress: 0,
+        remind_at: '2026-09-30T15:00:00.000Z',
+        group_uuid: null,
+        event_uuid: null,
+        notes: '',
+        priority: 0,
+        recur: 'month-last',
+        recur_from: 'schedule',
+        recur_lead: 4320,
+        recur_text: 'Send working hours for $(month) to management',
+        recur_notes: null,
+        updated_at: '2026-09-27T09:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+
+  const byUuid = Object.fromEntries(changes.tasks.map((t) => [t.uuid, t]));
+
+  // Carried, not interpreted: the server never works out an occurrence, it
+  // only has to not lose the columns. Without them in TABLES this row arrives
+  // on the other device with the rule and nothing else, which is the 0.24.0
+  // failure - silent on both ends.
+  assert.equal(byUuid['t-report'].recur, 'month-last');
+  assert.equal(byUuid['t-report'].recur_from, 'schedule');
+  assert.equal(byUuid['t-report'].recur_lead, 4320);
+  assert.equal(
+    byUuid['t-report'].recur_text,
+    'Send working hours for $(month) to management',
+  );
+  assert.equal(byUuid['t-report'].recur_notes, null);
+
+  // The row that was already there keeps its rule and carries nulls for the
+  // rest - which is what it already meant, and what the client reads them back
+  // as: measured from the schedule, next one written when this one is ticked.
+  assert.equal(byUuid['t-standup'].recur, 'daily');
+  assert.equal(byUuid['t-standup'].recur_from, null);
+  assert.equal(byUuid['t-standup'].recur_lead, null);
+
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a client that predates the repeat columns can still push', async () => {
+  const db = freshDb();
+
+  // The merge writes `row[field] ?? null` for every column in TABLES, so a
+  // device on an older build pushes a task carrying none of these. A NOT NULL
+  // on recur_from would make that a constraint failure - and it would reject
+  // the whole push, not one field, so every task on that device would stop
+  // syncing with nothing on either end saying why.
+  const { changes } = sync(db, USER, 0, {
+    tasks: [task('t-old-client', 'buy milk', '2026-07-21T10:00:00+02:00')],
+  });
+
+  assert.equal(changes.tasks.length, 1);
+  assert.equal(changes.tasks[0].text, 'buy milk');
+  assert.equal(changes.tasks[0].recur_from, null);
+});
+
 test('auth rejects a missing, malformed or wrong token', async () => {
   const db = freshDb();
   adoptBootstrapSecret(db, 'correct-horse');

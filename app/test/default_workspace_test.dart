@@ -88,6 +88,14 @@ void main() {
       // v11 added notes and priority, which the migration would collide on.
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
+      // ...and none of the four recurrence columns (v15). The index on `recur`
+      // has to go first for the same reason idx_tasks_event did above: SQLite
+      // refuses to drop a column an index is built on.
+      await store.raw.execute('DROP INDEX idx_tasks_recur');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_from');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_lead');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_text');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
       // v13 and v14 added columns to a block of time.
       await store.raw.execute('ALTER TABLE calendar_events DROP COLUMN recur');
@@ -234,6 +242,14 @@ void main() {
       // v11 added notes and priority, which the migration would collide on.
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN priority');
+      // ...and none of the four recurrence columns (v15). The index on `recur`
+      // has to go first for the same reason idx_tasks_event did above: SQLite
+      // refuses to drop a column an index is built on.
+      await store.raw.execute('DROP INDEX idx_tasks_recur');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_from');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_lead');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_text');
+      await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_notes');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
       // v13 and v14 added columns to a block of time.
       await store.raw.execute('ALTER TABLE calendar_events DROP COLUMN recur');

@@ -41,6 +41,7 @@ import 'form_sheet.dart';
 import 'markdown_text.dart';
 import 'reminder_menu.dart';
 import 'reminder_picker.dart';
+import 'repeat_editor.dart';
 
 /// What the composer produced. There is no delete here - a task nobody wants is
 /// dismissed from its row, where the ✕ already is.
@@ -50,7 +51,7 @@ class TaskDraft {
     required this.notes,
     required this.priority,
     required this.remindAt,
-    required this.recur,
+    required this.repeat,
   });
 
   final String text;
@@ -61,10 +62,12 @@ class TaskDraft {
   /// has - see AppState.saveTaskDetails.
   final DateTime? remindAt;
 
-  /// One of [Recur.rules], or null for a task that happens once. Only
-  /// meaningful alongside [remindAt] - there is nothing to repeat from
-  /// otherwise, which AppState.saveTaskDetails enforces.
-  final String? recur;
+  /// How it repeats, if at all. A *scheduled* repeat is measured from
+  /// [remindAt] and so is dropped without one; a completion-anchored one needs
+  /// no clock at all. AppState.saveTaskDetails is where that is enforced.
+  final RepeatSpec repeat;
+
+  String? get recur => repeat.recur;
 }
 
 /// [existing] null composes a new task; otherwise the same form edits that one.
@@ -81,7 +84,10 @@ Future<TaskDraft?> showTaskComposer(
     context,
     builder: (context, layout) => _ComposerSheet(
       existing: existing,
-      initialText: existing?.text ?? initialText,
+      // The template rather than what this occurrence says, for the same
+      // reason the notes field takes recurNotes: editing a repeating task has
+      // to edit the thing that repeats.
+      initialText: existing?.recurText ?? existing?.text ?? initialText,
       accent: accent,
       layout: layout,
     ),
@@ -109,12 +115,21 @@ class _ComposerSheet extends StatefulWidget {
 }
 
 class _ComposerSheetState extends State<_ComposerSheet> {
+  // The **template**, not the expansion: `$(month)` is what the user typed and
+  // what they have to be able to edit, while `text` on the row is what this
+  // occurrence says. They are the same string for every task that uses no
+  // variables, which is almost all of them.
   late final _title = TextEditingController(text: widget.initialText);
-  late final _notes = TextEditingController(text: widget.existing?.notes ?? '');
+  late final _notes = TextEditingController(
+      text: widget.existing?.recurNotes ?? widget.existing?.notes ?? '');
 
   late int _priority = widget.existing?.priority ?? 0;
   late DateTime? _remindAt = widget.existing?.remindAtTime;
-  late String? _recur = widget.existing?.recur;
+  late RepeatSpec _repeat = RepeatSpec(
+    recur: widget.existing?.recur,
+    from: widget.existing?.recurFrom ?? RecurFrom.schedule,
+    lead: widget.existing?.recurLead,
+  );
 
   /// Read-first exactly when there is something to read. See the header.
   late bool _editingNotes = (widget.existing?.notes ?? '').trim().isEmpty;
@@ -145,6 +160,27 @@ class _ComposerSheetState extends State<_ComposerSheet> {
     });
   }
 
+  /// A plain rule with nothing else said about it - which is exactly what the
+  /// chips beside it stand for. Anything else gets a chip of its own.
+  bool get _isPlain =>
+      _repeat.from == RecurFrom.schedule &&
+      _repeat.lead == null &&
+      _repeat.recur != null &&
+      Recur.rules.contains(_repeat.recur);
+
+  Future<void> _editRepeat() async {
+    final spec = await showRepeatEditor(
+      context,
+      initial: _repeat,
+      hasReminder: _remindAt != null,
+      accent: widget.accent,
+    );
+    // The editor is a route, so the composer under it can be gone by the time
+    // it answers - a back gesture that pops both, or the shell clearing its
+    // overlays. Same rule the reminder picker follows.
+    if (spec != null && mounted) setState(() => _repeat = spec);
+  }
+
   void _save() {
     final text = _title.text.trim();
     if (text.isEmpty) return;
@@ -155,7 +191,7 @@ class _ComposerSheetState extends State<_ComposerSheet> {
         notes: _notes.text.trim(),
         priority: _priority,
         remindAt: _remindAt,
-        recur: _recur,
+        repeat: _repeat,
       ),
     );
   }
@@ -286,37 +322,63 @@ class _ComposerSheetState extends State<_ComposerSheet> {
                     ),
                   ],
                 ),
-                // Only offered once there is a reminder to repeat from. A rule
-                // with nothing to count from produces no second occurrence, so
-                // showing it would be offering a setting that does nothing.
-                if (_remindAt != null) ...[
-                  const SizedBox(height: 14),
-                  const _Label('Repeats'),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      ChoiceChip(
-                        label: const Text(
-                          'Once',
-                          style: TextStyle(fontSize: T.fsMeta),
-                        ),
-                        selected: _recur == null,
-                        onSelected: (_) => setState(() => _recur = null),
+                // Always offered, unlike before. The four plain rules need a
+                // reminder to be measured from and so are only shown with one,
+                // but a repeat counted from the *completion* needs no clock at
+                // all - "back on the list a fortnight after I last did it" is a
+                // perfectly good task with no alarm attached - and that is what
+                // the Repeat… door leads to.
+                const SizedBox(height: 14),
+                const _Label('Repeats'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    ChoiceChip(
+                      label: const Text(
+                        'Once',
+                        style: TextStyle(fontSize: T.fsMeta),
                       ),
+                      selected: !_repeat.repeats,
+                      onSelected: (_) =>
+                          setState(() => _repeat = RepeatSpec.once),
+                    ),
+                    if (_remindAt != null)
                       for (final r in Recur.rules)
                         ChoiceChip(
                           label: Text(
                             Recur.label(r),
                             style: const TextStyle(fontSize: T.fsMeta),
                           ),
-                          selected: _recur == r,
-                          onSelected: (_) => setState(() => _recur = r),
+                          selected: _isPlain && _repeat.recur == r,
+                          onSelected: (_) => setState(
+                            () => _repeat = RepeatSpec(recur: r),
+                          ),
                         ),
-                    ],
-                  ),
-                ],
+                    // Anything the chips above cannot say - the last day of the
+                    // month, the first Monday, every two weeks, counted from
+                    // the completion - shows as its own selected chip, the same
+                    // way a picked reminder does.
+                    if (_repeat.repeats && !_isPlain)
+                      ChoiceChip(
+                        label: Text(
+                          _repeat.label,
+                          style: const TextStyle(fontSize: T.fsMeta),
+                        ),
+                        selected: true,
+                        onSelected: (_) => _editRepeat(),
+                      ),
+                    ActionChip(
+                      avatar: const Icon(Icons.repeat_rounded, size: 14),
+                      label: const Text(
+                        'Repeat…',
+                        style: TextStyle(fontSize: T.fsMeta),
+                      ),
+                      onPressed: _editRepeat,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

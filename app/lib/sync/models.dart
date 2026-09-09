@@ -7,6 +7,8 @@
 
 import 'package:uuid/uuid.dart';
 
+import '../task_variables.dart';
+
 const _uuid = Uuid();
 
 String newId() => _uuid.v4();
@@ -80,11 +82,33 @@ int compareStamps(String a, String b) {
 
 /// How a task repeats.
 ///
-/// A small closed vocabulary rather than an RRULE: this is a todo widget, and
-/// "every second Tuesday except in August" is a calendar's problem. The rule
-/// carries the *period* only - the time of day is [Task.remindAt]'s, so there
-/// is one place a recurring reminder's clock is stored and it is the same place
-/// a one-off's is.
+/// A small vocabulary rather than an RRULE: this is a todo widget, and "every
+/// second Tuesday except in August" is a calendar's problem. The rule carries
+/// the *period* only - the time of day is [Task.remindAt]'s, so there is one
+/// place a recurring reminder's clock is stored and it is the same place a
+/// one-off's is.
+///
+/// Five of them are plain words ([rules]) and are what a **calendar block** may
+/// carry. Three more are parsed, and are for tasks only:
+///
+///   `month-last`          the last day of every month
+///   `month-<ord>-<wd>`    the first..fourth or last weekday of every month,
+///                         e.g. `month-1-mon`
+///   `every-<n>-<unit>`    every n days / weeks / months / years, e.g.
+///                         `every-2-w`
+///
+/// The first two exist because a due date cannot stand for them. "Monthly" is
+/// already "the same day of the month as the reminder", so the 31st and the 8th
+/// need no rule of their own - but the **last** day of the month is a different
+/// date every month, and so is the first Monday, and a monthly rule walked from
+/// the 31st clamps to 28 February and then stays there. See [nth], which is the
+/// same trap one level up.
+///
+/// The parsed forms are deliberately **not** in [rules], and [nth] does not
+/// expand them: a calendar block's occurrences come from `nth`, and nothing can
+/// give a block one of these rules. An unknown rule already means "no further
+/// occurrences", which is also the right answer for a rule this build does not
+/// know - a newer device's, arrived by sync.
 class Recur {
   static const daily = 'daily';
   static const weekdays = 'weekdays';
@@ -92,6 +116,7 @@ class Recur {
   static const monthly = 'monthly';
   static const yearly = 'yearly';
 
+  /// The plain-word rules, and the only ones a calendar event may carry.
   static const rules = [daily, weekdays, weekly, monthly, yearly];
 
   static const labels = {
@@ -102,7 +127,136 @@ class Recur {
     yearly: 'Every year',
   };
 
-  static String label(String rule) => labels[rule] ?? rule;
+  /// The last day of every month. A rule of its own because no due date can
+  /// stand for it - [monthly] from the 31st becomes the 28th in February and,
+  /// walking from there, stays the 28th.
+  static const monthLast = 'month-last';
+
+  /// `every-<n>-<unit>`; unit is one of [unitDay], [unitWeek], [unitMonth],
+  /// [unitYear]. The interval form - "every two weeks" - and the one whose
+  /// meaning depends on [Task.recurFrom].
+  static String every(int n, String unit) => 'every-$n-$unit';
+
+  /// `month-<ord>-<weekday>`, e.g. `month-1-mon`. [ord] is 1-4 or [ordLast],
+  /// and [weekday] is a [DateTime] weekday.
+  static String nthWeekday(int ord, int weekday) =>
+      'month-${ord == ordLast ? 'last' : ord}-${_weekdayNames[weekday - 1]}';
+
+  static const unitDay = 'd';
+  static const unitWeek = 'w';
+  static const unitMonth = 'm';
+  static const unitYear = 'y';
+  static const units = [unitDay, unitWeek, unitMonth, unitYear];
+
+  /// "the last one in the month", wherever an ordinal is expected. -1 rather
+  /// than 5, because a month with five Mondays and a month with four both have
+  /// exactly one last Monday.
+  static const ordLast = -1;
+  static const ordinals = [1, 2, 3, 4, ordLast];
+
+  static const _weekdayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  static const _weekdayLabels = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  static const _ordinalLabels = {
+    1: 'First',
+    2: 'Second',
+    3: 'Third',
+    4: 'Fourth',
+    ordLast: 'Last',
+  };
+  static const _unitLabels = {
+    unitDay: ['day', 'days'],
+    unitWeek: ['week', 'weeks'],
+    unitMonth: ['month', 'months'],
+    unitYear: ['year', 'years'],
+  };
+
+  static String label(String rule) {
+    final plain = labels[rule];
+    if (plain != null) return plain;
+    if (rule == monthLast) return 'Last day of the month';
+
+    final interval = _interval(rule);
+    if (interval != null) {
+      final (n, unit) = interval;
+      final words = _unitLabels[unit]!;
+      return n == 1 ? 'Every ${words[0]}' : 'Every $n ${words[1]}';
+    }
+
+    final nthWd = _nthWeekday(rule);
+    if (nthWd != null) {
+      final (ord, weekday) = nthWd;
+      return '${_ordinalLabels[ord]} ${_weekdayLabels[weekday - 1]} of the month';
+    }
+    // A rule this build does not know. Printing it raw is honest, and is what
+    // this did before the vocabulary grew.
+    return rule;
+  }
+
+  /// Whether [next] can do anything with this rule at all.
+  static bool isKnown(String rule) =>
+      rules.contains(rule) ||
+      rule == monthLast ||
+      _interval(rule) != null ||
+      _nthWeekday(rule) != null;
+
+  /// `every-<n>-<unit>` decomposed, or null.
+  static (int, String)? _interval(String rule) {
+    final parts = rule.split('-');
+    if (parts.length != 3 || parts[0] != 'every') return null;
+    final n = int.tryParse(parts[1]);
+    if (n == null || n < 1 || !units.contains(parts[2])) return null;
+    return (n, parts[2]);
+  }
+
+  /// `month-<ord>-<weekday>` decomposed as (ordinal, DateTime weekday), or
+  /// null. [monthLast] is a different rule and is not matched here.
+  static (int, int)? _nthWeekday(String rule) {
+    final parts = rule.split('-');
+    if (parts.length != 3 || parts[0] != 'month') return null;
+    final ord = parts[1] == 'last' ? ordLast : int.tryParse(parts[1]);
+    if (ord == null || (ord != ordLast && (ord < 1 || ord > 4))) return null;
+    final wd = _weekdayNames.indexOf(parts[2]);
+    if (wd < 0) return null;
+    return (ord, wd + 1);
+  }
+
+  /// The [ord]-th [weekday] of the given month, at [at]'s time of day, or null
+  /// when that month has no such day. Every month has at least four of every
+  /// weekday, so for the ordinals this vocabulary allows null never happens -
+  /// it is there so a malformed rule fails quietly rather than inventing a day.
+  static DateTime? _weekdayOfMonth(
+    int year,
+    int month,
+    int ord,
+    int weekday,
+    DateTime at,
+  ) {
+    DateTime on(int day) =>
+        DateTime(year, month, day, at.hour, at.minute, at.second);
+    final lastDay = DateTime(year, month + 1, 0).day;
+
+    if (ord == ordLast) {
+      for (var day = lastDay; day > lastDay - 7; day--) {
+        if (on(day).weekday == weekday) return on(day);
+      }
+      return null;
+    }
+
+    for (var day = 1; day <= 7; day++) {
+      if (on(day).weekday != weekday) continue;
+      final target = day + 7 * (ord - 1);
+      return target <= lastDay ? on(target) : null;
+    }
+    return null;
+  }
 
   /// The occurrence after [from] under [rule], or null if the rule is unknown.
   ///
@@ -146,6 +300,51 @@ class Recur {
         final lastDay = DateTime(l.year + 1, l.month + 1, 0).day;
         return at(l.year + 1, l.month, l.day > lastDay ? lastDay : l.day);
     }
+
+    // The last day of every month. Asked as "the first month-end strictly after
+    // this instant", which is what makes a rule set from mid-month land on the
+    // end of *this* month rather than skipping one.
+    if (rule == monthLast) {
+      for (var ahead = 0; ahead < 3; ahead++) {
+        final end = DateTime(l.year, l.month + ahead + 1, 0);
+        final candidate = at(end.year, end.month, end.day);
+        if (candidate.isAfter(l)) return candidate;
+      }
+      return null;
+    }
+
+    final nthWd = _nthWeekday(rule);
+    if (nthWd != null) {
+      final (ord, weekday) = nthWd;
+      // Same question, and the same reason for asking it that way: a rule set
+      // on the 2nd means the first Monday of this month if that is still to
+      // come. Three months is plenty - every month has one.
+      for (var ahead = 0; ahead < 3; ahead++) {
+        final month = DateTime(l.year, l.month + ahead);
+        final candidate =
+            _weekdayOfMonth(month.year, month.month, ord, weekday, l);
+        if (candidate != null && candidate.isAfter(l)) return candidate;
+      }
+      return null;
+    }
+
+    final interval = _interval(rule);
+    if (interval != null) {
+      final (n, unit) = interval;
+      switch (unit) {
+        case unitDay:
+          return at(l.year, l.month, l.day + n);
+        case unitWeek:
+          return at(l.year, l.month, l.day + 7 * n);
+        case unitMonth:
+          final lastDay = DateTime(l.year, l.month + n + 1, 0).day;
+          return at(l.year, l.month + n, l.day > lastDay ? lastDay : l.day);
+        case unitYear:
+          final lastDay = DateTime(l.year + n, l.month + 1, 0).day;
+          return at(l.year + n, l.month, l.day > lastDay ? lastDay : l.day);
+      }
+    }
+
     return null;
   }
 
@@ -210,6 +409,30 @@ class Recur {
   /// Namespace for [Task.nextOccurrence]'s derived uuids. A fixed constant, so
   /// two devices deriving the same occurrence agree.
   static const occurrenceNamespace = '6f9a1c2e-4d3b-5a7f-8e10-2b6c4d9f1a35';
+}
+
+/// Which instant a repeat is measured from. See [Task.recurFrom].
+///
+/// A two-value vocabulary in a text column rather than a boolean, for the
+/// reason [Task.priority] is an integer: a third answer is a plausible request
+/// ("from when it was *started*"), and answering it with a second boolean would
+/// leave two flags that can disagree after a merge.
+class RecurFrom {
+  /// From the due date this occurrence carried. The calendar keeps its rhythm
+  /// whatever you do about it, which is what a monthly report needs.
+  static const schedule = 'schedule';
+
+  /// From when it was actually ticked. What "every two weeks after I last did
+  /// it" means, and the only reading under which being late does not turn a
+  /// fortnightly job into a queue of overdue ones.
+  static const completion = 'completion';
+
+  static const all = [schedule, completion];
+
+  static const labels = {
+    schedule: 'On a schedule',
+    completion: 'After it is done',
+  };
 }
 
 abstract class SyncRow {
@@ -434,6 +657,62 @@ class Task implements SyncRow {
   /// and two answers to "what did I finish".
   final String? recur;
 
+  /// Which instant the next occurrence is measured from: [RecurFrom.schedule]
+  /// (the due date this one carried) or [RecurFrom.completion] (when it was
+  /// actually ticked).
+  ///
+  /// The whole of the second kind of repeat. "Clean the kitchen every two
+  /// weeks" made on 1 January and done on the 8th is due again on the 22nd, not
+  /// on the 15th - the interval is between *doings*, and measuring it from the
+  /// schedule turns a fortnightly job into a backlog of overdue ones the first
+  /// time you are late.
+  ///
+  /// Non-null *here*, and nullable in both databases. A row that arrives from a
+  /// server without the column - written by a device on an older build - is
+  /// read as [RecurFrom.schedule], which is what it means; keeping the model's
+  /// field non-null is what stops there being a third "unset" state to reason
+  /// about, and is why `copyWith` needs no clear flag for it.
+  final String recurFrom;
+
+  /// How long before its due time an occurrence is **created**, in minutes, or
+  /// null for "as soon as the last one is ticked".
+  ///
+  /// Three states in one column rather than a flag plus a value, for the same
+  /// reason [CalendarEvent.notifyMinutes] is one column: two can disagree after
+  /// a merge. What they mean:
+  ///
+  ///   - **null** - the successor is written when this one is completed, which
+  ///     is what recurrence did before this column existed and what every
+  ///     pre-v15 row means. A task on this setting can never pile up: there is
+  ///     at most one open occurrence, because making the next one requires
+  ///     finishing this one.
+  ///   - **0** - written when it falls due, ticked or not. This is the rule
+  ///     half of "create the todo according to the rule at the specified
+  ///     times": a monthly report appears on the last day of every month
+  ///     whether or not last month's was ever sent, and an unanswered month is
+  ///     a row that stays on the list saying so.
+  ///   - **n** - written n minutes early, with the due date still the rule's.
+  ///     "Three days before the end of the month" is this.
+  ///
+  /// Note it is *not* a second reminder: [remindAt] goes on being the one
+  /// instant anything nags at.
+  final int? recurLead;
+
+  /// [text] before its `$(...)` variables were expanded, or null when the text
+  /// is its own template - which is every task that uses no variables, and
+  /// every row written before v15.
+  ///
+  /// The reason this exists at all: expansion happens once, when the row is
+  /// written, against that occurrence's own due date. Without somewhere to keep
+  /// the unexpanded form the first expansion would eat the variable and every
+  /// occurrence after it would repeat one month's wording. Keeping the expanded
+  /// text in [text] is what makes History a record of what was done rather than
+  /// a template that re-renders itself every time it is drawn.
+  final String? recurText;
+
+  /// [notes] before expansion. Same rule as [recurText].
+  final String? recurNotes;
+
   /// The [ParkedGroup] this task is shelved in, or null for a task on the
   /// current list. One nullable column rather than a second table: a parked
   /// task is the same row with the same history, just not on today's list, and
@@ -480,6 +759,19 @@ class Task implements SyncRow {
   /// The one flagged level the UI currently sets.
   static const priorityHigh = 1;
 
+  /// How many missed occurrences one sweep will lay down for a single series.
+  ///
+  /// A device that was off for a year with a daily rule has 365 occurrences
+  /// nobody was ever going to do, and a list of 365 of them is not a catch-up,
+  /// it is a mess to clear before the app is usable again. The most recent few
+  /// are the ones that still mean anything.
+  static const maxCatchUp = 8;
+
+  /// How far forward [dueOccurrences] will walk while looking for the ones that
+  /// are still owed. Pure arithmetic and no database, so this is cheap; the
+  /// bound exists so a malformed rule cannot spin.
+  static const _maxWalk = 800;
+
   const Task({
     required this.uuid,
     required this.workspaceUuid,
@@ -490,6 +782,10 @@ class Task implements SyncRow {
     this.inProgress = false,
     this.remindAt,
     this.recur,
+    this.recurFrom = RecurFrom.schedule,
+    this.recurLead,
+    this.recurText,
+    this.recurNotes,
     this.groupUuid,
     this.eventUuid,
     this.notes = '',
@@ -545,29 +841,128 @@ class Task implements SyncRow {
   /// inheriting it would plan next week's task into last week's afternoon.
   Task? nextOccurrence() {
     final rule = recur;
-    final from = remindAtTime;
-    if (rule == null || from == null) return null;
+    final due = nextDueAt();
+    if (rule == null || due == null) return null;
 
-    final at = Recur.next(from, rule);
-    if (at == null) return null;
-
-    final stamp = reminderStamp(at);
+    // The reminder is the *schedule*, so an occurrence only carries one if this
+    // one did. A "clean the kitchen every fortnight" with no reminder is a task
+    // that comes back onto the list, not one that raises the window.
+    final stamp = reminderStamp(due);
     final now = nowStamp();
+    final title = recurText ?? text;
+    final body = recurNotes ?? notes;
+
     return Task(
+      // Derived from the parent and the occurrence instant, which is what makes
+      // spawning idempotent: the sweep, the completion path and the other
+      // device all produce the same row.
       uuid: _uuid.v5(Recur.occurrenceNamespace, '$uuid:$stamp'),
       workspaceUuid: workspaceUuid,
-      text: text,
+      text: expandTaskVariables(title, due),
       createdAt: now,
       sortOrder: sortOrder,
-      remindAt: stamp,
+      remindAt: remindAt == null ? null : stamp,
       recur: rule,
+      recurFrom: recurFrom,
+      recurLead: recurLead,
+      // The template travels; the expansion does not. See [recurText].
+      recurText: recurText,
+      recurNotes: recurNotes,
       // A recurring task parked in a group stays parked; that is a statement
       // about where it lives, not about this occurrence.
       groupUuid: groupUuid,
-      notes: notes,
+      notes: expandTaskVariables(body, due),
       priority: priority,
       updatedAt: now,
     );
+  }
+
+  /// When the occurrence after this one is **due**, or null when there will not
+  /// be one.
+  ///
+  /// Two anchors, and the difference between them is the difference between the
+  /// two kinds of repeat:
+  ///
+  ///   - [RecurFrom.schedule] counts from this occurrence's own due date, so
+  ///     the series keeps the calendar's rhythm whatever you do about it.
+  ///   - [RecurFrom.completion] counts from when it was ticked, at the same
+  ///     time of day the reminder used - which is what "every two weeks after I
+  ///     last did it" means, and it is null until it *has* been ticked.
+  DateTime? nextDueAt() {
+    final rule = recur;
+    if (rule == null) return null;
+
+    if (recurFrom == RecurFrom.completion) {
+      final done = completedAt == null ? null : DateTime.tryParse(completedAt!);
+      if (done == null) return null;
+      return Recur.next(_atRemindTime(done.toLocal()), rule);
+    }
+
+    final from = remindAtTime;
+    if (from == null) return null;
+    return Recur.next(from, rule);
+  }
+
+  /// When the occurrence after this one should be **written**, or null when
+  /// there will not be one.
+  ///
+  /// The lead is what separates "the next one appears when this one is done"
+  /// from "the next one appears when it is due, done or not" - see [recurLead].
+  DateTime? nextCreationAt() {
+    final due = nextDueAt();
+    if (due == null) return null;
+
+    final lead = recurLead;
+    if (lead == null) {
+      // The legacy shape: the successor exists from the moment this one is
+      // ticked. Counting from completion already implies a wait, so a missing
+      // lead there is read as zero rather than as "immediately", which would
+      // put the task back on the list the instant it left it.
+      if (recurFrom == RecurFrom.completion) return due;
+      final done = completedAt == null ? null : DateTime.tryParse(completedAt!);
+      return done?.toLocal();
+    }
+    return due.subtract(Duration(minutes: lead));
+  }
+
+  /// [at]'s date with this task's reminder time of day, or [at] unchanged when
+  /// there is no reminder. Keeps "every fortnight at 09:00" at 09:00 rather
+  /// than at whatever minute the box happened to be ticked.
+  DateTime _atRemindTime(DateTime at) {
+    final clock = remindAtTime;
+    if (clock == null) return at;
+    return DateTime(at.year, at.month, at.day, clock.hour, clock.minute,
+        clock.second);
+  }
+
+  /// Every occurrence after this one whose creation moment has already passed,
+  /// oldest last-but-[maxCatchUp] dropped.
+  ///
+  /// Pure: it writes nothing and reads nothing, which is what lets the caller
+  /// ask one batched question about which of these already exist rather than
+  /// one question per candidate. Walking in memory is also why a device that
+  /// was off for a year costs arithmetic rather than a thousand queries.
+  ///
+  /// The chain only continues where the successor can itself produce one - a
+  /// schedule-anchored series, where each occurrence carries the due date the
+  /// next is measured from. A completion-anchored one stops after the first,
+  /// because the second is measured from a completion that has not happened.
+  List<Task> dueOccurrences(DateTime now) {
+    if (recur == null) return const [];
+
+    final found = <Task>[];
+    var parent = this;
+    for (var i = 0; i < _maxWalk; i++) {
+      final at = parent.nextCreationAt();
+      if (at == null || at.isAfter(now)) break;
+      final child = parent.nextOccurrence();
+      if (child == null) break;
+      found.add(child);
+      parent = child;
+    }
+
+    if (found.length <= maxCatchUp) return found;
+    return found.sublist(found.length - maxCatchUp);
   }
 
   Task copyWith({
@@ -578,6 +973,10 @@ class Task implements SyncRow {
     bool? inProgress,
     String? remindAt,
     String? recur,
+    String? recurFrom,
+    int? recurLead,
+    String? recurText,
+    String? recurNotes,
     String? groupUuid,
     String? eventUuid,
     String? notes,
@@ -590,6 +989,7 @@ class Task implements SyncRow {
     bool clearRecur = false,
     bool clearGroup = false,
     bool clearEvent = false,
+    bool clearLead = false,
   }) =>
       Task(
         uuid: uuid,
@@ -601,6 +1001,14 @@ class Task implements SyncRow {
         inProgress: inProgress ?? this.inProgress,
         remindAt: clearReminder ? null : (remindAt ?? this.remindAt),
         recur: clearRecur ? null : (recur ?? this.recur),
+        // The three that describe the repeat go with it: a task that no longer
+        // repeats has no anchor, no lead and no template, and leaving them set
+        // would make "Once" a state that still remembers how to come back.
+        recurFrom: clearRecur ? RecurFrom.schedule : (recurFrom ?? this.recurFrom),
+        recurLead:
+            clearRecur || clearLead ? null : (recurLead ?? this.recurLead),
+        recurText: clearRecur ? null : (recurText ?? this.recurText),
+        recurNotes: clearRecur ? null : (recurNotes ?? this.recurNotes),
         groupUuid: clearGroup ? null : (groupUuid ?? this.groupUuid),
         eventUuid: clearEvent ? null : (eventUuid ?? this.eventUuid),
         // No "clear" flag for these two: the empty string and 0 *are* the
@@ -622,6 +1030,10 @@ class Task implements SyncRow {
         'in_progress': inProgress ? 1 : 0,
         'remind_at': remindAt,
         'recur': recur,
+        'recur_from': recurFrom,
+        'recur_lead': recurLead,
+        'recur_text': recurText,
+        'recur_notes': recurNotes,
         'group_uuid': groupUuid,
         'event_uuid': eventUuid,
         'notes': notes,
@@ -640,6 +1052,13 @@ class Task implements SyncRow {
         inProgress: ((m['in_progress'] as num?)?.toInt() ?? 0) != 0,
         remindAt: m['remind_at'] as String?,
         recur: m['recur'] as String?,
+        // Null-tolerant, like notes and priority below: a row from a server
+        // still carrying the pre-v15 column list has none of these, and what
+        // it means by that is exactly the defaults.
+        recurFrom: (m['recur_from'] as String?) ?? RecurFrom.schedule,
+        recurLead: (m['recur_lead'] as num?)?.toInt(),
+        recurText: m['recur_text'] as String?,
+        recurNotes: m['recur_notes'] as String?,
         groupUuid: m['group_uuid'] as String?,
         eventUuid: m['event_uuid'] as String?,
         // Null-tolerant: a row that arrived from a server still carrying the

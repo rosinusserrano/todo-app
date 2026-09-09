@@ -261,6 +261,14 @@ void main() {
       'created_at': nowStamp(),
       'updated_at': nowStamp(),
     });
+    // ...and none of the four recurrence columns (v15). The index on `recur`
+    // has to go first for the same reason idx_tasks_event did above: SQLite
+    // refuses to drop a column an index is built on.
+    await store.raw.execute('DROP INDEX idx_tasks_recur');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_from');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_lead');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_text');
+    await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_notes');
     await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur');
     // v13 put the same column on calendar_events; rolling back past v12 means
     // rolling back past that too, or its migration collides on the way up.

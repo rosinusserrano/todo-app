@@ -68,29 +68,36 @@ green when it lands. Reasoning in `ROADMAP.md`.
       clear it.
 - [x] **30.4** Tests for the bookkeeping, with the fetch injected.
 
-### 31. Recurring todos, two kinds  `[ ]`
+### 31. Recurring todos, two kinds  `[x]`
 
-- [ ] **31.1** Vocabulary: `Recur` parses `monthly-last`, `monthly-<n>-<wd>`
+- [x] **31.1** Vocabulary: `Recur` parses `monthly-last`, `monthly-<n>-<wd>`
       and `every-<n><unit>` alongside the five it already knows.
-- [ ] **31.2** Schema v15 - `recur_from`, `recur_lead`, `recur_text`,
+- [x] **31.2** Schema v15 - `recur_from`, `recur_lead`, `recur_text`,
       `recur_notes` on `tasks`; the same four in `server/db.js` (schema,
       `addColumn`, `TABLES`). Optional columns, so `PROTOCOL` does **not**
       move.
-- [ ] **31.3** `$(month)`-style variables, expanded against the occurrence's
+- [x] **31.3** `$(month)`-style variables, expanded against the occurrence's
       own due date at the moment the row is written.
-- [ ] **31.4** One spawner, called from `completeTask` and from the reminder
+- [x] **31.4** One spawner, called from `completeTask` and from the reminder
       sweep, idempotent through the derived uuid - which is what lets a
       schedule rule create its next todo whether or not the last one was ever
       ticked.
-- [ ] **31.5** UI: the composer's Repeats row gains **Custom...**, and the
+- [x] **31.5** UI: the composer's Repeats row gains **Custom...**, and the
       editor behind it covers both kinds plus the lead time.
-- [ ] **31.6** Tests on both sides; `node --test server/`.
+- [x] **31.6** Tests on both sides; `node --test server/`.
 
-### 32. Release  `[ ]`
+### 32. Release  `[~]`
 
-- [ ] **32.1** Version bump, `FEATURES.md` changelog, `ROADMAP.md` *Shipped*.
-- [ ] **32.2** `install-windows.ps1`, and put it on the phone - most of 0.25.0,
-      0.26.0 and 0.27.0 has still only been judged on a desktop.
+- [x] **32.1** Version bump to 0.28.0+15, `FEATURES.md` changelog,
+      `ROADMAP.md` *Shipped*.
+- [ ] **32.2** **Deploy the server.** The four v15 columns do not move
+      `PROTOCOL` - they are optional - so an old server will not block a
+      device, it will silently drop `recur_from` and `recur_lead` and a repeat
+      set on one device will reach the other as the legacy shape. Same shape as
+      the 0.24.0 deploy, minus the version gate.
+- [ ] **32.3** `install-windows.ps1`, and put it on the phone - most of 0.25.0,
+      0.26.0 and 0.27.0 has still only been judged on a desktop, and 0.28.0's
+      repeat panel is a form with a lot in it at 390pt.
 
 ---
 

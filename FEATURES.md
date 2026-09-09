@@ -343,23 +343,70 @@ Three tiers, none of which need an account, an API key, or a licence:
   minute, and refuses a time in the past with a visible reason instead of a
   dead button. It is the same month grid the year view draws, so the two can
   never disagree about where a month starts.
-- **Repeat it** — *Every day / weekday / week / month / year*, in the composer,
-  offered once a reminder is set (a rule with nothing to count from would never
-  produce a second occurrence). Checking a recurring task off does two things:
-  the one you finished goes to History like any other completed task, and the
-  next occurrence appears on the list, armed for the next time the rule comes
-  round. An occurrence is a todo in its own right, which is what lets a daily
-  task both be *done today* and *still due tomorrow*.
-  - The next one is laid down when you **check the last one off**, not when the
-    reminder fires — so a recurring task you have been ignoring sits there as
-    one overdue row rather than thirty copies.
+- **Repeat it** — *Every day / weekday / week / month / year* as chips in the
+  composer, and everything else behind **Repeat…**. Checking a recurring task
+  off logs the one you finished to History like any other completed task and
+  lays down the next occurrence; an occurrence is a todo in its own right,
+  which is what lets a daily task both be *done today* and *still due
+  tomorrow*.
   - "Every day at 09:00" stays at 09:00 across a daylight-saving change: the
     next occurrence is worked out in wall-clock terms, not by adding 24 hours.
   - A monthly task on the 31st lands on the 30th, or the 28th, rather than
     sliding into the next month. Same for the 29th of February, yearly.
-  - Turning it off is *Once* in the composer, which stops the series — there is
-    only ever one occurrence in front of you, so there is nothing else to
-    cancel.
+
+  The **Repeat…** panel is the rest of it, and it asks two questions.
+
+  **Measured from** — *on a schedule*, or *after it is done*.
+  - *On a schedule* is the calendar's rhythm, kept whatever you do about it, and
+    it is measured from the reminder (so a scheduled repeat needs one).
+  - *After it is done* counts from the tick. "Clean the kitchen every two
+    weeks", created on the 1st and actually done on the 8th, comes back on the
+    22nd — not the 15th. Being late moves the series instead of leaving you
+    behind it, and this kind needs no reminder at all: coming back onto the list
+    is the whole of the nudge. It can never pile up.
+
+  **The next one appears** — only a scheduled repeat gets to answer this, and
+  the answer is what decides whether a repeat can pile up.
+  - *When the last one is done* — the old behaviour, and incapable of piling up:
+    there is at most one open occurrence, because making the next needs
+    finishing this one. Right for a stand-up.
+  - *When it is due* — created on the day, ticked or not. This is the
+    rule-based half: "Send working hours to management" appears on the last day
+    of every month whether or not last month's was ever sent, and a month you
+    did not answer for stays on the list beside the new one saying so.
+  - *A day / three days / a week before* — created early, with the due date
+    still the rule's.
+
+  **Rules a due date cannot say**, also in that panel:
+  - **The last day of the month.** Not the same as "monthly" from the 31st,
+    which clamps to 28 February and then, walking on from there, stays the 28th
+    for ever.
+  - **The first / second / third / fourth / last <weekday> of the month** —
+    "first Monday", "last Friday".
+  - **Every *n* days, weeks, months or years** — every three days, fortnightly,
+    every six months.
+
+  **Variables in the title and notes.** `$(month)`, `$(mon)`, `$(mm)`,
+  `$(year)`, `$(yy)`, `$(day)`, `$(dd)`, `$(weekday)`, `$(wd)`, `$(date)`,
+  `$(week)`, `$(quarter)` — so "Send working hours for $(month) to management"
+  arrives as *September* in September and *October* in October. Offsets work
+  too: `$(month-1)` is the month before, which is what "last month's hours, on
+  the first" needs. Each occurrence is **written out once, against its own due
+  date**, so what is in History stays what it said; the unexpanded form is kept
+  behind the row and is what the composer shows you when you edit it. An
+  unrecognised name is left exactly as typed.
+
+  **Stopping a repeat** is *Once* in the composer. Where there is no open
+  occurrence to open — a chore between being ticked and coming back, or a
+  scheduled one before its lead — the ↻ beside the task in **History** says how
+  it repeats and offers to stop it; the completed row stays in History exactly
+  as it is.
+
+  **Catching up.** A device that was off for a long time lays down the most
+  recent handful of missed occurrences rather than all of them: 365 stand-ups
+  nobody was going to do is not a catch-up. Two devices that both notice the
+  same occurrence produce the *same row* rather than two, because an
+  occurrence's id is derived from its parent and its own instant.
 - **Always visible once set** — an armed bell stays on the row (it is state the
   task is carrying, not an action offered on demand). What it says is in the
   action bar and in the expanded view: "in 26m", "tomorrow 09:00".
@@ -1031,6 +1078,49 @@ reminders are both there now**, queued for 0.18.0.
 ---
 
 ## Changelog
+
+- **0.28.0** — **Todos that arrive on their own, a shelf you have to read, and
+  the sound stops stalling.** Six things, one release.
+  - **Recurring todos, in the two shapes that were actually wanted.** A repeat
+    can now be measured **from the schedule** or **from when it was last
+    ticked**: "clean the kitchen every two weeks", created on the 1st and done
+    on the 8th, comes back on the 22nd rather than the 15th. And a scheduled
+    repeat can say **when the next one appears** — when the last is done (the
+    old behaviour, which can never pile up), when it falls due whether or not
+    it was ticked, or a day / three days / a week early with the due date still
+    the rule's. That second setting is what makes "Send working hours to
+    management, last day of every month" a todo that turns up on its own.
+  - **Rules a due date could not say**: the last day of the month (which is not
+    "monthly" from the 31st — that clamps to 28 February and then stays there),
+    the first/second/third/fourth/last weekday of the month, and every *n*
+    days, weeks, months or years.
+  - **Variables in the title and notes** — `$(month)`, `$(date)`, `$(week)`,
+    `$(quarter)` and the rest, with offsets like `$(month-1)`. Each occurrence
+    is written out once against its own due date, so History keeps saying what
+    it said.
+  - **Add straight to a parked shelf.** An open group has its own one-line
+    field. Recording that something is explicitly *not* for today used to mean
+    adding it to the list, finding it, and parking it.
+  - **Reviewing a shelf is a funnel, not a button.** One task at a time with
+    what a decision needs — its notes, "parked 47 days ago", an armed reminder —
+    and four answers: Keep (also Enter), Do it now, Done, Drop. Reaching the end
+    is what restarts the group's clock; leaving half way keeps the decisions and
+    not the clock. *Mark reviewed* could be pressed without having read
+    anything, so the shelves it existed to protect went to landfill with a fresh
+    timestamp on them.
+  - **Thirty minutes of the ambience is kept on the device.** A field recording
+    is finite and then looped for an hour, so every stall was paid for over and
+    over. The first play of a preset streams as before and files a bout behind
+    itself; after that it starts instantly and needs no network. A couple of
+    bouts are kept per preset and one is picked at random, so "a different café
+    every time" survives. A switch, a size and a **Clear** are at the foot of
+    the Ambience list.
+  - **Switching workspace lands on that workspace's list.** Every view closes
+    now, thoughts included — the pile is still there, and its count is still on
+    the footer and the bubble.
+  - **Opening a note on a phone no longer closes it again.** Hiding the chrome
+    around the note was rearranging the widget tree underneath it, which threw
+    away the pane's own idea of which rung it was on.
 
 - **0.27.0** — **Quieter, and on a scale.**
   A look pass, no behaviour changes. Five directions were drawn at true size

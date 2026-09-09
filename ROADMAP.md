@@ -9,7 +9,10 @@ work that is about to happen.
 
 ## In progress
 
-### Six things asked for on 2026-09-09
+### Six things asked for on 2026-09-09 — shipped as 0.28.0
+
+Kept here for one release because the reasoning is the kind that gets lost;
+the one-line record is under *Shipped*.
 
 Four of them are small and are already in (26-29 in `TODO.md`); the reasoning is
 recorded here because it is the kind that gets lost.
@@ -229,6 +232,27 @@ Open, and worth answering before any of Step 1 is written:
   on it.
 
 ## Shipped
+
+### 0.28.0 — todos that arrive on their own, and a shelf you have to read
+
+The six-item batch above, all of it landed. What is worth keeping out of it:
+recurrence stayed **one mechanism with three more pieces of state** rather than
+becoming a table of rules — `recur_from` for which instant it is measured from,
+`recur_lead` for when the next one is *written*, and a template pair so a
+`$(month)` is not eaten by the first occurrence that renders it. The spawn is
+one function called from a completion and from the clock, and it is safe from
+both because an occurrence's uuid was already derived. A rules table would have
+needed a pointer column anyway, and every part of the app that already works —
+History, reminders, notifications, the merge — would have had to learn about a
+row that is not a task.
+
+The one thing that nearly went wrong: `recur_from` started as NOT NULL on both
+sides, which would have made a push from any un-updated device a constraint
+failure that rejected the whole sync. Nullable in the databases, non-null in the
+model, null read as `schedule`. Same rule `review_every_days` has followed since
+v3.
+
+
 
 ### 0.27.0 — one scale, and the colour turned down
 

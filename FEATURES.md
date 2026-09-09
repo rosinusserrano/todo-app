@@ -161,6 +161,14 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   likely putting something away into. A vertical drag still scrolls and the ⠿
   grip still reorders; only a drag *towards the panel* means "put this away".
   Narrower windows keep the 📥 picker, which works at every size.
+- **Or add straight to a shelf.** Every open group has a one-line field at the
+  foot of its own list — "Add to Backlog" — and Enter drops a new task onto that
+  shelf without it ever touching the current list. This is the commonest thing
+  anybody does with a backlog: think of something that is explicitly *not* for
+  today and write it down. Doing that used to mean adding the task, finding it
+  again, and parking it — three steps to record that you are not doing
+  something. The field keeps the caret after each Enter, because these arrive in
+  handfuls.
 - **Unpark one** — ↗ on a parked task puts it back at the *bottom* of the current
   list. ✓ checks it off from where it sits, straight into history.
 - **Unpark the whole shelf** — ↗ on a group header puts everything on it back
@@ -182,7 +190,26 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
 - **When a review comes due** — the group turns the alarm colour and shows
   "review due", and the ▾ views menu on the workspace bar gains a coloured dot,
   which is the only sign visible while the panel is closed. Opening the panel
-  expands every overdue group automatically. "Mark reviewed" restarts its clock.
+  expands every overdue group automatically.
+- **Reviewing is a funnel, not a button.** "Review" on an open shelf takes over
+  the pane and shows **one task at a time**: its title, its notes, how long it
+  has been sitting there ("parked 47 days ago"), an armed reminder, and a
+  progress line — "3 of 11", with a dot per task. Four answers, and exactly one
+  of them leaves the task where it is:
+  - **Keep** — still parked. Also the **Enter** key, because the safe answer
+    should be the cheap one.
+  - **Do it now** — back onto the current list.
+  - **Done** — checked off from here, into history.
+  - **Drop** — deleted.
+
+  You cannot reach the end without answering for every task, and **reaching the
+  end is what restarts the clock**. Leaving early (Esc, or the back arrow) keeps
+  every decision you already made and does *not* restart it — a shelf you got a
+  third of the way through has not been reviewed. This replaced a "Mark
+  reviewed" button that sat under a collapsed list of one-line rows: it was
+  reachable without having read any of them, so the shelves it existed to keep
+  out of landfill went to landfill anyway, with a fresh timestamp on them. An
+  empty shelf is reviewed by looking at it — there is nothing to answer.
 - **Groups collapse** — on a 340×480 window three shelves of ten items each is a
   scroll with no shape to it, so only the ones you open take up room.
 - **Deleting a group releases its tasks** — everything it held comes back onto
@@ -620,6 +647,12 @@ at the screen gives nothing away) and its lock is **opt-in**.
   "Jul 20, 14:32" stamp. Editing changes the words but **not the timestamp** —
   the log records when a thing was written, not when it was later edited. Saving
   an entry emptied of both title and body deletes it.
+- **On a phone an open note takes the whole screen** — the workspace bar, the
+  view bar and the footer step aside for it, and the note's own back arrow is
+  the way out. It used to *look* like the note refusing to open: the chrome
+  disappearing rearranged the widget tree around the pane, which threw away the
+  pane's own idea of which rung it was on, and the note snapped back to the list
+  one frame after being opened. It stays open now.
 - **Tombstoned deletes** — removing an entry marks it deleted rather than
   dropping it, so the removal reaches your other devices instead of resurrecting
   on the next sync.
@@ -667,8 +700,11 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - Thoughts are *never* hard-deleted; every one is kept in the DB with a
   resolved timestamp.
 - **Global, not per-workspace** — one pile, seen and captured from every
-  workspace, and switching workspace neither hides it nor clears it. Parked
-  groups are the per-workspace equivalent.
+  workspace, and switching workspace does not clear it. It does now *close* the
+  panel, along with every other view: picking a workspace is asking what is on
+  that list, and it should answer with the list. The count in the footer and on
+  the bubble still says how many are waiting, and one press brings them back.
+  Parked groups are the per-workspace equivalent.
 - **Switching workspace is not blocked by them.** It used to be, on the theory
   that the close guard's rule should apply everywhere. That was the wrong guard:
   since thoughts are global, moving between workspaces cannot hide or lose one,

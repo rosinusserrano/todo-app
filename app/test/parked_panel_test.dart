@@ -6,6 +6,7 @@
 // dozen tasks reappearing on the list at once.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/ui/parked_panel.dart';
@@ -36,6 +37,11 @@ Task task(String uuid, String text, {String? groupUuid}) => Task(
 class Calls {
   final activated = <String>[];
   final parked = <({String group, String task})>[];
+  final added = <({String group, String text})>[];
+  final unparked = <String>[];
+  final completed = <String>[];
+  final deleted = <String>[];
+  final reviewed = <String>[];
 }
 
 /// The panel, optionally with a draggable task beside it - which is the split
@@ -72,9 +78,12 @@ Future<void> pumpPanel(
                 groups: groups,
                 parked: parked,
                 accent: const Color(0xFF6C8CFF),
-                onUnpark: (_) async {},
-                onComplete: (_) async {},
-                onReviewed: (_) async {},
+                onUnpark: (t) async => calls.unparked.add(t.uuid),
+                onComplete: (t) async => calls.completed.add(t.uuid),
+                onDelete: (t) async => calls.deleted.add(t.uuid),
+                onAddTask: (g, text) async =>
+                    calls.added.add((group: g.uuid, text: text)),
+                onReviewed: (g) async => calls.reviewed.add(g.uuid),
                 onEditGroup: (_) {},
                 onCreateGroup: () {},
                 onBack: () {},
@@ -201,8 +210,10 @@ void main() {
         draggable: task('t1', 'rewrite the importer'),
       );
 
-      // Closed to begin with: the shelf's contents are not on screen.
-      expect(find.text('Empty.'), findsNothing);
+      // Closed to begin with: the shelf's contents are not on screen. Its own
+      // add field is the marker for "open", because it is there whether or not
+      // the shelf has anything on it.
+      expect(find.text('Add to Backlog'), findsNothing);
 
       final from = tester.getCenter(find.text('rewrite the importer'));
       final onto = tester.getCenter(find.text('Backlog'));
@@ -215,7 +226,7 @@ void main() {
       expect(calls.parked, [(group: 'g1', task: 't1')]);
       // Opened by the drop, so the landing is visible rather than being a
       // count that ticked up on a collapsed row.
-      expect(find.text('Empty.'), findsOneWidget);
+      expect(find.text('Add to Backlog'), findsOneWidget);
     });
 
     testWidgets('the right shelf gets it when there are several',
@@ -251,6 +262,151 @@ void main() {
         droppable: false,
       );
       expect(find.byType(DragTarget<Task>), findsNothing);
+    });
+  });
+
+  group('adding straight to a shelf', () {
+    testWidgets('the field is on the open shelf and only on the open one',
+        (tester) async {
+      final calls = Calls();
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog'), shelf('g2', 'Someday')],
+        parked: const {},
+        calls: calls,
+      );
+
+      // Both shelves start closed, so neither offers a field.
+      expect(find.text('Add to Backlog'), findsNothing);
+      expect(find.text('Add to Someday'), findsNothing);
+
+      await tester.tap(find.text('Backlog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add to Backlog'), findsOneWidget);
+      expect(find.text('Add to Someday'), findsNothing);
+    });
+
+    testWidgets('submitting adds to that shelf and keeps the caret',
+        (tester) async {
+      final calls = Calls();
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog')],
+        parked: const {},
+        calls: calls,
+      );
+      await tester.tap(find.text('Backlog'));
+      await tester.pumpAndSettle();
+
+      final field = find.byType(TextField);
+      await tester.enterText(field, 'read the Erlang book');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(calls.added, [(group: 'g1', text: 'read the Erlang book')]);
+      // Cleared and still focused: several things at once is the reason to be
+      // typing in here at all.
+      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+
+      // Blank input is not a task.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(calls.added, hasLength(1));
+    });
+  });
+
+  group('reviewing a shelf', () {
+    Future<void> openReview(WidgetTester tester, Calls calls) async {
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog')],
+        parked: {
+          'g1': [
+            task('t1', 'rewrite the importer', groupUuid: 'g1'),
+            task('t2', 'read the Erlang book', groupUuid: 'g1'),
+          ],
+        },
+        calls: calls,
+      );
+      await tester.tap(find.text('Backlog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('walks the shelf one task at a time', (tester) async {
+      final calls = Calls();
+      await openReview(tester, calls);
+
+      expect(find.text('Review: Backlog'), findsOneWidget);
+      expect(find.text('1 of 2'), findsOneWidget);
+      expect(find.text('rewrite the importer'), findsOneWidget);
+      expect(find.text('read the Erlang book'), findsNothing);
+
+      await tester.tap(find.text('Keep'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2 of 2'), findsOneWidget);
+      expect(find.text('read the Erlang book'), findsOneWidget);
+      // Keep writes nothing at all - that is what makes it the safe answer.
+      expect(calls.unparked, isEmpty);
+      expect(calls.completed, isEmpty);
+      expect(calls.deleted, isEmpty);
+      // And the clock has not restarted, because the shelf is not finished.
+      expect(calls.reviewed, isEmpty);
+    });
+
+    testWidgets('the clock restarts only at the end', (tester) async {
+      final calls = Calls();
+      await openReview(tester, calls);
+
+      await tester.tap(find.text('Do it now'));
+      await tester.pumpAndSettle();
+      expect(calls.unparked, ['t1']);
+      expect(calls.reviewed, isEmpty);
+
+      await tester.tap(find.text('Drop'));
+      await tester.pumpAndSettle();
+      expect(calls.deleted, ['t2']);
+      expect(calls.reviewed, ['g1']);
+      expect(find.text('Reviewed 2 todos.'), findsOneWidget);
+    });
+
+    testWidgets('leaving early keeps the decisions and not the clock',
+        (tester) async {
+      final calls = Calls();
+      await openReview(tester, calls);
+
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      expect(calls.completed, ['t1']);
+
+      // Esc backs out of the review before the shell gets to close the panel.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Review: Backlog'), findsNothing);
+      expect(find.text('Backlog'), findsOneWidget);
+      expect(calls.reviewed, isEmpty);
+    });
+
+    testWidgets('an empty shelf is reviewed by looking at it', (tester) async {
+      final calls = Calls();
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog')],
+        parked: const {'g1': []},
+        calls: calls,
+      );
+      await tester.tap(find.text('Backlog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review (nothing on it)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nothing on this shelf.'), findsOneWidget);
+      expect(calls.reviewed, ['g1']);
     });
   });
 }

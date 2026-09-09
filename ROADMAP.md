@@ -9,6 +9,92 @@ work that is about to happen.
 
 ## In progress
 
+### Six things asked for on 2026-09-09
+
+Four of them are small and are already in (26-29 in `TODO.md`); the reasoning is
+recorded here because it is the kind that gets lost.
+
+**Switching workspace should land on the list.** Every per-workspace view
+already closed on a switch; the thought pile did not, on the stated grounds that
+it is global and therefore not a fact about the workspace. True, and beside the
+point: picking a workspace is asking *what is on this list*, and the one control
+whose whole job is to show you a list was showing something else. Nothing is
+lost by closing the panel, because the pile's count is on the footer and on the
+bubble either way.
+
+**A note on a phone was closing itself.** Not a journal bug at all - a
+reconciliation one. Opening a note makes the shell hide the workspace bar, the
+view bar and the footer in the same frame; that changes the content's *position*
+in its column, Flutter matches unkeyed children by position, and the whole
+subtree was rebuilt. `JournalView` keeps which rung of its ladder it is on in
+its own State, so the rebuild put it back on the list one frame after it opened.
+The fix is a key, and the general shape - `contentSlot` - is worth having
+because the same thing would happen to any panel that ever takes the screen.
+
+**Adding straight to a shelf.** The commonest thing anybody does with a backlog
+is think of something that is explicitly not for today. Every existing way in
+puts the task on the current list first and then takes it off again, which is
+three steps to record that you are *not* doing something, and a flicker of the
+task on a list nobody asked to put it on.
+
+**A review has to make you read the tasks.** The review interval is the feature
+that stops a shelf being a landfill, and it was enforced by a button under a
+collapsed list - reachable without having looked at anything. So it enforced
+nothing, and put a fresh timestamp on the shelf for doing it. A funnel is the
+smallest honest version: one task at a time, four answers, and the clock only
+restarts at the end. Leaving half way keeps the decisions and not the clock,
+because those are two different facts.
+
+**Thirty minutes of sound on the device.** Tiers 1 and 3 are already right -
+noise is generated locally, and radio is a live stream that cannot be anything
+but streamed. It is tier 2 that lags: every play is two archive.org lookups and
+then an mp3 pulled over the wire, looped, for an hour. Keeping a **bout** - a
+30-minute prefix of a recording, sized from the metadata the search already
+returns - makes the second play of a preset instant and offline. It must not
+cost the variety, which is the entire reason a preset is a *query* rather than a
+fixed file, so the cache holds several bouts per preset, plays a random one, and
+fills in the background rather than making anyone wait for a download.
+
+**Recurring todos, and why they are two kinds and not one.** What exists today
+is one behaviour: complete a task and its successor is laid down, dated by
+calendar arithmetic from the *reminder*. That covers neither thing asked for.
+
+  - *Rule-based creation.* "Send working hours for September to management",
+    made on the last day of every month, whether or not August's was ever
+    ticked. The existing rule spawns on completion, so a month you did not
+    answer for is a month that never produces the next one.
+  - *Interval from completion.* "Clean the kitchen" every two weeks **counted
+    from when it was last done**, not from when it was due. Created 1 Jan,
+    ticked 8 Jan, back on 22 Jan.
+
+The design keeps one mechanism and gives it three pieces of state rather than
+adding a table of rules:
+
+  - **`recur_from`** says which instant the next occurrence is measured from -
+    the schedule, or the completion. That is the whole of the second kind.
+  - **`recur_lead`** says how long before its due time an occurrence is
+    *created*, which is the "make it three days early with the real due date"
+    half of the first kind - and, at zero, is what stops a monthly report
+    appearing four weeks before it is due. Null is the legacy value: created the
+    moment the previous one is ticked, which is what every existing recurring
+    task means.
+  - **`recur_text` / `recur_notes`** carry the template, so `$(month)` can be
+    expanded against each occurrence's own due date and the *expanded* text is
+    what lands in the row and therefore in History. Without them the first
+    expansion would eat the variable.
+
+The spawn itself becomes one function called from two places - completing a
+task, and the reminder sweep - and it is safe to call from both because the
+successor's uuid is already **derived** from the parent and the occurrence
+instant. An occurrence that exists is not written again, on this device or any
+other. That is the same property that made recurrence cheap in the first place,
+used for a second purpose.
+
+A rules *table* was the other option and was rejected: it would need a pointer
+column anyway, and everything that already works - History, reminders,
+notifications, the merge, the derived-uuid idempotency - would have had to learn
+about a row that is not a task.
+
 ### Receiving a calendar invite from the share sheet
 
 The reader and the import are built and shipped (see FEATURES.md): `sync/ics.dart`

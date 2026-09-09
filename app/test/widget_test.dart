@@ -220,6 +220,31 @@ void main() {
       expect(s.showThoughts, isFalse);
     });
 
+    test('switching workspace lands on that workspaces own list', () async {
+      final s = await freshState();
+      await s.saveWorkspace(name: 'Home', color: '#ff8844');
+      final home = s.currentWorkspaceUuid!;
+      final other = s.workspaces.firstWhere((w) => w.uuid != home).uuid;
+
+      // Every view, including the global one. Side thoughts used to survive the
+      // switch on the grounds that they are not per-workspace - but picking a
+      // workspace is asking what is on that list, and answering with the pile
+      // of thoughts already on screen answers a different question.
+      await s.addThought('not a workspace fact');
+      s.toggleThoughts();
+      expect(s.showThoughts, isTrue);
+
+      await s.selectWorkspace(other);
+      expect(s.showThoughts, isFalse);
+      expect(s.showHistory, isFalse);
+      expect(s.showParked, isFalse);
+      expect(s.showJournal, isFalse);
+      expect(s.showSession, isFalse);
+
+      // Nothing was lost with the view: the pile is still there to go back to.
+      expect(s.thoughts, hasLength(1));
+    });
+
     test('promoting the last thought also closes the panel', () async {
       final s = await freshState();
       await s.addThought('turn me into a task');

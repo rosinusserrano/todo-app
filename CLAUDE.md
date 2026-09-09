@@ -76,8 +76,9 @@ data.
 There **is** a test suite — `app/test/` covers the local store, the sync merge,
 the legacy import, reminders, parked groups, attachments, the encrypted journal,
 the calendar, notification scheduling, the tray, the Markdown dialect, the
-journal pane's states and shortcuts, the parked panel's drag and activate, and
-the noise synthesis. Run it.
+journal pane's states and shortcuts, the parked panel's drag, activate, add and
+review funnel, the content area's identity across the chrome moving, and the
+noise synthesis. Run it.
 
 `test/noise_test.dart` **pins the RNG seed** (`NoiseSynth.rng`), and that is
 what makes it reproducible. Unseeded it failed about a third of runs: at the
@@ -208,6 +209,14 @@ every workspace, no `workspace_uuid` column) while **parked groups and the
 journal are per-workspace** (they carry `workspace_uuid` and are reloaded on
 every switch). Switching workspace is deliberately *not* blocked by pending
 thoughts — only closing is. See `_switchWorkspace` in `main.dart` for why.
+
+**`selectWorkspace` closes every view, thoughts included** (`_closeOtherViews()`
+with no arguments). The per-workspace views could never have survived the
+switch; the thought pile used to, on the grounds that it is global and so not a
+fact about the workspace. That was the wrong question — picking a workspace is
+asking *what is on this list*, and answering it with whatever panel happened to
+be open answers a different one. Nothing is lost, because the footer's count and
+the bubble both still say how many thoughts are waiting.
 
 The **journal** is a per-workspace log of titled, timestamped notes
 (`journal_entries`), with **optional** encryption. Plaintext by default; setting
@@ -694,6 +703,42 @@ of dependency, and a second copy would have been worse.
   away into; opening it is the only visible confirmation the task landed, since
   otherwise a closed shelf just shows a bigger number.
 
+### Reviewing a shelf (`app/lib/ui/parked_review.dart`)
+
+A group's review interval is the thing that stops a shelf being a landfill, and
+until 0.28.0 the review itself was a button called *Mark reviewed* under a
+collapsed list of one-line rows — reachable without having read any of them. The
+review is now a **funnel**: one task fills the pane, with the things a decision
+needs (notes, "parked 47 days ago", an armed reminder), and four answers of
+which exactly one leaves it alone. Three properties are load-bearing:
+
+- **The queue is a snapshot** (`_queue` on `_ParkedPanelState`, taken in
+  `_startReview`). Every answer but Keep takes the task off the shelf, so a
+  funnel reading `parked[group]` live would renumber under the hand and skip
+  whatever moved up into the current slot.
+- **Reaching the end is the review.** `onFinished` — and therefore
+  `markGroupReviewed` — fires from the last `choose`, not from opening. Leaving
+  early keeps the decisions already written and does *not* restart the clock;
+  those are two separate facts and trading one for the other is how a shelf gets
+  a fresh timestamp it did not earn. An **empty** shelf is finished on open, from
+  a post-frame callback in `initState` (the owner reacts with `setState`).
+- **Enter is Keep.** The failure mode of a review under time pressure is
+  bulk-answering it, so the answer that should be cheapest to give is the one
+  that changes nothing.
+
+The funnel is a **rung of `ParkedPanel`**, not a view of its own, so nothing in
+the shell had to learn about it — the panel holds a `FocusNode` and walks Esc
+back down the ladder exactly as `JournalView` does. Note the review's own node
+is a *descendant* of the panel's: key events travel from the primary focus
+upwards, so a `CallbackShortcuts` under the panel's node would never be reached,
+and the funnel's node returns `ignored` for anything but Enter so Esc goes on up.
+
+**Adding straight to a shelf** is `_AddToShelf`, one line at the foot of an open
+group, wired to `AppState.addTask(..., groupUuid:)`. One call rather than
+add-then-park: the pair writes the row twice and puts the first version on the
+active list for as long as the second write takes, which is a task appearing and
+vanishing on a list nobody asked to put it on.
+
 `AppState.unparkGroup` is the reverse and is deliberately **not** `deleteGroup`:
 same release loop, no tombstone, because emptying a backlog is not the same as
 deciding you no longer keep one. It filters to open tasks — `allTasksInGroup`
@@ -1069,6 +1114,19 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   colour on a task and the *calendar's* on an event, so a form belongs to what
   opened it. The `Layout` is passed **in**, not read from context: these are
   routes, and a route sits above the shell's `LayoutScope`.
+- **The content area keeps its element through every rearrangement of the
+  chrome** — `contentSlot` in `ui/content_slot.dart`, which is a key and an
+  unconditional `Stack` and nothing else. `_takesScreen` removes the workspace
+  bar above and the view bar and footer below in the same frame a note is
+  opened, and Flutter matches unkeyed children of a multi-child widget **by
+  position**: the content went from child 2 to child 0, matched nothing, and the
+  whole subtree was rebuilt. That threw away `JournalView`'s State, which is
+  what holds *which rung of its ladder* you are on — so on a phone a note
+  reported itself open, the shell hid the chrome, and the panel snapped back to
+  its list one frame later, looking exactly like the note refusing to open. The
+  thought bubble is a child of that Stack rather than a reason to build one, for
+  the same reason: a Stack that comes and goes is the same structural change one
+  level down. `test/content_slot_test.dart` pins it, and fails if the key goes.
 - **Anything long-lived that covers the content area is a sheet in the shell's
   `Stack`, never a `showDialog` route.** A modal route's barrier covers the
   whole window — including the title bar — so an open dialog leaves the window

@@ -21,15 +21,76 @@ Rules for keeping it honest:
 
 ## Now
 
-**Nothing.** Step 25 landed as 0.27.0; step 24 as 0.26.0; steps 18-23 as
-0.25.0. Everything on this list is done; the design that produced it has moved
-to `ROADMAP.md`'s *Shipped*.
+Six items, agreed 2026-09-09. Ordered by risk rather than by the order they
+were asked in: the four small ones bank value first, and recurrence - which is
+a schema change on both ends of the wire - goes last so the rest is already
+green when it lands. Reasoning in `ROADMAP.md`.
 
-**Not installed on Windows yet** — 0.27.0 is a look pass and the only way to
-judge it is to run it: `install-windows.ps1`, then live with it for a day.
-**Not on the phone yet** either: 0.25.0's three mobile items (19, 20, 21), the
-touch half of 24, and now 25 - the type scale matters most at the size where
-everything is drawn 1.28x larger.
+### 26. Land on the list when you switch workspace  `[x]`
+
+- [x] **26.1** `AppState.selectWorkspace` closes *every* view, thoughts
+      included, via `_closeOtherViews()`. Test in `widget_test.dart`.
+
+### 27. A note on a phone stops closing itself  `[x]`
+
+- [x] **27.1** `ui/content_slot.dart`: one key and an unconditional `Stack`, so
+      the content area keeps its element when `_takesScreen` removes the bar
+      above and the view bar and footer below it. The rebuild was throwing away
+      `JournalView`'s State, which is what holds which rung it is on.
+- [x] **27.2** `test/content_slot_test.dart` - fails without the key.
+
+### 28. Add straight to a parked shelf  `[x]`
+
+- [x] **28.1** `AppState.addTask` takes `groupUuid`. One write, not
+      add-then-park.
+- [x] **28.2** `_AddToShelf` at the foot of an open group, caret kept after
+      each Enter.
+
+### 29. Reviewing a shelf is a funnel  `[x]`
+
+- [x] **29.1** `ui/parked_review.dart` - one task per screen, four answers,
+      progress line, Enter is Keep.
+- [x] **29.2** A rung of `ParkedPanel` (snapshot queue, Esc walks back), not a
+      view of its own. `markGroupReviewed` fires at the end, never on the way
+      in - except on an empty shelf, which is finished by being looked at.
+- [x] **29.3** Tests in `parked_panel_test.dart`.
+
+### 30. Keep 30 minutes of the concentration sound on the device  `[ ]`
+
+- [ ] **30.1** `sound/ambience_cache.dart` - a bout is a byte prefix of the
+      chosen recording, sized from the archive metadata's `length`/`size`, kept
+      in a directory beside the database under an LRU byte budget.
+- [ ] **30.2** `SoundService.playAmbience` plays a cached bout instantly when
+      there is one and fills the cache in the background when there is not, so
+      variety survives ("a different cafe every time" is the preset's whole
+      point).
+- [ ] **30.3** A line in the sound sheet: how much is stored, and a way to
+      clear it.
+- [ ] **30.4** Tests for the bookkeeping, with the fetch injected.
+
+### 31. Recurring todos, two kinds  `[ ]`
+
+- [ ] **31.1** Vocabulary: `Recur` parses `monthly-last`, `monthly-<n>-<wd>`
+      and `every-<n><unit>` alongside the five it already knows.
+- [ ] **31.2** Schema v15 - `recur_from`, `recur_lead`, `recur_text`,
+      `recur_notes` on `tasks`; the same four in `server/db.js` (schema,
+      `addColumn`, `TABLES`). Optional columns, so `PROTOCOL` does **not**
+      move.
+- [ ] **31.3** `$(month)`-style variables, expanded against the occurrence's
+      own due date at the moment the row is written.
+- [ ] **31.4** One spawner, called from `completeTask` and from the reminder
+      sweep, idempotent through the derived uuid - which is what lets a
+      schedule rule create its next todo whether or not the last one was ever
+      ticked.
+- [ ] **31.5** UI: the composer's Repeats row gains **Custom...**, and the
+      editor behind it covers both kinds plus the lead time.
+- [ ] **31.6** Tests on both sides; `node --test server/`.
+
+### 32. Release  `[ ]`
+
+- [ ] **32.1** Version bump, `FEATURES.md` changelog, `ROADMAP.md` *Shipped*.
+- [ ] **32.2** `install-windows.ps1`, and put it on the phone - most of 0.25.0,
+      0.26.0 and 0.27.0 has still only been judged on a desktop.
 
 ---
 

@@ -41,6 +41,7 @@ import 'ui/calendar/ics_import.dart';
 import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
 import 'ui/calendar/time_grid.dart' show hhmm;
+import 'ui/content_slot.dart';
 import 'ui/footer.dart';
 import 'ui/journal_panel.dart';
 import 'ui/panel_header.dart';
@@ -1654,31 +1655,31 @@ class _WidgetShellState extends State<WidgetShell>
         if (!_layout.hasRail && !_takesScreen) _workspaceBar(ws),
         if (s.hasLiveSession && !s.showSession && !_takesScreen)
           _sessionBanner(),
+        // The content keeps its element through every one of those `if`s
+        // resolving differently - see content_slot.dart, which is the whole
+        // reason opening a note on a phone no longer closes it again.
+        //
         // The bubble floats over the content rather than sitting in a row of
         // its own: it is deliberately in the thumb's corner, and a strip
         // reserved for one circle is height taken off the list on the smallest
         // screen there is. Inside the content area, so it is above the view
         // bar and comes and goes with the panels the body fades during focus
         // mode - which has a thought field of its own.
-        Expanded(
-          child: _thoughtBubbleShows
-              ? Stack(
-                  children: [
-                    Positioned.fill(child: content),
-                    Positioned(
-                      right: ThoughtBubble.margin,
-                      bottom: ThoughtBubble.margin,
-                      child: ThoughtBubble(
-                        accent: ws,
-                        count: s.thoughts.length,
-                        listOpen: s.showThoughts,
-                        onTap: _openThoughtCapture,
-                        onToggleList: s.toggleThoughts,
-                      ),
-                    ),
-                  ],
+        contentSlot(
+          child: content,
+          overlay: _thoughtBubbleShows
+              ? Positioned(
+                  right: ThoughtBubble.margin,
+                  bottom: ThoughtBubble.margin,
+                  child: ThoughtBubble(
+                    accent: ws,
+                    count: s.thoughts.length,
+                    listOpen: s.showThoughts,
+                    onTap: _openThoughtCapture,
+                    onToggleList: s.toggleThoughts,
+                  ),
                 )
-              : content,
+              : null,
         ),
       ],
     );
@@ -2079,6 +2080,8 @@ class _WidgetShellState extends State<WidgetShell>
         accent: ws,
         onUnpark: s.unparkTask,
         onComplete: s.completeTask,
+        onDelete: s.deleteTask,
+        onAddTask: (g, text) => s.addTask(text, groupUuid: g.uuid),
         onReviewed: s.markGroupReviewed,
         onEditGroup: _editGroup,
         onCreateGroup: () => _editGroup(null),

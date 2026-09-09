@@ -24,12 +24,23 @@
 //     from, and the 📥 on a task row - which opens the same shelves as a menu -
 //     is the way in that works at every size. No size takes a feature away; a
 //     shortcut that needs two things visible at once needs them visible.
+//   - **In** *directly* is the field at the foot of an open shelf. Everything
+//     above puts a task here that was first put somewhere else, which is the
+//     wrong shape for the commonest thing anybody does with a backlog: think of
+//     something that is explicitly not for today and write it down. Going via
+//     the main list to do that means adding a task, finding it, and parking it
+//     - three steps to record that you are not doing something.
+//
+// Reviewing a shelf is its own screen ([ParkedReview]) rather than a button
+// under a list. See the header of parked_review.dart for why.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
 import 'panel_header.dart';
+import 'parked_review.dart';
 import 'task_drag.dart';
 
 class ParkedPanel extends StatefulWidget {
@@ -40,6 +51,8 @@ class ParkedPanel extends StatefulWidget {
     required this.accent,
     required this.onUnpark,
     required this.onComplete,
+    required this.onDelete,
+    required this.onAddTask,
     required this.onReviewed,
     required this.onEditGroup,
     required this.onCreateGroup,
@@ -54,6 +67,16 @@ class ParkedPanel extends StatefulWidget {
 
   final Future<void> Function(Task) onUnpark;
   final Future<void> Function(Task) onComplete;
+
+  /// Drop a task outright. Only the review offers this - a shelf's own rows do
+  /// not, because the whole point of a shelf is that you are not deciding about
+  /// its contents right now.
+  final Future<void> Function(Task) onDelete;
+
+  /// A new task, straight onto this shelf. The text is whatever was typed into
+  /// the shelf's own field; everything else is what a one-line add means.
+  final Future<void> Function(ParkedGroup, String) onAddTask;
+
   final Future<void> Function(ParkedGroup) onReviewed;
   final void Function(ParkedGroup) onEditGroup;
   final VoidCallback onCreateGroup;
@@ -85,51 +108,113 @@ class _ParkedPanelState extends State<ParkedPanel>
       if (g.isReviewDue()) g.uuid,
   };
 
+  /// The shelf being reviewed, and the queue as it stood when that started.
+  /// Null is the ordinary list of shelves. See parked_review.dart for why the
+  /// queue is a snapshot rather than a live read of [widget.parked].
+  ParkedGroup? _reviewing;
+  List<Task> _queue = const [];
+
+  /// The pane's own node, so Esc can back out of a review before the shell uses
+  /// it to close the whole panel - the same rung-by-rung ladder the journal
+  /// walks, and for the same reason.
+  final _paneFocus = FocusNode(debugLabel: 'parked pane');
+
   @override
   void dispose() {
     _in.dispose();
+    _paneFocus.dispose();
     super.dispose();
   }
+
+  void _startReview(ParkedGroup g) {
+    setState(() {
+      _reviewing = g;
+      _queue = List.of(widget.parked[g.uuid] ?? const <Task>[]);
+    });
+  }
+
+  void _endReview() => setState(() {
+        _reviewing = null;
+        _queue = const [];
+      });
 
   @override
   Widget build(BuildContext context) {
     final curve = CurvedAnimation(parent: _in, curve: Curves.easeOutCubic);
 
-    return FadeTransition(
-      opacity: curve,
-      child: SlideTransition(
-        position: Tween(
-          begin: const Offset(0, 0.06),
-          end: Offset.zero,
-        ).animate(curve),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PanelHeader(
-              title: 'Parked',
-              onBack: widget.onBack,
-              actions: [
-                Tooltip(
-                  message: 'New group',
-                  child: InkWell(
-                    onTap: widget.onCreateGroup,
-                    borderRadius: BorderRadius.circular(T.radius),
-                    child: const Padding(
-                      padding: EdgeInsets.all(T.s1),
-                      child: Icon(Icons.add, size: 15, color: T.muted),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Expanded(
-              child: widget.groups.isEmpty ? _empty() : _list(),
-            ),
-          ],
+    return Focus(
+      focusNode: _paneFocus,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey != LogicalKeyboardKey.escape) {
+          return KeyEventResult.ignored;
+        }
+        if (_reviewing == null) return KeyEventResult.ignored;
+        _endReview();
+        return KeyEventResult.handled;
+      },
+      child: FadeTransition(
+        opacity: curve,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0, 0.06),
+            end: Offset.zero,
+          ).animate(curve),
+          child: _reviewing != null ? _review(_reviewing!) : _shelves(),
         ),
       ),
     );
   }
+
+  Widget _review(ParkedGroup g) => ParkedReview(
+        // Keyed on the shelf, so starting a second review resets the funnel
+        // rather than resuming the first one part way through.
+        key: ValueKey('review-${g.uuid}'),
+        group: g,
+        tasks: _queue,
+        accent: widget.accent,
+        onDecide: _decide,
+        onFinished: () => widget.onReviewed(g),
+        onClose: _endReview,
+      );
+
+  /// One decision, applied straight to the database. Keep never gets here.
+  Future<void> _decide(Task t, ReviewChoice choice) async {
+    switch (choice) {
+      case ReviewChoice.keep:
+        return;
+      case ReviewChoice.activate:
+        return widget.onUnpark(t);
+      case ReviewChoice.complete:
+        return widget.onComplete(t);
+      case ReviewChoice.drop:
+        return widget.onDelete(t);
+    }
+  }
+
+  Widget _shelves() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PanelHeader(
+            title: 'Parked',
+            onBack: widget.onBack,
+            actions: [
+              Tooltip(
+                message: 'New group',
+                child: InkWell(
+                  onTap: widget.onCreateGroup,
+                  borderRadius: BorderRadius.circular(T.radius),
+                  child: const Padding(
+                    padding: EdgeInsets.all(T.s1),
+                    child: Icon(Icons.add, size: 15, color: T.muted),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Expanded(child: widget.groups.isEmpty ? _empty() : _list()),
+        ],
+      );
 
   Widget _empty() => const Center(
         child: Padding(
@@ -159,7 +244,8 @@ class _ParkedPanelState extends State<ParkedPanel>
             ),
             onUnpark: widget.onUnpark,
             onComplete: widget.onComplete,
-            onReviewed: () => widget.onReviewed(g),
+            onAdd: (text) => widget.onAddTask(g, text),
+            onReview: () => _startReview(g),
             onEdit: () => widget.onEditGroup(g),
             onActivate: () => _activate(g),
             onDrop: widget.onPark == null ? null : (t) => _park(g, t),
@@ -236,7 +322,8 @@ class _Group extends StatelessWidget {
     required this.onToggle,
     required this.onUnpark,
     required this.onComplete,
-    required this.onReviewed,
+    required this.onAdd,
+    required this.onReview,
     required this.onEdit,
     required this.onActivate,
     required this.onDrop,
@@ -249,7 +336,8 @@ class _Group extends StatelessWidget {
   final VoidCallback onToggle;
   final Future<void> Function(Task) onUnpark;
   final Future<void> Function(Task) onComplete;
-  final VoidCallback onReviewed;
+  final Future<void> Function(String) onAdd;
+  final VoidCallback onReview;
   final VoidCallback onEdit;
   final VoidCallback onActivate;
 
@@ -374,28 +462,28 @@ class _Group extends StatelessWidget {
                 onUnpark: () => onUnpark(t),
                 onComplete: () => onComplete(t),
               ),
-            if (tasks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(T.s5, 0, T.s2, T.s2),
-                child: Text(
-                  'Empty.',
-                  style: TextStyle(fontSize: T.fsMeta, color: T.muted),
-                ),
-              ),
+            // The way in that needs nothing else on screen. Under the shelf's
+            // own contents rather than above them, so it reads as the end of
+            // this list and not as a second add field competing with the one at
+            // the top of the window.
+            _AddToShelf(group: group, accent: accent, onAdd: onAdd),
             Padding(
               padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, T.s2),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
-                  onPressed: onReviewed,
+                  onPressed: onReview,
                   style: TextButton.styleFrom(
                     padding:
                         const EdgeInsets.symmetric(horizontal: T.s2, vertical: 0),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
+                  // One label, whether or not the clock has run out: this opens
+                  // the funnel either way, and "mark reviewed" was a promise the
+                  // old button did not keep. See parked_review.dart.
                   child: Text(
-                    due ? 'Mark reviewed' : 'Reviewed now',
+                    tasks.isEmpty ? 'Review (nothing on it)' : 'Review',
                     style: TextStyle(fontSize: T.fsMeta, color: due ? tint : T.muted),
                   ),
                 ),
@@ -416,6 +504,88 @@ class _Group extends StatelessWidget {
     if (at == null) return '';
     final days = at.difference(DateTime.now()).inDays;
     return days < 1 ? 'today' : 'in ${days}d';
+  }
+}
+
+/// The one-line field at the foot of an open shelf.
+///
+/// It keeps the caret after a submit, because the reason to be typing here at
+/// all is that several things have just occurred to you and none of them are
+/// for today. Clearing the field and keeping the focus is what makes that a
+/// list rather than a form filled in once.
+///
+/// Deliberately quiet - no border until it is focused, [T.fsLabel] like the
+/// rows above it - so a collapsed-looking shelf does not grow a second input
+/// box shouting for attention beside the real one at the top of the window.
+class _AddToShelf extends StatefulWidget {
+  const _AddToShelf({
+    required this.group,
+    required this.accent,
+    required this.onAdd,
+  });
+
+  final ParkedGroup group;
+  final Color accent;
+  final Future<void> Function(String) onAdd;
+
+  @override
+  State<_AddToShelf> createState() => _AddToShelfState();
+}
+
+class _AddToShelfState extends State<_AddToShelf> {
+  final _controller = TextEditingController();
+  final _focus = FocusNode();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    await widget.onAdd(text);
+    if (!mounted) return;
+    _controller.clear();
+    setState(() => _busy = false);
+    _focus.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, T.s1),
+      child: Row(
+        children: [
+          Icon(Icons.add, size: 14, color: widget.accent),
+          const SizedBox(width: 4),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focus,
+              enabled: !_busy,
+              style: const TextStyle(fontSize: T.fsLabel, color: T.text),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                hintText: 'Add to ${widget.group.title}',
+                hintStyle: const TextStyle(
+                  fontSize: T.fsLabel,
+                  color: T.muted,
+                ),
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -238,15 +238,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Switch workspace, and land on that workspace's **list**.
+  ///
+  /// Every view closes, side thoughts included. History, the shelves and the
+  /// journal are per-workspace and could never have survived the switch; the
+  /// thought pile is global and used to be kept open on exactly that reasoning
+  /// - it is not a fact about the workspace, so nothing about it changed.
+  ///
+  /// That was the wrong question. Picking a workspace is asking *what is on
+  /// this list*, and answering it with the pile of thoughts that was already on
+  /// screen means the one control whose whole job is to show you a list shows
+  /// you something else. The thoughts have not gone anywhere - the footer's
+  /// count and the bubble both still say how many are waiting, and one press
+  /// brings them back.
+  ///
+  /// Switching is still deliberately *not* blocked by pending thoughts; only
+  /// closing the window is. See `_switchWorkspace` in main.dart.
   Future<void> selectWorkspace(String uuid) async {
     currentWorkspaceUuid = uuid;
     await _store.setSetting(_kLastWorkspace, uuid);
-    // History, the parked shelves and the journal are per-workspace views, so
-    // they cannot survive the switch. Side thoughts are global and deliberately
-    // do: switching workspace is not a reason to lose sight of them.
-    showHistory = false;
-    showParked = false;
-    showJournal = false;
+    _closeOtherViews();
     await refreshTasks();
     _mutated();
   }
@@ -378,12 +389,19 @@ class AppState extends ChangeNotifier {
   /// Add a task. The extras all default to what the one-line add field means,
   /// so the quick path stays `addTask(text)` and the composer is the same call
   /// with more of it filled in.
+  ///
+  /// [groupUuid] puts it straight onto a parked shelf instead of onto the list.
+  /// One parameter rather than an add-then-park pair, because the pair writes
+  /// the row twice and puts the first version on the active list for as long as
+  /// it takes the second write to land - which is a task appearing and vanishing
+  /// on a list nobody asked to put it on.
   Future<void> addTask(
     String text, {
     String notes = '',
     int priority = 0,
     DateTime? remindAt,
     String? recur,
+    String? groupUuid,
   }) async {
     final ws = currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
@@ -400,6 +418,7 @@ class AppState extends ChangeNotifier {
         // Meaningless without something to count from, so it follows the
         // reminder - the same rule saveTaskDetails applies.
         recur: remindAt == null ? null : recur,
+        groupUuid: groupUuid,
         updatedAt: nowStamp(),
       ),
     );

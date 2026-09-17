@@ -419,6 +419,17 @@ contain every table a later step touches, which is why `journal_test` carries
   (`_neutralChrome`), and every thought surface uses `T.thoughts`: the pile is
   global, and drawing it in one workspace's colour claimed otherwise.
 
+### The add field is opened, not permanent
+
+`_adding` on the shell, set by the ＋ on `WorkspaceBar` / `WorkspaceRail`
+(`onAddTask`), by `N` on desktop, and by every capture path (`_jumpToAddTask`
+calls `_openAdd`). `_addShowing` also holds it open while the controller has
+text, so nothing half-typed is folded away; `_closeAdd` refuses a non-empty
+field. Enter adds and keeps the caret; Enter on nothing, Esc, or a tap outside
+closes it. The `N` handler checks the focused node's ancestry for an
+`EditableTextState`, because a text field's key events bubble through the
+shell's `Focus` too and an "n" typed into a note must stay an "n".
+
 ### Selecting several tasks
 
 The selection is shell state (`_selected`, uuids, plus `_selectedIn`, the
@@ -619,14 +630,16 @@ time on one. The rules that are not obvious from the schema:
   `event_uuid` is a supported state — the task is still on the list, it just
   never turns up in a session. Same shape as the attachment-row-without-bytes
   case, minus the sweep, because nothing is leaked by it.
-- **The toolbar is two rows on touch, one everywhere else.** As a single Row it
-  had to fit a back arrow, two steppers, the date, Today, the bolt, a three-way
-  mode switch and a filter menu across 390pt — it "fitted" by giving the title
-  whatever was left, which was six characters, so the one label saying *where
-  you are* showed as "Au…". Splitting it puts where-you-are on one line and the
-  controls on another and makes every target finger-sized out of the same
-  change. `_IconBtn`, `_ModeSwitch` and `_FilterMenu` take optional sizes; null
-  keeps the compact desktop shape.
+- **The toolbar is one row on touch, and not the desktop's row.** It was three
+  (back/step/Today, the date on its own line, bolt/mode/filter) - 106 units of a
+  phone above the weekday strip. Now it is `‹ date ›`, a `_ModeCycle` chip that
+  steps D → W → Y, and the `_FilterMenu` as ⋯, which on touch also carries Today
+  and quick add (`onToday` / `onToggleBlocking` non-null is what turns the
+  filter into the ⋯, and it lights while quick add is on). Tapping the date is
+  Today. There is no back arrow: the title bar's calendar button closes it. The
+  date **scales down** (`FittedBox`) rather than ellipsing, which is what went
+  wrong the last time it shared a row with controls - "August 2026" showed as
+  "Au…". Desktop keeps its single row with the three-way `_ModeSwitch`.
 - **A horizontal swipe moves through time** — next/previous week in the week
   view, day in the day view, year in the year view (`state.stepCalendar`), and
   unclamped, because time has no ends. It used to switch D/W/Y, which was the
@@ -636,10 +649,6 @@ time on one. The rules that are not obvious from the schema:
   gestures are a vertical scroll and a *long-press*-then-drag to create —
   creating is split by input device precisely so a one-finger drag can still
   scroll, which leaves a plain horizontal fling belonging to nobody.
-- **The date label is its own line on touch**, under the arrows rather than
-  between them. Sharing a row with a back arrow, two steppers and Today left a
-  day view's "Tuesday, 18 August 2026" a few characters wide; given the full
-  width it fits at a *smaller* size than it was being clipped at.
 - **Quick add holds blocks before writing them** (`AppState.pendingBlocks`).
   Tapping the grid with the bolt on places an adjustable hour; nothing reaches
   the database until the mode ends. They are deliberately not stored and not

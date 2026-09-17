@@ -5,7 +5,12 @@ Newest changes are noted in the changelog at the bottom.
 
 ## Tasks
 
-- **Add a task** — type in the top field and press Enter.
+- **Add a task** — press the **＋** on the workspace bar (**Add task** on the
+  rail, or **N** on the keyboard), type, and press Enter. The field stays open
+  for the next one; Enter on an empty field, Esc, or clicking elsewhere puts it
+  away. It used to be a text field permanently above the list, which cost a
+  phone a row of height for something used a few seconds an hour. A field with
+  something typed in it never folds away on its own.
 - **Check off a task** — click the circle; it plays a slide-out animation, then
   gets logged to history (not deleted).
 - **The actions live in a bar you ask for.** A row is a tick box, a title and
@@ -54,7 +59,7 @@ Newest changes are noted in the changelog at the bottom.
   it is overdue), a 📎 when it holds documents, a 📅 when it is planned into a
   calendar block. Those are marks, not buttons: pressing anywhere on the row
   opens the bar, which is where the matching action is.
-- **The long form — Ctrl+D, or the ⤢ in the add field.** Opens a bigger
+- **The long form — Ctrl+D, or the ⤢ in the add field** (once it is open). Opens a bigger
   composer for the task that needs more than a line: **notes**, a **priority
   flag** and a **reminder**, all set before it ever reaches the list. Whatever
   you had already typed comes across as the title and the caret lands straight
@@ -613,10 +618,12 @@ Three tiers, none of which need an account, an API key, or a licence:
   the week view, day in the day view, year in the year view. The swipe used to
   change D/W/Y, which is the setting you touch once a session; where you are in
   time is the question you ask twenty times, and it meant reaching for the ‹ ›
-  at the top of the screen each time. D/W/Y is still one tap on the toolbar.
-- **The date has a line of its own** under the arrows, so a day view says
-  "Tuesday, 18 August 2026" in full instead of clipping it to fit beside four
-  controls.
+  at the top of the screen each time.
+- **On a phone the header is one line**: ‹ the date ›, a chip showing the view
+  (D, W or Y — tap it for the next), and ⋯. **Tap the date to go back to
+  today.** ⋯ holds Today, **quick add** (the ⋯ lights up while it is on), and
+  the calendar filter, new calendar and import. The title bar's calendar button
+  closes the calendar. It was three rows; the grid gets that height back.
 - **Drag a placed block anywhere, including onto another day.** With quick add
   on, a long press lifts a block off the grid — it follows your finger as a
   thing being carried — and it lands where you let go, on whatever day is under
@@ -1145,6 +1152,10 @@ reminders are both there now**, queued for 0.18.0.
     delete, park or move them at once — **to another workspace's list or
     shelves** as well as this one's. The single-task park picker offers the
     other workspaces too.
+  - **Add a task from a ＋**, not a permanent field: on the workspace bar, the
+    rail, or N.
+  - **The calendar header is one line on a phone** — ‹ date ›, a view chip and
+    ⋯ — instead of three rows.
   - **Radio: search, stars and your own streams.** Search the directory by
     name, star stations into a Saved list, and add a stream by URL.
   - **The split is yours to move.** Drag the line between the list and a panel

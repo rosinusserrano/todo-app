@@ -233,6 +233,35 @@ class _WidgetShellState extends State<WidgetShell>
 
   final _addController = TextEditingController();
   final _addFocus = FocusNode();
+
+  /// The add field is showing.
+  ///
+  /// It used to be permanent - a text field above every list, 42 units of a
+  /// phone's height spent on something used a few seconds an hour. Now it is a
+  /// ＋ on the workspace bar (or the rail) and this is whether that ＋ has been
+  /// pressed. It stays open while there is text in it, so nothing half-typed
+  /// is ever folded away.
+  bool _adding = false;
+
+  bool get _addShowing => _adding || _addController.text.isNotEmpty;
+
+  /// Open the field and put the caret in it. The focus waits for the frame
+  /// that builds the field.
+  void _openAdd() {
+    if (!_adding) setState(() => _adding = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _addFocus.requestFocus();
+    });
+  }
+
+  /// Fold it away - only when empty. Whatever was typed is still the draft.
+  void _closeAdd() {
+    if (_addController.text.trim().isNotEmpty) return;
+    _addController.clear();
+    _addFocus.unfocus();
+    if (_adding) setState(() => _adding = false);
+  }
+
   final _stackKey = GlobalKey();
   final _footerKey = GlobalKey<ThoughtFooterState>();
 
@@ -833,7 +862,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.showThoughts) s.toggleThoughts();
     if (s.showParked) s.toggleParked();
     if (s.showJournal) s.toggleJournal();
-    _addFocus.requestFocus();
+    _openAdd();
   }
 
   /// Thoughts are capturable from both sides now, so this keeps focus mode
@@ -1188,6 +1217,27 @@ class _WidgetShellState extends State<WidgetShell>
       body: Focus(
         autofocus: true,
         onKeyEvent: (node, event) {
+          // N opens the add field, from anywhere a key is not being typed
+          // into something - the keyboard's way to the ＋. Checked through
+          // the focused node's ancestry because a text field's own key events
+          // bubble up through here too, and "n" typed into a note must stay
+          // an "n".
+          if (event is KeyDownEvent &&
+              isDesktop &&
+              event.logicalKey == LogicalKeyboardKey.keyN &&
+              !HardwareKeyboard.instance.isControlPressed &&
+              !HardwareKeyboard.instance.isAltPressed &&
+              !HardwareKeyboard.instance.isMetaPressed &&
+              FocusManager.instance.primaryFocus?.context
+                      ?.findAncestorStateOfType<EditableTextState>() ==
+                  null &&
+              !s.showCalendar &&
+              s.focusTask == null &&
+              !_soundOpen &&
+              !_settingsOpen) {
+            _openAdd();
+            return KeyEventResult.handled;
+          }
           // Esc unwinds one layer at a time: the sound sheet, then the
           // focus-mode thought field, then focus mode itself.
           if (event is! KeyDownEvent ||
@@ -1204,6 +1254,8 @@ class _WidgetShellState extends State<WidgetShell>
             _closeSound();
           } else if (_focusThoughtOpen) {
             _closeFocusThought();
+          } else if (_adding && _addController.text.trim().isEmpty) {
+            _closeAdd();
           } else if (s.focusTask != null) {
             _exitFocus();
           } else if (_taskTakesScreen) {
@@ -1765,6 +1817,7 @@ class _WidgetShellState extends State<WidgetShell>
                       thoughtCount: s.thoughtCount,
                       parkedReviewDue: s.groupsDueForReview.isNotEmpty,
                       openView: _openView,
+                      onAddTask: _openAdd,
                       collapsed: s.railCollapsed,
                       onToggleCollapsed: () =>
                           s.setRailCollapsed(!s.railCollapsed),
@@ -1892,6 +1945,7 @@ class _WidgetShellState extends State<WidgetShell>
     // The menu holds three of the four, and lighting its ▾ for a view it
     // does not contain would point at the wrong control.
     openView: _openView == WorkspaceView.thoughts ? null : _openView,
+    onAddTask: _openAdd,
   );
 
   /// The calendar, wherever it is drawn.
@@ -2103,7 +2157,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (secondary == null) return _taskColumn(ws);
     return Column(
       children: [
-        _addField(ws),
+        if (_addShowing) _addField(ws),
         Expanded(child: secondary),
       ],
     );
@@ -2120,16 +2174,17 @@ class _WidgetShellState extends State<WidgetShell>
         constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),
         child: Column(
           children: [
-            _selectedTasks.isEmpty
-                ? _addField(ws)
-                : SelectionBar(
-                    count: _selectedTasks.length,
-                    accent: ws,
-                    onComplete: () => _finishSelected(complete: true),
-                    onMove: (anchor) => _moveTasks(_selectedTasks, anchor),
-                    onDelete: () => _finishSelected(complete: false),
-                    onClear: _clearSelection,
-                  ),
+            if (_selectedTasks.isNotEmpty)
+              SelectionBar(
+                count: _selectedTasks.length,
+                accent: ws,
+                onComplete: () => _finishSelected(complete: true),
+                onMove: (anchor) => _moveTasks(_selectedTasks, anchor),
+                onDelete: () => _finishSelected(complete: false),
+                onClear: _clearSelection,
+              )
+            else if (_addShowing)
+              _addField(ws),
             Expanded(child: _activeView(ws)),
           ],
         ),
@@ -2314,7 +2369,10 @@ class _WidgetShellState extends State<WidgetShell>
 
   List<Task> get _selectedTasks => _selectedIn != s.currentWorkspaceUuid
       ? const []
-      : [for (final t in s.tasks) if (_selected.contains(t.uuid)) t];
+      : [
+          for (final t in s.tasks)
+            if (_selected.contains(t.uuid)) t,
+        ];
 
   void _toggleSelected(Task t) {
     setState(() {
@@ -2373,7 +2431,11 @@ class _WidgetShellState extends State<WidgetShell>
     if (batch.length <= 1) {
       await s.parkTask(t, g.uuid);
     } else {
-      await s.moveTasks(batch, workspaceUuid: g.workspaceUuid, groupUuid: g.uuid);
+      await s.moveTasks(
+        batch,
+        workspaceUuid: g.workspaceUuid,
+        groupUuid: g.uuid,
+      );
     }
   }
 
@@ -2393,6 +2455,7 @@ class _WidgetShellState extends State<WidgetShell>
     );
     if (draft == null || !mounted) return;
     _addController.clear();
+    _closeAdd();
     await s.addTask(
       draft.text,
       notes: draft.notes,
@@ -2462,18 +2525,21 @@ class _WidgetShellState extends State<WidgetShell>
           borderSide: BorderSide(color: ws.withValues(alpha: 0.6)),
         ),
       ),
+      // Enter adds and keeps the caret, because the field was opened on
+      // purpose and the next task is usually right behind the first. An Enter
+      // on nothing is the way out, as is Esc or tapping elsewhere.
       onSubmitted: (value) async {
-        // Ctrl+Enter keeps the field focused for chaining entries; plain
-        // Enter drops focus once the task is added.
-        final chain = HardwareKeyboard.instance.isControlPressed;
+        if (value.trim().isEmpty) {
+          _closeAdd();
+          return;
+        }
         _addController.clear();
         await s.addTask(value);
         if (!mounted) return;
-        if (chain) {
-          _addFocus.requestFocus();
-        } else {
-          _addFocus.unfocus();
-        }
+        _addFocus.requestFocus();
+      },
+      onTapOutside: (_) {
+        if (_addController.text.trim().isEmpty) _closeAdd();
       },
     );
 
@@ -2543,7 +2609,8 @@ class _WidgetShellState extends State<WidgetShell>
             // inside itself instead - see [_expandsToScreen].
             onExpand: _expandsToScreen ? () => _expandTask(t) : null,
             attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
-            selected: _selected.contains(t.uuid) &&
+            selected:
+                _selected.contains(t.uuid) &&
                 _selectedIn == s.currentWorkspaceUuid,
             selecting: _selectedTasks.isNotEmpty,
             onToggleSelect: () => _toggleSelected(t),

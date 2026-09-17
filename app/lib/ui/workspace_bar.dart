@@ -49,7 +49,12 @@ class WorkspaceBar extends StatelessWidget {
     required this.onOpenHistory,
     required this.parkedReviewDue,
     required this.openView,
+    this.onAddTask,
   });
+
+  /// The ＋ that opens the add field. On this bar because it adds to *this*
+  /// workspace's list, and the pill naming that workspace is right beside it.
+  final VoidCallback? onAddTask;
 
   final List<Workspace> workspaces;
   final String? currentUuid;
@@ -79,7 +84,9 @@ class WorkspaceBar extends StatelessWidget {
     final others = [for (final ws in workspaces) if (ws.uuid != current.uuid) ws];
 
     return SizedBox(
-      height: 32,
+      // Finger-sized on touch, now that the ＋ lives here rather than in a
+      // field of its own below.
+      height: Layout.of(context).touch ? 40 : 32,
       child: Row(
         children: [
           const SizedBox(width: 8),
@@ -93,6 +100,23 @@ class WorkspaceBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          if (onAddTask != null)
+            Tooltip(
+              message: 'Add a task (N)',
+              child: InkWell(
+                onTap: onAddTask,
+                borderRadius: BorderRadius.circular(T.radius),
+                child: SizedBox(
+                  width: Layout.of(context).tapTarget + 4,
+                  height: Layout.of(context).touch ? 40 : 28,
+                  child: Icon(
+                    Icons.add_rounded,
+                    size: Layout.of(context).touch ? 24 : 18,
+                    color: accent,
+                  ),
+                ),
+              ),
+            ),
           // On touch the views are along the bottom edge instead (see
           // ui/view_bar.dart), where a thumb reaches them - so this ▾ would be
           // a second door to the same four views, at the far end of the phone

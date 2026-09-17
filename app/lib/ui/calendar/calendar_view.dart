@@ -476,43 +476,87 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final layout = Layout.of(context);
 
-    // Two rows on touch, one everywhere else.
+    // One row on touch too, and it is a different row from the desktop's.
     //
-    // Everything below used to be a single Row, and on a phone that Row had to
-    // fit a back arrow, two steppers, the month, Today, the bolt, a three-way
-    // mode switch and a filter menu across 390pt. It "fitted" by giving the
-    // title whatever was left, which was six characters - the month showed as
-    // "Au…", so the one label saying *where you are* was the thing squeezed
-    // out. Splitting it puts where-you-are on its own line and the controls on
-    // another, and both get finger-sized targets out of the same change.
+    // It was three: back / step / Today, then the date on a line of its own,
+    // then bolt / mode / filter - 106 units of a phone's height above the
+    // weekday strip, for controls touched a few times a sitting. Now:
+    //
+    //   - **‹ date ›.** The date is between the steppers again, and it is also
+    //     Today: tapping where-you-are is how you get back to now. It scales
+    //     down rather than ellipsing, which is what went wrong the last time
+    //     the date shared a row.
+    //   - **One mode chip** showing the current letter, cycling D → W → Y. The
+    //     three-way switch was three targets for a choice made once a sitting.
+    //   - **⋯** holds Today (spelled out, for whoever did not guess the date),
+    //     quick add, and everything the filter menu had. It lights while quick
+    //     add is on, so a mode that changes what a tap does is never invisible.
+    //   - **No back arrow.** The title bar's calendar button closes it, which is
+    //     the same button that opened it.
     if (layout.touch) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
+        child: Row(
           children: [
-            Row(children: _whereRow(layout)),
-            // The label gets a line of its own, under the arrows.
-            //
-            // Between them it was one `Flexible` competing with a back arrow,
-            // two steppers and Today across 390pt, so "Tuesday, 18 August 2026"
-            // - the whole answer to where you are - ellipsed to a few
-            // characters. Given the full width it fits at a *smaller* size than
-            // it was being clipped at, and the arrows keep their finger-sized
-            // targets instead of being shaved to make room for it.
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: T.fsLabel,
-                fontWeight: T.wMedium,
-                color: T.text,
+            _IconBtn(
+              icon: Icons.chevron_left,
+              tooltip: 'Previous',
+              onTap: () => onStep(-1),
+              size: layout.tapTarget,
+              iconSize: layout.actionIcon,
+            ),
+            Expanded(
+              child: Tooltip(
+                message: 'Back to today',
+                child: InkWell(
+                  onTap: onToday,
+                  borderRadius: BorderRadius.circular(T.radius),
+                  child: SizedBox(
+                    height: layout.tapTarget,
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: T.fsBody,
+                            fontWeight: T.wMedium,
+                            color: T.text,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 2),
-            Row(children: _controlsRow(layout)),
+            _IconBtn(
+              icon: Icons.chevron_right,
+              tooltip: 'Next',
+              onTap: () => onStep(1),
+              size: layout.tapTarget,
+              iconSize: layout.actionIcon,
+            ),
+            const SizedBox(width: T.s1),
+            _ModeCycle(mode: mode, onMode: onMode, size: layout.tapTarget),
+            _FilterMenu(
+              scope: scope,
+              calendars: calendars,
+              hidden: hidden,
+              nameFor: nameFor,
+              colorFor: colorFor,
+              onScope: onScope,
+              onToggleHidden: onToggleHidden,
+              onNewCalendar: onNewCalendar,
+              onEditCalendar: onEditCalendar,
+              onImportIcs: onImportIcs,
+              size: layout.tapTarget,
+              iconSize: layout.actionIcon,
+              blocking: blocking,
+              onToday: onToday,
+              onToggleBlocking: onToggleBlocking,
+            ),
           ],
         ),
       );
@@ -603,79 +647,62 @@ class _Header extends StatelessWidget {
     );
   }
 
-  /// How to move: back out, step, and Today.
-  ///
-  /// The date itself is the line *underneath* this one (see [build]). It was in
-  /// the middle of this row, and even with a row to itself the four controls
-  /// around it left a day view's "Tuesday, 18 August 2026" a few characters -
-  /// so where-you-are now gets the full width and the controls keep their
-  /// finger-sized targets. Today stays the word rather than the icon it
-  /// degrades to when there is no room for either.
-  List<Widget> _whereRow(Layout layout) => [
-        _IconBtn(
-          icon: Icons.arrow_back_rounded,
-          tooltip: 'Back to tasks (Esc)',
-          onTap: onClose,
-          size: layout.tapTarget,
-          iconSize: layout.actionIcon,
-        ),
-        const Spacer(),
-        _IconBtn(
-          icon: Icons.chevron_left,
-          tooltip: 'Previous',
-          onTap: () => onStep(-1),
-          size: layout.tapTarget,
-          iconSize: layout.actionIcon,
-        ),
-        const SizedBox(width: 4),
-        _IconBtn(
-          icon: Icons.chevron_right,
-          tooltip: 'Next',
-          onTap: () => onStep(1),
-          size: layout.tapTarget,
-          iconSize: layout.actionIcon,
-        ),
-        const Spacer(),
-        TextButton(
-          onPressed: onToday,
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            minimumSize: Size(0, layout.tapTarget),
-          ),
-          child: const Text('Today', style: TextStyle(fontSize: T.fsLabel)),
-        ),
-      ];
+}
 
-  /// What you are looking at: the quick-add bolt, the mode, and the filter.
-  List<Widget> _controlsRow(Layout layout) => [
-        _IconBtn(
-          icon: Icons.bolt,
-          tooltip: blocking
-              ? 'Quick add on – tap the grid to place blocks'
-              : 'Quick add: tap the grid to place blocks',
-          active: blocking,
-          onTap: onToggleBlocking,
-          size: layout.tapTarget,
-          iconSize: layout.actionIcon,
+/// The view mode as one chip on touch: the current letter, and a tap moves to
+/// the next. See the touch branch of [_Header.build].
+class _ModeCycle extends StatelessWidget {
+  const _ModeCycle({
+    required this.mode,
+    required this.onMode,
+    required this.size,
+  });
+
+  final CalendarViewMode mode;
+  final void Function(CalendarViewMode) onMode;
+  final double size;
+
+  static const _names = {
+    CalendarViewMode.day: 'Day',
+    CalendarViewMode.week: 'Week',
+    CalendarViewMode.year: 'Year',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    const modes = CalendarViewMode.values;
+    final next = modes[(modes.indexOf(mode) + 1) % modes.length];
+    return Tooltip(
+      message: '${_names[mode]} - tap for ${_names[next]!.toLowerCase()}',
+      child: InkWell(
+        onTap: () => onMode(next),
+        borderRadius: BorderRadius.circular(T.radius),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Center(
+            child: Container(
+              width: size - 12,
+              height: size - 12,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: T.accent.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(T.radius),
+              ),
+              child: Text(
+                mode.name[0].toUpperCase(),
+                style: const TextStyle(
+                  fontSize: T.fsBody,
+                  fontWeight: T.wMedium,
+                  color: T.text,
+                ),
+              ),
+            ),
+          ),
         ),
-        const Spacer(),
-        _ModeSwitch(mode: mode, onMode: onMode, height: layout.tapTarget),
-        const Spacer(),
-        _FilterMenu(
-          scope: scope,
-          calendars: calendars,
-          hidden: hidden,
-          nameFor: nameFor,
-          colorFor: colorFor,
-          onScope: onScope,
-          onToggleHidden: onToggleHidden,
-          onNewCalendar: onNewCalendar,
-          onEditCalendar: onEditCalendar,
-          onImportIcs: onImportIcs,
-          size: layout.tapTarget,
-          iconSize: layout.actionIcon,
-        ),
-      ];
+      ),
+    );
+  }
 }
 
 class _IconBtn extends StatelessWidget {
@@ -725,22 +752,16 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-/// D / W / Y. Three letters rather than a dropdown: switching view is the most
+/// D / W / Y on desktop - touch gets [_ModeCycle]. Three letters rather than a dropdown: switching view is the most
 /// frequent thing done up here, and a menu would put two taps behind it.
 class _ModeSwitch extends StatelessWidget {
   const _ModeSwitch({
     required this.mode,
     required this.onMode,
-    this.height,
   });
 
   final CalendarViewMode mode;
   final void Function(CalendarViewMode) onMode;
-
-  /// Full height of the control. Null keeps the compact desktop shape; on touch
-  /// each letter has to be a target rather than an 11pt glyph with 3px around
-  /// it, which is what the single-row bar gave it.
-  final double? height;
 
   @override
   Widget build(BuildContext context) {
@@ -765,18 +786,11 @@ class _ModeSwitch extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   alignment: Alignment.center,
-                  constraints: BoxConstraints(
-                    minWidth: height == null ? 0 : height! * 0.95,
-                    minHeight: height == null ? 0 : height! - 4,
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: height == null ? 8 : 4,
-                    vertical: height == null ? 3 : 0,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   child: Text(
                     m.name[0].toUpperCase(),
                     style: TextStyle(
-                      fontSize: height == null ? 11 : 13,
+                      fontSize: 11,
                       fontWeight: T.wMedium,
                       color: selected ? T.bgSolid : T.muted,
                     ),
@@ -804,7 +818,16 @@ class _FilterMenu extends StatelessWidget {
     required this.onImportIcs,
     this.size,
     this.iconSize,
+    this.blocking = false,
+    this.onToday,
+    this.onToggleBlocking,
   });
+
+  /// Non-null on touch, where this is the ⋯ and carries Today and quick add
+  /// as well as the filter - see the touch branch of [_Header.build].
+  final VoidCallback? onToday;
+  final VoidCallback? onToggleBlocking;
+  final bool blocking;
 
   /// Set on touch, where this has to be a real target rather than a 15px glyph.
   final double? size;
@@ -824,11 +847,15 @@ class _FilterMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<Object>(
-      tooltip: 'Calendars',
+      tooltip: onToggleBlocking == null ? 'Calendars' : 'More',
       color: T.bgSolid,
       position: PopupMenuPosition.under,
       onSelected: (value) {
-        if (value is CalendarScope) {
+        if (value == 'today') {
+          onToday?.call();
+        } else if (value == 'block') {
+          onToggleBlocking?.call();
+        } else if (value is CalendarScope) {
           onScope(value);
         } else if (value == 'new') {
           onNewCalendar();
@@ -839,6 +866,43 @@ class _FilterMenu extends StatelessWidget {
         }
       },
       itemBuilder: (context) => [
+        if (onToday != null)
+          const PopupMenuItem<Object>(
+            value: 'today',
+            height: 40,
+            child: Row(
+              children: [
+                Icon(Icons.today_outlined, size: 14, color: T.muted),
+                SizedBox(width: 8),
+                Text('Today', style: TextStyle(fontSize: T.fsLabel)),
+              ],
+            ),
+          ),
+        if (onToggleBlocking != null) ...[
+          PopupMenuItem<Object>(
+            value: 'block',
+            height: 40,
+            child: Row(
+              children: [
+                Icon(Icons.bolt,
+                    size: 15, color: blocking ? T.accent : T.muted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    blocking ? 'Quick add is on' : 'Quick add',
+                    style: TextStyle(
+                      fontSize: T.fsLabel,
+                      color: blocking ? T.accent : T.text,
+                    ),
+                  ),
+                ),
+                if (blocking)
+                  const Icon(Icons.check, size: 14, color: T.accent),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+        ],
         for (final s in CalendarScope.values)
           PopupMenuItem<Object>(
             value: s,
@@ -933,7 +997,11 @@ class _FilterMenu extends StatelessWidget {
           : SizedBox(
               width: size,
               height: size,
-              child: Icon(Icons.tune, size: iconSize ?? 15, color: T.muted),
+              child: Icon(
+                onToggleBlocking == null ? Icons.tune : Icons.more_horiz,
+                size: iconSize ?? 15,
+                color: blocking ? T.accent : T.muted,
+              ),
             ),
     );
   }

@@ -327,6 +327,7 @@ void main() {
       VoidCallback? onShowTasks,
       bool collapsed = false,
       VoidCallback? onToggleCollapsed,
+      VoidCallback? onAddTask,
     }) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -348,6 +349,7 @@ void main() {
               openView: open,
               collapsed: collapsed,
               onToggleCollapsed: onToggleCollapsed,
+              onAddTask: onAddTask,
             ),
           ]),
         ),
@@ -416,6 +418,15 @@ void main() {
       await tester.tap(find.byTooltip('Tasks'));
       expect(selected, ['Work']);
       expect(back, 1);
+    });
+
+    testWidgets('Add task is on both shapes', (tester) async {
+      var added = 0;
+      await pump(tester, onAddTask: () => added++);
+      await tester.tap(find.text('Add task'));
+      await pump(tester, collapsed: true, onAddTask: () => added++);
+      await tester.tap(find.byTooltip('Add task (N)'));
+      expect(added, 2);
     });
 
     testWidgets('the toggle is on both shapes', (tester) async {

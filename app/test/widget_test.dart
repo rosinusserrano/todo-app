@@ -586,6 +586,41 @@ void main() {
       expect(find.byIcon(Icons.add), findsOneWidget);
     });
 
+    testWidgets('the add field is a ＋ on the bar', (tester) async {
+      var opened = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: WorkspaceBar(
+            workspaces: [
+              Workspace(
+                uuid: 'w1',
+                name: 'Tasks',
+                color: '#6c8cff',
+                sortOrder: 0,
+                createdAt: nowStamp(),
+                updatedAt: nowStamp(),
+              ),
+            ],
+            currentUuid: 'w1',
+            accent: T.accent,
+            onSelect: (_) {},
+            onEdit: (_) {},
+            onCreate: () {},
+            onOpenNotes: () {},
+            onOpenParked: () {},
+            onOpenHistory: () {},
+            parkedReviewDue: false,
+            openView: null,
+            onAddTask: () => opened++,
+          ),
+        ),
+      ));
+      await tester.tap(find.byTooltip('Add a task (N)'));
+      expect(opened, 1);
+      expect(find.byType(TextField), findsNothing,
+          reason: 'no permanent field on the bar');
+    });
+
     testWidgets('the views menu ticks whichever view is open', (tester) async {
       Widget bar(WorkspaceView? open) => MaterialApp(
             home: Scaffold(

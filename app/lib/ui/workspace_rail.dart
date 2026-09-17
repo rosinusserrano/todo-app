@@ -44,7 +44,12 @@ class WorkspaceRail extends StatelessWidget {
     required this.openView,
     this.collapsed = false,
     this.onToggleCollapsed,
+    this.onAddTask,
   });
+
+  /// Opens the add field. First under Views, since adding is to the list the
+  /// Tasks entry below it shows.
+  final VoidCallback? onAddTask;
 
   /// Drawn as the narrow strip. See the header.
   final bool collapsed;
@@ -128,6 +133,13 @@ class WorkspaceRail extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const _RailLabel('Views'),
+          if (onAddTask != null)
+            _RailItem(
+              icon: Icons.add_rounded,
+              label: 'Add task',
+              accent: accent,
+              onTap: onAddTask!,
+            ),
           _RailItem(
             icon: Icons.check_circle_outline,
             label: 'Tasks',
@@ -241,6 +253,12 @@ extension on WorkspaceRail {
             padding: EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
             child: Divider(height: 1, thickness: 1, color: Color(0x14FFFFFF)),
           ),
+          if (onAddTask != null)
+            _StripButton(
+              icon: Icons.add_rounded,
+              tooltip: 'Add task (N)',
+              onTap: onAddTask!,
+            ),
           view(Icons.check_circle_outline, 'Tasks', null, onShowTasks),
           view(Icons.notes_rounded, 'Notes', WorkspaceView.notes, onOpenNotes),
           view(

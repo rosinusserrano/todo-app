@@ -91,13 +91,15 @@ from, not an implementation - the layout change waits for Marco's pick.
 - [x] **41.2** Sound sheet: star on a station, a Favourites row, a search field,
       and "Add a stream URL".
 
-### 42. Layout moodboard  `[~]`
+### 42. Layout moodboard, then A1 + B1  `[x]`
 
 - [x] **42.1** Artifact with options for the add-task button and a compact
       calendar header: https://claude.ai/artifact/AnDvzbfL43g6xKtefVtMN7
       (A1-A3 for the add field, B1-B3 for the header; A1 + B1 recommended).
-- [ ] **42.2** **Waiting on Marco's pick**, then build it. Nothing in the app
-      has changed for this item yet.
+- [x] **42.2** Marco picked **A1 + B1**. A1: `_adding` in the shell, ＋ on
+      `WorkspaceBar` and `WorkspaceRail` (`onAddTask`), N on desktop. B1: the
+      touch header is one row - `‹ date ›`, `_ModeCycle`, and `_FilterMenu`
+      as ⋯ carrying Today and quick add. Desktop header unchanged.
 
 ---
 

@@ -87,6 +87,9 @@ class Layout {
   /// The workspace bar, unrolled down the left edge.
   static const railWidth = 190.0;
 
+  /// The rail folded down to a strip of dots and icons.
+  static const railCollapsedWidth = 44.0;
+
   /// Below this the bar's popup menus are the only way the workspace list and
   /// the views fit at all; above it there is room to have them permanently on
   /// screen, which is a menu press saved on every switch.

@@ -53,21 +53,23 @@ from, not an implementation - the layout change waits for Marco's pick.
 
 - [x] **36.1** Fourth `ShortcutItem` (iOS budget is four), opens the calendar.
 
-### 37. Jump from an event to its workspace  `[ ]`
+### 37. Jump from an event to its workspace  `[x]`
 
-- [ ] **37.1** `EventAction.openWorkspace` on the details card and the context
+- [x] **37.1** `EventAction.openWorkspace` on the details card and the context
       menu, only when the event's calendar is a workspace calendar.
 
-### 38. Collapse the rail  `[ ]`
+### 38. Collapse the rail  `[x]`
 
-- [ ] **38.1** `WorkspaceRail.collapsed`: colour dots + view icons, toggle at
+- [x] **38.1** `WorkspaceRail.collapsed`: colour dots + view icons, toggle at
       the top, stored in `settings` (`ui:railCollapsed`).
 
-### 39. The split between the list and a view is adjustable  `[ ]`
+### 39. The split between the list and a view is adjustable  `[x]`
 
-- [ ] **39.1** A draggable divider (fraction stored in `settings`), double-click
-      resets. Dragged to the left edge, or its chevron pressed, the task pane
-      collapses and the view has the whole width; a thin strip brings it back.
+- [x] **39.1** `ui/split_pane.dart`: a draggable divider (fraction stored in
+      `settings`), double-click resets. Dragged to the left edge, or its
+      chevron pressed, the task pane collapses and the view has the whole
+      width; a thin strip brings it back. Used by both the views' split and
+      the calendar's, with separate fractions and one shared fold.
 
 ### 40. Select several tasks and move them together  `[ ]`
 

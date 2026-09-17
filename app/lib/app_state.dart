@@ -32,6 +32,10 @@ const _kCalendarScope = 'ui:calendar-scope';
 const _kCalendarZoom = 'ui:calendar-hour-height';
 const _kCalendarHidden = 'ui:calendar-hidden';
 const _kCalendarBlock = 'ui:calendar-block';
+const _kRailCollapsed = 'ui:rail-collapsed';
+const _kSplitFraction = 'ui:split-fraction';
+const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
+const _kTasksPaneCollapsed = 'ui:tasks-pane-collapsed';
 
 /// The three grids. There is deliberately no month view: the year view is
 /// twelve months drawn at once, so a single month would be the same thing with
@@ -146,6 +150,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> load() async {
     nudgeEnabled = (await _store.setting(_kNudge)) != '0';
+    await _loadShellPrefs();
     currentWorkspaceUuid = await _store.setting(_kLastWorkspace);
     await refreshWorkspaces();
     await refreshTasks();
@@ -1046,6 +1051,65 @@ class AppState extends ChangeNotifier {
     }
     focusTask = t;
     notifyListeners();
+  }
+
+  // ------------------------------------------------------- shell layout
+  //
+  // How the window is carved up, as opposed to what is in it. Device-local
+  // `settings` rows like the calendar's zoom, and for the same reason: a phone
+  // and a 4K monitor do not want each other's split, so none of this syncs.
+
+  /// The rail is drawn as a strip of dots and icons instead of names.
+  bool railCollapsed = false;
+
+  /// The task list's share of the width when a view opens beside it, or null
+  /// for the shell's default. A fraction rather than pixels so a resized window
+  /// keeps the proportion that was chosen.
+  double? splitFraction;
+
+  /// The same, for the task pane beside the calendar. Separate, because the
+  /// two splits want different things: a notes pane is reading width, a week
+  /// grid wants every pixel it can get.
+  double? calendarSplitFraction;
+
+  /// The task list is folded away wherever something sits beside it, so the
+  /// view has the whole width. It is a standing preference rather than a
+  /// per-view one - "only show me the notes" should still be true the next
+  /// time the notes are opened.
+  bool tasksPaneCollapsed = false;
+
+  Future<void> _loadShellPrefs() async {
+    railCollapsed = (await _store.setting(_kRailCollapsed)) == '1';
+    tasksPaneCollapsed = (await _store.setting(_kTasksPaneCollapsed)) == '1';
+    splitFraction = double.tryParse(await _store.setting(_kSplitFraction) ?? '');
+    calendarSplitFraction =
+        double.tryParse(await _store.setting(_kCalendarSplitFraction) ?? '');
+  }
+
+  Future<void> setRailCollapsed(bool collapsed) async {
+    railCollapsed = collapsed;
+    notifyListeners();
+    await _store.setSetting(_kRailCollapsed, collapsed ? '1' : '0');
+  }
+
+  Future<void> setTasksPaneCollapsed(bool collapsed) async {
+    tasksPaneCollapsed = collapsed;
+    notifyListeners();
+    await _store.setSetting(_kTasksPaneCollapsed, collapsed ? '1' : '0');
+  }
+
+  /// Null puts the split back to the shell's default.
+  Future<void> setSplitFraction(double? fraction, {bool calendar = false}) async {
+    if (calendar) {
+      calendarSplitFraction = fraction;
+    } else {
+      splitFraction = fraction;
+    }
+    notifyListeners();
+    await _store.setSetting(
+      calendar ? _kCalendarSplitFraction : _kSplitFraction,
+      fraction?.toStringAsFixed(4) ?? '',
+    );
   }
 
   Future<void> setNudge(bool on) async {

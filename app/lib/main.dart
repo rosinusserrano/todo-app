@@ -40,7 +40,7 @@ import 'ui/calendar/calendar_view.dart';
 import 'ui/calendar/ics_import.dart';
 import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
-import 'ui/calendar/time_grid.dart' show hhmm;
+import 'ui/calendar/time_grid.dart' show hhmm, kGutter;
 import 'ui/content_slot.dart';
 import 'ui/footer.dart';
 import 'ui/journal_panel.dart';
@@ -50,6 +50,7 @@ import 'ui/session_view.dart';
 import 'ui/settings_sheet.dart';
 import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
+import 'ui/split_pane.dart';
 import 'ui/task_composer.dart';
 import 'ui/task_detail.dart';
 import 'ui/task_drag.dart';
@@ -508,6 +509,7 @@ class _WidgetShellState extends State<WidgetShell>
       color: s.colorForEvent(event),
       loadTasks: () => s.tasksForEvent(event.uuid),
       loadAttachments: () => s.eventAttachments(event),
+      offerWorkspace: s.workspaceForEvent(event) != null,
     );
     if (action == null || !mounted) return;
     await _runEventAction(event, action);
@@ -548,6 +550,12 @@ class _WidgetShellState extends State<WidgetShell>
           ),
         ),
         const PopupMenuDivider(),
+        if (s.workspaceForEvent(event) != null)
+          _menuItem(
+            EventAction.openWorkspace,
+            Icons.checklist_rounded,
+            'Go to workspace',
+          ),
         _menuItem(EventAction.edit, Icons.edit_outlined, 'Edit'),
         _menuItem(
           EventAction.delete,
@@ -574,7 +582,10 @@ class _WidgetShellState extends State<WidgetShell>
         children: [
           Icon(icon, size: 15, color: color == T.text ? T.muted : color),
           const SizedBox(width: T.s2),
-          Text(label, style: TextStyle(fontSize: T.fsLabel, color: color)),
+          Text(
+            label,
+            style: TextStyle(fontSize: T.fsLabel, color: color),
+          ),
         ],
       ),
     );
@@ -586,7 +597,23 @@ class _WidgetShellState extends State<WidgetShell>
         await _editEvent(event);
       case EventAction.delete:
         await _deleteEvent(event);
+      case EventAction.openWorkspace:
+        await _goToEventWorkspace(event);
     }
+  }
+
+  /// From a block to the list it belongs to.
+  ///
+  /// Beside the list (the split) the calendar stays open and only the pane on
+  /// the left changes - both halves of the question are then on screen. Where
+  /// the calendar has the whole window it closes, because a workspace switch
+  /// behind a calendar you are still looking at would change nothing visible.
+  Future<void> _goToEventWorkspace(CalendarEvent event) async {
+    final ws = s.workspaceForEvent(event);
+    if (ws == null) return;
+    if (s.showCalendar && !_layout.splitsCalendar) await _toggleCalendar();
+    if (!mounted) return;
+    await s.selectWorkspace(ws);
   }
 
   /// Deleting a repeating block deletes **the series**, so it says so first.
@@ -600,13 +627,18 @@ class _WidgetShellState extends State<WidgetShell>
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: T.bgSolid,
-          title: const Text('Delete every occurrence?',
-              style: TextStyle(fontSize: T.fsMenu)),
+          title: const Text(
+            'Delete every occurrence?',
+            style: TextStyle(fontSize: T.fsMenu),
+          ),
           content: Text(
             '"${event.title}" repeats ${Recur.label(event.recur!).toLowerCase()}. '
             'Deleting it removes the whole series, not just this one.',
             style: const TextStyle(
-                fontSize: T.fsLabel, color: T.muted, height: 1.4),
+              fontSize: T.fsLabel,
+              color: T.muted,
+              height: 1.4,
+            ),
           ),
           actions: [
             TextButton(
@@ -1729,6 +1761,9 @@ class _WidgetShellState extends State<WidgetShell>
                       thoughtCount: s.thoughtCount,
                       parkedReviewDue: s.groupsDueForReview.isNotEmpty,
                       openView: _openView,
+                      collapsed: s.railCollapsed,
+                      onToggleCollapsed: () =>
+                          s.setRailCollapsed(!s.railCollapsed),
                     ),
                     Expanded(child: middle),
                   ],
@@ -1899,32 +1934,29 @@ class _WidgetShellState extends State<WidgetShell>
       children: [
         const SizedBox(height: TitleBar.height),
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: Layout.calendarTaskPaneWidth,
-                child: LayoutBuilder(
-                  builder: (context, constraints) => LayoutScope(
-                    layout: Layout(constraints.biggest, touch: !isDesktop),
-                    child: Column(
-                      children: [
-                        _workspaceBar(ws),
-                        if (s.hasLiveSession && !s.showSession)
-                          _sessionBanner(),
-                        Expanded(child: _stackedContent(ws)),
-                      ],
-                    ),
-                  ),
+          // Same boundary as the views' split, with its own remembered
+          // position: the grid wants every pixel a notes pane would not. The
+          // fold is shared - "not the list, thanks" is one preference.
+          child: SplitPane(
+            fraction: s.calendarSplitFraction,
+            defaultLeft: (_) => Layout.calendarTaskPaneWidth,
+            collapsed: s.tasksPaneCollapsed,
+            onFraction: (f) => s.setSplitFraction(f, calendar: true),
+            onCollapsed: s.setTasksPaneCollapsed,
+            minRight: kGutter + 7 * Layout.minDayColumn,
+            left: LayoutBuilder(
+              builder: (context, constraints) => LayoutScope(
+                layout: Layout(constraints.biggest, touch: !isDesktop),
+                child: Column(
+                  children: [
+                    _workspaceBar(ws),
+                    if (s.hasLiveSession && !s.showSession) _sessionBanner(),
+                    Expanded(child: _stackedContent(ws)),
+                  ],
                 ),
               ),
-              const VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: Color(0x14FFFFFF),
-              ),
-              Expanded(child: _calendar()),
-            ],
+            ),
+            right: _calendar(),
           ),
         ),
         _footer(ws),
@@ -1990,7 +2022,10 @@ class _WidgetShellState extends State<WidgetShell>
                         '${left == 0 ? 'nothing planned' : '$left to do'}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+                        style: const TextStyle(
+                          fontSize: T.fsMeta,
+                          color: T.muted,
+                        ),
                       ),
                     ],
                   ),
@@ -2041,13 +2076,17 @@ class _WidgetShellState extends State<WidgetShell>
 
     if (!_layout.splitsContent) return _stackedContent(ws);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(flex: 5, child: _taskColumn(ws)),
-        const VerticalDivider(width: 1, thickness: 1, color: Color(0x14FFFFFF)),
-        Expanded(flex: 4, child: secondary),
-      ],
+    // The boundary moves, and the list folds away entirely for a view that
+    // wants the whole width - see split_pane.dart. The default is the 5:4 this
+    // used to be fixed at.
+    return SplitPane(
+      left: _taskColumn(ws),
+      right: secondary,
+      fraction: s.splitFraction,
+      defaultLeft: (width) => width * 5 / 9,
+      collapsed: s.tasksPaneCollapsed,
+      onFraction: (f) => s.setSplitFraction(f),
+      onCollapsed: s.setTasksPaneCollapsed,
     );
   }
 
@@ -2531,13 +2570,19 @@ class _WidgetShellState extends State<WidgetShell>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: const Text('Stop repeating?', style: TextStyle(fontSize: T.fsMenu)),
+        title: const Text(
+          'Stop repeating?',
+          style: TextStyle(fontSize: T.fsMenu),
+        ),
         content: Text(
           '"${t.text}" repeats ${Recur.label(t.recur!).toLowerCase()}. '
           'Stopping it leaves this one in history exactly as it is; no more '
           'will be created.',
-          style:
-              const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
+          style: const TextStyle(
+            fontSize: T.fsLabel,
+            color: T.muted,
+            height: 1.4,
+          ),
         ),
         actions: [
           TextButton(

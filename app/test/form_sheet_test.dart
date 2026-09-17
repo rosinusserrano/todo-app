@@ -209,6 +209,38 @@ void main() {
       }
     });
 
+    testWidgets('offers the workspace only when there is one to go to',
+        (tester) async {
+      tester.view.physicalSize = phone;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(detailsHost(phone, true, event()));
+      await openIt(tester);
+      expect(find.text('Go to workspace'), findsNothing);
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      EventAction? picked;
+      await tester.pumpWidget(host(
+        size: phone,
+        touch: true,
+        open: (context) async => picked = await showEventDetails(
+          context,
+          event: event(),
+          calendarName: 'Work',
+          color: T.accent,
+          loadTasks: () async => const <Task>[],
+          loadAttachments: () async => const <Attachment>[],
+          offerWorkspace: true,
+        ),
+      ));
+      await openIt(tester);
+      await tester.tap(find.text('Go to workspace'));
+      await tester.pumpAndSettle();
+      expect(picked, EventAction.openWorkspace);
+    });
+
     testWidgets('says nothing about repeating when it does not', (tester) async {
       tester.view.physicalSize = phone;
       tester.view.devicePixelRatio = 1;

@@ -483,6 +483,10 @@ Three tiers, none of which need an account, an API key, or a licence:
   something nobody meant to touch. **Right-click** (or **long-press** on a
   phone) skips the card and offers the same actions directly. Both work on the
   hour grid, on the multi-day band and in the agenda.
+- **Go to the workspace a block belongs to.** When an entry is on a
+  workspace's own calendar, the details card and the right-click menu offer
+  *Go to workspace*. Beside the task list the calendar stays open and the list
+  switches; where the calendar has the whole window it closes onto that list.
 - **Time-block mode** (⚡ in the header) is for laying out a whole week at once.
   Pick a calendar once from the strip of chips that appears under the header, and
   from then on every drag saves an event straight away, titled after that
@@ -895,6 +899,11 @@ simply stretched.
   pending side thoughts and the parked-review dot where you can see them.
   Clicking a workspace switches to it, clicking the one you are on edits it —
   exactly the tab's behaviour. Narrow the window and the bar comes back.
+- **The rail folds into a strip.** The « beside *Workspaces* collapses it to a
+  thin column: a coloured dot per workspace (the current one ringed) and an icon
+  per view, each named in a tooltip, with the parked-review dot and the
+  thoughts marker still on them. » brings the full rail back. The choice is
+  remembered on this device.
 - **~810px — the calendar stops covering the tasks.** It opens beside the list
   rather than taking the window, which is also the only arrangement in which a
   task can be dragged onto a block (both ends of that gesture have to be on
@@ -906,6 +915,15 @@ simply stretched.
   the thoughts pile open *beside* the task list instead of replacing it, so
   reviewing what you parked no longer costs you sight of what you are meant to
   be doing.
+- **Move the boundary, or fold the list away.** Wherever the task list sits
+  beside something — a panel, or the calendar — the line between them can be
+  **dragged**, and **double-clicking** it puts it back. Drag it all the way to
+  the left, or press the ‹ that appears while the pointer is on it, and the
+  list **folds into a narrow strip**, so the notes (or the week grid) have the
+  whole width; the strip's button unfolds it. Both are remembered on this device:
+  the position as a proportion, so resizing the window keeps it, separately for
+  panels and for the calendar, and the fold as one preference for both. Folding
+  never resets the pane beside it — a note being edited stays open.
 - **The task column stops at 620px.** Beyond that the extra room goes to the
   rail and the second pane: a tick box 900 pixels from the end of its own line
   is a worse checklist, not a bigger one. The focus tile is capped the same way
@@ -1102,6 +1120,10 @@ reminders are both there now**, queued for 0.18.0.
   - **Thoughts in a neutral colour**, since the pile belongs to no workspace.
   - **Review a shelf from its header**, without expanding it first.
   - **A Calendar entry in the home-screen quick actions.**
+  - **Go to workspace** from a calendar entry that belongs to one.
+  - **The sidebar collapses** to workspace dots and view icons.
+  - **The split is yours to move.** Drag the line between the list and a panel
+    or the calendar, or fold the list away to give the other side the width.
 - **0.28.0** — **Todos that arrive on their own, a shelf you have to read, and
   the sound stops stalling.** Six things, one release.
   - **Recurring todos, in the two shapes that were actually wanted.** A repeat

@@ -11,6 +11,12 @@
 // to it, tapping the one you are on opens it for editing. The pencil is only
 // there because on a tab that behaviour was discoverable from the ▾ beside it
 // and here there is no ▾.
+//
+// **Collapsed** it is a strip of [Layout.railCollapsedWidth]: one coloured dot
+// per workspace and one icon per view, each with its name in a tooltip. Still
+// the same navigation - every destination the full rail offers is on the strip
+// - and the choice is remembered, because somebody who folds the rail away to
+// give a note the width wants it folded the next time too.
 
 import 'package:flutter/material.dart';
 
@@ -36,7 +42,15 @@ class WorkspaceRail extends StatelessWidget {
     required this.thoughtCount,
     required this.parkedReviewDue,
     required this.openView,
+    this.collapsed = false,
+    this.onToggleCollapsed,
   });
+
+  /// Drawn as the narrow strip. See the header.
+  final bool collapsed;
+
+  /// Null hides the toggle, which is how a test pumps the rail without one.
+  final VoidCallback? onToggleCollapsed;
 
   final List<Workspace> workspaces;
   final String? currentUuid;
@@ -65,6 +79,7 @@ class WorkspaceRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (collapsed) return _strip();
     final dueTint = T.complementary(accent);
 
     return Container(
@@ -76,7 +91,17 @@ class WorkspaceRail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _RailLabel('Workspaces'),
+          _RailLabel(
+            'Workspaces',
+            trailing: onToggleCollapsed == null
+                ? null
+                : _StripButton(
+                    icon: Icons.keyboard_double_arrow_left_rounded,
+                    tooltip: 'Collapse the sidebar',
+                    onTap: onToggleCollapsed!,
+                    size: 24,
+                  ),
+          ),
           // The list scrolls and the views below it do not: with thirty
           // workspaces it is the list that should give, not the navigation.
           Flexible(
@@ -161,22 +186,216 @@ class WorkspaceRail extends StatelessWidget {
   }
 }
 
+extension on WorkspaceRail {
+  /// The rail folded down to its marks. Same destinations, same order.
+  Widget _strip() {
+    final dueTint = T.complementary(accent);
+    Widget view(
+      IconData icon,
+      String label,
+      WorkspaceView? view,
+      VoidCallback onTap, {
+      Widget? badge,
+    }) =>
+        _StripButton(
+          icon: icon,
+          tooltip: label,
+          onTap: onTap,
+          selected: openView == view,
+          accent: accent,
+          badge: badge,
+        );
+
+    return Container(
+      width: Layout.railCollapsedWidth,
+      padding: const EdgeInsets.symmetric(vertical: T.s1),
+      decoration: const BoxDecoration(
+        border: Border(right: BorderSide(color: Color(0x14FFFFFF))),
+      ),
+      child: Column(
+        children: [
+          if (onToggleCollapsed != null)
+            _StripButton(
+              icon: Icons.keyboard_double_arrow_right_rounded,
+              tooltip: 'Expand the sidebar',
+              onTap: onToggleCollapsed!,
+            ),
+          const SizedBox(height: T.s1),
+          Flexible(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              children: [
+                for (final ws in workspaces)
+                  _WorkspaceDot(
+                    workspace: ws,
+                    current: ws.uuid == currentUuid,
+                    onTap: () =>
+                        ws.uuid == currentUuid ? onEdit(ws) : onSelect(ws),
+                  ),
+              ],
+            ),
+          ),
+          _StripButton(icon: Icons.add, tooltip: 'New workspace', onTap: onCreate),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
+            child: Divider(height: 1, thickness: 1, color: Color(0x14FFFFFF)),
+          ),
+          view(Icons.check_circle_outline, 'Tasks', null, onShowTasks),
+          view(Icons.notes_rounded, 'Notes', WorkspaceView.notes, onOpenNotes),
+          view(
+            Icons.inbox_rounded,
+            'Parked',
+            WorkspaceView.parked,
+            onOpenParked,
+            badge: parkedReviewDue ? _Dot(color: dueTint) : null,
+          ),
+          view(Icons.history_rounded, 'History', WorkspaceView.history,
+              onOpenHistory),
+          if (thoughtCount > 0)
+            view(
+              Icons.cloud_outlined,
+              'Thoughts ($thoughtCount)',
+              WorkspaceView.thoughts,
+              onOpenThoughts,
+              badge: _Dot(color: dueTint),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RailLabel extends StatelessWidget {
-  const _RailLabel(this.text);
+  const _RailLabel(this.text, {this.trailing});
 
   final String text;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s1),
-      child: Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          fontSize: T.fsMeta,
-          letterSpacing: 0.8,
-          fontWeight: T.wMedium,
-          color: T.muted,
+      padding: EdgeInsets.fromLTRB(T.s2, trailing == null ? T.s2 : 0, 0, T.s1),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text.toUpperCase(),
+              style: const TextStyle(
+                fontSize: T.fsMeta,
+                letterSpacing: 0.8,
+                fontWeight: T.wMedium,
+                color: T.muted,
+              ),
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
+}
+
+/// One square icon on the collapsed strip, with its name as the tooltip.
+class _StripButton extends StatelessWidget {
+  const _StripButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.selected = false,
+    this.accent = T.accent,
+    this.badge,
+    this.size = 32,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool selected;
+  final Color accent;
+  final Widget? badge;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: selected ? accent.withValues(alpha: 0.14) : Colors.transparent,
+        borderRadius: BorderRadius.circular(T.radius),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(T.radius),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: size < 30 ? 13 : 15,
+                  color: selected ? accent : T.muted,
+                ),
+                if (badge != null) Positioned(top: 5, right: 5, child: badge!),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A workspace on the collapsed strip: its colour, ringed when it is current.
+/// The click model is the full rail's - another workspace switches, the
+/// current one opens for editing.
+class _WorkspaceDot extends StatelessWidget {
+  const _WorkspaceDot({
+    required this.workspace,
+    required this.current,
+    required this.onTap,
+  });
+
+  final Workspace workspace;
+  final bool current;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = T.parseHex(workspace.color);
+    return Tooltip(
+      message: current ? '${workspace.name} (click to edit)' : workspace.name,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(T.radius),
+        child: SizedBox(
+          width: 32,
+          height: 28,
+          child: Center(
+            child: Container(
+              width: current ? 16 : 10,
+              height: current ? 16 : 10,
+              decoration: BoxDecoration(
+                color: current ? color.withValues(alpha: 0.25) : color,
+                shape: BoxShape.circle,
+                border: current ? Border.all(color: color, width: 2) : null,
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -325,6 +325,8 @@ void main() {
       void Function(Workspace)? onSelect,
       void Function(Workspace)? onEdit,
       VoidCallback? onShowTasks,
+      bool collapsed = false,
+      VoidCallback? onToggleCollapsed,
     }) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -344,6 +346,8 @@ void main() {
               thoughtCount: 0,
               parkedReviewDue: false,
               openView: open,
+              collapsed: collapsed,
+              onToggleCollapsed: onToggleCollapsed,
             ),
           ]),
         ),
@@ -387,6 +391,40 @@ void main() {
 
       await tester.tap(find.text('Tasks'));
       expect(back, 1);
+    });
+      testWidgets('collapsed, it is a strip with every destination still on it',
+        (tester) async {
+      final selected = <String>[];
+      var back = 0;
+      await pump(
+        tester,
+        collapsed: true,
+        onSelect: (w) => selected.add(w.name),
+        onShowTasks: () => back++,
+      );
+
+      expect(tester.getSize(find.byType(WorkspaceRail)).width,
+          Layout.railCollapsedWidth);
+      // No names on the strip - they are in the tooltips.
+      expect(find.text('Work'), findsNothing);
+      expect(find.byTooltip('Work'), findsOneWidget);
+      for (final view in ['Tasks', 'Notes', 'Parked', 'History']) {
+        expect(find.byTooltip(view), findsOneWidget, reason: view);
+      }
+
+      await tester.tap(find.byTooltip('Work'));
+      await tester.tap(find.byTooltip('Tasks'));
+      expect(selected, ['Work']);
+      expect(back, 1);
+    });
+
+    testWidgets('the toggle is on both shapes', (tester) async {
+      var toggled = 0;
+      await pump(tester, onToggleCollapsed: () => toggled++);
+      await tester.tap(find.byTooltip('Collapse the sidebar'));
+      await pump(tester, collapsed: true, onToggleCollapsed: () => toggled++);
+      await tester.tap(find.byTooltip('Expand the sidebar'));
+      expect(toggled, 2);
     });
   });
 }

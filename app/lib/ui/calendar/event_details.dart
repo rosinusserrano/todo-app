@@ -34,7 +34,10 @@ import 'time_grid.dart' show hhmm;
 
 /// What the user asked for on the way out. Null (the dialog dismissed) is
 /// "nothing", which is the common case for a view whose job is to be read.
-enum EventAction { edit, delete }
+///
+/// [openWorkspace] is offered only for a block on a workspace's own calendar:
+/// a standalone calendar belongs to no list, so there is nowhere to go.
+enum EventAction { edit, delete, openWorkspace }
 
 Future<EventAction?> showEventDetails(
   BuildContext context, {
@@ -43,10 +46,12 @@ Future<EventAction?> showEventDetails(
   required Color color,
   required Future<List<Task>> Function() loadTasks,
   required Future<List<Attachment>> Function() loadAttachments,
+  bool offerWorkspace = false,
 }) {
   return showFormSheet<EventAction>(
     context,
     builder: (context, layout) => _DetailsDialog(
+      offerWorkspace: offerWorkspace,
       event: event,
       calendarName: calendarName,
       color: color,
@@ -103,7 +108,13 @@ class _DetailsDialog extends StatefulWidget {
     required this.loadTasks,
     required this.loadAttachments,
     required this.layout,
+    this.offerWorkspace = false,
   });
+
+  /// The block's calendar is a workspace's, so the card can take you to that
+  /// workspace's list - which is usually the next question after "what is this
+  /// block for".
+  final bool offerWorkspace;
 
   final CalendarEvent event;
   final String calendarName;
@@ -185,6 +196,13 @@ class _DetailsDialogState extends State<_DetailsDialog> {
           touch: touch,
           onTap: () => Navigator.pop(context, EventAction.delete),
         ),
+        if (widget.offerWorkspace)
+          FormSheet.plainButton(
+            touch: touch,
+            icon: Icons.checklist_rounded,
+            label: 'Go to workspace',
+            onTap: () => Navigator.pop(context, EventAction.openWorkspace),
+          ),
         FormSheet.saveButton(
           touch: touch,
           accent: widget.color,

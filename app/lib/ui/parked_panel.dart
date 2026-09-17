@@ -743,42 +743,6 @@ class _GroupDialogState extends State<_GroupDialog> {
   }
 }
 
-/// Picker shown when parking a task from its row. "New group…" is in the same
-/// list rather than behind a separate button: the first time you park anything
-/// there are no groups at all, and a menu with one disabled entry would be a
-/// dead end.
-Future<String?> showParkPicker(
-  BuildContext context, {
-  required RelativeRect position,
-  required List<ParkedGroup> groups,
-  required Future<ParkedGroup?> Function() onCreate,
-}) async {
-  const newGroup = '#new';
-
-  final chosen = await showMenu<String>(
-    context: context,
-    position: position,
-    color: T.bgSolid,
-    items: [
-      for (final g in groups)
-        PopupMenuItem(
-          value: g.uuid,
-          height: 34,
-          child: Text(g.title, style: const TextStyle(fontSize: T.fsLabel)),
-        ),
-      if (groups.isNotEmpty) const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: newGroup,
-        height: 34,
-        child: Text('New group…', style: TextStyle(fontSize: T.fsLabel)),
-      ),
-    ],
-  );
-
-  if (chosen != newGroup) return chosen;
-  return (await onCreate())?.uuid;
-}
-
 /// The way into the funnel, on the shelf's header rather than inside it.
 ///
 /// It used to sit at the foot of the *expanded* card, under the contents - so

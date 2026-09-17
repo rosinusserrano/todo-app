@@ -32,11 +32,17 @@
 //   | right-click | open the actions | - |
 //   | long press | - | pick the row up to reorder it (the list's) |
 //
+// **Selecting several** is Ctrl+click with a mouse and *Select* in the bar
+// with a finger. Once anything is selected a plain click or tap on a row toggles
+// it too, because a selection you have to hold a modifier to extend is one that
+// ends the moment your hand moves. What a selection is *for* lives in the shell.
+//
 // Editing is the pencil inside that bar on both, and expanding is an action in
 // it on both - a phone has no left-click to spare and a mouse has no reason to
 // give up a cheap way into the read view.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../layout.dart';
 import '../sync/models.dart';
@@ -63,7 +69,20 @@ class TaskRow extends StatefulWidget {
     this.onExpand,
     this.attachmentCount = 0,
     this.dragHandle,
+    this.selected = false,
+    this.selecting = false,
+    this.onToggleSelect,
   });
+
+  /// This row is in the multi-selection.
+  final bool selected;
+
+  /// *Something* is selected, so a plain click extends the selection rather
+  /// than doing what a click normally does.
+  final bool selecting;
+
+  /// Null where selecting is not offered (the session view).
+  final VoidCallback? onToggleSelect;
 
   final Task task;
   final Color accent;
@@ -188,6 +207,18 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     await onPark(at);
   }
 
+  /// A click that belongs to the selection rather than to the row: Ctrl held,
+  /// or a selection already under way. Returns whether it was taken.
+  bool _selectInstead() {
+    final toggle = widget.onToggleSelect;
+    if (toggle == null) return false;
+    if (!widget.selecting && !HardwareKeyboard.instance.isControlPressed) {
+      return false;
+    }
+    toggle();
+    return true;
+  }
+
   /// Read the task. In place under a pointer, whole-screen where the shell has
   /// said it will take it ([TaskRow.onExpand]).
   void _toggleExpanded() {
@@ -272,6 +303,17 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           icon: Icons.edit_outlined,
           label: 'Edit task and notes',
         ),
+      if (widget.onToggleSelect != null)
+        TaskActionItem(
+          action: TaskAction.select,
+          icon: widget.selected
+              ? Icons.check_box_rounded
+              : Icons.check_box_outline_blank_rounded,
+          label: widget.selected
+              ? 'Unselect'
+              : 'Select - then pick others to move them together (Ctrl+click)',
+          color: widget.selected ? widget.accent : T.muted,
+        ),
       const TaskActionItem(
         action: TaskAction.delete,
         icon: Icons.close_rounded,
@@ -317,6 +359,8 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
         _toggleExpanded();
       case TaskAction.edit:
         widget.onOpen?.call();
+      case TaskAction.select:
+        widget.onToggleSelect?.call();
       case TaskAction.delete:
         await _leave(widget.onDelete);
     }
@@ -356,6 +400,12 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           // Opaque so the blank space to the right of a title is part of the
           // target rather than a hole in it.
           behavior: HitTestBehavior.opaque,
+          // Only while it means something: an onTap here would otherwise sit
+          // in the arena against the text's own tap on every click.
+          onTap: widget.onToggleSelect != null &&
+                  (widget.selecting || !touch)
+              ? _selectInstead
+              : null,
           onSecondaryTapUp:
               touch ? null : (d) => _openActions(at: d.globalPosition),
           child: Container(
@@ -367,7 +417,12 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
               // A due reminder outranks focus for the row's colour: focus is a
               // state you chose and can see, an overdue reminder is the thing
               // asking for attention.
-              color: due
+              // Selected outranks everything: it is the state you are about to
+              // act on, and a row that is both overdue and selected has to be
+              // unmistakably part of the batch.
+              color: widget.selected
+                  ? widget.accent.withValues(alpha: 0.24)
+                  : due
                   ? T.warn.withValues(alpha: 0.14)
                   : widget.task.inProgress
                       ? widget.accent.withValues(alpha: 0.16)
@@ -380,7 +435,9 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
               // because it is the one of the three that also has a mark of its
               // own - the bar below - so it is still legible when it loses the
               // border.
-              border: due
+              border: widget.selected
+                  ? Border.all(color: widget.accent.withValues(alpha: 0.9))
+                  : due
                   ? Border.all(color: T.warn.withValues(alpha: 0.55))
                   : widget.task.inProgress
                       ? Border.all(color: widget.accent.withValues(alpha: 0.5))
@@ -423,7 +480,10 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                         showPreview: !_expanded,
                         // A finger asks for the actions, a mouse reads the
                         // task - see the table in the file header.
-                        onTap: touch ? () => _openActions() : _toggleExpanded,
+                        onTap: () {
+                          if (_selectInstead()) return;
+                          touch ? _openActions() : _toggleExpanded();
+                        },
                       ),
                     ),
                     _StateMarks(

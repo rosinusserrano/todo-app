@@ -71,14 +71,16 @@ from, not an implementation - the layout change waits for Marco's pick.
       width; a thin strip brings it back. Used by both the views' split and
       the calendar's, with separate fractions and one shared fold.
 
-### 40. Select several tasks and move them together  `[ ]`
+### 40. Select several tasks and move them together  `[x]`
 
-- [ ] **40.1** Ctrl+click toggles a row into a selection (Select in the action
+- [x] **40.1** Ctrl+click toggles a row into a selection (Select in the action
       bar on touch); Esc clears it.
-- [ ] **40.2** Selection bar: complete, delete, park (any workspace's shelf),
-      move to another workspace. `AppState.moveTasks` - one pass, sort orders
+- [x] **40.2** `ui/selection_bar.dart` in place of the add field: complete,
+      delete (confirmed), and one park-or-move picker. `AppState.moveTasks` - one pass, sort orders
       appended, `group_uuid` set or cleared.
-- [ ] **40.3** `LocalStore.allGroups()` for the cross-workspace picker. Tests.
+- [x] **40.3** `AppState.groupsByWorkspace()` (a query per workspace, no
+      store change) feeds `ui/move_picker.dart`, which also replaced the
+      single-task park picker. `test/multi_select_test.dart`.
 
 ### 41. Radio favourites, custom stations, search  `[ ]`
 

@@ -21,8 +21,18 @@ Newest changes are noted in the changelog at the bottom.
 - **Delete a task** — the ✕ in that bar removes it *without* logging (a plain
   dismiss).
 - **Empty state** — friendly "Nothing left" message when the list is clear.
-- **Park a task** — the 📥 in the bar shelves it in a parked group (see below),
-  taking it off the current list without deleting it.
+- **Park a task, or move it** — the 📥 in the bar opens a picker of where it
+  can go: this workspace's parked groups (see below), or **any other
+  workspace** — onto its list, or onto one of its shelves. A task typed while
+  the wrong list was on screen no longer has to be deleted and typed again.
+- **Select several and act on them together** — **Ctrl+click** rows with a
+  mouse, or pick **Select** in a row's action bar on a phone. Once one is
+  selected, a plain click (or tap) on another adds it, and the add field turns
+  into a bar saying how many are selected with **Done**, **Park or move** (the
+  same picker, applied to all of them), **Delete** (asks first) and ✕ to clear
+  — as does Esc. Selected rows are drawn in the workspace colour. Where the
+  parked panel sits beside the list, dragging one selected row onto a shelf
+  takes the whole selection with it. Switching workspace ends the selection.
 - **Attach a document** — the 📎 in the bar; see Attachments.
 - **Expand a task and read it** — ⤢ in the bar, or simply **left-click the
   title** with a mouse. The task opens *read-only*: its notes rendered as
@@ -1122,6 +1132,10 @@ reminders are both there now**, queued for 0.18.0.
   - **A Calendar entry in the home-screen quick actions.**
   - **Go to workspace** from a calendar entry that belongs to one.
   - **The sidebar collapses** to workspace dots and view icons.
+  - **Select several tasks** with Ctrl+click (Select on a phone) and complete,
+    delete, park or move them at once — **to another workspace's list or
+    shelves** as well as this one's. The single-task park picker offers the
+    other workspaces too.
   - **The split is yours to move.** Drag the line between the list and a panel
     or the calendar, or fold the list away to give the other side the width.
 - **0.28.0** — **Todos that arrive on their own, a shelf you have to read, and

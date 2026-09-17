@@ -882,6 +882,76 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
+  /// Move several tasks at once: to another workspace's list, or onto a shelf
+  /// in any workspace (this one included).
+  ///
+  /// One pass and one refresh rather than a [parkTask] per row, which is the
+  /// point of selecting several - five writes each followed by a reload and a
+  /// notify is five flickers of a list shrinking one row at a time.
+  ///
+  /// [groupUuid] null means onto the list of [workspaceUuid], appended at the
+  /// bottom in the order given - the order they were in where they came from.
+  /// A group must belong to [workspaceUuid]; the caller picks the pair
+  /// together from one menu, so this does not look it up again.
+  ///
+  /// The focus flag is dropped for the same reason [parkTask] drops it: a task
+  /// that has left the list on screen cannot be the one you are working on.
+  /// Planning into a calendar block is kept - a block says *when*, and that is
+  /// no less true of a task that changed lists.
+  Future<void> moveTasks(
+    List<Task> tasks, {
+    required String workspaceUuid,
+    String? groupUuid,
+  }) async {
+    if (tasks.isEmpty) return;
+    var order = await _store.nextSortOrder(workspaceUuid);
+    final stamp = nowStamp();
+    for (final t in tasks) {
+      await _store.putTask(
+        t.copyWith(
+          workspaceUuid: workspaceUuid,
+          groupUuid: groupUuid,
+          clearGroup: groupUuid == null,
+          inProgress: groupUuid == null ? null : false,
+          sortOrder: order++,
+          updatedAt: stamp,
+        ),
+      );
+      if (groupUuid != null && focusTask?.uuid == t.uuid) focusTask = null;
+    }
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Complete or delete several tasks with one refresh. [complete] false
+  /// deletes (tombstones, like [deleteTask]).
+  Future<void> finishTasks(List<Task> tasks, {required bool complete}) async {
+    if (tasks.isEmpty) return;
+    final stamp = nowStamp();
+    final done = <Task>[];
+    for (final t in tasks) {
+      final row = complete
+          ? t.copyWith(completedAt: stamp, inProgress: false, updatedAt: stamp)
+          : t.copyWith(deletedAt: stamp, updatedAt: stamp);
+      await _store.putTask(row);
+      if (complete) done.add(row);
+      if (focusTask?.uuid == t.uuid) focusTask = null;
+    }
+    // A repeating task ticked in a batch comes back exactly as one ticked on
+    // its own would - see completeTask.
+    if (done.isNotEmpty) await _spawnOccurrences(done);
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Every workspace's shelves, for the picker that can park into any of them.
+  /// A query per workspace: there are a handful, and this is opened by hand.
+  Future<Map<String, List<ParkedGroup>>> groupsByWorkspace() async {
+    return {
+      for (final w in workspaces) w.uuid: await _store.parkedGroups(w.uuid),
+    };
+  }
+
   /// Back onto the current list, at the bottom rather than wherever its old
   /// sort_order happens to land it.
   Future<void> unparkTask(Task t) async {

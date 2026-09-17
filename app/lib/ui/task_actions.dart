@@ -54,6 +54,7 @@ enum TaskAction {
   focus,
   expand,
   edit,
+  select,
   delete,
 }
 

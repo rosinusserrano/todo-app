@@ -47,6 +47,8 @@ import 'ui/journal_panel.dart';
 import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
 import 'ui/session_view.dart';
+import 'ui/move_picker.dart';
+import 'ui/selection_bar.dart';
 import 'ui/settings_sheet.dart';
 import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
@@ -1206,6 +1208,8 @@ class _WidgetShellState extends State<WidgetShell>
             _exitFocus();
           } else if (_taskTakesScreen) {
             _collapseTask();
+          } else if (_selectedTasks.isNotEmpty) {
+            _clearSelection();
           } else if (s.showCalendar) {
             _toggleCalendar();
           } else if (s.showThoughts) {
@@ -2116,7 +2120,16 @@ class _WidgetShellState extends State<WidgetShell>
         constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),
         child: Column(
           children: [
-            _addField(ws),
+            _selectedTasks.isEmpty
+                ? _addField(ws)
+                : SelectionBar(
+                    count: _selectedTasks.length,
+                    accent: ws,
+                    onComplete: () => _finishSelected(complete: true),
+                    onMove: (anchor) => _moveTasks(_selectedTasks, anchor),
+                    onDelete: () => _finishSelected(complete: false),
+                    onClear: _clearSelection,
+                  ),
             Expanded(child: _activeView(ws)),
           ],
         ),
@@ -2169,7 +2182,7 @@ class _WidgetShellState extends State<WidgetShell>
         onActivateGroup: s.unparkGroup,
         // Only where there is a list beside it to drag out of - the same rule
         // the calendar's onPlanTask follows, for the same reason.
-        onPark: _layout.splitsContent ? (g, t) => s.parkTask(t, g.uuid) : null,
+        onPark: _layout.splitsContent ? _parkDropped : null,
       );
     }
     if (s.showSession) {
@@ -2248,17 +2261,120 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
-  /// Park a task from its row. Creating a group from inside the picker parks
-  /// straight into it, so the first park does not take two passes.
-  Future<void> _parkTask(Task t, RelativeRect anchor) async {
-    final groupUuid = await showParkPicker(
+  /// Park a task from its row - or move it to another workspace, which the
+  /// same picker offers (see move_picker.dart). Creating a group from inside
+  /// the picker parks straight into it, so the first park does not take two
+  /// passes.
+  Future<void> _parkTask(Task t, RelativeRect anchor) =>
+      _moveTasks([t], anchor);
+
+  /// The picker, for one task or a selection.
+  Future<void> _moveTasks(List<Task> tasks, RelativeRect anchor) async {
+    final here = s.currentWorkspaceUuid;
+    if (tasks.isEmpty || here == null) return;
+    final groups = await s.groupsByWorkspace();
+    if (!mounted) return;
+    final target = await showMovePicker(
       context,
       position: anchor,
-      groups: s.groups,
-      onCreate: () => _editGroup(null),
+      currentWorkspaceUuid: here,
+      workspaces: s.workspaces,
+      groups: groups,
+      onCreateGroup: () => _editGroup(null),
     );
-    if (groupUuid == null || !mounted) return;
-    await s.parkTask(t, groupUuid);
+    if (target == null || !mounted) return;
+    _clearSelection();
+    if (tasks.length == 1 && target.workspaceUuid == here) {
+      // The one-row park path, which the shelf's own tests and the focus
+      // bookkeeping already know.
+      await s.parkTask(tasks.single, target.groupUuid!);
+      return;
+    }
+    await s.moveTasks(
+      tasks,
+      workspaceUuid: target.workspaceUuid,
+      groupUuid: target.groupUuid,
+    );
+  }
+
+  // ------------------------------------------------------------ selection
+
+  /// The tasks selected with Ctrl+click (or *Select* on touch), by uuid.
+  ///
+  /// Uuids for the same reason [_expandedTaskUuid] is one: the list is reloaded
+  /// under this constantly. Anything no longer on the list simply drops out of
+  /// [_selectedTasks], so a task completed on another device mid-selection is
+  /// not acted on.
+  final _selected = <String>{};
+
+  /// The workspace the selection was made in. A selection is a set of rows on
+  /// one list; switching lists ends it rather than carrying invisible rows
+  /// along into the next.
+  String? _selectedIn;
+
+  List<Task> get _selectedTasks => _selectedIn != s.currentWorkspaceUuid
+      ? const []
+      : [for (final t in s.tasks) if (_selected.contains(t.uuid)) t];
+
+  void _toggleSelected(Task t) {
+    setState(() {
+      if (_selectedIn != s.currentWorkspaceUuid) _selected.clear();
+      _selectedIn = s.currentWorkspaceUuid;
+      if (!_selected.remove(t.uuid)) _selected.add(t.uuid);
+    });
+  }
+
+  void _clearSelection() {
+    if (_selected.isEmpty) return;
+    setState(_selected.clear);
+  }
+
+  Future<void> _finishSelected({required bool complete}) async {
+    final tasks = _selectedTasks;
+    if (tasks.isEmpty) return;
+    if (!complete) {
+      final what = tasks.length == 1 ? 'this task' : '${tasks.length} tasks';
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: T.bgSolid,
+          title: Text(
+            'Delete $what?',
+            style: const TextStyle(fontSize: T.fsMenu),
+          ),
+          content: const Text(
+            'Removed without being logged to history.',
+            style: TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (yes != true || !mounted) return;
+    }
+    _clearSelection();
+    await s.finishTasks(tasks, complete: complete);
+  }
+
+  /// A task dropped on a shelf beside the list. If it was part of a selection
+  /// the whole selection goes with it - dragging one of five selected rows and
+  /// having only that one move would be a surprise every time.
+  Future<void> _parkDropped(ParkedGroup g, Task t) async {
+    final batch = _selected.contains(t.uuid) ? _selectedTasks : [t];
+    _clearSelection();
+    if (batch.length <= 1) {
+      await s.parkTask(t, g.uuid);
+    } else {
+      await s.moveTasks(batch, workspaceUuid: g.workspaceUuid, groupUuid: g.uuid);
+    }
   }
 
   // ------------------------------------------------------------- composer
@@ -2427,6 +2543,10 @@ class _WidgetShellState extends State<WidgetShell>
             // inside itself instead - see [_expandsToScreen].
             onExpand: _expandsToScreen ? () => _expandTask(t) : null,
             attachmentCount: s.attachmentCounts[t.uuid] ?? 0,
+            selected: _selected.contains(t.uuid) &&
+                _selectedIn == s.currentWorkspaceUuid,
+            selecting: _selectedTasks.isNotEmpty,
+            onToggleSelect: () => _toggleSelected(t),
             // On the right, and only where there is a pointer to aim it with.
             // A finger picks the row up by pressing and holding it, so the
             // six-dot glyph would be a permanent mark for a gesture that needs

@@ -393,6 +393,44 @@ such column on a table other than `tasks`, so `recurrence_test` and
 contain every table a later step touches, which is why `journal_test` carries
 `_v9Tasks` and `_v4Attachments` as scaffolding.
 
+### The shell's panes, and what survives them moving
+
+- **The secondary view carries a `GlobalKey`** (`_secondaryKey` in
+  `main.dart`). The same view is a child of the stacked column, the split row,
+  or the rail's row depending on the window size, and an unkeyed widget that
+  changes *parent* is rebuilt from scratch - resizing across a breakpoint used
+  to reset `JournalView` and throw away a note being written. `contentSlot`
+  solves the sibling half of this; the GlobalKey is the parent half.
+- **`JournalView` saves an open, changed draft in `dispose`**, because the
+  workspace switch and the calendar both close every view. `onSave` is bound in
+  the shell to the workspace the note was opened in (`journalWorkspace`), since
+  by the time dispose runs `currentWorkspaceUuid` has already moved. A draft
+  cleared to nothing is *not* saved: saving empty fields deletes.
+- **`SplitPane` (`ui/split_pane.dart`) is every list-beside-something split** -
+  the views past `splitMinWidth` and the calendar past
+  `calendarSplitMinWidth`. The boundary is stored as a fraction per split
+  (`AppState.splitFraction` / `calendarSplitFraction`) and the fold is one
+  shared preference (`tasksPaneCollapsed`); all device-local `settings`. The
+  row keeps three keyed slots whether folded or not, so folding never rebuilds
+  the right pane.
+- **`WorkspaceRail.collapsed`** is the strip form (`railCollapsed`), the same
+  destinations as the full rail.
+- **The window drops the workspace tint while thoughts are open**
+  (`_neutralChrome`), and every thought surface uses `T.thoughts`: the pile is
+  global, and drawing it in one workspace's colour claimed otherwise.
+
+### Selecting several tasks
+
+The selection is shell state (`_selected`, uuids, plus `_selectedIn`, the
+workspace it was made in) and is pruned by reading it through `s.tasks`, so a
+row that left the list drops out rather than being acted on. `TaskRow` takes
+`selected` / `selecting` / `onToggleSelect`: Ctrl+click toggles, and once
+anything is selected a plain click does too. `SelectionBar` takes the add
+field's slot. `ui/move_picker.dart` answers "where does this go" for one task
+or many - this workspace's shelves, then every other workspace's list and
+shelves - and replaced the single-workspace park picker. The writes are
+`AppState.moveTasks` / `finishTasks`: one pass, one refresh.
+
 ### The calendar
 
 Two tables. `calendars` is a coloured container; `calendar_events` is a block of
@@ -930,6 +968,10 @@ slow archive.org lookup from landing after the user moved on.
   file header and asserted in `test/noise_test.dart`. **Don't touch the
   coefficients without re-running that test** — every failure mode here is
   inaudible right up until it isn't.
+- `radio_library.dart` holds starred and hand-added stations as JSON in
+  `settings` (device-local). A station's identity is `RadioLibrary.keyOf` - the
+  directory uuid, or the URL for a custom stream, which deliberately has no uuid
+  so `reportPlay` never reports it. `NowPlaying.id` uses the same key.
 - `sources.dart` talks to archive.org and Radio Browser. Both are key-free;
   Radio Browser's client requirements (user agent, mirror fallback, play
   reporting) are honoured there.

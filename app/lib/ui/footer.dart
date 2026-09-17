@@ -40,7 +40,7 @@ class ThoughtFooter extends StatefulWidget {
   const ThoughtFooter({
     super.key,
     required this.thoughts,
-    required this.workspaceColor,
+    required this.accent,
     required this.blockedMessage,
     required this.onAdd,
     this.onCapture,
@@ -51,7 +51,8 @@ class ThoughtFooter extends StatefulWidget {
   });
 
   final List<SideThought> thoughts;
-  final Color workspaceColor;
+  /// [T.thoughts] in the app - the pile is global, see there.
+  final Color accent;
 
   /// Whether [ThoughtsPanel] currently owns the content area, so the count
   /// badge can show itself as the pressed control it is.
@@ -173,7 +174,7 @@ class ThoughtFooterState extends State<ThoughtFooter>
   Widget build(BuildContext context) {
     if (_silent) return const SizedBox.shrink();
 
-    final alarm = T.complementary(widget.workspaceColor);
+    final alarm = T.complementary(widget.accent);
 
     return AnimatedBuilder(
       animation: Listenable.merge([_pulse.controller, _shake]),
@@ -240,7 +241,7 @@ class ThoughtFooterState extends State<ThoughtFooter>
     // number that matters, so it should get harder to read past as it grows.
     final hot = _intensity;
     final fill = widget.listOpen
-        ? widget.workspaceColor.withValues(alpha: 0.25)
+        ? widget.accent.withValues(alpha: 0.25)
         : alarm.withValues(alpha: hot * 0.28);
 
     return Tooltip(

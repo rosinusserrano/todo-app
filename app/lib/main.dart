@@ -294,6 +294,7 @@ class _WidgetShellState extends State<WidgetShell>
     onAddTask: _jumpToAddTask,
     onAddThought: _jumpToAddThought,
     onNoteOnActive: _noteOnActiveTask,
+    onOpenCalendar: _openCalendarFromOutside,
   );
 
   late final AppTray _tray = AppTray(
@@ -838,6 +839,14 @@ class _WidgetShellState extends State<WidgetShell>
     setState(() => _noteOn = task);
   }
 
+  /// The calendar quick action. Opens it rather than toggling: pressed while it
+  /// is already showing - the app was left on it - the answer is to stay there,
+  /// not to close the thing that was asked for.
+  Future<void> _openCalendarFromOutside() async {
+    if (!await _surfaceForCapture(leaveFocus: true)) return;
+    if (!s.showCalendar) await _toggleCalendar();
+  }
+
   void _closeNoteOn() {
     if (_noteOn != null) setState(() => _noteOn = null);
   }
@@ -1128,7 +1137,13 @@ class _WidgetShellState extends State<WidgetShell>
   /// workspace bar's coloured pill, two inches from the tint that was repeating
   /// it, and the blocks on the grid keep their own calendars' colours - which
   /// is the distinction the neutral exists to stop competing with.
-  bool get _calendarChrome => s.showCalendar;
+  ///
+  /// The thought pile follows the same rule for the same reason: it is global,
+  /// so a window tinted with one workspace's colour around it was claiming the
+  /// pile belonged to that workspace. Including in the split, where the tint is
+  /// no more needed than it is beside the calendar - the pill on the workspace
+  /// bar is still saying which list is on the left.
+  bool get _neutralChrome => s.showCalendar || s.showThoughts;
 
   @override
   Widget build(BuildContext context) {
@@ -1179,12 +1194,12 @@ class _WidgetShellState extends State<WidgetShell>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           decoration: BoxDecoration(
-            color: _calendarChrome
+            color: _neutralChrome
                 ? T.calendarBackground
                 : T.tintedBackground(ws),
             borderRadius: BorderRadius.circular(T.radius),
             border: Border.all(
-              color: _calendarChrome ? T.calendarBorder : T.tintedBorder(ws),
+              color: _neutralChrome ? T.calendarBorder : T.tintedBorder(ws),
             ),
           ),
           child: ClipRRect(
@@ -1237,7 +1252,7 @@ class _WidgetShellState extends State<WidgetShell>
         SheetTransition(
           open: _thoughtCapture,
           builder: (_) => ThoughtSheet(
-            accent: ws,
+            accent: T.thoughts,
             onAdd: (text) => s.addThought(text),
             onClose: _closeThoughtCapture,
           ),
@@ -1295,7 +1310,7 @@ class _WidgetShellState extends State<WidgetShell>
             // within a few points of T.muted, so "lit" would stop reading as
             // lit. The app's own accent is neither workspace's, and it is what
             // the calendar's own toolbar already uses for an active control.
-            accent: _calendarChrome ? T.accent : ws,
+            accent: _neutralChrome ? T.accent : ws,
             onClose: () => isDesktop ? windowManager.close() : null,
             onOpenSettings: _openSettings,
             onToggleCalendar: _toggleCalendar,
@@ -1679,7 +1694,7 @@ class _WidgetShellState extends State<WidgetShell>
                   right: ThoughtBubble.margin,
                   bottom: ThoughtBubble.margin,
                   child: ThoughtBubble(
-                    accent: ws,
+                    accent: T.thoughts,
                     count: s.thoughts.length,
                     listOpen: s.showThoughts,
                     onTap: _openThoughtCapture,
@@ -1817,7 +1832,7 @@ class _WidgetShellState extends State<WidgetShell>
     showCaptureButton: !_thoughtBubbleShows,
     showPressure: !_thoughtBubbleShows,
     thoughts: s.thoughts,
-    workspaceColor: ws,
+    accent: T.thoughts,
     blockedMessage: _blockedMessage,
     onAdd: s.addThought,
     listOpen: s.showThoughts,
@@ -2070,8 +2085,27 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
+  /// Identity for whichever view has the content area, across every place the
+  /// shell can put it.
+  ///
+  /// The same view is a child of the stacked column in a narrow window, of the
+  /// split row past [Layout.splitMinWidth], and of a different subtree again
+  /// once the rail appears - so resizing the window across any of those
+  /// breakpoints reparented it, and an unkeyed widget that changes parent is
+  /// built from scratch. For the journal that meant the editor and everything
+  /// typed into it: widen the window until the task list appeared beside a note
+  /// and the note was gone. A GlobalKey is what lets an element move between
+  /// parents with its State intact. [contentSlot] solves the sibling half of
+  /// the same problem; this is the parent half.
+  final _secondaryKey = GlobalKey(debugLabel: 'secondary view');
+
   /// Whatever has taken the content area over, or null while the tasks have it.
   Widget? _secondaryView(Color ws) {
+    final view = _secondaryViewUnkeyed(ws);
+    return view == null ? null : KeyedSubtree(key: _secondaryKey, child: view);
+  }
+
+  Widget? _secondaryViewUnkeyed(Color ws) {
     if (s.showHistory) return _historyView();
     if (s.showThoughts) {
       return ThoughtsPanel(
@@ -2114,6 +2148,10 @@ class _WidgetShellState extends State<WidgetShell>
       );
     }
     if (s.showJournal) {
+      // Captured now, not read inside the callback: the panel's last save can
+      // run from its dispose, after a workspace switch has already moved
+      // currentWorkspaceUuid on. See JournalView._saveDraftOnTheWayOut.
+      final journalWorkspace = s.currentWorkspaceUuid;
       return JournalView(
         onEntryOpen: (open) {
           if (_noteOpen == open) return;
@@ -2127,7 +2165,7 @@ class _WidgetShellState extends State<WidgetShell>
         onLock: s.lockJournal,
         onRemovePassword: s.removeJournalPassword,
         onSave: (title, body, existing) => existing == null
-            ? s.addJournalEntry(title, body)
+            ? s.addJournalEntry(title, body, workspaceUuid: journalWorkspace)
             : s.editJournalEntry(existing, title, body),
         onDelete: s.deleteJournalEntry,
         onBack: _toggleJournal,

@@ -249,4 +249,119 @@ void main() {
       expect(find.byIcon(Icons.add), findsOneWidget);
     });
   });
+
+  group('a draft outlives the panel', () {
+    // Switching workspace closes every view, and so does the calendar; either
+    // used to take a half-written note with it. The shell's side of the fix -
+    // binding the save to the workspace the note was opened in - is a closure
+    // in main.dart; what is pinned here is that the panel asks at all.
+    Future<void> closePanel(WidgetTester tester) async {
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+    }
+
+    testWidgets('a new entry being typed is saved when the panel goes away',
+        (tester) async {
+      final saves = Saves();
+      await pumpPanel(tester, items: const [], saves: saves);
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'Half a thought');
+
+      await closePanel(tester);
+
+      expect(saves.calls, hasLength(1));
+      expect(saves.calls.single.title, 'Half a thought');
+      expect(saves.calls.single.existing, isNull);
+    });
+
+    testWidgets('an edit in progress is saved onto its own entry',
+        (tester) async {
+      final saves = Saves();
+      await pumpPanel(tester,
+          items: [item('a', 'Trip', 'Leaves at nine')], saves: saves);
+      await tester.tap(find.text('Trip'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'Leaves at ten');
+
+      await closePanel(tester);
+
+      expect(saves.calls.single.existing, 'a');
+      expect(saves.calls.single.body, 'Leaves at ten');
+    });
+
+    testWidgets('nothing is written for an unchanged or emptied entry',
+        (tester) async {
+      final saves = Saves();
+      await pumpPanel(tester,
+          items: [item('a', 'Trip', 'Leaves at nine')], saves: saves);
+      await tester.tap(find.text('Trip'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await closePanel(tester);
+      expect(saves.calls, isEmpty, reason: 'unchanged');
+
+      await pumpPanel(tester,
+          items: [item('a', 'Trip', 'Leaves at nine')], saves: saves);
+      await tester.tap(find.text('Trip'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '');
+      await tester.enterText(find.byType(TextField).last, '');
+      await closePanel(tester);
+      expect(saves.calls, isEmpty,
+          reason: 'saving empty fields deletes, which is not ours to do');
+    });
+
+    testWidgets('keeps the editor when a GlobalKey moves it to a new parent',
+        (tester) async {
+      // The resize case: the shell hands the same view to a Column in a
+      // narrow window and a Row in a wide one.
+      final saves = Saves();
+      final key = GlobalKey();
+      var wide = false;
+      late StateSetter setOuter;
+      Widget panel() => KeyedSubtree(
+            key: key,
+            child: JournalView(
+              configured: false,
+              locked: false,
+              items: const [],
+              onSetup: (_) async {},
+              onUnlock: (_) async => true,
+              onLock: () {},
+              onRemovePassword: () async {},
+              onSave: saves.save,
+              onDelete: saves.delete,
+              onBack: () {},
+            ),
+          );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(builder: (context, set) {
+            setOuter = set;
+            return wide
+                ? Row(children: [
+                    const SizedBox(width: 10),
+                    Expanded(child: panel()),
+                  ])
+                : Column(children: [Expanded(child: panel())]);
+          }),
+        ),
+      ));
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'Still here');
+
+      setOuter(() => wide = true);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Still here'), findsOneWidget);
+      expect(saves.calls, isEmpty, reason: 'it moved, it did not close');
+    });
+  });
 }

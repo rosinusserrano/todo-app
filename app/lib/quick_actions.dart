@@ -22,8 +22,9 @@
 //   - It survives the app being killed. A stale entry naming a task that has
 //     since been finished is therefore possible, and the handler has to cope
 //     with the task being gone rather than assume the menu was truthful.
-//   - iOS shows **four** items at most, static and dynamic together. Three is
-//     the whole budget spent, so a fourth entry needs one of these to go.
+//   - iOS shows **four** items at most, static and dynamic together. With the
+//     calendar that budget is spent exactly - three fixed entries and the one
+//     that comes and goes - so a fifth needs one of these to go.
 //
 // Desktop has no such menu, so this is a no-op there.
 
@@ -39,6 +40,7 @@ class AppQuickActions {
     required this.onAddTask,
     required this.onAddThought,
     required this.onNoteOnActive,
+    required this.onOpenCalendar,
   });
 
   final QuickAction onAddTask;
@@ -47,11 +49,17 @@ class AppQuickActions {
   /// The task in focus was picked from the menu: add a line to its notes.
   final QuickAction onNoteOnActive;
 
+  /// Straight to the calendar. Not a capture path like the other two, but the
+  /// question a phone is most often unlocked to ask - "what is next today" -
+  /// and three taps through the app to answer it is two too many.
+  final QuickAction onOpenCalendar;
+
   static bool get supported => Platform.isAndroid || Platform.isIOS;
 
   static const _addTask = 'add_task';
   static const _addThought = 'add_thought';
   static const _noteOnActive = 'note_on_active';
+  static const _calendar = 'open_calendar';
 
   /// How much of a task's title the entry can carry. Both platforms ellipsise
   /// on their own, but they do it at whatever the icon grid allows, and a title
@@ -82,6 +90,8 @@ class AppQuickActions {
             await onAddThought();
           case _noteOnActive:
             await onNoteOnActive();
+          case _calendar:
+            await onOpenCalendar();
         }
       });
       _installed = true;
@@ -125,8 +135,9 @@ class AppQuickActions {
       // most apps show anyway.
       const ShortcutItem(type: _addTask, localizedTitle: 'Add task'),
       const ShortcutItem(type: _addThought, localizedTitle: 'Park a thought'),
+      const ShortcutItem(type: _calendar, localizedTitle: 'Calendar'),
       // Last, because it is the one that comes and goes: an entry that moves
-      // the other two up and down the menu as tasks are started and finished is
+      // the other three up and down the menu as tasks are started and finished is
       // one you cannot learn the position of.
       //
       // The title carries the task and the subtitle says what will happen to

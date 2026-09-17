@@ -419,6 +419,13 @@ class _Group extends StatelessWidget {
                       fontWeight: due ? T.wMedium : T.wNormal,
                     ),
                   ),
+                  const SizedBox(width: T.s1),
+                  _ReviewButton(
+                    empty: tasks.isEmpty,
+                    due: due,
+                    tint: tint,
+                    onPressed: onReview,
+                  ),
                   // The same ↗ a single parked row carries, meaning the same
                   // thing one level up. Offered only when there is something to
                   // move: on an empty shelf it would be a control that opens a
@@ -467,28 +474,7 @@ class _Group extends StatelessWidget {
             // this list and not as a second add field competing with the one at
             // the top of the window.
             _AddToShelf(group: group, accent: accent, onAdd: onAdd),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, T.s2),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: onReview,
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: T.s2, vertical: 0),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  // One label, whether or not the clock has run out: this opens
-                  // the funnel either way, and "mark reviewed" was a promise the
-                  // old button did not keep. See parked_review.dart.
-                  child: Text(
-                    tasks.isEmpty ? 'Review (nothing on it)' : 'Review',
-                    style: TextStyle(fontSize: T.fsMeta, color: due ? tint : T.muted),
-                  ),
-                ),
-              ),
-            ),
+            const SizedBox(height: T.s1),
           ],
         ],
       ),
@@ -791,4 +777,60 @@ Future<String?> showParkPicker(
 
   if (chosen != newGroup) return chosen;
   return (await onCreate())?.uuid;
+}
+
+/// The way into the funnel, on the shelf's header rather than inside it.
+///
+/// It used to sit at the foot of the *expanded* card, under the contents - so
+/// starting a review meant opening the shelf and scrolling past everything on
+/// it first, which is the reading the funnel exists to do one task at a time.
+/// On the header it is one press from the list of shelves, and the card's own
+/// expand is left for what it is for: glancing at what is on there.
+///
+/// One label whether or not the clock has run out: this opens the funnel either
+/// way, and "mark reviewed" was a promise the old button did not keep. The
+/// shelf's colour lights it when the review is due. An empty shelf keeps the
+/// button - the funnel finishes such a shelf by being looked at - and says so
+/// in the tooltip rather than the label, which has no room to.
+class _ReviewButton extends StatelessWidget {
+  const _ReviewButton({
+    required this.empty,
+    required this.due,
+    required this.tint,
+    required this.onPressed,
+  });
+
+  final bool empty;
+  final bool due;
+  final Color tint;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = due ? tint : T.muted;
+    return Tooltip(
+      message: empty
+          ? 'Nothing on it - reviewing marks it reviewed'
+          : 'Go through it one todo at a time',
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(T.radius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: 2),
+          decoration: BoxDecoration(
+            color: due ? tint.withValues(alpha: 0.16) : T.surface,
+            borderRadius: BorderRadius.circular(T.radius),
+          ),
+          child: Text(
+            'Review',
+            style: TextStyle(
+              fontSize: T.fsMeta,
+              color: color,
+              fontWeight: due ? T.wMedium : T.wNormal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

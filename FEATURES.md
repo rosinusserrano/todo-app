@@ -146,6 +146,10 @@ Titled shelves inside a workspace — "Backlog", "Future ideas", "Someday" — f
 tasks you are deliberately not doing now. Unlike side thoughts these are
 **per-workspace**: a backlog is a property of the thing you are working on.
 
+- **Review from the shelf's header** — every shelf carries a **Review** button
+  on its title row, lit in the shelf's colour when a review is due. It opens the
+  one-todo-at-a-time review directly; there is no need to expand the shelf
+  first.
 - **Open them** — "Parked" in the ▾ views menu on the workspace bar swaps the
   content area for the parked view, the same way History and Thoughts do. Click
   the "← Parked" header, press Esc, or pick "Parked" again to go back.
@@ -191,7 +195,7 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   "review due", and the ▾ views menu on the workspace bar gains a coloured dot,
   which is the only sign visible while the panel is closed. Opening the panel
   expands every overdue group automatically.
-- **Reviewing is a funnel, not a button.** "Review" on an open shelf takes over
+- **Reviewing is a funnel, not a button.** "Review" on a shelf's header takes over
   the pane and shows **one task at a time**: its title, its notes, how long it
   has been sitting there ("parked 47 days ago"), an armed reminder, and a
   progress line — "3 of 11", with a dot per task. Four answers, and exactly one
@@ -687,6 +691,13 @@ at the screen gives nothing away) and its lock is **opt-in**.
   read. It then opens to a plain unlock field; a **Lock** button and every app
   restart re-lock it. A **Remove password** button decrypts everything back to
   plaintext. **If you forget the password, those entries cannot be recovered.**
+- **A note being written is never lost.** Leaving the editor any way other than
+  Cancel keeps what was typed: switching workspace, opening the calendar, or
+  closing the pane from the views menu saves the draft into the workspace it
+  was written in. Widening the window until the task list appears beside a note
+  no longer resets the pane either — the editor stays open with the caret where
+  it was. A draft cleared to nothing is left alone rather than saved, because
+  saving empty fields deletes the entry.
 - **Per-entry state** — each row records whether it is encrypted, so mixed and
   synced states stay honest: a device without the password shows an encrypted
   row as a **Locked** placeholder rather than garbage, and can still keep its own
@@ -736,6 +747,10 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 - **Capture a thought** — the 💭 button on the *left* of the footer expands a
   field to jot a quick note.
+- **Not in the workspace's colour.** Thoughts are one pile for every workspace,
+  so the bubble, the capture pane and the footer's meter are drawn in the app's
+  own blue, and the window drops its workspace tint while the pile is open — the
+  same neutral the calendar uses, for the same reason.
 - **On a phone the bubble is the whole thing**, floating over the list just
   above the Tasks / Notes / Parked / History bar — the shape every chat widget
   on the web uses, and for the same reason: the control used in the biggest
@@ -993,8 +1008,9 @@ simply stretched.
 - **iOS / Android** — the same lists and data, without the window chrome
   (always-on-top has no meaning on a phone). Installed on iPhone from an
   unsigned build signed locally with Sideloadly or AltStore.
-- **Home-screen quick actions** — long-press the app icon for "Add task" and
-  "Park a thought". Both land in the running app with the caret already in the
+- **Home-screen quick actions** — long-press the app icon for "Add task",
+  "Park a thought" and **"Calendar"**, which opens straight onto the calendar
+  (and stays there if the app was already showing it). Both land in the running app with the caret already in the
   right field; this is the phone's counterpart to the Ctrl+Alt+T / Ctrl+Alt+H
   global shortcuts, and it exists for the same reason — capture speed. (Not a
   WidgetKit home-screen *widget*, which is a separate app extension and cannot
@@ -1079,6 +1095,13 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
+- **0.29.0** — *(in progress)*
+  - **Notes survive whatever closes them.** A half-written note used to vanish
+    when the workspace was switched or the window was widened past the point
+    where the list appears beside it. Both now keep it.
+  - **Thoughts in a neutral colour**, since the pile belongs to no workspace.
+  - **Review a shelf from its header**, without expanding it first.
+  - **A Calendar entry in the home-screen quick actions.**
 - **0.28.0** — **Todos that arrive on their own, a shelf you have to read, and
   the sound stops stalling.** Six things, one release.
   - **Recurring todos, in the two shapes that were actually wanted.** A repeat

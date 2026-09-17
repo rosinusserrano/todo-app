@@ -271,6 +271,18 @@ class T {
   static final calendarBorder =
       Color.lerp(const Color(0x14FFFFFF), calendarInk, 0.22)!;
 
+  /// The side-thought pile's colour, wherever it is drawn - the bubble, the
+  /// capture pane, the footer's meter and the list.
+  ///
+  /// Side thoughts are global: one pile, every workspace, no `workspace_uuid`.
+  /// They used to be drawn in the current workspace's colour anyway, which
+  /// told you something untrue - that this pile belonged to this list, and
+  /// that switching would show a different one. The app's own accent belongs
+  /// to no workspace, which is exactly the claim to make. The alarm the pile
+  /// escalates towards is derived from this, so it no longer changes hue as
+  /// you move between workspaces either.
+  static const thoughts = accent;
+
   /// Hue-rotate 180 degrees from the workspace colour, but force high
   /// saturation and mid lightness. A pale or desaturated workspace colour would
   /// otherwise produce a complement too washed out to read as an alarm, which

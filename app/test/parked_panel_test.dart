@@ -330,8 +330,7 @@ void main() {
         },
         calls: calls,
       );
-      await tester.tap(find.text('Backlog'));
-      await tester.pumpAndSettle();
+      // Straight from the header: no expanding the shelf first.
       await tester.tap(find.text('Review'));
       await tester.pumpAndSettle();
     }
@@ -400,9 +399,7 @@ void main() {
         parked: const {'g1': []},
         calls: calls,
       );
-      await tester.tap(find.text('Backlog'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Review (nothing on it)'));
+      await tester.tap(find.text('Review'));
       await tester.pumpAndSettle();
 
       expect(find.text('Nothing on this shelf.'), findsOneWidget);

@@ -48,7 +48,7 @@ void main() {
               const Spacer(),
               ThoughtFooter(
                 thoughts: thoughts,
-                workspaceColor: T.accent,
+                accent: T.accent,
                 blockedMessage: blockedMessage,
                 onAdd: (_) async {},
                 onCapture: onCapture,

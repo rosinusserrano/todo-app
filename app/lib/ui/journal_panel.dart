@@ -121,6 +121,7 @@ class _JournalViewState extends State<JournalView> {
 
   @override
   void dispose() {
+    _saveDraftOnTheWayOut();
     _password.dispose();
     _confirm.dispose();
     _title.dispose();
@@ -129,6 +130,36 @@ class _JournalViewState extends State<JournalView> {
     _bodyFocus.dispose();
     _paneFocus.dispose();
     super.dispose();
+  }
+
+  /// The panel is going away with the editor open: keep what was typed.
+  ///
+  /// Nothing the user did asked for the words to be thrown away. Switching
+  /// workspace closes every view, the calendar does too, and a window resized
+  /// past a breakpoint used to rebuild this panel from scratch - each of them
+  /// discarded a half-written note without a word, which from the outside is
+  /// the note being deleted. Cancel is the one way to discard, and it closes
+  /// the editor first, so it never reaches here.
+  ///
+  /// Fire and forget, because `dispose` cannot wait. Two things keep it safe:
+  /// an unchanged entry writes nothing (so merely reading one and leaving costs
+  /// no `updated_at` and no sync), and an entry cleared to nothing is left
+  /// alone rather than saved - saving empty fields *deletes*, and deleting is
+  /// not something to do on somebody's behalf while they are looking elsewhere.
+  /// `onSave` is the closure from the last build, which the shell binds to the
+  /// workspace the note was written in rather than the one just switched to.
+  void _saveDraftOnTheWayOut() {
+    if (!_editorOpen || _busy) return;
+    final title = _title.text;
+    final body = _body.text;
+    if (title.trim().isEmpty && body.trim().isEmpty) return;
+    final existing = _editing;
+    if (existing != null &&
+        existing.title.trim() == title.trim() &&
+        existing.body.trim() == body.trim()) {
+      return;
+    }
+    widget.onSave(title, body, existing);
   }
 
   /// Put the keyboard on the pane itself. The state it is being asked for is

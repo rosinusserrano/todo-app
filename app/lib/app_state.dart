@@ -1238,8 +1238,17 @@ class AppState extends ChangeNotifier {
   /// shows the *rendered* entry after a save, and a second edit from there has
   /// to go back to the same row rather than write a new one - which it can only
   /// do if it learns the uuid this call minted.
-  Future<JournalItem?> addJournalEntry(String title, String body) async {
-    final ws = currentWorkspaceUuid;
+  ///
+  /// [workspaceUuid] overrides the current workspace. The journal panel saves a
+  /// draft when it is closed from underneath - a workspace switch among other
+  /// things - and by the time that save runs the current workspace is the new
+  /// one, which is not where the note was being written.
+  Future<JournalItem?> addJournalEntry(
+    String title,
+    String body, {
+    String? workspaceUuid,
+  }) async {
+    final ws = workspaceUuid ?? currentWorkspaceUuid;
     if (ws == null || journalLocked) return null;
     if (title.trim().isEmpty && body.trim().isEmpty) return null;
     final (t, b, enc) = await _encodeFields(title.trim(), body.trim());

@@ -21,6 +21,79 @@ Rules for keeping it honest:
 
 ## Now
 
+Ten items, agreed 2026-09-17. Ordered so the bug goes first, the small ones
+bank value next, and the two that rearrange the shell (the split and
+multi-select) land when the rest is green. Item 3 is a moodboard to choose
+from, not an implementation - the layout change waits for Marco's pick.
+
+### 33. A note being written is never lost  `[x]`
+
+- [x] **33.1** The secondary view carries a `GlobalKey` in `main.dart`, so it
+      keeps its State when a resize moves it between the stacked column, the
+      split row and the rail's row (all three reparent it).
+- [x] **33.2** `JournalView` saves an open, changed, non-empty draft when it is
+      disposed - the workspace switch closes every view, and the calendar does
+      too. `onSave` is bound to the workspace the note was opened in, so the
+      save cannot land in the workspace just switched to.
+- [x] **33.3** Tests: resize across the split with the editor open keeps the
+      text; switching workspace writes the draft into the old workspace.
+
+### 34. Thoughts are not in the workspace's colour  `[x]`
+
+- [x] **34.1** Bubble, capture sheet and footer use `T.accent`; the window drops
+      the tint while the thoughts view owns the content area (same rule as the
+      calendar's neutral chrome).
+
+### 35. Review a shelf without expanding it  `[x]`
+
+- [x] **35.1** Review button on the shelf card's header row, not only inside the
+      expanded card.
+
+### 36. Calendar from the home-screen quick action  `[x]`
+
+- [x] **36.1** Fourth `ShortcutItem` (iOS budget is four), opens the calendar.
+
+### 37. Jump from an event to its workspace  `[ ]`
+
+- [ ] **37.1** `EventAction.openWorkspace` on the details card and the context
+      menu, only when the event's calendar is a workspace calendar.
+
+### 38. Collapse the rail  `[ ]`
+
+- [ ] **38.1** `WorkspaceRail.collapsed`: colour dots + view icons, toggle at
+      the top, stored in `settings` (`ui:railCollapsed`).
+
+### 39. The split between the list and a view is adjustable  `[ ]`
+
+- [ ] **39.1** A draggable divider (fraction stored in `settings`), double-click
+      resets. Dragged to the left edge, or its chevron pressed, the task pane
+      collapses and the view has the whole width; a thin strip brings it back.
+
+### 40. Select several tasks and move them together  `[ ]`
+
+- [ ] **40.1** Ctrl+click toggles a row into a selection (Select in the action
+      bar on touch); Esc clears it.
+- [ ] **40.2** Selection bar: complete, delete, park (any workspace's shelf),
+      move to another workspace. `AppState.moveTasks` - one pass, sort orders
+      appended, `group_uuid` set or cleared.
+- [ ] **40.3** `LocalStore.allGroups()` for the cross-workspace picker. Tests.
+
+### 41. Radio favourites, custom stations, search  `[ ]`
+
+- [ ] **41.1** Favourites and custom stations stored device-locally in
+      `settings` as JSON. Search against Radio Browser `stations/search`.
+- [ ] **41.2** Sound sheet: star on a station, a Favourites row, a search field,
+      and "Add a stream URL".
+
+### 42. Layout moodboard  `[ ]`
+
+- [ ] **42.1** Artifact with options for the add-task button and a compact
+      calendar header. **Waits for a pick** before any code changes.
+
+---
+
+## Done — 0.28.0, six things from 2026-09-09
+
 Six items, agreed 2026-09-09. Ordered by risk rather than by the order they
 were asked in: the four small ones bank value first, and recurrence - which is
 a schema change on both ends of the wire - goes last so the rest is already

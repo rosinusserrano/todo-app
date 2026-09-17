@@ -82,11 +82,13 @@ from, not an implementation - the layout change waits for Marco's pick.
       store change) feeds `ui/move_picker.dart`, which also replaced the
       single-task park picker. `test/multi_select_test.dart`.
 
-### 41. Radio favourites, custom stations, search  `[ ]`
+### 41. Radio favourites, custom stations, search  `[x]`
 
-- [ ] **41.1** Favourites and custom stations stored device-locally in
+- [x] **41.1** Favourites and custom stations stored device-locally in
       `settings` as JSON. Search against Radio Browser `stations/search`.
-- [ ] **41.2** Sound sheet: star on a station, a Favourites row, a search field,
+      `sound/radio_library.dart`; `RadioBrowser.parseStations` shared by the
+      genre list and the search. `test/radio_library_test.dart`.
+- [x] **41.2** Sound sheet: star on a station, a Favourites row, a search field,
       and "Add a stream URL".
 
 ### 42. Layout moodboard  `[ ]`

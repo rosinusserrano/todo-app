@@ -25,6 +25,7 @@ import 'package:path_provider/path_provider.dart';
 import '../sync/local_store.dart';
 import 'ambience_cache.dart';
 import 'noise.dart';
+import 'radio_library.dart';
 import 'sources.dart';
 
 const _kVolume = 'ui:sound-volume';
@@ -48,9 +49,16 @@ class NowPlaying {
 }
 
 class SoundService extends ChangeNotifier {
-  SoundService(this._store);
+  SoundService(this._store) : radio = RadioLibrary(_store) {
+    // One notifier for the sheet to listen to: starring a station has to
+    // redraw the star, and the sheet is rebuilt off this service.
+    radio.addListener(notifyListeners);
+  }
 
   final LocalStore _store;
+
+  /// Starred and hand-added stations. See radio_library.dart.
+  final RadioLibrary radio;
 
   late final Player _player = Player();
 
@@ -109,6 +117,7 @@ class SoundService extends ChangeNotifier {
     await _player.setVolume(_volume * 100);
 
     _keepAmbience = (await _store.setting(_kKeepAmbience) ?? '1') != '0';
+    await radio.load();
     try {
       final dir = await getApplicationSupportDirectory();
       _ambience = AmbienceCache(Directory(p.join(dir.path, 'ambience')));
@@ -265,7 +274,13 @@ class SoundService extends ChangeNotifier {
       await _player.setPlaylistMode(PlaylistMode.none);
       if (seq != _requestSeq) return;
       _set(
-        now: NowPlaying(tier: SoundTier.radio, id: station.uuid, label: station.name),
+        // Keyed as the library keys it, so a custom stream (no uuid) still
+        // lights its own row.
+        now: NowPlaying(
+          tier: SoundTier.radio,
+          id: RadioLibrary.keyOf(station),
+          label: station.name,
+        ),
       );
       RadioBrowser.reportPlay(station.uuid);
     } catch (e) {
@@ -338,6 +353,8 @@ class SoundService extends ChangeNotifier {
 
   @override
   void dispose() {
+    radio.removeListener(notifyListeners);
+    radio.dispose();
     _player.dispose();
     super.dispose();
   }

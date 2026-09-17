@@ -16,6 +16,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 
 const _userAgent = 'TodoWidget/0.10 (concentration sound)';
@@ -168,6 +169,22 @@ class Station {
   final int bitrate;
 
   String get subtitle => bitrate > 0 ? '$codec · ${bitrate}kbps' : codec;
+
+  Map<String, dynamic> toJson() => {
+        'uuid': uuid,
+        'name': name,
+        'url': url,
+        'codec': codec,
+        'bitrate': bitrate,
+      };
+
+  factory Station.fromJson(Map<String, dynamic> json) => Station(
+        uuid: (json['uuid'] as String?) ?? '',
+        name: (json['name'] as String?) ?? '',
+        url: (json['url'] as String?) ?? '',
+        codec: (json['codec'] as String?) ?? '',
+        bitrate: (json['bitrate'] as num?)?.toInt() ?? 0,
+      );
 }
 
 class RadioBrowser {
@@ -193,16 +210,38 @@ class RadioBrowser {
     return null;
   }
 
-  static Future<List<Station>> byGenre(String tag) async {
-    final res = await _get('/json/stations/bytag/${Uri.encodeComponent(tag)}', {
-      'limit': '40',
-      'hidebroken': 'true',
-      'order': 'clickcount',
-      'reverse': 'true',
-    });
-    if (res == null) return [];
+  static const _listQuery = {
+    'limit': '40',
+    'hidebroken': 'true',
+    'order': 'clickcount',
+    'reverse': 'true',
+  };
 
-    final raw = (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+  static Future<List<Station>> byGenre(String tag) async {
+    final res = await _get(
+      '/json/stations/bytag/${Uri.encodeComponent(tag)}',
+      _listQuery,
+    );
+    return res == null ? [] : parseStations(res.body);
+  }
+
+  /// Stations whose name contains [name], most played first. The directory's
+  /// own search, so "fip" finds all of FIP's streams and "soma" all of SomaFM.
+  static Future<List<Station>> search(String name) async {
+    final query = name.trim();
+    if (query.isEmpty) return [];
+    final res = await _get('/json/stations/search', {
+      ..._listQuery,
+      'name': query,
+    });
+    return res == null ? [] : parseStations(res.body);
+  }
+
+  /// The directory's JSON, down to what can actually be played: checked OK
+  /// recently, with a resolved URL, one entry per name.
+  @visibleForTesting
+  static List<Station> parseStations(String body) {
+    final raw = (jsonDecode(body) as List).cast<Map<String, dynamic>>();
     final seen = <String>{};
     final out = <Station>[];
 

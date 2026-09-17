@@ -343,6 +343,15 @@ Three tiers, none of which need an account, an API key, or a licence:
   out. The three things the directory asks of clients are all honoured: a
   descriptive user agent, no hardcoded server (it falls through the documented
   mirrors), and plays reported back so its rankings stay accurate.
+  - **Search** — the field above the genres searches the whole directory by
+    station name ("fip", "soma", "jazz").
+  - **Star a station** to keep it. **★ Saved** lists what you starred, and the
+    radio tab opens there whenever anything is saved.
+  - **Add a stream URL** at the foot of Saved, for a station the directory does
+    not have; the name is optional. A hand-added stream is removed with its ✕,
+    and its plays are not reported to the directory, which has never heard of
+    it.
+  - Saved and hand-added stations are kept on this device, like the volume.
 
 ## Reminders
 
@@ -1136,6 +1145,8 @@ reminders are both there now**, queued for 0.18.0.
     delete, park or move them at once — **to another workspace's list or
     shelves** as well as this one's. The single-task park picker offers the
     other workspaces too.
+  - **Radio: search, stars and your own streams.** Search the directory by
+    name, star stations into a Saved list, and add a stream by URL.
   - **The split is yours to move.** Drag the line between the list and a panel
     or the calendar, or fold the list away to give the other side the width.
 - **0.28.0** — **Todos that arrive on their own, a shelf you have to read, and

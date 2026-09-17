@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../sound/noise.dart';
+import '../sound/radio_library.dart';
 import '../sound/sound_service.dart';
 import '../sound/sources.dart';
 import '../theme.dart';
@@ -33,32 +34,139 @@ class SoundSheet extends StatefulWidget {
 class _SoundSheetState extends State<SoundSheet> {
   SoundTier _tab = SoundTier.noise;
 
-  /// Radio needs a second level: pick a genre, then a station from the
-  /// directory. Held here rather than in the service — it is where the user has
-  /// browsed to, not what is playing.
-  RadioGenre? _genre;
+  /// Radio needs a second level: something to browse - the saved stations, a
+  /// genre, or a search - and then a station from it. Held here rather than in
+  /// the service: it is where the user has browsed to, not what is playing.
+  ///
+  /// Saved is where the tab opens when anything is saved. Somebody who has
+  /// starred three stations came back for one of those three, and making them
+  /// pick a genre to find it again is what starring was meant to spare them.
+  late _Browse _browse =
+      s.radio.saved.isEmpty ? const _Browse.none() : const _Browse.saved();
   List<Station>? _stations;
   bool _loadingStations = false;
   String? _stationError;
 
+  final _searchController = TextEditingController();
+
   SoundService get s => widget.sound;
 
-  Future<void> _selectGenre(RadioGenre g) async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectGenre(RadioGenre g) =>
+      _load(_Browse.genre(g), () => RadioBrowser.byGenre(g.tag),
+          'No stations online for that genre.');
+
+  Future<void> _search(String query) {
+    final q = query.trim();
+    if (q.isEmpty) return Future.value();
+    return _load(_Browse.search(q), () => RadioBrowser.search(q),
+        'Nothing in the directory called "$q".');
+  }
+
+  void _showSaved() => setState(() {
+        _browse = const _Browse.saved();
+        _loadingStations = false;
+        _stationError = null;
+        _stations = null;
+      });
+
+  Future<void> _load(
+    _Browse browse,
+    Future<List<Station>> Function() fetch,
+    String emptyMessage,
+  ) async {
     setState(() {
-      _genre = g;
+      _browse = browse;
       _stations = null;
       _stationError = null;
       _loadingStations = true;
     });
 
-    final found = await RadioBrowser.byGenre(g.tag);
-    if (!mounted || _genre != g) return; // the user moved on while loading
+    final found = await fetch();
+    if (!mounted || _browse != browse) return; // the user moved on while loading
 
     setState(() {
       _loadingStations = false;
       _stations = found;
-      _stationError = found.isEmpty ? 'No stations online for that genre.' : null;
+      _stationError = found.isEmpty ? emptyMessage : null;
     });
+  }
+
+  /// A stream the directory does not have - a local station's own URL, an
+  /// internal Icecast. Name optional: the host stands in for one.
+  Future<void> _addCustom() async {
+    final name = TextEditingController();
+    final url = TextEditingController();
+    String? error;
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) {
+          Future<void> submit() async {
+            final station = await s.radio.addCustom(name.text, url.text);
+            if (!context.mounted) return;
+            if (station == null) {
+              setDialog(() => error = 'That does not look like a stream URL.');
+              return;
+            }
+            Navigator.pop(context, true);
+          }
+
+          return AlertDialog(
+            backgroundColor: T.bgSolid,
+            title: const Text('Add a stream',
+                style: TextStyle(fontSize: T.fsMenu)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: url,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: T.fsLabel),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'https://…/stream.mp3',
+                    labelText: 'Stream URL',
+                  ),
+                  onSubmitted: (_) => submit(),
+                ),
+                const SizedBox(height: T.s2),
+                TextField(
+                  controller: name,
+                  style: const TextStyle(fontSize: T.fsLabel),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Name (optional)',
+                  ),
+                  onSubmitted: (_) => submit(),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: T.s2),
+                  Text(error!,
+                      style:
+                          const TextStyle(fontSize: T.fsMeta, color: T.danger)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(onPressed: submit, child: const Text('Add')),
+            ],
+          );
+        },
+      ),
+    );
+    name.dispose();
+    url.dispose();
+    if (added == true && mounted) _showSaved();
   }
 
   @override
@@ -327,36 +435,64 @@ class _SoundSheetState extends State<SoundSheet> {
   }
 
   Widget _radioList(Color ws) {
+    Widget chip(String label, bool active, VoidCallback onTap) =>
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
+            decoration: BoxDecoration(
+              color: active ? Color.lerp(T.surface, ws, 0.34) : T.surface,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: T.fsMeta,
+                fontWeight: T.wMedium,
+                color: active ? T.text : T.muted,
+              ),
+            ),
+          ),
+        );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s2),
+          child: TextField(
+            controller: _searchController,
+            style: const TextStyle(fontSize: T.fsLabel),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Search stations by name…',
+              filled: true,
+              fillColor: T.surface,
+              prefixIcon:
+                  const Icon(Icons.search_rounded, size: 15, color: T.muted),
+              prefixIconConstraints:
+                  const BoxConstraints(minWidth: 30, minHeight: 28),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(T.radius),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onSubmitted: _search,
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s2),
           child: Wrap(
             spacing: 4,
             runSpacing: 4,
             children: [
+              chip('★ Saved', _browse.kind == _BrowseKind.saved, _showSaved),
               for (final g in RadioGenre.all)
-                GestureDetector(
-                  onTap: () => _selectGenre(g),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
-                    decoration: BoxDecoration(
-                      color: _genre == g
-                          ? Color.lerp(T.surface, ws, 0.34)
-                          : T.surface,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      g.label,
-                      style: TextStyle(
-                        fontSize: T.fsMeta,
-                        fontWeight: T.wMedium,
-                        color: _genre == g ? T.text : T.muted,
-                      ),
-                    ),
-                  ),
-                ),
+                chip(g.label, _browse.genre == g, () => _selectGenre(g)),
             ],
           ),
         ),
@@ -366,6 +502,19 @@ class _SoundSheetState extends State<SoundSheet> {
   }
 
   Widget _stationList(Color ws) {
+    Widget message(String text) => Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: T.s4),
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+            ),
+          ),
+        );
+
+    if (_browse.kind == _BrowseKind.saved) return _savedList(ws);
+
     if (_loadingStations) {
       return const Center(
         child: SizedBox(
@@ -375,36 +524,81 @@ class _SoundSheetState extends State<SoundSheet> {
         ),
       );
     }
-    if (_genre == null || _stations == null) {
-      return const Center(
-        child: Text('Pick a genre.', style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
-      );
+    if (_browse.kind == _BrowseKind.none || _stations == null) {
+      return message('Pick a genre, or search.');
     }
-    if (_stationError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: T.s4),
-          child: Text(
-            _stationError!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
-          ),
-        ),
-      );
-    }
+    if (_stationError != null) return message(_stationError!);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: T.s2),
       children: [
-        for (final station in _stations!)
-          _Row(
-            title: station.name,
-            subtitle: station.subtitle,
-            active: _isActive(SoundTier.radio, station.uuid),
-            accent: ws,
-            onTap: () => s.playStation(station),
-          ),
+        for (final station in _stations!) _stationRow(station, ws),
       ],
+    );
+  }
+
+  Widget _savedList(Color ws) {
+    final saved = s.radio.saved;
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: T.s2),
+      children: [
+        if (saved.isEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(T.s1, T.s2, T.s1, T.s2),
+            child: Text(
+              'Nothing saved yet. Star a station from a genre or a search, '
+              'or add a stream the directory does not have.',
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.35),
+            ),
+          ),
+        for (final station in saved) _stationRow(station, ws),
+        _Row(
+          title: '+ Add a stream URL',
+          active: false,
+          accent: ws,
+          onTap: _addCustom,
+        ),
+      ],
+    );
+  }
+
+  /// A station, with the way to keep it - or, for one added by hand, the way
+  /// to get rid of it. A custom stream has no star: it is only in the list
+  /// because it was saved, so unstarring it and deleting it are the same act.
+  Widget _stationRow(Station station, Color ws) {
+    final custom = s.radio.isCustom(station);
+    final starred = !custom && s.radio.isFavourite(station);
+    return _Row(
+      title: station.name,
+      subtitle: custom ? station.url : station.subtitle,
+      active: _isActive(SoundTier.radio, RadioLibrary.keyOf(station)),
+      accent: ws,
+      onTap: () => s.playStation(station),
+      trailing: Tooltip(
+        message: custom
+            ? 'Remove this stream'
+            : starred
+                ? 'Remove from saved'
+                : 'Save this station',
+        child: InkWell(
+          onTap: () => custom
+              ? s.radio.removeCustom(station)
+              : s.radio.toggleFavourite(station),
+          borderRadius: BorderRadius.circular(T.radius),
+          child: Padding(
+            padding: const EdgeInsets.all(T.s1),
+            child: Icon(
+              custom
+                  ? Icons.close_rounded
+                  : starred
+                      ? Icons.star_rounded
+                      : Icons.star_outline_rounded,
+              size: 16,
+              color: starred ? ws : T.muted,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -466,10 +660,12 @@ class _Row extends StatelessWidget {
     required this.accent,
     required this.onTap,
     this.subtitle,
+    this.trailing,
   });
 
   final String title;
   final String? subtitle;
+  final Widget? trailing;
   final bool active;
   final Color accent;
   final VoidCallback onTap;
@@ -492,28 +688,74 @@ class _Row extends StatelessWidget {
             ),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: T.fsLabel,
-                fontWeight: T.wMedium,
-                color: T.text,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: T.fsLabel,
+                      fontWeight: T.wMedium,
+                      color: T.text,
+                    ),
+                  ),
+                  if (subtitle != null && subtitle!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(fontSize: T.fsMeta, color: T.muted),
+                      ),
+                    ),
+                ],
               ),
             ),
-            if (subtitle != null && subtitle!.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: Text(
-                  subtitle!,
-                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
-                ),
-              ),
+            ?trailing,
           ],
         ),
       ),
     );
   }
+}
+
+enum _BrowseKind { none, saved, genre, search }
+
+/// What the radio tab is showing. A value, so a slow lookup can check it is
+/// still the one being waited for before it lands.
+@immutable
+class _Browse {
+  const _Browse.none()
+      : kind = _BrowseKind.none,
+        genre = null,
+        query = null;
+  const _Browse.saved()
+      : kind = _BrowseKind.saved,
+        genre = null,
+        query = null;
+  const _Browse.genre(RadioGenre this.genre)
+      : kind = _BrowseKind.genre,
+        query = null;
+  const _Browse.search(String this.query)
+      : kind = _BrowseKind.search,
+        genre = null;
+
+  final _BrowseKind kind;
+  final RadioGenre? genre;
+  final String? query;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Browse &&
+      other.kind == kind &&
+      other.genre == genre &&
+      other.query == query;
+
+  @override
+  int get hashCode => Object.hash(kind, genre, query);
 }

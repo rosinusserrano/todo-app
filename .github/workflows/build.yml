@@ -149,7 +149,7 @@ jobs:
   # signed afterwards on your own machine.
   #
   # To install on an iPhone:
-  #   1. Download the "Runner-unsigned-ipa" artifact from this run (or the file
+  #   1. Download the "TodoWidget-unsigned-ipa" artifact from this run (or the file
   #      attached to the release, if this ran from a tag).
   #   2. Open it with Sideloadly or AltStore and sign with your Apple ID.
   #   3. On the phone: Settings > General > VPN & Device Management > trust the
@@ -192,13 +192,13 @@ jobs:
           mkdir -p build/ipa/Payload
           cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
           cd build/ipa
-          zip -qry Runner-unsigned.ipa Payload
-          ls -lh Runner-unsigned.ipa
+          zip -qry TodoWidget-unsigned.ipa Payload
+          ls -lh TodoWidget-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Runner-unsigned-ipa
-          path: app/build/ipa/Runner-unsigned.ipa
+          name: TodoWidget-unsigned-ipa
+          path: app/build/ipa/TodoWidget-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
 
@@ -209,7 +209,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/ipa/Runner-unsigned.ipa
+          files: app/build/ipa/TodoWidget-unsigned.ipa
           body: |
             Unsigned iOS build. Sign with Sideloadly or AltStore using your
             Apple ID, then trust the certificate under

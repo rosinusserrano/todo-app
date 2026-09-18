@@ -736,6 +736,20 @@ third on a task that asked for everything.
   mouse, a short tap on the text with a finger. A left-click *expands* the row;
   editing is the pencil inside the bar on both. The table in the file header is
   the authority — keep it true.
+- **The double-click that edits is hand-rolled, and must stay that way.**
+  Registering Flutter's `onDoubleTap` beside a tap puts both recognisers in one
+  arena, and the tap then cannot fire until the double-tap window expires — so
+  a second way into the composer would cost 300ms of lag on *every* expansion,
+  which is the commonest click on the list. Instead the first click expands
+  immediately and arms a `Timer(kDoubleTapTimeout)`; a click arriving while it
+  is live undoes that expansion and calls `onOpen`. Two consequences worth
+  keeping: a double-click leaves the row exactly as it found it (it is one
+  gesture, not a click plus an edit), and the undo touches only the *in-place*
+  expansion — where the shell owns the read view (`onExpand`, touch) there is
+  nothing to put back and calling it again would open it twice. The tests drive
+  it through a `click` helper that waits out the window, because
+  `pumpAndSettle` advances the clock by about a frame and two of those in a row
+  are a double-click.
 - **The bar resolves to a `TaskAction`, and the row turns that back into a
   callback.** That is what keeps the reminder menu and the park picker — both of
   which want anchors of their own — out of a widget whose job is to draw nine

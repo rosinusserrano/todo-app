@@ -13,7 +13,8 @@
 // that everything the row used to offer is inside it at a size that pointer can
 // hit, and that the row at rest is a tick box, a title and its state marks.
 
-import 'package:flutter/gestures.dart' show kSecondaryButton;
+import 'package:flutter/gestures.dart'
+    show kDoubleTapTimeout, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,6 +101,25 @@ void main() {
   /// A right-click, which is what opens the bar under a pointer.
   Future<void> rightClick(WidgetTester tester, Finder at) async {
     await tester.tap(at, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+  }
+
+  /// A left-click that is **on its own**: it waits out the double-click window
+  /// afterwards, so a second call is a second click rather than the other half
+  /// of this one. `pumpAndSettle` alone does not, which is the whole reason
+  /// this exists - it advances the clock by about a frame, and two of those in
+  /// a row land well inside [kDoubleTapTimeout].
+  Future<void> click(WidgetTester tester, Finder at) async {
+    await tester.tap(at);
+    await tester.pumpAndSettle();
+    await tester.pump(kDoubleTapTimeout);
+  }
+
+  /// Two clicks inside the window.
+  Future<void> doubleClick(WidgetTester tester, Finder at) async {
+    await tester.tap(at);
+    await tester.pump(const Duration(milliseconds: 40));
+    await tester.tap(at);
     await tester.pumpAndSettle();
   }
 
@@ -284,8 +304,7 @@ void main() {
       expect(find.byType(MarkdownText), findsNothing);
       expect(find.text('weights before and after'), findsOneWidget);
 
-      await tester.tap(find.text('inspect the layers'));
-      await tester.pumpAndSettle();
+      await click(tester, find.text('inspect the layers'));
 
       // Open: the details and the body, really rendered, so the `**before**`
       // is bold rather than literal.
@@ -297,8 +316,7 @@ void main() {
       // this finds now is the rendered body's own plain text.
       expect(find.text('weights before and after'), findsOneWidget);
 
-      await tester.tap(find.text('inspect the layers'));
-      await tester.pumpAndSettle();
+      await click(tester, find.text('inspect the layers'));
       expect(find.byType(TaskDetail), findsNothing);
     });
 
@@ -326,6 +344,83 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TaskDetail), findsNothing);
+    });
+
+    testWidgets('a double-click opens the composer', (tester) async {
+      var opened = 0;
+      await tester.pumpWidget(row(
+        touch: false,
+        of: task(notes: 'weights'),
+        onOpen: () => opened++,
+      ));
+      await tester.pumpAndSettle();
+
+      await doubleClick(tester, find.text('inspect the layers'));
+      expect(opened, 1);
+
+      // And it left the row as it found it. A double-click is one gesture, not
+      // a click plus an edit, so the expansion the first half opened is put
+      // back rather than waiting behind the composer.
+      expect(find.byType(TaskDetail), findsNothing);
+    });
+
+    testWidgets('a double-click on an open row leaves it open', (tester) async {
+      await tester.pumpWidget(row(touch: false, of: task(notes: 'weights')));
+      await tester.pumpAndSettle();
+
+      await click(tester, find.text('inspect the layers'));
+      expect(find.byType(TaskDetail), findsOneWidget);
+
+      await doubleClick(tester, find.text('inspect the layers'));
+      expect(find.byType(TaskDetail), findsOneWidget);
+    });
+
+    testWidgets('two clicks apart in time are still two clicks',
+        (tester) async {
+      // The whole reason the double-click is hand-rolled: the first click must
+      // not wait to find out whether a second one is coming.
+      var opened = 0;
+      await tester.pumpWidget(row(
+        touch: false,
+        of: task(notes: 'weights'),
+        onOpen: () => opened++,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('inspect the layers'));
+      await tester.pump(const Duration(milliseconds: 1));
+      // Open already, one frame in - not after the window has expired.
+      expect(find.byType(TaskDetail), findsOneWidget);
+
+      await tester.pump(kDoubleTapTimeout);
+      await click(tester, find.text('inspect the layers'));
+
+      expect(find.byType(TaskDetail), findsNothing);
+      expect(opened, 0);
+    });
+
+    testWidgets('a row with no composer just expands twice', (tester) async {
+      // The session view's rows have no long form, so there is nothing for a
+      // double-click to open and it stays two clicks.
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: LayoutScope(
+            layout: Layout(const Size(T.designWidth, 600)),
+            child: TaskRow(
+              task: task(notes: 'weights'),
+              accent: T.accent,
+              onComplete: () async {},
+              onDelete: () async {},
+              onFocus: () {},
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await doubleClick(tester, find.text('inspect the layers'));
+      expect(find.byType(TaskDetail), findsNothing); // opened, then closed
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('the reorder grip is drawn where it is given', (tester) async {

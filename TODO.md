@@ -25,6 +25,7 @@ Ten items, agreed 2026-09-17. Ordered so the bug goes first, the small ones
 bank value next, and the two that rearrange the shell (the split and
 multi-select) land when the rest is green. Item 3 is a moodboard to choose
 from, not an implementation - the layout change waits for Marco's pick.
+Item 43 was asked for on 2026-09-18, after the rest was done.
 
 ### 33. A note being written is never lost  `[x]`
 
@@ -100,6 +101,21 @@ from, not an implementation - the layout change waits for Marco's pick.
       `WorkspaceBar` and `WorkspaceRail` (`onAddTask`), N on desktop. B1: the
       touch header is one row - `‹ date ›`, `_ModeCycle`, and `_FilterMenu`
       as ⋯ carrying Today and quick add. Desktop header unchanged.
+
+### 43. Double-click a task to edit it  `[x]`
+
+Asked for on 2026-09-18, after the moodboard work. A mouse had no cheap way
+into the composer once editing became the pencil in the action bar.
+
+- [x] **43.1** `_clickText` in `task_row.dart`: the first left-click expands as
+      before and arms a `Timer(kDoubleTapTimeout)`; one arriving while that is
+      live puts the expansion back and calls `onOpen`. Deliberately *not*
+      `GestureDetector.onDoubleTap` - that shares an arena with the tap and
+      would delay every expansion by the double-click window (measured: the
+      single tap does not fire for 300ms). Pointer only; touch still opens the
+      action bar. `test/touch_task_row_test.dart` pins both halves, and the
+      `click` helper in it waits the window out so two taps in a test are two
+      clicks.
 
 ---
 

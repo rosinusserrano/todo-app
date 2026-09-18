@@ -29,8 +29,18 @@
 //
 //   | | mouse | finger |
 //   | tap / left-click on the text | expand the row in place | open the actions |
+//   | double-click on the text | edit it | - |
 //   | right-click | open the actions | - |
 //   | long press | - | pick the row up to reorder it (the list's) |
+//
+// **The double-click is hand-rolled, and that is the point.** Registering
+// Flutter's own `onDoubleTap` beside a tap puts both recognisers in one arena,
+// and the tap then cannot fire until the double-tap window has expired - which
+// buys a second way into the composer at the price of 300ms of lag on *every*
+// expansion, the commonest click there is. So the first click expands
+// immediately and arms a timer; a second click while that timer is live undoes
+// the expansion and opens the composer instead. A double-click is one gesture,
+// not a click plus an edit, so the row is left exactly as it was found.
 //
 // **Selecting several** is Ctrl+click with a mouse and *Select* in the bar
 // with a finger. Once anything is selected a plain click or tap on a row toggles
@@ -39,8 +49,14 @@
 //
 // Editing is the pencil inside that bar on both, and expanding is an action in
 // it on both - a phone has no left-click to spare and a mouse has no reason to
-// give up a cheap way into the read view.
+// give up a cheap way into the read view. The double-click is a *shortcut* to
+// that pencil, not a replacement for it: it is the one thing on this row a
+// finger cannot do, so the bar stays the way both pointers can always get
+// there.
 
+import 'dart:async';
+
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -157,8 +173,15 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
   /// picker are anchored to now that none of them has an icon to hang off.
   final _rowKey = GlobalKey();
 
+  /// Live between the two halves of a double-click. A click arriving while it
+  /// is still running is the second half; it clears itself after
+  /// [kDoubleTapTimeout], which is what makes two deliberate clicks a minute
+  /// apart two separate clicks.
+  Timer? _secondClick;
+
   @override
   void dispose() {
+    _secondClick?.cancel();
     _out.dispose();
     super.dispose();
   }
@@ -228,6 +251,31 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
       return;
     }
     setState(() => _expanded = !_expanded);
+  }
+
+  /// A left-click on the text, under a pointer.
+  ///
+  /// The first one expands the row and arms [_secondClick]; one that arrives
+  /// while that is live is a double-click, which puts the expansion back and
+  /// opens the composer. See the note in the file header for why this is not
+  /// `GestureDetector.onDoubleTap`.
+  void _clickText() {
+    final open = widget.onOpen;
+
+    if (_secondClick != null && open != null) {
+      _secondClick!.cancel();
+      _secondClick = null;
+      // Undo the first click of the pair - but only the in-place expansion.
+      // Where the shell takes the read view ([TaskRow.onExpand]) there is
+      // nothing to put back, and calling it again would open it twice.
+      if (widget.onExpand == null) setState(() => _expanded = !_expanded);
+      open();
+      return;
+    }
+
+    _toggleExpanded();
+    _secondClick?.cancel();
+    _secondClick = Timer(kDoubleTapTimeout, () => _secondClick = null);
   }
 
   /// What the bar offers for this row. An action whose callback is null is not
@@ -482,7 +530,7 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                         // task - see the table in the file header.
                         onTap: () {
                           if (_selectInstead()) return;
-                          touch ? _openActions() : _toggleExpanded();
+                          touch ? _openActions() : _clickText();
                         },
                       ),
                     ),

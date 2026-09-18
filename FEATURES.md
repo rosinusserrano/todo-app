@@ -23,6 +23,13 @@ Newest changes are noted in the changelog at the bottom.
   not on screen, and that the smallest screen in the house spent a line per task
   on buttons. The bar is drawn at the size the pointer needs, because it is no
   longer competing with the title for room.
+- **Double-click a task to edit it** (mouse only). A single click still
+  expands the row to read it, and the pencil in the action bar still opens the
+  same editor — this is the shortcut for the case where you already know what
+  you want to change. It leaves the row as it found it: the expansion the first
+  click opened is put back, so nothing is waiting behind the editor when you
+  close it. The single click does **not** wait to find out whether a second one
+  is coming, so reading a task is as immediate as it ever was.
 - **Delete a task** — the ✕ in that bar removes it *without* logging (a plain
   dismiss).
 - **Empty state** — friendly "Nothing left" message when the list is clear.
@@ -1158,6 +1165,8 @@ reminders are both there now**, queued for 0.18.0.
     ⋯ — instead of three rows.
   - **Radio: search, stars and your own streams.** Search the directory by
     name, star stations into a Saved list, and add a stream by URL.
+  - **Double-click a task to edit it** on desktop, without going through the
+    action bar.
   - **The split is yours to move.** Drag the line between the list and a panel
     or the calendar, or fold the list away to give the other side the width.
 - **0.28.0** — **Todos that arrive on their own, a shelf you have to read, and

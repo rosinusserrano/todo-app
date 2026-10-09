@@ -1,7 +1,7 @@
 // How loud the pile of side thoughts is allowed to get.
 //
 // One pile, one escalation, drawn wherever the current layout put the control:
-// the footer's bar under a pointer, [ThoughtBubble] under a thumb. Both read
+// the footer's bar under a pointer, the view bar ([ViewBar]) under a thumb. Both read
 // the numbers from here rather than each keeping their own, because two copies
 // of "when does this start pulsing" drift apart one literal at a time and the
 // symptom - a phone that nags at a different pile size than a desktop - is not

@@ -10,11 +10,11 @@
 // Desktop only - iOS and Android have no concept of a system-wide hotkey, and
 // registering one is not merely unsupported there but meaningless.
 
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+
+import 'platform.dart';
 
 typedef ShortcutAction = Future<void> Function();
 
@@ -24,8 +24,7 @@ class GlobalShortcuts {
   final ShortcutAction onAddTask;
   final ShortcutAction onAddThought;
 
-  static bool get supported =>
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  static bool get supported => isDesktop;
 
   bool _registered = false;
 

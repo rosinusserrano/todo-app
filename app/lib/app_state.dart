@@ -410,8 +410,11 @@ class AppState extends ChangeNotifier {
     String recurFrom = RecurFrom.schedule,
     int? recurLead,
     String? groupUuid,
+    String? workspaceUuid,
   }) async {
-    final ws = currentWorkspaceUuid;
+    // A workspace other than the current one is a capture aimed elsewhere from
+    // the add field; the list on screen does not switch to follow it.
+    final ws = workspaceUuid ?? currentWorkspaceUuid;
     if (ws == null || text.trim().isEmpty) return;
 
     final repeat = _resolveRepeat(
@@ -906,9 +909,11 @@ class AppState extends ChangeNotifier {
     if (tasks.isEmpty) return;
     var order = await _store.nextSortOrder(workspaceUuid);
     final stamp = nowStamp();
+    // Shelf to shelf keeps the title as it is: the new shelf is context too.
+    final offShelf = groupUuid == null ? await _offShelf() : (Task t) => t;
     for (final t in tasks) {
       await _store.putTask(
-        t.copyWith(
+        offShelf(t).copyWith(
           workspaceUuid: workspaceUuid,
           groupUuid: groupUuid,
           clearGroup: groupUuid == null,
@@ -952,12 +957,43 @@ class AppState extends ChangeNotifier {
     };
   }
 
+  /// "Shelf: title", for a task coming off a shelf onto a list.
+  ///
+  /// On the shelf the shelf *is* the context - "remove concentration sounds"
+  /// under "Todo Widget" says which app - and on a list of fifty it is gone.
+  /// Not doubled when the title already starts with it (parked, moved back,
+  /// parked again), and nothing for an untitled shelf.
+  static String shelfPrefixed(String text, String? shelf) {
+    final name = shelf?.trim() ?? '';
+    if (name.isEmpty) return text;
+    final prefix = '$name: ';
+    return text.startsWith(prefix) ? text : '$prefix$text';
+  }
+
+  /// The rewrite for each task in a batch leaving its shelf for a list. Async
+  /// once, for the one query that reads the titles; the returned function is
+  /// then applied per row. The template a repeat is regenerated from gets the
+  /// prefix too, or the next occurrence would arrive without it.
+  Future<Task Function(Task)> _offShelf() async {
+    final titles = await _store.groupTitles();
+    return (Task t) {
+      final shelf = t.groupUuid == null ? null : titles[t.groupUuid];
+      if (shelf == null) return t;
+      final template = t.recurText;
+      return t.copyWith(
+        text: shelfPrefixed(t.text, shelf),
+        recurText: template == null ? null : shelfPrefixed(template, shelf),
+      );
+    };
+  }
+
   /// Back onto the current list, at the bottom rather than wherever its old
   /// sort_order happens to land it.
   Future<void> unparkTask(Task t) async {
     final ws = t.workspaceUuid;
+    final offShelf = await _offShelf();
     await _store.putTask(
-      t.copyWith(
+      offShelf(t).copyWith(
         clearGroup: true,
         sortOrder: await _store.nextSortOrder(ws),
         updatedAt: nowStamp(),
@@ -1036,9 +1072,14 @@ class AppState extends ChangeNotifier {
 
     var order = await _store.nextSortOrder(ws);
     final stamp = nowStamp();
+    final offShelf = await _offShelf();
     for (final t in tasks) {
       await _store.putTask(
-        t.copyWith(clearGroup: true, sortOrder: order++, updatedAt: stamp),
+        offShelf(t).copyWith(
+          clearGroup: true,
+          sortOrder: order++,
+          updatedAt: stamp,
+        ),
       );
     }
     await refreshTasks();
@@ -1052,8 +1093,11 @@ class AppState extends ChangeNotifier {
   /// app exists to avoid.
   Future<void> deleteGroup(ParkedGroup g) async {
     final stamp = nowStamp();
+    final offShelf = await _offShelf();
     for (final t in await _store.allTasksInGroup(g.uuid)) {
-      await _store.putTask(t.copyWith(clearGroup: true, updatedAt: stamp));
+      await _store.putTask(
+        offShelf(t).copyWith(clearGroup: true, updatedAt: stamp),
+      );
     }
     await _store.putGroup(g.copyWith(deletedAt: stamp, updatedAt: stamp));
     await refreshTasks();
@@ -1218,6 +1262,41 @@ class AppState extends ChangeNotifier {
   Future<void> promoteThought(SideThought s) async {
     await addTask(s.text);
     await resolveThought(s);
+  }
+
+  /// Several thoughts at once, onto any workspace's list or shelf - each
+  /// becomes a task there and the thought is resolved, as [promoteThought]
+  /// does for one onto this list. One pass and one refresh, the same shape as
+  /// [moveTasks].
+  Future<void> moveThoughts(
+    List<SideThought> thoughts, {
+    required String workspaceUuid,
+    String? groupUuid,
+  }) async {
+    final keep = [
+      for (final t in thoughts)
+        if (t.text.trim().isNotEmpty) t,
+    ];
+    if (keep.isEmpty) return;
+    var order = await _store.nextSortOrder(workspaceUuid);
+    final stamp = nowStamp();
+    for (final t in keep) {
+      await _store.putTask(
+        Task(
+          uuid: newId(),
+          workspaceUuid: workspaceUuid,
+          text: t.text.trim(),
+          createdAt: stamp,
+          sortOrder: order++,
+          groupUuid: groupUuid,
+          updatedAt: stamp,
+        ),
+      );
+      await _store.putThought(t.copyWith(resolvedAt: stamp, updatedAt: stamp));
+    }
+    await refreshTasks();
+    await refreshThoughts();
+    _mutated();
   }
 
   Future<void> resolveThought(SideThought s) async {

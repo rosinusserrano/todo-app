@@ -48,6 +48,7 @@ Future<MoveTarget?> showMovePicker(
   required List<Workspace> workspaces,
   required Map<String, List<ParkedGroup>> groups,
   required Future<ParkedGroup?> Function() onCreateGroup,
+  bool includeHereList = false,
 }) async {
   final here = groups[currentWorkspaceUuid] ?? const <ParkedGroup>[];
   final others = [
@@ -60,6 +61,15 @@ Future<MoveTarget?> showMovePicker(
     position: position,
     color: T.bgSolid,
     items: [
+      // A task is already on this list, so the picker never offered it; a
+      // side thought is on no list at all, and this one is its commonest
+      // destination.
+      if (includeHereList)
+        _item(
+          MoveTarget(currentWorkspaceUuid),
+          'This list',
+          icon: Icons.checklist_rounded,
+        ),
       if (here.isNotEmpty) const _Header('Park it here'),
       for (final g in here) _item(MoveTarget(currentWorkspaceUuid, g.uuid), g.title),
       const PopupMenuItem(

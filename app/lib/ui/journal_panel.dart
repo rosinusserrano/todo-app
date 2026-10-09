@@ -32,6 +32,9 @@
 //   Ctrl+Alt+S    save and go back to the list, for when the entry is finished
 //                 rather than being re-read.
 
+import 'dart:async' show Timer;
+
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -114,6 +117,14 @@ class _JournalViewState extends State<JournalView> {
 
   bool _editorOpen = false;
   bool _reading = false;
+
+  /// Live for [kDoubleTapTimeout] after a click on the list opened the reader:
+  /// a second click inside that window, which lands on the reader since the
+  /// reader has replaced the list, opens the editor instead. Hand-rolled for
+  /// the reason task_row.dart's `_clickText` is: `onDoubleTap` beside the tap
+  /// would hold every single click back by the double-tap window, and opening
+  /// a note to read it is the commoner of the two.
+  Timer? _secondClick;
   bool _settingUp = false; // reachable "set a password" screen
   JournalItem? _editing;
   String? _error;
@@ -121,6 +132,7 @@ class _JournalViewState extends State<JournalView> {
 
   @override
   void dispose() {
+    _secondClick?.cancel();
     _saveDraftOnTheWayOut();
     _password.dispose();
     _confirm.dispose();
@@ -250,6 +262,24 @@ class _JournalViewState extends State<JournalView> {
   }
 
   /// Picking one from the list *reads* it.
+  /// A click on the list: read the entry at once, and arm the double-click.
+  void _clickRow(JournalItem item) {
+    _openExisting(item);
+    if (!_reading) return;
+    _secondClick?.cancel();
+    _secondClick = Timer(kDoubleTapTimeout, () => _secondClick = null);
+  }
+
+  /// A pointer went down on the reader. Inside the double-click window it is
+  /// the second click of one gesture, so it edits.
+  void _readerPointerDown(PointerDownEvent _) {
+    final armed = _secondClick;
+    if (armed == null || !armed.isActive) return;
+    armed.cancel();
+    _secondClick = null;
+    _edit();
+  }
+
   void _openExisting(JournalItem item) {
     if (item.locked) return; // cannot be read here, so cannot be opened
     _title.text = item.title;
@@ -398,7 +428,15 @@ class _JournalViewState extends State<JournalView> {
     if (widget.locked) return _gate(setup: false);
     if (_settingUp) return _gate(setup: true);
     if (_editorOpen) return _editor();
-    if (_reading) return _reader();
+    // A Listener rather than a recogniser: it never enters the arena, so the
+    // reader's own taps and scrolling are untouched.
+    if (_reading) {
+      return Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: _readerPointerDown,
+        child: _reader(),
+      );
+    }
     return _list();
   }
 
@@ -519,7 +557,7 @@ class _JournalViewState extends State<JournalView> {
         ? 'Locked'
         : (untitled ? 'Untitled' : item.title.trim());
     return InkWell(
-      onTap: () => _openExisting(item),
+      onTap: () => _clickRow(item),
       borderRadius: BorderRadius.circular(T.radius),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 2),

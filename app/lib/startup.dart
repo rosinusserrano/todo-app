@@ -15,9 +15,10 @@ import 'package:flutter/foundation.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'platform.dart';
+
 class StartupSetting {
-  static bool get supported =>
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  static bool get supported => isDesktop;
 
   bool _ready = false;
 

@@ -10,15 +10,11 @@
 // The app reads and writes only this database and works fully offline. Sync is
 // a background reconciliation on top, never something the UI waits for.
 
-import 'dart:io' show Platform;
+// Written against the sqflite API alone; which implementation backs it (FFI on
+// desktop, the plugin on mobile, WASM in a browser) is db_factory.dart's call.
+import 'package:sqflite_common/sqflite.dart';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-// sqflite_common_ffi re-exports sqflite's API, so one import covers both. The
-// `sqflite` package stays in pubspec.yaml regardless: it registers the native
-// plugin used on iOS and Android.
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
+import 'db_factory.dart';
 import 'models.dart';
 
 class LocalStore {
@@ -68,14 +64,8 @@ class LocalStore {
   /// `:memory:` otherwise all return the *same* database - which silently
   /// shares state between tests that each believe they are starting clean.
   static Future<LocalStore> open({String? path, bool singleInstance = true}) async {
-    // sqflite ships a mobile implementation only; desktop needs the FFI one.
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
-    }
-
-    final dbPath = path ??
-        p.join((await getApplicationSupportDirectory()).path, 'todo.db');
+    await initDatabaseFactory();
+    final dbPath = path ?? await defaultDatabasePath();
 
     final db = await databaseFactory.openDatabase(
       dbPath,
@@ -581,6 +571,14 @@ class LocalStore {
         whereArgs: [workspaceUuid],
         orderBy: 'sort_order, created_at');
     return rows.map(Task.fromMap).toList();
+  }
+
+  /// Every shelf's title by uuid, in every workspace. For prefixing a task
+  /// that leaves its shelf - which may be another workspace's, through the
+  /// move picker - and small enough that one query beats a lookup per task.
+  Future<Map<String, String>> groupTitles() async {
+    final rows = await _db.query('parked_groups', columns: ['uuid', 'title']);
+    return {for (final r in rows) r['uuid'] as String: r['title'] as String};
   }
 
   Future<List<ParkedGroup>> parkedGroups(String workspaceUuid) async {

@@ -38,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../sync/models.dart';
+import '../layout.dart';
 import '../theme.dart';
 import 'panel_header.dart';
 import 'parked_review.dart';
@@ -399,7 +400,7 @@ class _Group extends StatelessWidget {
                       group.title,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: T.fsLabel,
+                        fontSize: T.fsBody,
                         color: due ? tint : T.text,
                         fontWeight: T.wMedium,
                       ),
@@ -408,7 +409,7 @@ class _Group extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     '${tasks.length}',
-                    style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+                    style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
                   ),
                   const Spacer(),
                   Text(
@@ -435,26 +436,17 @@ class _Group extends StatelessWidget {
                       message: tasks.length == 1
                           ? 'Put it back onto the list'
                           : 'Put all ${tasks.length} back onto the list',
-                      child: InkWell(
+                      child: _ShelfButton(
+                        icon: Icons.north_east_rounded,
+                        color: accent,
                         onTap: onActivate,
-                        borderRadius: BorderRadius.circular(T.radius),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: T.s1, vertical: 2),
-                          child: Icon(
-                            Icons.north_east_rounded,
-                            size: 15,
-                            color: accent,
-                          ),
-                        ),
                       ),
                     ),
-                  InkWell(
-                    onTap: onEdit,
-                    borderRadius: BorderRadius.circular(T.radius),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: T.s1, vertical: 2),
-                      child: Icon(Icons.more_horiz, size: 15, color: T.muted),
+                  Tooltip(
+                    message: 'Edit the group',
+                    child: _ShelfButton(
+                      icon: Icons.more_horiz,
+                      onTap: onEdit,
                     ),
                   ),
                 ],
@@ -547,21 +539,21 @@ class _AddToShelfState extends State<_AddToShelf> {
       padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, T.s1),
       child: Row(
         children: [
-          Icon(Icons.add, size: 14, color: widget.accent),
+          Icon(Icons.add, size: 16, color: widget.accent),
           const SizedBox(width: 4),
           Expanded(
             child: TextField(
               controller: _controller,
               focusNode: _focus,
               enabled: !_busy,
-              style: const TextStyle(fontSize: T.fsLabel, color: T.text),
+              style: const TextStyle(fontSize: T.fsBody, color: T.text),
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                contentPadding: const EdgeInsets.symmetric(vertical: T.s2),
                 hintText: 'Add to ${widget.group.title}',
                 hintStyle: const TextStyle(
-                  fontSize: T.fsLabel,
+                  fontSize: T.fsBody,
                   color: T.muted,
                 ),
               ),
@@ -597,30 +589,24 @@ class _ParkedRow extends StatelessWidget {
           Expanded(
             child: Text(
               task.text,
-              style: const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.35),
+              style: const TextStyle(
+                fontSize: T.fsBody,
+                color: T.text,
+                height: 1.35,
+              ),
             ),
           ),
           Tooltip(
             message: 'Back onto the list',
-            child: InkWell(
+            child: _ShelfButton(
+              icon: Icons.north_east_rounded,
+              color: accent,
               onTap: onUnpark,
-              borderRadius: BorderRadius.circular(T.radius),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: T.s1, vertical: 3),
-                child: Icon(Icons.north_east_rounded, size: 14, color: accent),
-              ),
             ),
           ),
           Tooltip(
             message: 'Check it off from here',
-            child: InkWell(
-              onTap: onComplete,
-              borderRadius: BorderRadius.circular(T.radius),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: T.s1, vertical: 3),
-                child: Icon(Icons.check_rounded, size: 14, color: T.muted),
-              ),
-            ),
+            child: _ShelfButton(icon: Icons.check_rounded, onTap: onComplete),
           ),
         ],
       ),
@@ -710,7 +696,7 @@ class _GroupDialogState extends State<_GroupDialog> {
           const SizedBox(height: 14),
           const Text(
             'Review this group',
-            style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+            style: TextStyle(fontSize: T.fsLabel, color: T.muted),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -719,7 +705,7 @@ class _GroupDialogState extends State<_GroupDialog> {
             children: [
               for (final e in _options.entries)
                 ChoiceChip(
-                  label: Text(e.value, style: const TextStyle(fontSize: T.fsMeta)),
+                  label: Text(e.value, style: const TextStyle(fontSize: T.fsLabel)),
                   selected: _days == e.key,
                   onSelected: (_) => setState(() => _days = e.key),
                 ),
@@ -780,7 +766,10 @@ class _ReviewButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(T.radius),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: 2),
+          padding: EdgeInsets.symmetric(
+            horizontal: T.s2,
+            vertical: Layout.of(context).touch ? T.s2 : 2,
+          ),
           decoration: BoxDecoration(
             color: due ? tint.withValues(alpha: 0.16) : T.surface,
             borderRadius: BorderRadius.circular(T.radius),
@@ -788,12 +777,42 @@ class _ReviewButton extends StatelessWidget {
           child: Text(
             'Review',
             style: TextStyle(
-              fontSize: T.fsMeta,
+              fontSize: T.fsLabel,
               color: color,
               fontWeight: due ? T.wMedium : T.wNormal,
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A shelf's icon control: a square the size the layout says a target is.
+///
+/// These were 14-15px glyphs with two or three pixels of padding - a control
+/// you aim at twice on a phone - and the shelf is a view used mostly there.
+class _ShelfButton extends StatelessWidget {
+  const _ShelfButton({
+    required this.icon,
+    required this.onTap,
+    this.color = T.muted,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = Layout.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(T.radius),
+      child: SizedBox(
+        width: layout.tapTarget,
+        height: layout.tapTarget,
+        child: Icon(icon, size: layout.actionIcon, color: color),
       ),
     );
   }

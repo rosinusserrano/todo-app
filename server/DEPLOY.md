@@ -264,6 +264,42 @@ nothing — unblocking restores the account and its rows intact.
 
 ---
 
+## Serving the app as a website
+
+The server also serves the Flutter web build, from the same origin as `/api/*`,
+so the browser needs no CORS and no configured address. It serves whatever is
+in `TODO_SYNC_WEB` and reads it per request, so publishing a new build is a copy
+— no restart. Put the directory somewhere the service can read under
+`ProtectHome=true` (so not under `/home`) and that the person building owns, so
+publishing needs no sudo:
+
+```sh
+# once
+sudo install -d -o marco -g marco -m 755 /srv/todo-web
+./server/build-web.sh /srv/todo-web          # build + publish
+echo 'TODO_SYNC_WEB=/srv/todo-web' | sudo tee -a /etc/todo-sync.env
+sudo systemctl restart todo-sync             # it checks for index.html at start
+
+# every time after
+./server/build-web.sh /srv/todo-web
+```
+
+The script runs `dart run sqflite_common_ffi_web:setup` first, which fetches
+`sqlite3.wasm` and `sqflite_sw.js` into `app/web/`. They are not committed. A
+build without them loads, paints, and then fails on the first database call.
+
+**Nothing is compiled into the bundle** — unlike link-gateway, this server is on
+the open internet, so a baked-in token would be a public one. The sync screen
+prefills the page's own address and asks for the token.
+
+**Serve it at the root.** A Flutter bundle hard-codes where its assets live;
+under a path it was not built for every asset 404s and the page stays blank.
+
+Every file is sent `Cache-Control: no-cache`. Flutter does not hash its file
+names, so anything weaker lets a phone keep running last week's `main.dart.js`.
+
+---
+
 ## Backups
 
 Everything is one SQLite file. Stop the service or use the online backup API;

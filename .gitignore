@@ -47,3 +47,8 @@ app/macos/Pods/
 # without this line 6.5 GB of Rust target/ turns up as untracked. Safe to
 # delete from disk; the source is in the history under the legacy-tauri tag.
 /src-tauri/
+
+# Fetched by `dart run sqflite_common_ffi_web:setup`, version-matched to the
+# resolved sqlite3 package - see server/build-web.sh. Never committed.
+app/web/sqlite3.wasm
+app/web/sqflite_sw.js

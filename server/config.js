@@ -10,10 +10,12 @@
 //   TODO_SYNC_DB      default ./server/data/sync.db
 //   TODO_SYNC_SECRET  default: generated once into secret.txt beside the database
 //   TODO_SYNC_HOST    default 0.0.0.0 (set to 127.0.0.1 to refuse LAN clients)
+//   TODO_SYNC_WEB     default ./app/build/web; the Flutter web build to serve
 
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const PORT = Number(process.env.TODO_SYNC_PORT ?? 8787);
 export const HOST = process.env.TODO_SYNC_HOST ?? '0.0.0.0';
@@ -43,3 +45,21 @@ export function loadSecret() {
   writeFileSync(SECRET_PATH, secret + '\n', { mode: 0o600 });
   return secret;
 }
+
+/**
+ * The built Flutter web client, served by this same server so the browser talks
+ * to `/api/*` on the origin it was loaded from - no CORS, no allow-list to keep
+ * in step with a hostname, and no second thing to deploy. Same arrangement as
+ * `../link-gateway-app`.
+ *
+ * Defaults to the build output in this repository, so `flutter build web`
+ * followed by `npm run server` serves the site without configuration. The
+ * installed service sets `TODO_SYNC_WEB` to wherever the copy lives.
+ *
+ * Serving is skipped entirely when the directory has no index.html, because a
+ * sync server with no web build is the ordinary case.
+ */
+export const WEB_ROOT = resolve(
+  process.env.TODO_SYNC_WEB ??
+    fileURLToPath(new URL('../app/build/web', import.meta.url))
+);

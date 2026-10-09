@@ -21,6 +21,129 @@ Rules for keeping it honest:
 
 ## Now
 
+Marco's parked shelf "Todo Widget" (Meine Apps), gone through on 2026-10-08.
+Capture comes first because it is the thing that has been "bugging me the
+whole time": both quick actions, then the phone's thoughts UI, then making
+adding a task visible and able to aim at any workspace. The rest is ordered
+small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
+should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
+keep them). Already shipped: "double click TODO WIDGET edits task" (43).
+
+### 44. The "Add task" and "Park a thought" quick actions do nothing  `[~]`
+
+Reported on iOS. Fixed in `main.dart` and committed 2026-10-09 (together
+with the web build); waiting on a device check.
+
+- [x] **44.1** Cause, cold start: iOS hands the launching shortcut over as
+      soon as the handler is installed, in `initState`, before the first
+      build. `_layout` was still its desktop default, so "Park a thought" went
+      to the footer field a phone does not draw. Every entry now goes through
+      `_afterLayout`, which waits for `endOfFrame` until `_laidOut`.
+- [x] **44.2** Cause, warm start: `_jumpToAddTask` opened the field without
+      leaving what stands where it is drawn - the full-window calendar, a task
+      expanded to the screen, a selection's bar, an open capture pane. It now
+      clears all four (and the session view) before `_openAdd`.
+- [ ] **44.3** Check on the iPhone, cold (app killed) and warm, both entries.
+      No automated test: nothing pumps `WidgetShell` (window_manager, tray),
+      and the cause was the ordering against the first frame.
+
+### 45. Thoughts on a phone: a tab, a swipe up, a plain sheet  `[~]`
+
+Done and committed 2026-10-09. The swipe up still wants a check on the
+iPhone, against the system's go-home gesture.
+
+- [x] **45.1** `kBarViews`: Thoughts replaces History in the bar (Tasks,
+      Notes, Parked, Thoughts). The swipe between views follows for free.
+- [x] **45.2** History moves to the settings sheet: one row, "History", that
+      closes the sheet and opens the view. The ▾ menu on desktop keeps it.
+- [x] **45.3** The Thoughts entry pulses with the pile (`ThoughtPulse`, the
+      same escalation the desktop footer uses) and carries the count.
+- [x] **45.4** A swipe up on the view bar opens the capture sheet (distance or
+      velocity, as the bubble's was). Must start on the bar, above the iOS
+      home indicator, so it does not fight the system's go-home gesture.
+- [x] **45.5** While the Thoughts view is open, a one-line hint just above the
+      bar: "Slide up to add a thought".
+- [x] **45.6** `ThoughtSheet` goes plain: no 💭, no title, no "What just came
+      to mind…" - a field, the caret in it, a close. The quick action's
+      "Note on <task>" use keeps its title, since that one has to say which
+      task.
+- [x] **45.7** `ThoughtBubble` is removed; `ThoughtFooter` stays for desktop.
+      Tests updated (thought bubble / footer tests, view bar order),
+      CLAUDE.md's thought-bubble paragraphs rewritten.
+
+Items 46-54: done, analyze clean, 598 tests green, committed 2026-10-09.
+
+### 46. Adding a task is visible wherever the list is  `[x]`
+
+- [x] **46.1** A "＋ Add task" line at the head of the task list on every
+      layout, which becomes the add field in place when pressed (same
+      `_adding` state; N and the bar's ＋ still open it). On wide windows this
+      is what replaces "the ＋ is over in the rail".
+
+### 47. The add field can aim at another workspace  `[x]`
+
+- [x] **47.1** A workspace chip at the start of the open add field, defaulting
+      to the current one; tapping it picks another. The task is written there
+      and the list does not switch (a confirmation line says where it went).
+- [x] **47.2** `AppState.addTask(..., workspaceUuid:)`; test.
+
+### 48. Moving out of a shelf keeps the shelf's name  `[x]`
+
+- [x] **48.1** When a task leaves a parked group for a workspace list - the
+      group's ↗, a task's ↗, the move picker, the review's "to list" - its
+      title is prefixed "<Group>: ". Not when moving shelf to shelf, and not
+      twice if the prefix is already there.
+- [x] **48.2** Test in `parked_test.dart`.
+
+### 49. Select several thoughts and move them  `[x]`
+
+Two items on the shelf, one feature.
+
+- [x] **49.1** Selection in the thoughts panel, as on the task list (Ctrl+click
+      / "Select" on touch).
+- [x] **49.2** Move the selection through `move_picker.dart` to any
+      workspace's list or shelf: each thought becomes a task there and is
+      resolved, in one pass (`AppState.moveThoughts`). Test.
+
+### 50. Double-click a note to edit it  `[x]`
+
+- [x] **50.1** Journal list: double-click opens the editor directly, single
+      click still opens the reader at once - the same hand-rolled timer as
+      `_clickText` in `task_row.dart`, not `onDoubleTap`. Test.
+
+### 51. View tabs in the narrow desktop window  `[x]`
+
+- [x] **51.1** Show `ViewBar` (at the bottom, as on the phone) on a narrow
+      desktop window instead of hiding the views behind the ▾ menu. Gate it
+      in `Layout`, not on `touch`. (`Layout.hasViewBar`. The ▾ stays under a
+      pointer - it holds History. The footer keeps its 💭 under a pointer and
+      drops its meter, which the bar now carries.)
+
+### 52. Workspace tiles: hover to expand, a pen to edit  `[x]`
+
+- [x] **52.1** Desktop, narrow window: a workspace tile expands on hover; a ✎
+      beside each title opens the editor; clicking the current workspace's
+      title no longer does (`workspace_bar.dart:97`,
+      `workspace_rail.dart:122` / `:246`). Read as: collapsed-rail dots expand
+      into a name + ✎ tile on hover; full-rail rows show ✎ on hover; the
+      bar's pill opens the switcher from its name and grows a ✎ on hover, and
+      the switcher has "Edit …" for touch. **Marco to confirm this reading.**
+
+### 53. Bigger controls in the shelf and thought editors  `[x]`
+
+- [x] **53.1** Parked-group and thought edit controls at `Layout.tapTarget`,
+      and their text at the body size rather than meta - "everything larger,
+      font size too".
+
+### 54. `[[ ]]` links between tasks and notes - design only  `[x]`
+
+- [x] **54.1** Roadmap entry first (ROADMAP.md, *Next*: `[[ ]]` links) (link by title or id, rename, autocomplete,
+      what a dangling link shows). No code until Marco has read it.
+
+---
+
+## Done — the 2026-09-17 list
+
 Ten items, agreed 2026-09-17. Ordered so the bug goes first, the small ones
 bank value next, and the two that rearrange the shell (the split and
 multi-select) land when the rest is green. Item 3 is a moodboard to choose

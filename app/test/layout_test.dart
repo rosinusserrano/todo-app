@@ -11,6 +11,7 @@
 //      asserted against contents: the week grid appears exactly when a day
 //      column clears [Layout.minDayColumn], not at a number someone liked.
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -367,7 +368,7 @@ void main() {
       expect(find.text('History'), findsOneWidget);
     });
 
-    testWidgets('tapping another workspace switches, tapping yours edits',
+    testWidgets('a click goes to a workspace, yours included; only ✎ edits',
         (tester) async {
       final selected = <String>[];
       final edited = <String>[];
@@ -378,12 +379,17 @@ void main() {
       );
 
       await tester.tap(find.text('Work'));
-      expect(selected, ['Work']);
-      expect(edited, isEmpty);
-
-      // Carried over from the tab, where the name was always the edit control.
       await tester.tap(find.text('Home'));
-      expect(edited, ['Home']);
+      expect(selected, ['Work', 'Home']);
+      expect(edited, isEmpty, reason: 'the current name is not an edit control');
+
+      // Hovering a row reveals its ✎ - any row, not just the current one.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(find.text('Work')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Edit workspace').at(1));
+      expect(edited, ['Work']);
+      await mouse.removePointer();
     });
 
     testWidgets('Tasks is a destination, not just the absence of one',
@@ -407,17 +413,35 @@ void main() {
 
       expect(tester.getSize(find.byType(WorkspaceRail)).width,
           Layout.railCollapsedWidth);
-      // No names on the strip - they are in the tooltips.
+      // No names on the strip until a dot is hovered.
       expect(find.text('Work'), findsNothing);
-      expect(find.byTooltip('Work'), findsOneWidget);
+      expect(find.bySemanticsLabel('Work'), findsOneWidget);
       for (final view in ['Tasks', 'Notes', 'Parked', 'History']) {
         expect(find.byTooltip(view), findsOneWidget, reason: view);
       }
 
-      await tester.tap(find.byTooltip('Work'));
+      await tester.tap(find.bySemanticsLabel('Work'));
       await tester.tap(find.byTooltip('Tasks'));
       expect(selected, ['Work']);
       expect(back, 1);
+    });
+
+    testWidgets('collapsed, a hovered dot expands into its name and a ✎',
+        (tester) async {
+      final edited = <String>[];
+      await pump(tester, collapsed: true, onEdit: (w) => edited.add(w.name));
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(
+        location: tester.getCenter(find.bySemanticsLabel('Work')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Work'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Edit workspace'));
+      await tester.pumpAndSettle();
+      expect(edited, ['Work']);
+      await mouse.removePointer();
     });
 
     testWidgets('Add task is on both shapes', (tester) async {

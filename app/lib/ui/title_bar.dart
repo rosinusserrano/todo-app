@@ -27,7 +27,7 @@ class TitleBar extends StatelessWidget {
     required this.isDesktop,
     required this.pinned,
     required this.onTogglePin,
-    required this.onToggleSound,
+    this.onToggleSound,
     required this.soundPlaying,
     required this.soundPaused,
     required this.onTogglePause,
@@ -48,7 +48,8 @@ class TitleBar extends StatelessWidget {
   final bool pinned;
   final VoidCallback onTogglePin;
 
-  final VoidCallback onToggleSound;
+  /// Null hides the button: the browser build has no concentration sound.
+  final VoidCallback? onToggleSound;
 
   /// Lights the headphones in the workspace colour while something is loaded,
   /// so the sheet does not have to be open to tell. True while paused too - the
@@ -127,14 +128,15 @@ class TitleBar extends StatelessWidget {
               volume: volume,
               onVolumeChanged: onVolumeChanged,
             ),
-          _Btn(
-            tooltip: 'Concentration sound',
-            icon: soundPlaying && !soundPaused
-                ? Icons.headphones
-                : Icons.headphones_outlined,
-            tint: soundPlaying ? accent : null,
-            onPressed: onToggleSound,
-          ),
+          if (onToggleSound case final onToggleSound?)
+            _Btn(
+              tooltip: 'Concentration sound',
+              icon: soundPlaying && !soundPaused
+                  ? Icons.headphones
+                  : Icons.headphones_outlined,
+              tint: soundPlaying ? accent : null,
+              onPressed: onToggleSound,
+            ),
           if (isDesktop) ...[
             _Btn(
               tooltip: pinned ? 'Unpin' : 'Always on top',

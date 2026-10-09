@@ -1,4 +1,8 @@
-// The four content views, as icons along the bottom edge. Touch only.
+// The three content views and the thought pile, as icons along the bottom
+// edge. Wherever there is no rail (`Layout.hasViewBar`): it began touch-only,
+// and the narrow desktop window got it too once the menu's cost - views you
+// cannot see until you press something - turned out to be paid by a mouse as
+// well.
 //
 // On a desktop these live behind the workspace bar's ▾ menu, and that is right
 // there: they are opened occasionally, the window is 340px wide, and a menu
@@ -19,15 +23,33 @@
 // here and not simply the state of having nothing selected: the way back has to
 // be as visible as the way in.
 //
-// Side thoughts are not here either. The pile is global rather than
-// per-workspace and its way in is the count on the footer directly below, which
-// is where the pressure is already shown; a second door to it in the bar above
-// would be two controls for one pile, one of which says how full it is.
+// **Side thoughts are the fourth entry, and History gave up its place.** The
+// pile used to be reached through a bubble floating over the list, opened by
+// swiping the bubble up - a gesture on a small floating target that nothing on
+// screen announced. Thoughts are written and emptied all day; History is looked
+// back at occasionally, which is a settings-sheet kind of visit, so it moved
+// there (desktop keeps it in the ▾ menu). Two things came with the move:
+//
+//   the pressure   the whole bar tints and pulses as the pile grows - the same
+//                  escalation the desktop footer runs, on the same numbers
+//                  (ThoughtPulse) - and the Thoughts entry carries the count.
+//   writing one    a swipe **up** on the bar opens the capture pane. It is the
+//                  commonest capture there is and the bar is where the thumb
+//                  already rests, so it is one gesture with nothing to aim at.
+//                  The bar lifts with the finger, which is how the gesture
+//                  shows itself; and while the pile is open a line just above
+//                  the bar says so in words, since that is the moment someone
+//                  is looking at the thoughts and wondering how to add one.
+//
+// The swipe has to *start* on the bar. It sits inside the shell's SafeArea,
+// above the iOS home indicator, and a swipe from the very bottom edge belongs
+// to the system.
 
 import 'package:flutter/material.dart';
 
 import '../layout.dart';
 import '../theme.dart';
+import 'thought_pressure.dart';
 import 'workspace_bar.dart' show WorkspaceView;
 
 /// The views this bar offers, left to right. Also the order a swipe moves
@@ -39,16 +61,18 @@ const kBarViews = <WorkspaceView?>[
   null,
   WorkspaceView.notes,
   WorkspaceView.parked,
-  WorkspaceView.history,
+  WorkspaceView.thoughts,
 ];
 
-class ViewBar extends StatelessWidget {
+class ViewBar extends StatefulWidget {
   const ViewBar({
     super.key,
     required this.accent,
     required this.openView,
     required this.onSelect,
     required this.parkedReviewDue,
+    this.thoughtCount = 0,
+    this.onSwipeUp,
   });
 
   final Color accent;
@@ -62,42 +86,159 @@ class ViewBar extends StatelessWidget {
   /// thing that says so while the panel is closed.
   final bool parkedReviewDue;
 
+  /// How many side thoughts are waiting. Drives the Thoughts entry's count and
+  /// the bar's tint and pulse.
+  final int thoughtCount;
+
+  /// A swipe up on the bar: write a thought. Null switches the gesture off.
+  final VoidCallback? onSwipeUp;
+
+  /// How far the bar can be pulled up, and how far is far enough to mean it.
+  static const _lift = 28.0;
+  static const _commit = 18.0;
+
+  static const swipeHint = 'Slide up to add a thought';
+
   static const _icons = {
     null: (Icons.check_circle_outline_rounded, 'Tasks'),
     WorkspaceView.notes: (Icons.notes_rounded, 'Notes'),
     WorkspaceView.parked: (Icons.inbox_rounded, 'Parked'),
-    WorkspaceView.history: (Icons.history_rounded, 'History'),
+    WorkspaceView.thoughts: (Icons.cloud_outlined, 'Thoughts'),
   };
+
+  @override
+  State<ViewBar> createState() => _ViewBarState();
+}
+
+class _ViewBarState extends State<ViewBar> with SingleTickerProviderStateMixin {
+  late final ThoughtPulse _pulse = ThoughtPulse(this);
+
+  /// How far the finger has pulled the bar up, in points.
+  double _pulled = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse.sync(widget.thoughtCount);
+  }
+
+  @override
+  void didUpdateWidget(ViewBar old) {
+    super.didUpdateWidget(old);
+    if (old.thoughtCount != widget.thoughtCount) {
+      _pulse.sync(widget.thoughtCount);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  void _dragUpdate(DragUpdateDetails d) {
+    setState(() {
+      _pulled = (_pulled - d.delta.dy).clamp(0.0, ViewBar._lift);
+    });
+  }
+
+  void _dragEnd(DragEndDetails d) {
+    final flung = (d.primaryVelocity ?? 0) < -400;
+    final far = _pulled >= ViewBar._commit;
+    setState(() => _pulled = 0);
+    if (flung || far) widget.onSwipeUp?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
     final layout = Layout.of(context);
+    final count = widget.thoughtCount;
+    final alarm = T.complementary(widget.accent);
+    final hot = ThoughtPulse.intensityOf(count);
+    final swipe = widget.onSwipeUp != null;
 
-    return Container(
-      decoration: BoxDecoration(
-        // A hairline rather than a filled bar: the shell is translucent and a
-        // solid strip along the bottom would read as a second window.
-        border: Border(
-          top: BorderSide(color: T.text.withValues(alpha: 0.08)),
-        ),
-      ),
-      child: Row(
-        children: [
-          for (final view in kBarViews)
-            Expanded(
-              child: _Entry(
-                icon: _icons[view]!.$1,
-                label: _icons[view]!.$2,
-                selected: openView == view,
-                accent: accent,
-                height: layout.tapTarget,
-                // Only on Parked, and only while something is actually due.
-                dot: view == WorkspaceView.parked && parkedReviewDue,
-                onTap: () => onSelect(view),
+    final row = Row(
+      children: [
+        for (final view in kBarViews)
+          Expanded(
+            child: _Entry(
+              icon: ViewBar._icons[view]!.$1,
+              label: ViewBar._icons[view]!.$2,
+              selected: widget.openView == view,
+              // The pile is global, so its entry is lit in the thoughts'
+              // own colour rather than this workspace's.
+              accent: view == WorkspaceView.thoughts ? T.thoughts : widget.accent,
+              height: layout.tapTarget,
+              // Only on Parked, and only while something is actually due.
+              dot: view == WorkspaceView.parked && widget.parkedReviewDue,
+              count: view == WorkspaceView.thoughts ? count : 0,
+              countColor: Color.lerp(T.muted, alarm, hot)!,
+              onTap: () => widget.onSelect(view),
+            ),
+          ),
+      ],
+    );
+
+    final bar = AnimatedBuilder(
+      animation: _pulse.controller,
+      builder: (context, child) {
+        final glow = Curves.easeInOut.transform(_pulse.controller.value);
+        return Container(
+          decoration: BoxDecoration(
+            // A hairline rather than a filled bar while the pile is empty: the
+            // shell is translucent and a solid strip along the bottom would
+            // read as a second window. It fills in only as the pile grows.
+            color: alarm.withValues(alpha: hot * 0.22),
+            border: Border(
+              top: BorderSide(
+                color: count == 0
+                    ? T.text.withValues(alpha: 0.08)
+                    : alarm.withValues(alpha: hot * 0.55),
               ),
             ),
-        ],
-      ),
+            boxShadow: [
+              if (ThoughtPulse.pulsingAt(count))
+                BoxShadow(
+                  color: alarm.withValues(alpha: glow * hot * 0.95),
+                  blurRadius: 18,
+                  offset: const Offset(0, -3),
+                ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: row,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (swipe && widget.openView == WorkspaceView.thoughts)
+          const Padding(
+            padding: EdgeInsets.only(bottom: T.s1),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: T.muted),
+                SizedBox(width: T.s1),
+                Text(
+                  ViewBar.swipeHint,
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+                ),
+              ],
+            ),
+          ),
+        GestureDetector(
+          // Vertical only, and only once the finger has moved past the slop:
+          // a tap on an entry is still a tap.
+          onVerticalDragUpdate: swipe ? _dragUpdate : null,
+          onVerticalDragEnd: swipe ? _dragEnd : null,
+          onVerticalDragCancel: swipe ? () => setState(() => _pulled = 0) : null,
+          child: Transform.translate(offset: Offset(0, -_pulled), child: bar),
+        ),
+      ],
     );
   }
 }
@@ -111,6 +252,8 @@ class _Entry extends StatelessWidget {
     required this.height,
     required this.dot,
     required this.onTap,
+    this.count = 0,
+    this.countColor = T.muted,
   });
 
   final IconData icon;
@@ -121,12 +264,16 @@ class _Entry extends StatelessWidget {
   final bool dot;
   final VoidCallback onTap;
 
+  /// A number beside the icon, for the thought pile. Zero draws nothing.
+  final int count;
+  final Color countColor;
+
   @override
   Widget build(BuildContext context) {
     final color = selected ? accent : T.muted;
 
     return Semantics(
-      label: label,
+      label: count > 0 ? '$label, $count waiting' : label,
       button: true,
       selected: selected,
       child: InkWell(
@@ -150,6 +297,22 @@ class _Entry extends StatelessWidget {
                         decoration: const BoxDecoration(
                           color: T.danger,
                           shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  if (count > 0)
+                    Positioned(
+                      left: 21,
+                      top: -3,
+                      child: ExcludeSemantics(
+                        child: Text(
+                          '$count',
+                          style: TextStyle(
+                            fontSize: T.fsMeta,
+                            height: 1,
+                            fontWeight: T.wMedium,
+                            color: countColor,
+                          ),
                         ),
                       ),
                     ),

@@ -17,6 +17,7 @@
 // and this is the longest thing in the app; a Column that merely overflows gets
 // squeezed into an unusable smear at small heights.
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../startup.dart';
@@ -35,6 +36,7 @@ class SettingsSheet extends StatefulWidget {
     required this.accent,
     required this.onClose,
     this.startup,
+    this.onOpenHistory,
   });
 
   final SyncService sync;
@@ -45,12 +47,23 @@ class SettingsSheet extends StatefulWidget {
   /// the whole section rather than showing a dead switch.
   final StartupSetting? startup;
 
+  /// Opens this workspace's History. Non-null only on a phone, where the view
+  /// bar's fourth place went to the thought pile and History moved here: it is
+  /// looked back at now and then, which is what a settings visit is.
+  final VoidCallback? onOpenHistory;
+
   @override
   State<SettingsSheet> createState() => _SettingsSheetState();
 }
 
 class _SettingsSheetState extends State<SettingsSheet> {
-  late final _url = TextEditingController(text: widget.sync.baseUrl ?? '');
+  // In a browser the server is wherever the page came from - the sync server
+  // serves the web build itself - so a blank address starts as the page's own
+  // origin and only the token is left to type. Elsewhere `Uri.base` is the
+  // working directory, hence the check.
+  late final _url = TextEditingController(
+    text: widget.sync.baseUrl ?? (kIsWeb ? Uri.base.origin : ''),
+  );
   late final _token = TextEditingController(text: widget.sync.token ?? '');
 
   /// How the configured server wants to authenticate, once it has been asked.
@@ -379,6 +392,34 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  Widget _historyRow(VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(T.radius),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: T.s2),
+        child: Row(
+          children: [
+            Icon(Icons.history_rounded, size: 18, color: T.muted),
+            SizedBox(width: T.s2),
+            Expanded(
+              child: Text(
+                'History',
+                style: TextStyle(fontSize: T.fsBody, color: T.text),
+              ),
+            ),
+            Text(
+              'Completed tasks',
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+            ),
+            SizedBox(width: T.s1),
+            Icon(Icons.chevron_right_rounded, size: 18, color: T.muted),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _settingsBody() {
     final sync = widget.sync;
     final config = _authConfig;
@@ -386,6 +427,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, T.s3),
       children: [
+        if (widget.onOpenHistory != null) ...[
+          _historyRow(widget.onOpenHistory!),
+          const SizedBox(height: T.s3),
+        ],
         Text(switch (config?.mode) {
           'oidc' =>
             'This server signs you in with your own account. '

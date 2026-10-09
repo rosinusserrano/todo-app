@@ -8,6 +8,7 @@
 // by one modifier and land in different places, and a Ctrl+Enter that stopped
 // moving the caret would be invisible until someone reached for it mid-note.
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -119,6 +120,42 @@ void main() {
 
       expect(find.byType(TextField), findsNWidgets(2));
       expect(find.text('Leaves at nine'), findsOneWidget); // now in the field
+    });
+
+    testWidgets('a double-click on the list goes straight to the editor',
+        (tester) async {
+      final saves = Saves();
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+      );
+
+      // The first click reads at once; the second lands on the reader, which
+      // has replaced the list, and makes it the editor.
+      final at = tester.getCenter(find.text('Trip'));
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNWidgets(2));
+    });
+
+    testWidgets('a click on the reader after the window is only a click',
+        (tester) async {
+      final saves = Saves();
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+      );
+      await tester.tap(find.text('Trip'));
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
+      await tester.tap(find.text('Leaves at nine'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
     });
 
     testWidgets('a new entry skips the reader and lands in the fields',

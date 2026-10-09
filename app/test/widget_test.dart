@@ -621,6 +621,48 @@ void main() {
           reason: 'no permanent field on the bar');
     });
 
+    testWidgets('the pill\'s name opens the switcher, not the edit form',
+        (tester) async {
+      final edited = <String>[];
+      final picked = <String>[];
+      Workspace ws(String id, String name) => Workspace(
+            uuid: id,
+            name: name,
+            color: '#6c8cff',
+            sortOrder: 0,
+            createdAt: nowStamp(),
+            updatedAt: nowStamp(),
+          );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: WorkspaceBar(
+            workspaces: [ws('w1', 'Meine Apps'), ws('w2', 'Arbeit')],
+            currentUuid: 'w1',
+            accent: T.accent,
+            onSelect: (w) => picked.add(w.name),
+            onEdit: (w) => edited.add(w.name),
+            onCreate: () {},
+            onOpenNotes: () {},
+            onOpenParked: () {},
+            onOpenHistory: () {},
+            parkedReviewDue: false,
+            openView: null,
+          ),
+        ),
+      ));
+
+      await tester.tap(find.text('Meine Apps'));
+      await tester.pumpAndSettle();
+      expect(edited, isEmpty);
+      expect(find.text('Arbeit'), findsOneWidget, reason: 'the switcher');
+
+      // Editing is still one entry away - the touch way into the form.
+      await tester.tap(find.text('Edit Meine Apps…'));
+      await tester.pumpAndSettle();
+      expect(edited, ['Meine Apps']);
+      expect(picked, isEmpty);
+    });
+
     testWidgets('the views menu ticks whichever view is open', (tester) async {
       Widget bar(WorkspaceView? open) => MaterialApp(
             home: Scaffold(

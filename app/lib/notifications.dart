@@ -17,14 +17,13 @@
 // reminder set on the desktop and merged in by sync, which no local write path
 // ever sees.
 
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'platform.dart';
 import 'sync/models.dart';
 
 class NotificationService {
@@ -34,7 +33,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin;
 
   /// Desktop deliberately gets nothing - see the file header.
-  static bool get supported => Platform.isAndroid || Platform.isIOS;
+  static bool get supported => isMobile;
 
   bool _ready = false;
 

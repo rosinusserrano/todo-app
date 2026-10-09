@@ -22,11 +22,10 @@
 //     `data/flutter_assets` beside the exe - hence the bundled assets rather
 //     than anything drawn in Flutter.
 
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:windows_taskbar/windows_taskbar.dart';
 
+import '../platform.dart';
 import 'sound_service.dart';
 
 class TaskbarTransport {
@@ -34,7 +33,7 @@ class TaskbarTransport {
 
   final SoundService _sound;
 
-  static bool get supported => !kIsWeb && Platform.isWindows;
+  static bool get supported => isWindows;
 
   /// What the toolbar should currently show, whether or not Windows accepted
   /// it. Re-applied on restore, since a call made while hidden is dropped.

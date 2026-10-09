@@ -12,12 +12,14 @@
 // them a token with `npm run token -- add "<name>"`.
 
 import express from 'express';
+import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
+import { join } from 'node:path';
 
 import { openDb, purgeUser, sync, userCursor, TABLES } from './db.js';
 import { publish, subscribe } from './events.js';
 import { adminOnly, middleware } from './auth.js';
-import { DB_PATH, HOST, PORT, loadSecret } from './config.js';
+import { DB_PATH, HOST, PORT, WEB_ROOT, loadSecret } from './config.js';
 import { MIN_CLIENT, PROTOCOL } from './protocol.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
@@ -325,6 +327,45 @@ app.delete('/api/admin/users/:id', ...admin, (req, res) => {
   res.json({ ok: true, rows });
 });
 
+// ------------------------------------------------------------------- web app
+//
+// The Flutter web build, served from this same origin as `/api/*`, so the
+// browser client needs no CORS and no configured API address: "the server" is
+// wherever the page came from. Registered *after* every route above, so a path
+// under /api is answered by the API even if a file of that name somehow exists
+// in the build.
+//
+// No `Cross-Origin-Embedder-Policy`: the WASM SQLite the client uses is
+// IndexedDB-backed and needs no SharedArrayBuffer.
+const hasWebBuild = existsSync(join(WEB_ROOT, 'index.html'));
+
+if (hasWebBuild) {
+  app.use(
+    express.static(WEB_ROOT, {
+      // Revalidate everything, not just index.html. Flutter does not hash its
+      // file names - `main.dart.js` is `main.dart.js` in every build - so a
+      // browser left to heuristic caching keeps running the old bundle after a
+      // deploy, which defeats "deploy, then reload the phone". `no-cache` still
+      // caches; it costs one conditional request per file answered with a 304.
+      index: false,
+      setHeaders(res) {
+        res.set('Cache-Control', 'no-cache');
+      },
+    })
+  );
+
+  // Single-page fallback, for document requests only: a missing asset or a
+  // missing /api route stays a 404 rather than quietly becoming HTML, which is
+  // the failure that turns a typo into "the app loads but does nothing".
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path.startsWith('/api/')) return next();
+    if (!req.accepts('html')) return next();
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(join(WEB_ROOT, 'index.html'));
+  });
+}
+
 app.use((err, _req, res, _next) => {
   console.error('[sync] unhandled:', err);
   res.status(500).json({ error: 'internal error' });
@@ -375,6 +416,7 @@ app.listen(PORT, HOST, () => {
   console.log(`\n┌${bar}┐`);
   console.log('  Todo Widget sync server');
   console.log(`  db     ${DB_PATH}`);
+  if (hasWebBuild) console.log(`  web    ${WEB_ROOT}`);
   console.log(`  token  ${SECRET}`);
   console.log('');
   console.log('  Enter one of these in the app under Sync:');

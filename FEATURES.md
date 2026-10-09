@@ -5,12 +5,20 @@ Newest changes are noted in the changelog at the bottom.
 
 ## Tasks
 
-- **Add a task** — press the **＋** on the workspace bar (**Add task** on the
-  rail, or **N** on the keyboard), type, and press Enter. The field stays open
+- **Add a task** — press **Add a task** at the top of the list (or the **＋**
+  on the workspace bar, **Add task** on the rail, or **N** on the keyboard),
+  type, and press Enter. The line at the top of the list is there on every
+  screen size, because the way to do the commonest thing in the app should be
+  where the task will appear, not across the window in the rail. The field stays open
   for the next one; Enter on an empty field, Esc, or clicking elsewhere puts it
   away. It used to be a text field permanently above the list, which cost a
   phone a row of height for something used a few seconds an hour. A field with
   something typed in it never folds away on its own.
+- **Add to another workspace without leaving this one.** The coloured dot at
+  the start of the open add field is the workspace the task goes into; click it
+  to pick another. The list stays where it is and a line under the field says
+  where the task went, since it will not appear on screen. The choice lasts
+  until the field closes.
 - **Check off a task** — click the circle; it plays a slide-out animation, then
   gets logged to history (not deleted).
 - **The actions live in a bar you ask for.** A row is a tick box, a title and
@@ -197,6 +205,13 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   handfuls.
 - **Unpark one** — ↗ on a parked task puts it back at the *bottom* of the current
   list. ✓ checks it off from where it sits, straight into history.
+- **A task coming off a shelf keeps the shelf's name** — "Todo Widget: bigger
+  buttons" — whichever way it leaves for a list: its ↗, the shelf's ↗, the move
+  picker, the review, or the shelf being deleted. On the shelf the shelf was the
+  context; on a list of fifty it would be gone. Moving shelf to shelf leaves the
+  title alone, and an existing prefix is never doubled.
+- **Finger-sized controls.** The shelf's ↗, ✓ and ⋯ are full tap targets on a
+  phone, and the shelf's tasks are at body size rather than in small grey.
 - **Unpark the whole shelf** — ↗ on a group header puts everything on it back
   onto the list, in the order the shelf held it. **It asks first** — "All 7
   todos in "Backlog" will be put onto the active todo list" — because one press
@@ -744,7 +759,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   **Delete** when editing).
 - **Opening an entry reads it.** Picking one from the list renders its body as
   Markdown (see **Markdown & maths**) under its title; the ✎ in the header, or a
-  tap on the text, turns it back into the two fields. A *new* entry skips
+  tap on the text, turns it back into the two fields. **Double-click** an entry
+  in the list to go straight to the fields. A *new* entry skips
   straight to the fields, because there is nothing to read yet. Esc walks back
   down the same ladder it walked up — editor → reader → list → tasks.
 - **Keys, for writing without reaching for the mouse:**
@@ -785,25 +801,28 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **Capture a thought** — the 💭 button on the *left* of the footer expands a
   field to jot a quick note.
 - **Not in the workspace's colour.** Thoughts are one pile for every workspace,
-  so the bubble, the capture pane and the footer's meter are drawn in the app's
+  so the Thoughts entry, the capture pane and the footer's meter are drawn in the app's
   own blue, and the window drops its workspace tint while the pile is open — the
   same neutral the calendar uses, for the same reason.
-- **On a phone the bubble is the whole thing**, floating over the list just
-  above the Tasks / Notes / Parked / History bar — the shape every chat widget
-  on the web uses, and for the same reason: the control used in the biggest
-  hurry should be where the thumb already is, not in the thinnest strip at the
-  very bottom of the screen. The footer bar is simply **not drawn** there, at
-  any pile size, so the bubble carries everything it used to say:
-  - **Tap** to capture, which opens the full-screen pane below.
-  - **The count rides on the bubble**, on its shoulder, and the circle warms
-    towards the alarm colour and begins to pulse as the pile grows — the same
+- **On a phone the bottom bar is the whole thing.** Thoughts is its fourth
+  entry — Tasks / Notes / Parked / Thoughts — and History moved into Settings
+  to make room (it is looked back at, not used all day). The footer bar is
+  simply **not drawn** there, at any pile size, so the view bar carries
+  everything it used to say:
+  - **Slide the bar up** to write a thought, from any view. The bar lifts with
+    the finger and drops back if you change your mind; while the pile is open a
+    line just above the bar says "Slide up to add a thought".
+  - **The count rides on the Thoughts entry**, and the whole bar warms towards
+    the alarm colour and begins to pulse as the pile grows — the same
     escalation on the same numbers the footer bar runs under a pointer.
-  - **Swipe up** to open the pile. The bubble lifts with the finger and drops
-    back if you change your mind. A phone already has one obvious gesture for
-    "there is more above this", and it saves a second target overlapping the
-    first.
-- **Review them on demand** — the 💭 count on the *right* of the footer (a
-  swipe up on the bubble, on a phone) opens the parked-thoughts panel, which slides up and **takes over the content area
+  - **The capture pane is plain**: a field and the keyboard, no title, no
+    prompt, no emoji.
+- **Move them anywhere.** The folder icon on a thought sends it to this list,
+  another workspace's list, or any shelf. **Select several** — Ctrl+click, or a
+  long press on a phone, then plain clicks add more — and move or discard them
+  together. A moved thought becomes a task there and is resolved, not deleted.
+- **Review them on demand** — the 💭 count on the *right* of the footer (the
+  Thoughts entry in the bottom bar, on a phone) opens the parked-thoughts panel, which slides up and **takes over the content area
   in place of the tasks**. Thoughts are not shown otherwise: a parked thought is
   something you deal with deliberately, not a list that should be eating room
   above your tasks the whole time. Press it again (or Esc) to go back.
@@ -821,7 +840,7 @@ at the screen gives nothing away) and its lock is **opt-in**.
   workspace, and switching workspace does not clear it. It does now *close* the
   panel, along with every other view: picking a workspace is asking what is on
   that list, and it should answer with the list. The count in the footer and on
-  the bubble still says how many are waiting, and one press brings them back.
+  the bottom bar still says how many are waiting, and one press brings them back.
   Parked groups are the per-workspace equivalent.
 - **Switching workspace is not blocked by them.** It used to be, on the theory
   that the close guard's rule should apply everywhere. That was the wrong guard:
@@ -835,7 +854,7 @@ at the screen gives nothing away) and its lock is **opt-in**.
   at 12. Past that the count is boxed in the alarm colour and grown, rather than
   merely tinted. The live 💭 count is always visible even though the thoughts
   themselves are not, so the pile can nag you without occupying the window. The
-  footer bar and the phone's bubble run the same escalation off the same
+  footer bar and the phone's bottom bar run the same escalation off the same
   numbers — it is one signal, drawn wherever the layout put the control.
 
 ## Window & look
@@ -930,11 +949,13 @@ simply stretched.
   same controls, no longer behind a press: every workspace listed down the left,
   and Tasks / Notes / Parked / History as permanent entries, with the count of
   pending side thoughts and the parked-review dot where you can see them.
-  Clicking a workspace switches to it, clicking the one you are on edits it —
-  exactly the tab's behaviour. Narrow the window and the bar comes back.
+  Clicking a workspace goes to it — the one you are on included, which lands on
+  its list. Editing is the **✎** that appears beside a name on hover. Narrow
+  the window and the bar comes back.
 - **The rail folds into a strip.** The « beside *Workspaces* collapses it to a
   thin column: a coloured dot per workspace (the current one ringed) and an icon
-  per view, each named in a tooltip, with the parked-review dot and the
+  per view. Hovering a dot expands it into a tile with the workspace's name and
+  a ✎; the view icons are named in tooltips, with the parked-review dot and the
   thoughts marker still on them. » brings the full rail back. The choice is
   remembered on this device.
 - **~810px — the calendar stops covering the tasks.** It opens beside the list
@@ -1059,6 +1080,20 @@ simply stretched.
 - **iOS / Android** — the same lists and data, without the window chrome
   (always-on-top has no meaning on a phone). Installed on iPhone from an
   unsigned build signed locally with Sideloadly or AltStore.
+- **Web** — the same app in a browser, served by the sync server itself at its
+  own address (todo.rosinusserrano.de), so there is no certificate to renew and
+  a deploy reaches the phone on the next reload. "Add to Home Screen" on iOS
+  gives it an icon and a full-screen window. The sync screen starts with the
+  page's own address filled in; only the token is typed, once per browser.
+  Edits from other devices arrive live, as they do everywhere else.
+  - Tasks, workspaces, shelves, the calendar, notes (encryption included),
+    thoughts and history all work.
+  - **Not in the browser:** concentration sound, attachments (rows from other
+    devices still sync; there is nowhere to keep the bytes), OS notifications
+    — reminders still surface while the page is open — home-screen quick
+    actions, the tray, global hotkeys and always-on-top.
+  - The browser keeps its own database (IndexedDB), so it is one more device as
+    far as sync is concerned, and clearing the site's data is a reinstall.
 - **Home-screen quick actions** — long-press the app icon for "Add task",
   "Park a thought" and **"Calendar"**, which opens straight onto the calendar
   (and stays there if the app was already showing it). Both land in the running app with the caret already in the
@@ -1069,7 +1104,7 @@ simply stretched.
 - **The menu names the task you are on.** Put a task into focus mode and a third
   entry appears in it — *Note on “rewrite the importer”* — which opens a
   full-screen field and **appends** what you write to that task's notes. It is
-  the same pane the side-thought bubble opens, pointed somewhere else: one line,
+  the same pane a side thought is written in, pointed somewhere else: one line,
   saved, the phone back in your pocket, without finding the task first. The
   entry follows focus mode, so it changes when you change task and goes away
   when nothing is in focus.
@@ -1147,6 +1182,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **A web version**, served by the sync server: open the server's address in
+    any browser, or add it to the iPhone home screen instead of sideloading.
+    See *Platforms*.
   - **Notes survive whatever closes them.** A half-written note used to vanish
     when the workspace was switched or the window was widened past the point
     where the list appears beside it. Both now keep it.
@@ -1161,6 +1199,25 @@ reminders are both there now**, queued for 0.18.0.
     other workspaces too.
   - **Add a task from a ＋**, not a permanent field: on the workspace bar, the
     rail, or N.
+  - **"Add a task" at the top of the list**, on every screen size.
+  - **Add to another workspace** from the add field's coloured dot, without
+    switching to it.
+  - **Tasks coming off a shelf keep its name**, as "Shelf: task".
+  - **Move side thoughts** to any workspace's list or shelf, one at a time or
+    several selected together.
+  - **Double-click a note** to edit it.
+  - **The narrow desktop window has the bottom view bar** too: Tasks / Notes /
+    Parked / Thoughts, one click each.
+  - **Editing a workspace is a ✎**, shown on hover, rather than a click on its
+    name; the name now opens the switcher. Collapsed-rail dots expand on hover.
+  - **Bigger controls and text** on parked shelves and side thoughts.
+  - **Thoughts on a phone are a tab in the bottom bar**, in place of the
+    floating bubble: slide the bar up to write one, and the bar pulses as the
+    pile grows. History moved into Settings. The capture pane is plain - no
+    title, no prompt.
+  - **The "Add task" and "Park a thought" quick actions work** from a cold
+    start, and "Add task" no longer opens its field behind the calendar or a
+    task that has the screen.
   - **The calendar header is one line on a phone** — ‹ date ›, a view chip and
     ⋯ — instead of three rows.
   - **Radio: search, stars and your own streams.** Search the directory by

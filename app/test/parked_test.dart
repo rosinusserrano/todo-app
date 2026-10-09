@@ -65,7 +65,7 @@ void main() {
     expect(s.tasks.map((t) => t.text), [
       'first',
       'added while it was parked',
-      'to be parked',
+      'Someday: to be parked',
     ]);
     expect(s.tasks.last.uuid, parked.uuid);
     expect(s.tasks.first.uuid, first.uuid);
@@ -122,7 +122,7 @@ void main() {
 
     expect(await s.unparkGroup(g), 2);
 
-    expect(s.tasks.map((t) => t.text), ['read the spec', 'draft the reply']);
+    expect(s.tasks.map((t) => t.text), ['Backlog: read the spec', 'Backlog: draft the reply']);
     expect(s.parked[g.uuid] ?? const [], isEmpty);
     expect(s.groups.single.uuid, g.uuid, reason: 'the shelf stays');
     await s.store.close();
@@ -141,7 +141,7 @@ void main() {
     await s.unparkGroup(g);
 
     expect(s.tasks.map((t) => t.text),
-        [keep.text, 'shelved first', 'shelved second']);
+        [keep.text, 'Backlog: shelved first', 'Backlog: shelved second']);
     await s.store.close();
   });
 
@@ -158,7 +158,7 @@ void main() {
 
     expect(await s.unparkGroup(g), 1);
 
-    expect(s.tasks.map((t) => t.text), ['still to do']);
+    expect(s.tasks.map((t) => t.text), ['Backlog: still to do']);
     final all = await s.store.allTasksInWorkspace(open.workspaceUuid);
     final finished = all.firstWhere((t) => t.uuid == done.uuid);
     expect(finished.completedAt, isNotNull);
@@ -362,5 +362,54 @@ void main() {
     expect((await store.activeTasks(ws)).single.groupUuid, isNull);
     expect(await store.parkedGroups(ws), isEmpty);
     await store.close();
+  });
+
+  group('leaving a shelf for a list keeps the shelf\'s name', () {
+    test('one task, a whole shelf, and a deleted shelf all prefix', () async {
+      final s = await freshState();
+      final g = await s.saveGroup(title: 'Todo Widget', reviewEveryDays: 30);
+      final one = await addTask(s, 'remove sounds');
+      final two = await addTask(s, 'bigger buttons');
+      final three = await addTask(s, 'tab names on top');
+      await s.parkTask(one, g!.uuid);
+      await s.parkTask(two, g.uuid);
+
+      await s.unparkTask(s.parked[g.uuid]!.firstWhere((t) => t.uuid == one.uuid));
+      expect(s.tasks.map((t) => t.text), contains('Todo Widget: remove sounds'));
+
+      await s.unparkGroup(g);
+      expect(s.tasks.map((t) => t.text), contains('Todo Widget: bigger buttons'));
+
+      final g2 = await s.saveGroup(title: 'Later', reviewEveryDays: 30);
+      await s.parkTask(s.tasks.firstWhere((t) => t.uuid == three.uuid), g2!.uuid);
+      await s.deleteGroup(g2);
+      expect(s.tasks.map((t) => t.text), contains('Later: tab names on top'));
+      await s.store.close();
+    });
+
+    test('through the move picker too, but not shelf to shelf', () async {
+      final s = await freshState();
+      final a = await s.saveGroup(title: 'Inbox', reviewEveryDays: 30);
+      final b = await s.saveGroup(title: 'Someday', reviewEveryDays: 30);
+      final t = await addTask(s, 'call the bank');
+      await s.parkTask(t, a!.uuid);
+
+      final onA = s.parked[a.uuid]!.single;
+      await s.moveTasks([onA],
+          workspaceUuid: onA.workspaceUuid, groupUuid: b!.uuid);
+      final onB = s.parked[b.uuid]!.single;
+      expect(onB.text, 'call the bank', reason: 'a shelf is context already');
+
+      await s.moveTasks([onB], workspaceUuid: onB.workspaceUuid);
+      expect(s.tasks.single.text, 'Someday: call the bank');
+      await s.store.close();
+    });
+
+    test('the prefix is never doubled', () async {
+      expect(AppState.shelfPrefixed('Inbox: x', 'Inbox'), 'Inbox: x');
+      expect(AppState.shelfPrefixed('x', 'Inbox'), 'Inbox: x');
+      expect(AppState.shelfPrefixed('x', '  '), 'x');
+      expect(AppState.shelfPrefixed('x', null), 'x');
+    });
   });
 }

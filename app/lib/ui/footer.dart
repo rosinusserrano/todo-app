@@ -6,7 +6,7 @@
 // block is gone - it punished the wrong action, since moving between workspaces
 // is not what lets a thought rot - so the control has to carry the whole
 // signal, and the escalation is tuned harder than it was. The numbers live in
-// thought_pressure.dart, because [ThoughtBubble] runs the same one.
+// thought_pressure.dart, because the phone's [ViewBar] runs the same one.
 //
 // The alarm colour is the complement of the active workspace colour, so it
 // always reads against the window tint rather than blending into it.
@@ -22,8 +22,8 @@
 // On a phone it carries neither, and draws nothing at all. Both were at the
 // wrong end of the screen - a strip *below* the view bar, furthest from the
 // hand, for the control used in the biggest hurry - and both moved onto
-// [ThoughtBubble], which floats above the view bar where the thumb already is
-// and carries the count and the escalation with them. What is left of this bar
+// [ViewBar], where the thumb already is: the pile is its fourth entry, a swipe
+// up on it writes a thought, and the whole bar carries the escalation. What is left of this bar
 // there is the refusal message, which is a desktop close guard and so never
 // fires, and the field itself, which the desktop hotkey can still open.
 
@@ -32,6 +32,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'thought_pressure.dart';
@@ -71,19 +72,18 @@ class ThoughtFooter extends StatefulWidget {
   /// the keyboard at exactly the moment somebody is watching you type.
   final VoidCallback? onCapture;
 
-  /// False while [ThoughtBubble] is on screen: the bubble above the view bar is
-  /// then the way in, and a second 💭 down here would be two doors to one
-  /// field. Deliberately separate from [onCapture], which says *how* capturing
+  /// False while [ViewBar] is on screen: a swipe up on it is then the way in,
+  /// and a 💭 down here would be two doors to one field. Deliberately separate from [onCapture], which says *how* capturing
   /// happens rather than whether this bar offers it - a tablet wide enough for
-  /// the rail has no bubble and still wants the pane rather than the inline
+  /// the rail has no view bar and still wants the pane rather than the inline
   /// field.
   final bool showCaptureButton;
 
   /// Whether the meter and the count belong to this bar. False on a phone,
-  /// where the bubble wears them: a strip along the bottom edge saying how many
+  /// where the view bar wears them: a strip along the bottom edge saying how many
   /// thoughts are waiting, under a bar that already says which view you are in,
   /// is the third row of chrome on the smallest screen there is - and it says
-  /// it inches below a circle that could say it instead.
+  /// it inches below a bar that could say it instead.
   ///
   /// With this and [showCaptureButton] both false the bar has nothing of its
   /// own left and takes no height at all.
@@ -105,7 +105,9 @@ class ThoughtFooterState extends State<ThoughtFooter>
     duration: const Duration(milliseconds: 1600),
   );
 
-  int get _count => widget.thoughts.length;
+  /// The pile as this bar shows it: nothing at all while the meter belongs to
+  /// the view bar, so the tint, the pulse and the count are drawn once.
+  int get _count => widget.showPressure ? widget.thoughts.length : 0;
 
   double get _intensity => ThoughtPulse.intensityOf(_count);
 
@@ -158,7 +160,7 @@ class ThoughtFooterState extends State<ThoughtFooter>
     }
   }
 
-  /// Nothing to draw: the bubble owns both the button and the pile, and no
+  /// Nothing to draw: the view bar owns both the way in and the pile, and no
   /// refusal is being explained. Returning early rather than drawing a 36px
   /// strip of nothing above the home indicator.
   /// [_expanded] is in there because the field can be opened from outside
@@ -351,16 +353,26 @@ class ThoughtsPanel extends StatefulWidget {
     required this.thoughts,
     required this.onPromote,
     required this.onDiscard,
+    this.onMove,
   });
 
   final List<SideThought> thoughts;
   final Future<void> Function(SideThought) onPromote;
   final Future<void> Function(SideThought) onDiscard;
 
+  /// Send one or several thoughts to any workspace's list or shelf, picked
+  /// from a menu anchored at the given rect. Null hides the move controls.
+  final Future<void> Function(List<SideThought>, RelativeRect anchor)? onMove;
+
   @override
   State<ThoughtsPanel> createState() => _ThoughtsPanelState();
 }
 
+/// Selecting works the way it does on the task list: Ctrl+click toggles a
+/// thought (a long press, on touch), and once anything is selected a plain
+/// click toggles too. The header then becomes the bar that acts on the
+/// selection. Held as uuids and read through [ThoughtsPanel.thoughts], so a
+/// thought resolved elsewhere simply drops out of it.
 class _ThoughtsPanelState extends State<ThoughtsPanel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _in = AnimationController(
@@ -368,15 +380,61 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
     duration: const Duration(milliseconds: 220),
   )..forward();
 
+  final _selected = <String>{};
+
+  List<SideThought> get _selection => [
+        for (final t in widget.thoughts)
+          if (_selected.contains(t.uuid)) t,
+      ];
+
   @override
   void dispose() {
     _in.dispose();
     super.dispose();
   }
 
+  void _toggle(SideThought t) {
+    setState(() {
+      if (!_selected.remove(t.uuid)) _selected.add(t.uuid);
+    });
+  }
+
+  void _clear() => setState(_selected.clear);
+
+  static RelativeRect _anchor(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return RelativeRect.fill;
+    final rect = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+    return RelativeRect.fromRect(
+      Rect.fromLTWH(rect.left, rect.bottom, rect.width, 0),
+      Offset.zero & overlay.size,
+    );
+  }
+
+  Future<void> _moveSelection(BuildContext anchorContext) async {
+    final move = widget.onMove;
+    final picked = _selection;
+    if (move == null || picked.isEmpty) return;
+    await move(picked, _anchor(anchorContext));
+    if (mounted) _clear();
+  }
+
+  Future<void> _discardSelection() async {
+    final picked = _selection;
+    if (picked.isEmpty) return;
+    _clear();
+    for (final t in picked) {
+      await widget.onDiscard(t);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final curve = CurvedAnimation(parent: _in, curve: Curves.easeOutCubic);
+    final layout = Layout.of(context);
+    final selection = _selection;
 
     return FadeTransition(
       opacity: curve,
@@ -386,19 +444,22 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
           end: Offset.zero,
         ).animate(curve),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(T.s3, 2, T.s3, T.s2),
-              child: Text(
-                'Parked thoughts',
-                style: TextStyle(
-                  fontSize: T.fsLabel,
-                  color: T.muted,
-                  fontWeight: T.wMedium,
+            if (selection.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(T.s3, 2, T.s3, T.s2),
+                child: Text(
+                  'Parked thoughts',
+                  style: TextStyle(
+                    fontSize: T.fsLabel,
+                    color: T.muted,
+                    fontWeight: T.wMedium,
+                  ),
                 ),
-              ),
-            ),
+              )
+            else
+              _selectionBar(selection.length, layout),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: T.s2),
@@ -406,7 +467,13 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
                   for (final t in widget.thoughts)
                     _ThoughtTile(
                       thought: t,
+                      selected: _selected.contains(t.uuid),
+                      selecting: _selected.isNotEmpty,
+                      onToggleSelect: () => _toggle(t),
                       onPromote: () => widget.onPromote(t),
+                      onMove: widget.onMove == null
+                          ? null
+                          : (anchor) => widget.onMove!([t], anchor),
                       onDiscard: () => widget.onDiscard(t),
                     ),
                 ],
@@ -417,57 +484,187 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
       ),
     );
   }
+
+  Widget _selectionBar(int count, Layout layout) {
+    final size = layout.actionIcon;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s2, T.s1),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$count selected',
+              style: const TextStyle(
+                fontSize: T.fsBody,
+                color: T.text,
+                fontWeight: T.wMedium,
+              ),
+            ),
+          ),
+          if (widget.onMove != null)
+            Builder(
+              builder: (context) => _ThoughtButton(
+                icon: Icons.drive_file_move_outline,
+                tooltip: 'Move to a list or shelf',
+                size: size,
+                side: layout.tapTarget,
+                onTap: () => _moveSelection(context),
+              ),
+            ),
+          _ThoughtButton(
+            icon: Icons.delete_outline_rounded,
+            tooltip: 'Throw them away',
+            size: size,
+            side: layout.tapTarget,
+            color: T.danger,
+            onTap: _discardSelection,
+          ),
+          _ThoughtButton(
+            icon: Icons.close_rounded,
+            tooltip: 'Clear the selection',
+            size: size,
+            side: layout.tapTarget,
+            onTap: _clear,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One square, finger-sized where fingers are: the thought tile's controls
+/// used to be 14px glyphs with a few pixels of padding, which on a phone is a
+/// control you aim at twice.
+class _ThoughtButton extends StatelessWidget {
+  const _ThoughtButton({
+    required this.icon,
+    required this.tooltip,
+    required this.size,
+    required this.side,
+    required this.onTap,
+    this.color = T.muted,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final double size;
+  final double side;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(T.radius),
+        child: SizedBox(
+          width: side,
+          height: side,
+          child: Icon(icon, size: size, color: color),
+        ),
+      ),
+    );
+  }
 }
 
 class _ThoughtTile extends StatelessWidget {
   const _ThoughtTile({
     required this.thought,
+    required this.selected,
+    required this.selecting,
+    required this.onToggleSelect,
     required this.onPromote,
+    required this.onMove,
     required this.onDiscard,
   });
 
   final SideThought thought;
+  final bool selected;
+
+  /// Something is selected, so a plain click toggles rather than doing nothing.
+  final bool selecting;
+  final VoidCallback onToggleSelect;
   final VoidCallback onPromote;
+  final ValueChanged<RelativeRect>? onMove;
   final VoidCallback onDiscard;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
-      decoration: BoxDecoration(
-        color: T.surface,
+    final layout = Layout.of(context);
+    final size = layout.actionIcon;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: selected ? T.thoughts.withValues(alpha: 0.18) : T.surface,
         borderRadius: BorderRadius.circular(T.radius),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              thought.text,
-              style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(T.radius),
+          onTap: () {
+            if (selecting || HardwareKeyboard.instance.isControlPressed) {
+              onToggleSelect();
+            }
+          },
+          onLongPress: onToggleSelect,
+          child: Padding(
+            padding: const EdgeInsets.only(left: T.s2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: T.s2),
+                    child: Text(
+                      thought.text,
+                      style: const TextStyle(fontSize: T.fsBody, color: T.text),
+                    ),
+                  ),
+                ),
+                if (!selecting) ...[
+                  _ThoughtButton(
+                    icon: Icons.arrow_upward_rounded,
+                    tooltip: 'Turn into a task here',
+                    size: size,
+                    side: layout.tapTarget,
+                    onTap: onPromote,
+                  ),
+                  if (onMove != null)
+                    Builder(
+                      builder: (context) => _ThoughtButton(
+                        icon: Icons.drive_file_move_outline,
+                        tooltip: 'Move to a list or shelf',
+                        size: size,
+                        side: layout.tapTarget,
+                        onTap: () => onMove!(
+                          _ThoughtsPanelState._anchor(context),
+                        ),
+                      ),
+                    ),
+                  _ThoughtButton(
+                    icon: Icons.close_rounded,
+                    tooltip: 'Throw it away',
+                    size: size,
+                    side: layout.tapTarget,
+                    color: T.danger,
+                    onTap: onDiscard,
+                  ),
+                ] else
+                  SizedBox(
+                    width: layout.tapTarget,
+                    height: layout.tapTarget,
+                    child: Icon(
+                      selected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      size: size,
+                      color: selected ? T.thoughts : T.muted,
+                    ),
+                  ),
+              ],
             ),
           ),
-          Tooltip(
-            message: 'Turn into a task',
-            child: InkWell(
-              onTap: onPromote,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: T.s1),
-                child: Icon(Icons.arrow_upward_rounded, size: 14, color: T.muted),
-              ),
-            ),
-          ),
-          Tooltip(
-            message: 'Throw it away',
-            child: InkWell(
-              onTap: onDiscard,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: T.s1),
-                child: Icon(Icons.close_rounded, size: 14, color: T.danger),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

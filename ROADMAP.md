@@ -9,6 +9,54 @@ work that is about to happen.
 
 ## In progress
 
+### Capture should be fast — agreed 2026-10-08
+
+Marco: adding a task and adding a thought "should be engineered such that it
+is intuitive and quick", and both currently are not. Order and steps are 44-47
+in `TODO.md`.
+
+**Thoughts on a phone get a tab, not a bubble.** The floating bubble covered
+the list's bottom-right corner, and the way to see the pile was to swipe the
+bubble up - a gesture on a small floating target that nothing on screen
+announces. The bottom bar is where a thumb already is, so the pile becomes the
+fourth entry there. History gives up its place: it is read occasionally and
+looked *back* at, which is a settings-sheet kind of visit, while thoughts are
+written and emptied all day. The ▾ menu on desktop keeps History where it is.
+
+The pressure signal moves with it: the Thoughts entry pulses as the footer's
+meter does on desktop (`ThoughtPulse`), so the escalation is one rule drawn in
+two places rather than a second copy.
+
+**Writing a thought is a swipe up on the bar.** The commonest capture is the
+one that has to be fastest, and "slide up from where your thumb already is" is
+one gesture with no target to aim at. It has to begin *on* the bar, which sits
+above the iOS home indicator - a swipe from the very bottom edge belongs to the
+system. While the Thoughts view is open a line just above the bar says "Slide
+up to add a thought", because that is the moment someone is looking at the
+pile and wondering how to add to it; everywhere else it would be clutter.
+
+**The capture sheet is plain.** No 💭, no title, no "What just came to mind…".
+It is a field with the keyboard up. The reason it takes the whole screen (the
+list is not shown to whoever is standing next to you) is unchanged.
+
+**The add-task affordance is on the list.** On a wide window the ＋ ended up in
+the rail, at the far side of the window from where the task will appear.
+Shortcuts are fine once known, but the way in should be visible: a "＋ Add task"
+line at the head of the list, which turns into the field in place. Same
+`_adding` state as the ＋ and N, so there is still one add field.
+
+**The add field can aim anywhere.** A workspace chip at its start, defaulting
+to the current workspace. Picking another writes the task there *without*
+switching - capturing into a different list is not the same as wanting to look
+at it - and a one-line confirmation says where it landed, since the task will
+not appear on screen.
+
+**Moving off a shelf keeps the shelf's name** (`TODO.md` 48). A task parked under
+"Todo Widget" reads "remove concentration sounds" there, and the context is the
+shelf; dropped onto a workspace list with fifty other tasks the context is gone.
+So moving from a shelf to a list prefixes "Todo Widget: ". Shelf-to-shelf keeps
+the title as it is, and an existing prefix is not doubled.
+
 ### Six things asked for on 2026-09-09 — shipped as 0.28.0
 
 Kept here for one release because the reasoning is the kind that gets lost;
@@ -124,6 +172,56 @@ platforms are a second *way in* rather than a second implementation - each has
 only to end in `parseIcs` + `showImportIcs`.
 
 ## Next
+
+### `[[ ]]` links between tasks and notes — design, for Marco to read
+
+Asked for on 2026-10-08 ("like `[[ ]]` from Obsidian"). Nothing is built; this
+is the proposal, and the open questions at the end are the ones that change
+the shape.
+
+**What it is.** In any long-form field - a task's notes, a journal entry, an
+event's description - typing `[[` opens a picker of tasks and notes in this
+workspace, filtered as you type. Picking one inserts a link; in the rendered
+text it is drawn in the workspace colour and opens what it points at (the
+task's detail, or the note in the reader). Obsidian's habit of typing a name
+that does not exist yet and getting a new page is *not* proposed: here a
+dangling `[[` would make a task, which is a bigger side effect than a note
+should have.
+
+**Stored by id, shown by title.** The text holds `[[t:<uuid>|Title at the time]]`
+(`t:` a task, `j:` a journal entry). Links by *title* are what Obsidian does,
+and they break on rename, collide when two tasks say "Call the bank", and
+cannot survive the recurrence spawner - which writes a new row with the same
+title every week. An id survives all three. The title after the bar is what is
+shown when the target cannot be found: it is a fallback, not the key, and it
+keeps the raw text readable in another editor.
+
+**Rendering is a third syntax in `markdown_text.dart`**, next to `$…$` and
+```` ```math ````, and goes first for the same reason they do. The renderer
+needs a resolver (uuid -> current title, or null), handed in by the shell, so
+the widget stays a pure function of text plus lookup. `markdownPlainText`
+flattens a link to its title, so previews read "see Call the bank".
+
+**Dangling is a normal state**, like an attachment with no bytes: the target
+was deleted, completed long ago, or has not synced to this device yet. It
+renders as the stored title, muted and not pressable, with a tooltip saying
+why. A completed task still resolves, and opens in History.
+
+**Nothing new in the schema.** The link lives in the text that already syncs;
+no table, no migration, no protocol change. Backlinks ("linked from…") would
+need either a scan or an index table - left out of the first version, and the
+reason the id format is greppable.
+
+**The encrypted journal is the one wrinkle.** A link *from* an encrypted entry
+is ciphertext like the rest of it - fine. A link *to* one shows its title only
+while the vault is unlocked, and the picker cannot list locked entries at all.
+
+**Open questions for Marco:**
+1. Workspace scope: link only within the workspace (simpler picker, matches how
+   notes are scoped), or anywhere?
+2. Should a task's row show a mark when its notes link somewhere, the way the
+   paperclip shows an attachment?
+3. Backlinks in the first version, or later?
 
 ### Google Calendar, mirrored in
 

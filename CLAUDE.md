@@ -271,7 +271,7 @@ switch; the thought pile used to, on the grounds that it is global and so not a
 fact about the workspace. That was the wrong question — picking a workspace is
 asking *what is on this list*, and answering it with whatever panel happened to
 be open answers a different one. Nothing is lost, because the footer's count and
-the bubble both still say how many thoughts are waiting.
+the view bar both still say how many thoughts are waiting.
 
 The **journal** is a per-workspace log of titled, timestamped notes
 (`journal_entries`), with **optional** encryption. Plaintext by default; setting
@@ -309,9 +309,11 @@ before the shell closes the pane. Two things there are load-bearing:
   is not on the focus path and Esc falls straight through to the shell, skipping
   the list rung. `test/journal_panel_test.dart` pins that rung.
 
-**On touch those views are a bottom bar instead** (`ui/view_bar.dart`), and the
-workspace bar's ▾ is hidden — two doors to the same four views, one of them at
-the far end of the phone from the hand, is one too many. `kBarViews` is the
+**Wherever there is no rail those views are also a bottom bar**
+(`ui/view_bar.dart`, gated on `Layout.hasViewBar`, pointer or touch). On touch
+the workspace bar's ▾ is hidden — two doors to the same views, one of them at
+the far end of the phone from the hand, is one too many; under a pointer it
+stays, because it is where History lives now that Thoughts has its place. `kBarViews` is the
 order, and **`_swipeView` in `main.dart` reads that same list**, so the bar and
 the swipe cannot disagree about what is next to what. The swipe is safe to claim
 because the only other horizontal gesture in the list is the task `Draggable`,
@@ -337,30 +339,35 @@ draggable — and the collision was exact: the pane's ✕ sat on the
 concentration-sound button. Nothing is lost by stopping, because what it hides
 is the workspace name and the tasks and both are below the bar.
 
-**On a phone `ThoughtBubble` is the whole side-thought control, and the footer
-draws nothing.** `ThoughtFooter` has two flags, not one: `showCaptureButton`
-gave up its 💭, and `showPressure` gives up the meter and the count as well, so
-where both are false the bar takes no height at any pile size. It stays in the
-tree rather than being dropped from it because two things still reach for it -
-`openAndFocus` (the desktop hotkey) and the close guard's refusal - and both are
-things a phone never does. The escalation itself moved to
-`ui/thought_pressure.dart` (`ThoughtPulse`), which both controls own one of: it
-is one signal drawn wherever the layout put the control, and two copies of
-"when does this start pulsing" drift apart one literal at a time. The bubble's
-swipe up is a plain `onVerticalDrag`, committed on distance **or** velocity, and
-it toggles rather than opens - it is the same press the footer's badge was.
+**On a phone `ViewBar` is the whole side-thought control, and the footer
+draws nothing.** The pile is the bar's fourth entry (`kBarViews`: Tasks, Notes,
+Parked, Thoughts); History gave up that place and is reached from the settings
+sheet (`SettingsSheet.onOpenHistory`, non-null only where the bar is) - the ▾
+menu on desktop keeps it. A swipe **up** on the bar opens `ThoughtSheet`
+(`onSwipeUp`, a plain `onVerticalDrag` committed on distance or velocity, so a
+tap on an entry is still a tap), and while the pile is open a hint line above
+the bar says so. It replaced `ThoughtBubble`, a floating circle whose swipe up
+opened the pile: a gesture on a small floating target that nothing on screen
+announced. `ThoughtFooter` has two flags, not one: `showCaptureButton` gave up
+its 💭, and `showPressure` gives up the meter and the count as well, so where
+both are false (`_viewBarShows`) the bar takes no height at any pile size. It
+stays in the tree because two things still reach for it - `openAndFocus` (the
+desktop hotkey) and the close guard's refusal - and both are things a phone
+never does. `showCaptureButton` is deliberately **separate from `onCapture`**:
+`onCapture` says capturing opens the pane rather than expanding the field in
+place, which is true of any touch device, while the view bar is drawn only
+`touch && !hasRail && !_takesScreen` - so a tablet with the rail keeps the
+footer's button *and* the pane. The escalation lives in
+`ui/thought_pressure.dart` (`ThoughtPulse`), which the footer and the view bar
+each own one of: it is one signal drawn wherever the layout put the control.
 
-**On touch the way *into* that pane is `ThoughtBubble`, not the footer.** It
-floats in the bottom-right of the content area, above the view bar, and the
-footer drops its own 💭 (`ThoughtFooter.showCaptureButton`) so there is one
-door rather than one per view. Two things follow. `showCaptureButton` is
-deliberately **separate from `onCapture`**: `onCapture` says capturing opens the
-pane rather than expanding the field in place, which is true of any touch
-device, while the bubble is drawn only where the view bar is (`touch &&
-!hasRail && !_noteTakesScreen`) — so a tablet with the rail keeps the footer's
-button *and* the pane. And with the button gone the footer is only the pressure
-meter, so it renders nothing at all while the pile is empty rather than
-reserving a strip on the smallest screen there is.
+**Quick actions wait for the first layout** (`_afterLayout` in `main.dart`).
+iOS delivers the shortcut that launched the app as soon as the handler is
+installed, which is in `initState`; until the first build `_layout` is the
+desktop default, and "Park a thought" went looking for a footer field a phone
+does not draw. And `_jumpToAddTask` clears everything that can stand where the
+add field is drawn - the full-window calendar, a task that took the screen, a
+selection, an open capture pane - or the field opens out of sight.
 
 **Per-workspace views live on the workspace bar, not the title bar.** Notes,
 Parked and History are opened from the ▾ `_ViewsMenu` in `ui/workspace_bar.dart`
@@ -430,6 +437,15 @@ closes it. The `N` handler checks the focused node's ancestry for an
 `EditableTextState`, because a text field's key events bubble through the
 shell's `Focus` too and an "n" typed into a note must stay an "n".
 
+Folded, the field is `_addPrompt` - one "Add a task" line in the same slot and
+padding, so the way in is on the list at every size. Open, its prefix is a
+workspace chip (`_addTarget`, resolved through `_addTargetWorkspace` so a
+deleted target means "here"): `AppState.addTask(workspaceUuid:)` writes there
+without switching, and `_addedTo` says where it went. The chip's menu sets
+`_pickingAddTarget` while open, because a tap on a popup route is a tap
+*outside* the field and `onTapOutside` would fold an empty field under the
+choice.
+
 ### Selecting several tasks
 
 The selection is shell state (`_selected`, uuids, plus `_selectedIn`, the
@@ -442,6 +458,14 @@ or many - this workspace's shelves, then every other workspace's list and
 shelves - and replaced the single-workspace park picker. The writes are
 `AppState.moveTasks` / `finishTasks`: one pass, one refresh.
 
+
+**Side thoughts have a selection of their own**, in `ThoughtsPanel`'s State
+rather than the shell's: the pile is one global list, so there is no
+workspace for the selection to belong to and nothing outside the panel acts on
+it. Ctrl+click or a long press starts it; the header becomes its bar. Moving
+goes through the same `move_picker.dart` with `includeHereList` (a thought is
+on no list yet, so "This list" is its commonest destination), and
+`AppState.moveThoughts` writes each as a task and resolves the thought.
 ### The calendar
 
 Two tables. `calendars` is a coloured container; `calendar_events` is a block of
@@ -854,6 +878,13 @@ group, wired to `AppState.addTask(..., groupUuid:)`. One call rather than
 add-then-park: the pair writes the row twice and puts the first version on the
 active list for as long as the second write takes, which is a task appearing and
 vanishing on a list nobody asked to put it on.
+
+**A task leaving a shelf for a list is retitled "Shelf: title"** (`_offShelf`
+in `AppState`, applied by `unparkTask`, `unparkGroup`, `deleteGroup` and
+`moveTasks` when the target is a list). One query for every shelf's title
+(`LocalStore.groupTitles`) because the move picker can take a task off another
+workspace's shelf. `recur_text` is prefixed too, or the next occurrence of a
+repeat would be spawned without it. Shelf to shelf is left alone.
 
 `AppState.unparkGroup` is the reverse and is deliberately **not** `deleteGroup`:
 same release loop, no tombstone, because emptying a backlog is not the same as
@@ -1270,8 +1301,8 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   what holds *which rung of its ladder* you are on — so on a phone a note
   reported itself open, the shell hid the chrome, and the panel snapped back to
   its list one frame later, looking exactly like the note refusing to open. The
-  thought bubble is a child of that Stack rather than a reason to build one, for
-  the same reason: a Stack that comes and goes is the same structural change one
+  Stack is built unconditionally, with `overlay` as an optional child, for the
+  same reason: a Stack that comes and goes is the same structural change one
   level down. `test/content_slot_test.dart` pins it, and fails if the key goes.
 - **Anything long-lived that covers the content area is a sheet in the shell's
   `Stack`, never a `showDialog` route.** A modal route's barrier covers the
@@ -1397,3 +1428,25 @@ Notes for changing it:
 - The close guard refuses to close while side thoughts are pending. That is
   deliberate, not a bug; it's the point of the feature.
 - `flutter analyze` is expected to be completely clean. Keep it that way.
+
+### The web build
+
+The same app compiles for the browser and is served by the sync server
+(`TODO_SYNC_WEB`, see `server/DEPLOY.md`); `server/build-web.sh <dir>` builds and
+publishes it. Three rules keep it compiling and starting:
+
+- **Ask `platform.dart`, never `Platform`.** `dart:io` compiles into a web build
+  and then throws the first time `Platform.isX` is read, so a stray check is a
+  blank page, not a false. `isDesktop` / `isMobile` / `isWindows` / `isWeb`
+  check `kIsWeb` first, and every `supported` getter (tray, hotkeys,
+  notifications, quick actions, startup, taskbar) reads from them.
+- **Shared store code imports `package:sqflite_common/sqflite.dart`**, never
+  `sqflite_common_ffi` (which pulls in `dart:ffi`). `sync/db_factory.dart`
+  picks the implementation by conditional export; on the web it is WASM SQLite
+  in IndexedDB, and `web/sqlite3.wasm` + `web/sqflite_sw.js` are fetched by
+  `dart run sqflite_common_ffi_web:setup`, not committed.
+- **Native-only features are switched off at their entry point, not stubbed.**
+  `main()` skips `MediaKit`, the legacy import and the attachment store on the
+  web; `blobs == null` is what hides the paperclip, and a null `onToggleSound`
+  hides the sound button. A feature that cannot work is absent rather than a
+  control that does nothing.

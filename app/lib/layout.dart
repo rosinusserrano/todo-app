@@ -105,6 +105,13 @@ class Layout {
 
   bool get hasRail => width >= railMinWidth && height >= railMinHeight;
 
+  /// The views as a bar along the bottom edge - wherever there is no rail,
+  /// pointer or finger alike. It started as a touch-only control, on the
+  /// grounds that a mouse pays for the ▾ menu easily; but a menu hides which
+  /// views exist behind a press on a mouse too, and the narrow window is the
+  /// widget's everyday size.
+  bool get hasViewBar => !hasRail;
+
   // ------------------------------------------------------------ content area
 
   /// The widest the task list is allowed to get. A checklist is a column of

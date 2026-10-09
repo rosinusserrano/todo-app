@@ -11,8 +11,9 @@
 import 'dart:io' show File, Platform;
 
 import 'package:path/path.dart' as p;
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_common/sqflite.dart';
 
+import '../platform.dart';
 import 'local_store.dart';
 import 'models.dart';
 
@@ -56,7 +57,7 @@ class LegacyImport {
   /// on Windows resolves to `%APPDATA%\<bundle identifier>\`. The old app only
   /// ever ran on Windows, so there is nothing to look for anywhere else.
   static String? defaultSourcePath() {
-    if (!Platform.isWindows) return null;
+    if (!isWindows) return null;
     final appData = Platform.environment['APPDATA'];
     if (appData == null) return null;
     return p.join(appData, 'com.marco.todowidget', 'todo.db');

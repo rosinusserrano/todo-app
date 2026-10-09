@@ -65,6 +65,8 @@ dependencies:
   flutter_markdown_plus: ^1.0.12
   markdown: ^7.3.1
   flutter_math_fork: ^0.7.4
+  sqflite_common: ^2.5.13+1
+  sqflite_common_ffi_web: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -97,6 +99,14 @@ flutter_launcher_icons:
     generate: true
     image_path: assets/icon.png
     icon_size: 256
+  # The browser build, and what iOS uses for "Add to Home Screen" (it reads
+  # Icon-192 via the apple-touch-icon link in web/index.html). Full-bleed, for
+  # the same squircle reason as image_path_ios above.
+  web:
+    generate: true
+    image_path: assets/icon_ios.png
+    background_color: "#18181D"
+    theme_color: "#18181D"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

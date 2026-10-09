@@ -2,9 +2,11 @@
 // and the edit form.
 //
 // Tasks belong to exactly one workspace; side thoughts stay global across all
-// of them. Only the active workspace is shown as a tab - clicking its name opens
-// it for editing. The ▾ *inside* the tab's right edge lists the other
-// workspaces; picking one switches to it. (This replaced a scrolling row of
+// of them. Only the active workspace is shown as a tab, and clicking any part
+// of it lists the other workspaces; picking one switches to it. Editing is a ✎
+// - in the tab on hover, and as the switcher's "Edit …" entry - and not a click
+// on the name, which used to open the form when what was wanted was usually
+// the switcher. (This replaced a scrolling row of
 // every tab, which ate the width on a 340px window once there were more than a
 // few.)
 //
@@ -94,7 +96,7 @@ class WorkspaceBar extends StatelessWidget {
             child: _Tab(
               workspace: current,
               others: others,
-              onTap: () => onEdit(current),
+              onEdit: () => onEdit(current),
               onSelect: onSelect,
               onCreate: onCreate,
             ),
@@ -259,14 +261,25 @@ class _ViewsMenu extends StatelessWidget {
 /// Drawn as the right-hand end of [_Tab], which owns the outline around it.
 class _SwitcherMenu extends StatelessWidget {
   const _SwitcherMenu({
+    required this.menuKey,
+    required this.current,
     required this.others,
     required this.onSelect,
+    required this.onEdit,
     required this.onCreate,
     required this.radius,
   });
 
+  /// On the menu button itself, so the tab's name can open it.
+  final GlobalKey<PopupMenuButtonState<Object>> menuKey;
+
+  final Workspace current;
   final List<Workspace> others;
   final ValueChanged<Workspace> onSelect;
+
+  /// Editing the workspace you are on - the menu's way in, for touch, which
+  /// has no hover to reveal the tab's ✎.
+  final VoidCallback onEdit;
 
   /// Making a new one, from the bottom of this list.
   ///
@@ -287,12 +300,16 @@ class _SwitcherMenu extends StatelessWidget {
     // be pressed all day and nothing would happen. It only ever failed on the
     // narrow layout, because the rail's Add is an ordinary button.
     return PopupMenuButton<Object>(
+      key: menuKey,
       tooltip: 'Switch workspace',
       color: T.bgSolid,
       position: PopupMenuPosition.under,
       borderRadius: BorderRadius.only(topRight: radius, bottomRight: radius),
-      onSelected: (picked) =>
-          picked == _addWorkspace ? onCreate() : onSelect(picked as Workspace),
+      onSelected: (picked) => picked == _addWorkspace
+          ? onCreate()
+          : picked == _editWorkspace
+          ? onEdit()
+          : onSelect(picked as Workspace),
       itemBuilder: (context) => [
         for (final ws in others)
           PopupMenuItem<Object>(
@@ -318,6 +335,26 @@ class _SwitcherMenu extends StatelessWidget {
         // already exists, this one makes something. Only entry in the menu
         // that is a verb.
         if (others.isNotEmpty) const PopupMenuDivider(),
+        PopupMenuItem<Object>(
+          value: _editWorkspace,
+          height: 38,
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 8,
+                child: Icon(Icons.edit_outlined, size: 13, color: T.muted),
+              ),
+              const SizedBox(width: T.s2),
+              Flexible(
+                child: Text(
+                  'Edit ${current.name}…',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
+                ),
+              ),
+            ],
+          ),
+        ),
         const PopupMenuItem<Object>(
           value: _addWorkspace,
           height: 38,
@@ -352,100 +389,145 @@ class _SwitcherMenu extends StatelessWidget {
 /// as nothing having happened.
 const _addWorkspace = Object();
 
+/// And for "Edit …", for the same reason. `final`, not `const`: every
+/// `const Object()` is the same canonical instance, so a second const sentinel
+/// would be [_addWorkspace] under another name.
+final _editWorkspace = Object();
+
 /// The active workspace's pill. Since only the active one is ever drawn there
 /// is no inactive styling left - the tab is always the current workspace.
 ///
-/// It is split into two hit areas sharing one outline: the name opens the edit
-/// form, the ▾ on the right opens the switcher. [others] empty means this is
-/// the only workspace, and the pill carries no arrow at all.
-class _Tab extends StatelessWidget {
+/// Every part of it opens the switcher - the name as well as the ▾ - except
+/// the ✎ it grows on hover, which opens the edit form.
+class _Tab extends StatefulWidget {
   const _Tab({
     required this.workspace,
     required this.others,
-    required this.onTap,
+    required this.onEdit,
     required this.onSelect,
     required this.onCreate,
   });
 
   final Workspace workspace;
   final List<Workspace> others;
-  final VoidCallback onTap;
+  final VoidCallback onEdit;
   final ValueChanged<Workspace> onSelect;
   final VoidCallback onCreate;
 
   @override
+  State<_Tab> createState() => _TabState();
+}
+
+class _TabState extends State<_Tab> {
+  final _switcher = GlobalKey<PopupMenuButtonState<Object>>();
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final workspace = widget.workspace;
     final color = T.parseHex(workspace.color);
     const radius = Radius.circular(T.radius);
+    final pointer = !Layout.of(context).touch;
 
     return Padding(
       padding: const EdgeInsets.only(right: T.s1),
-      child: Container(
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.16),
-          borderRadius: const BorderRadius.all(radius),
-          border: Border.all(color: color.withValues(alpha: 0.42)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: InkWell(
-                onTap: onTap,
-                // Square off the inner corners so the tap highlight cannot
-                // round away from the outline it sits inside.
-                borderRadius: BorderRadius.only(
-                  topLeft: radius,
-                  bottomLeft: radius,
-                  // Squared off because the switcher is always there now:
-                  // even a lone workspace has somewhere to go from this
-                  // menu, since making a new one is its last entry.
-                  topRight: Radius.zero,
-                  bottomRight: Radius.zero,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration:
-                            BoxDecoration(color: color, shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: T.s1),
-                      Flexible(
-                        child: Text(
-                          workspace.name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: T.fsLabel,
-                            color: T.text,
-                            fontWeight: T.wMedium,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: Container(
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.16),
+            borderRadius: const BorderRadius.all(radius),
+            border: Border.all(color: color.withValues(alpha: 0.42)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: InkWell(
+                  // The name is part of the switcher now, not a door to the
+                  // edit form: it is the biggest target in the pill and the
+                  // question it is pressed to answer is "which workspace".
+                  onTap: () => _switcher.currentState?.showButtonMenu(),
+                  // Square off the inner corners so the tap highlight cannot
+                  // round away from the outline it sits inside.
+                  borderRadius: const BorderRadius.only(
+                    topLeft: radius,
+                    bottomLeft: radius,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: T.s1),
+                        Flexible(
+                          child: Text(
+                            workspace.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: T.fsLabel,
+                              color: T.text,
+                              fontWeight: T.wMedium,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            // Fixed height rather than a Border on the arrow: a stretched
-            // divider would need the Row to size on the cross axis, and this
-            // Row is deliberately unbounded there.
-            Container(
-              width: 1,
-              height: 16,
-              color: color.withValues(alpha: 0.4),
-            ),
-            _SwitcherMenu(
-              others: others,
-              onSelect: onSelect,
-              onCreate: onCreate,
-              radius: radius,
-            ),
-          ],
+              // The tab expands on hover to show its ✎. Pointer only: touch
+              // reaches the form through the switcher's "Edit …" entry, and a
+              // pill that was permanently wider would cost the bar its width.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                child: pointer && _hovered
+                    ? Tooltip(
+                        message: 'Edit workspace',
+                        child: InkWell(
+                          onTap: widget.onEdit,
+                          borderRadius: BorderRadius.circular(T.radius),
+                          child: const Padding(
+                            padding: EdgeInsets.fromLTRB(0, T.s1, T.s2, T.s1),
+                            child: Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: T.muted,
+                            ),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              // Fixed height rather than a Border on the arrow: a stretched
+              // divider would need the Row to size on the cross axis, and this
+              // Row is deliberately unbounded there.
+              Container(
+                width: 1,
+                height: 16,
+                color: color.withValues(alpha: 0.4),
+              ),
+              _SwitcherMenu(
+                menuKey: _switcher,
+                current: workspace,
+                others: widget.others,
+                onSelect: widget.onSelect,
+                onEdit: widget.onEdit,
+                onCreate: widget.onCreate,
+                radius: radius,
+              ),
+            ],
+          ),
         ),
       ),
     );

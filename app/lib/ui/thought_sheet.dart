@@ -19,7 +19,7 @@
 // it): a barrier you can see through still shows the list. This is opaque and
 // full height.
 //
-// It takes a glyph, a title and a hint because the *other* thing captured
+// It can take a glyph, a title and a hint because the *other* thing captured
 // blind on a phone wants exactly this pane: the line added to the task you are
 // on, from the home-screen quick action. Same shape, same reasoning - a phone
 // pulled out mid-conversation to write one line down - so it is the same widget
@@ -44,20 +44,22 @@ class ThoughtSheet extends StatefulWidget {
     required this.accent,
     required this.onAdd,
     required this.onClose,
-    this.glyph = '💭',
-    this.title = 'Side thought',
-    this.hint = 'What just came to mind…',
+    this.glyph,
+    this.title,
+    this.hint,
   });
 
   final Color accent;
 
-  /// What this pane is for, in the header. Defaults to a side thought, which is
-  /// what it was built for and still mostly is.
-  final String glyph;
-  final String title;
+  /// What this pane is for, in the header. Absent for a side thought, which is
+  /// what it was built for and still mostly is: that pane is deliberately
+  /// plain - a field and the keyboard, nothing to read first. The quick
+  /// action's note-on-a-task use passes them, because it has to say which task.
+  final String? glyph;
+  final String? title;
 
-  /// The empty field's prompt.
-  final String hint;
+  /// The empty field's prompt. Absent means none.
+  final String? hint;
 
   /// Returns once the thought is stored. The sheet stays open on an empty
   /// submit rather than closing on nothing.
@@ -127,19 +129,26 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                   padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, T.s1),
                   child: Row(
                     children: [
-                      Text(widget.glyph, style: const TextStyle(fontSize: 17)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: T.fsMenu,
-                            fontWeight: T.wMedium,
-                            color: T.text,
-                          ),
+                      if (widget.glyph != null) ...[
+                        Text(
+                          widget.glyph!,
+                          style: const TextStyle(fontSize: 17),
                         ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: widget.title == null
+                            ? const SizedBox.shrink()
+                            : Text(
+                                widget.title!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: T.fsMenu,
+                                  fontWeight: T.wMedium,
+                                  color: T.text,
+                                ),
+                              ),
                       ),
                       if (_added > 0)
                         Padding(

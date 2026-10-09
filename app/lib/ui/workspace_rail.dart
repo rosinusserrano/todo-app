@@ -7,16 +7,20 @@
 // point, tells you what exists. Same callbacks as [WorkspaceBar], so the shell
 // swaps one for the other and nothing else changes.
 //
-// The click model is carried over exactly: tapping another workspace switches
-// to it, tapping the one you are on opens it for editing. The pencil is only
-// there because on a tab that behaviour was discoverable from the ▾ beside it
-// and here there is no ▾.
+// A click on a workspace goes to it - including the one you are on, which
+// lands on its list. Editing is the ✎ beside a name, shown on hover, and only
+// that: clicking the current workspace used to open its form, so the same
+// click on the same row meant "switch" or "edit" depending on which row was
+// lit, and a stray click on your own workspace opened a dialog.
 //
 // **Collapsed** it is a strip of [Layout.railCollapsedWidth]: one coloured dot
-// per workspace and one icon per view, each with its name in a tooltip. Still
+// per workspace and one icon per view. Hovering a dot unrolls it into a tile
+// with the name and a ✎. Still
 // the same navigation - every destination the full rail offers is on the strip
 // - and the choice is remembered, because somebody who folds the rail away to
 // give a note the width wants it folded the next time too.
+
+import 'dart:async' show Timer;
 
 import 'package:flutter/material.dart';
 
@@ -115,11 +119,14 @@ class WorkspaceRail extends StatelessWidget {
               shrinkWrap: true,
               children: [
                 for (final ws in workspaces)
+                  // A click on a workspace goes to it - the current one
+                  // included, which lands on its list. Editing is the ✎ and
+                  // nothing else: a name that sometimes switched and
+                  // sometimes opened a form was one you had to read twice.
                   _WorkspaceRow(
                     workspace: ws,
                     current: ws.uuid == currentUuid,
-                    onTap: () =>
-                        ws.uuid == currentUuid ? onEdit(ws) : onSelect(ws),
+                    onTap: () => onSelect(ws),
                     onEdit: () => onEdit(ws),
                   ),
               ],
@@ -242,8 +249,8 @@ extension on WorkspaceRail {
                   _WorkspaceDot(
                     workspace: ws,
                     current: ws.uuid == currentUuid,
-                    onTap: () =>
-                        ws.uuid == currentUuid ? onEdit(ws) : onSelect(ws),
+                    onTap: () => onSelect(ws),
+                    onEdit: () => onEdit(ws),
                   ),
               ],
             ),
@@ -381,36 +388,110 @@ class _StripButton extends StatelessWidget {
 /// A workspace on the collapsed strip: its colour, ringed when it is current.
 /// The click model is the full rail's - another workspace switches, the
 /// current one opens for editing.
-class _WorkspaceDot extends StatelessWidget {
+/// A workspace in the collapsed strip: a dot that expands into a tile.
+///
+/// Hovering it unrolls the name - and a ✎ - beside the strip, over the
+/// content, so the strip can stay narrow without its dots being a memory test.
+/// The tile is an [OverlayPortal] rather than a child that overflows the
+/// strip, because Flutter hit-tests children only inside their parent's box:
+/// a ✎ drawn past the strip's edge would be visible and unpressable. Moving
+/// from the dot onto the tile is allowed a beat ([_hideDelay]) before it
+/// folds, or the gap between the two would close it under the pointer.
+class _WorkspaceDot extends StatefulWidget {
   const _WorkspaceDot({
     required this.workspace,
     required this.current,
     required this.onTap,
+    required this.onEdit,
   });
 
   final Workspace workspace;
   final bool current;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
+
+  @override
+  State<_WorkspaceDot> createState() => _WorkspaceDotState();
+}
+
+class _WorkspaceDotState extends State<_WorkspaceDot> {
+  final _tile = OverlayPortalController();
+  final _link = LayerLink();
+  Timer? _hide;
+
+  static const _hideDelay = Duration(milliseconds: 160);
+
+  @override
+  void dispose() {
+    _hide?.cancel();
+    super.dispose();
+  }
+
+  void _enter(PointerEvent _) {
+    _hide?.cancel();
+    if (!_tile.isShowing) _tile.show();
+  }
+
+  void _exit(PointerEvent _) {
+    _hide?.cancel();
+    _hide = Timer(_hideDelay, () {
+      if (mounted && _tile.isShowing) _tile.hide();
+    });
+  }
+
+  void _press(VoidCallback action) {
+    _hide?.cancel();
+    if (_tile.isShowing) _tile.hide();
+    action();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final color = T.parseHex(workspace.color);
-    return Tooltip(
-      message: current ? '${workspace.name} (click to edit)' : workspace.name,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(T.radius),
-        child: SizedBox(
-          width: 32,
-          height: 28,
-          child: Center(
-            child: Container(
-              width: current ? 16 : 10,
-              height: current ? 16 : 10,
-              decoration: BoxDecoration(
-                color: current ? color.withValues(alpha: 0.25) : color,
-                shape: BoxShape.circle,
-                border: current ? Border.all(color: color, width: 2) : null,
+    final color = T.parseHex(widget.workspace.color);
+    final current = widget.current;
+
+    return OverlayPortal(
+      controller: _tile,
+      overlayChildBuilder: (context) => CompositedTransformFollower(
+        link: _link,
+        targetAnchor: Alignment.centerRight,
+        followerAnchor: Alignment.centerLeft,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: MouseRegion(
+            onEnter: _enter,
+            onExit: _exit,
+            child: _expandedTile(color),
+          ),
+        ),
+      ),
+      child: CompositedTransformTarget(
+        link: _link,
+        child: MouseRegion(
+          onEnter: _enter,
+          onExit: _exit,
+          child: Semantics(
+            label: widget.workspace.name,
+            button: true,
+            selected: current,
+            child: InkWell(
+              onTap: () => _press(widget.onTap),
+              borderRadius: BorderRadius.circular(T.radius),
+              child: SizedBox(
+                width: 32,
+                height: 28,
+                child: Center(
+                  child: Container(
+                    width: current ? 16 : 10,
+                    height: current ? 16 : 10,
+                    decoration: BoxDecoration(
+                      color: current ? color.withValues(alpha: 0.25) : color,
+                      shape: BoxShape.circle,
+                      border:
+                          current ? Border.all(color: color, width: 2) : null,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -418,9 +499,78 @@ class _WorkspaceDot extends StatelessWidget {
       ),
     );
   }
+
+  Widget _expandedTile(Color color) {
+    return Material(
+      color: Color.lerp(T.bgSolid, color, 0.18),
+      elevation: 6,
+      shadowColor: Colors.black.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(T.radius),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(T.radius),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: () => _press(widget.onTap),
+              borderRadius: BorderRadius.circular(T.radius),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s1, T.s1),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: Text(
+                    widget.workspace.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: T.fsLabel,
+                      color: T.text,
+                      fontWeight: widget.current ? T.wMedium : T.wNormal,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            _EditPen(onTap: () => _press(widget.onEdit)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _WorkspaceRow extends StatelessWidget {
+/// The ✎ beside a workspace's name: the one way into its edit form.
+class _EditPen extends StatelessWidget {
+  const _EditPen({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = Layout.of(context);
+    return Tooltip(
+      message: 'Edit workspace',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(T.radius),
+        child: SizedBox(
+          width: layout.touch ? layout.tapTarget : 24,
+          height: layout.touch ? layout.tapTarget : 24,
+          child: Icon(Icons.edit_outlined, size: layout.touch ? 18 : 14,
+              color: T.muted),
+        ),
+      ),
+    );
+  }
+}
+
+/// A workspace in the full rail. The ✎ shows on hover for every row (always
+/// for the current one on touch, which has no hover), so any workspace can be
+/// edited without switching to it first.
+class _WorkspaceRow extends StatefulWidget {
   const _WorkspaceRow({
     required this.workspace,
     required this.current,
@@ -434,59 +584,76 @@ class _WorkspaceRow extends StatelessWidget {
   final VoidCallback onEdit;
 
   @override
-  Widget build(BuildContext context) {
-    final color = T.parseHex(workspace.color);
+  State<_WorkspaceRow> createState() => _WorkspaceRowState();
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Material(
-        color: current ? color.withValues(alpha: 0.18) : Colors.transparent,
-        borderRadius: BorderRadius.circular(T.radius),
-        child: InkWell(
-          onTap: onTap,
+class _WorkspaceRowState extends State<_WorkspaceRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final workspace = widget.workspace;
+    final current = widget.current;
+    final color = T.parseHex(workspace.color);
+    final pen = _hovered || (current && Layout.of(context).touch);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Material(
+          color: current ? color.withValues(alpha: 0.18) : Colors.transparent,
           borderRadius: BorderRadius.circular(T.radius),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(T.radius),
-              border: Border.all(
-                color: current ? color.withValues(alpha: 0.5) : Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(T.radius),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(T.radius),
+                border: Border.all(
+                  color: current
+                      ? color.withValues(alpha: 0.5)
+                      : Colors.transparent,
+                ),
               ),
-            ),
-            padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s1, T.s2),
-            child: Row(
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    workspace.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: T.fsLabel,
-                      color: T.text,
-                      fontWeight: current ? T.wMedium : FontWeight.w400,
-                    ),
+              padding: const EdgeInsets.fromLTRB(T.s2, 0, 0, 0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration:
+                        BoxDecoration(color: color, shape: BoxShape.circle),
                   ),
-                ),
-                if (current)
-                  Tooltip(
-                    message: 'Edit workspace',
-                    child: InkWell(
-                      onTap: onEdit,
-                      borderRadius: BorderRadius.circular(T.radius),
-                      child: const Padding(
-                        padding: EdgeInsets.all(3),
-                        child: Icon(Icons.edit, size: 11, color: T.muted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: T.s2),
+                      child: Text(
+                        workspace.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: T.fsLabel,
+                          color: T.text,
+                          fontWeight: current ? T.wMedium : FontWeight.w400,
+                        ),
                       ),
                     ),
                   ),
-              ],
+                  // Kept in the layout and only faded, so revealing it does
+                  // not reflow the name under the pointer.
+                  AnimatedOpacity(
+                    opacity: pen ? 1 : 0,
+                    duration: const Duration(milliseconds: 120),
+                    child: IgnorePointer(
+                      ignoring: !pen,
+                      child: _EditPen(onTap: widget.onEdit),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

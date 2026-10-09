@@ -12,10 +12,10 @@
 //
 // Desktop only - a phone has no tray.
 
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:tray_manager/tray_manager.dart';
+
+import 'platform.dart';
 
 class AppTray {
   AppTray({
@@ -32,8 +32,7 @@ class AppTray {
   /// Runs the close guard. Nothing here assumes the app actually exits.
   final Future<void> Function() onQuit;
 
-  static bool get supported =>
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  static bool get supported => isDesktop;
 
   bool _installed = false;
 
@@ -45,7 +44,7 @@ class AppTray {
 
     try {
       await trayManager.setIcon(
-        Platform.isWindows ? 'assets/tray_icon.ico' : 'assets/tray_icon.png',
+        isWindows ? 'assets/tray_icon.ico' : 'assets/tray_icon.png',
       );
       await trayManager.setToolTip('Todo Widget');
       await trayManager.setContextMenu(_menu());

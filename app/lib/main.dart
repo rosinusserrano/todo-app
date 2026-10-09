@@ -4,8 +4,9 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
+import 'dart:async' show Timer;
 import 'dart:convert' show utf8;
-import 'dart:io' show File, Platform;
+import 'dart:io' show File;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ import 'app_state.dart';
 import 'journal_crypto.dart';
 import 'layout.dart';
 import 'notifications.dart';
+import 'platform.dart';
 import 'quick_actions.dart';
 import 'reminders.dart';
 import 'shortcuts.dart';
@@ -59,20 +61,18 @@ import 'ui/task_drag.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/thought_sheet.dart';
-import 'ui/thought_bubble.dart';
 import 'ui/update_sheet.dart';
 import 'ui/view_bar.dart';
 import 'ui/workspace_bar.dart';
 import 'ui/workspace_rail.dart';
 
-bool get isDesktop =>
-    Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Must run before any Player is constructed.
-  MediaKit.ensureInitialized();
+  // Must run before any Player is constructed. The browser build has no
+  // concentration sound at all (see `_toggleSound` below), so no Player is
+  // ever constructed there and libmpv is never looked for.
+  if (!isWeb) MediaKit.ensureInitialized();
 
   if (isDesktop) {
     await acrylic.Window.initialize();
@@ -107,7 +107,8 @@ Future<void> main() async {
   // Before the first read, so the Tauri-era history is already there when the
   // UI paints rather than appearing a frame later. It is a no-op on every
   // launch after the first.
-  debugPrint((await LegacyImport.run(store)).toString());
+  // A browser has no Tauri-era database to find.
+  if (!isWeb) debugPrint((await LegacyImport.run(store)).toString());
 
   // Before AppState, which hands it the armed reminders on every task refresh -
   // including the one inside load() below, so the schedule is correct from the
@@ -115,7 +116,11 @@ Future<void> main() async {
   final notifications = NotificationService();
   await notifications.init();
 
-  final blobs = await AttachmentStore.open();
+  // Attachment bytes live in a directory beside todo.db, and a browser has no
+  // such directory. Null is the state AppState already handles - rows still
+  // sync and show, as "not on this device" - and it is the honest one: the web
+  // build is a second device that has never been handed the bytes.
+  final blobs = isWeb ? null : await AttachmentStore.open();
 
   // Reads whether a journal password has been set, so the panel opens straight
   // to "unlock" rather than "set one" on a device that already has a vault.
@@ -133,7 +138,7 @@ Future<void> main() async {
   // Bytes whose row was tombstoned on another device arrive here as a merge,
   // never as a local delete, so this is the only thing that ever collects them.
   // Not awaited: it is a directory listing, and nothing on screen depends on it.
-  state.sweepAttachments();
+  if (blobs != null) state.sweepAttachments();
 
   // Sync pulls the UI, not the other way round: a merge that brings rows in
   // has to refresh whatever is on screen, or the user sees stale lists until
@@ -153,7 +158,7 @@ Future<void> main() async {
   await sync.load();
 
   final sound = SoundService(store);
-  await sound.load();
+  if (!isWeb) await sound.load();
 
   runApp(
     TodoApp(
@@ -245,6 +250,35 @@ class _WidgetShellState extends State<WidgetShell>
 
   bool get _addShowing => _adding || _addController.text.isNotEmpty;
 
+  /// The workspace the add field writes into, when it is not this one.
+  ///
+  /// Picked from the chip at the start of the field. Capturing into another
+  /// list is not the same as wanting to look at it, so the screen stays where
+  /// it is and [_addedTo] says where the task went instead. Resolved through
+  /// [_addTargetWorkspace], so a target that was deleted, or that became the
+  /// current workspace, simply means "here".
+  String? _addTarget;
+
+  /// The name shown under the field for a moment after a task went elsewhere -
+  /// it will not appear on the list, and a field that empties itself is
+  /// otherwise indistinguishable from one that dropped what you typed.
+  String? _addedTo;
+  Timer? _addedToTimer;
+
+  /// A workspace menu is open from the field's chip. The menu is a route, so a
+  /// tap on it is a tap *outside* the field, and the field would fold itself
+  /// away underneath the choice.
+  bool _pickingAddTarget = false;
+
+  Workspace? get _addTargetWorkspace {
+    final target = _addTarget;
+    if (target == null || target == s.currentWorkspaceUuid) return null;
+    for (final w in s.workspaces) {
+      if (w.uuid == target) return w;
+    }
+    return null;
+  }
+
   /// Open the field and put the caret in it. The focus waits for the frame
   /// that builds the field.
   void _openAdd() {
@@ -259,6 +293,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (_addController.text.trim().isNotEmpty) return;
     _addController.clear();
     _addFocus.unfocus();
+    _addTarget = null;
     if (_adding) setState(() => _adding = false);
   }
 
@@ -322,12 +357,32 @@ class _WidgetShellState extends State<WidgetShell>
   /// reached by long-pressing the app icon. The third one names whichever task
   /// is in focus, so the menu is rebuilt whenever that changes - see
   /// [_onState].
+  ///
+  /// Every entry waits for the first layout ([_afterLayout]): a cold start hands
+  /// the shortcut over before anything is built.
   late final AppQuickActions _quickActions = AppQuickActions(
-    onAddTask: _jumpToAddTask,
-    onAddThought: _jumpToAddThought,
-    onNoteOnActive: _noteOnActiveTask,
-    onOpenCalendar: _openCalendarFromOutside,
+    onAddTask: _afterLayout(_jumpToAddTask),
+    onAddThought: _afterLayout(_jumpToAddThought),
+    onNoteOnActive: _afterLayout(_noteOnActiveTask),
+    onOpenCalendar: _afterLayout(_openCalendarFromOutside),
   );
+
+  /// Whether [_layout] has been measured yet, rather than being its default.
+  bool _laidOut = false;
+
+  /// [action], deferred until the shell has been laid out once.
+  ///
+  /// iOS delivers the shortcut that launched the app as soon as the handler is
+  /// installed, which is during [initState] - before the first build. Until
+  /// then [_layout] is the desktop default, so "Park a thought" asked a
+  /// footer field that a phone does not draw to take the caret, and nothing
+  /// happened. Both quick actions were dead from a cold start for that reason.
+  Future<void> Function() _afterLayout(Future<void> Function() action) {
+    return () async {
+      if (!_laidOut) await WidgetsBinding.instance.endOfFrame;
+      if (mounted) await action();
+    };
+  }
 
   late final AppTray _tray = AppTray(
     onShow: _surfaceWindow,
@@ -709,7 +764,9 @@ class _WidgetShellState extends State<WidgetShell>
       initialStart: event.start,
       initialEnd: event.end,
       loadAttachments: () => s.eventAttachments(event),
-      onAddAttachment: (file) => s.attachFileToEvent(event, file),
+      onAddAttachment: s.blobs == null
+          ? null
+          : (file) => s.attachFileToEvent(event, file),
       onRemoveAttachment: s.removeEventAttachment,
       loadTasks: () => s.plannableTasks(event),
       onPlanTask: (task, on) => s.setTaskEvent(task, on ? event.uuid : null),
@@ -855,13 +912,28 @@ class _WidgetShellState extends State<WidgetShell>
   }
 
   /// The add field sits behind the focus overlay, so this one has to leave it.
+  ///
+  /// It also has to leave everything else that can stand where the field is
+  /// drawn, or it opens out of sight - which from the outside is a shortcut
+  /// that does nothing. The calendar replaces the whole window unless it is
+  /// split beside the list; a task read on a phone takes the content area; a
+  /// selection puts its own bar in the field's slot.
   Future<void> _jumpToAddTask() async {
     if (!await _surfaceForCapture(leaveFocus: true)) return;
-    // Land on the task list, not on whichever view was covering it.
+    if (s.showCalendar && !_layout.splitsCalendar) await _toggleCalendar();
+    if (!mounted) return;
+    // Land on the task list, not on whichever view was covering it. Not
+    // [_showTasks]: that stops after closing one overlay, which is right for a
+    // tap and wrong here. The capture pane is one of those overlays, and the
+    // top-most - a phone left on it covers the field entirely.
+    if (_thoughtCapture) _closeThoughtCapture();
     if (s.showHistory) s.toggleHistory();
     if (s.showThoughts) s.toggleThoughts();
     if (s.showParked) s.toggleParked();
     if (s.showJournal) s.toggleJournal();
+    if (s.showSession) s.toggleSession();
+    if (_expandedTaskUuid != null) _collapseTask();
+    _clearSelection();
     _openAdd();
   }
 
@@ -962,6 +1034,7 @@ class _WidgetShellState extends State<WidgetShell>
 
   @override
   void dispose() {
+    _addedToTimer?.cancel();
     s.removeListener(_onState);
     widget.sync.removeListener(_onState);
     widget.sound.removeListener(_onState);
@@ -1296,6 +1369,7 @@ class _WidgetShellState extends State<WidgetShell>
               LayoutBuilder(
                 builder: (context, constraints) {
                   _layout = Layout(constraints.biggest, touch: !isDesktop);
+                  _laidOut = true;
                   return LayoutScope(layout: _layout, child: _shell(ws));
                 },
               ),
@@ -1372,6 +1446,14 @@ class _WidgetShellState extends State<WidgetShell>
             accent: ws,
             onClose: _closeSettings,
             startup: isDesktop && StartupSetting.supported ? _startup : null,
+            // Where the view bar is the way between views, History is not on
+            // it (Thoughts took its place) and this is where it went.
+            onOpenHistory: _layout.touch && !_layout.hasRail
+                ? () {
+                    _closeSettings();
+                    _selectView(WorkspaceView.history);
+                  }
+                : null,
           ),
         ),
 
@@ -1385,7 +1467,7 @@ class _WidgetShellState extends State<WidgetShell>
             isDesktop: isDesktop,
             pinned: _pinned,
             onTogglePin: _togglePin,
-            onToggleSound: _toggleSound,
+            onToggleSound: isWeb ? null : _toggleSound,
             soundPlaying: widget.sound.isPlaying,
             soundPaused: widget.sound.isPaused,
             onTogglePause: widget.sound.togglePause,
@@ -1605,7 +1687,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// entry that silently loops is one you cannot tell your position in.
   bool _swipeView(int direction) {
     final at = kBarViews.indexOf(_openView);
-    // Thoughts is not on the bar, so a swipe from it has no defined neighbour.
+    // History is not on the bar, so a swipe from it has no defined neighbour.
     // Going back to the list is the honest answer.
     if (at < 0) {
       _showTasks();
@@ -1768,29 +1850,7 @@ class _WidgetShellState extends State<WidgetShell>
         // The content keeps its element through every one of those `if`s
         // resolving differently - see content_slot.dart, which is the whole
         // reason opening a note on a phone no longer closes it again.
-        //
-        // The bubble floats over the content rather than sitting in a row of
-        // its own: it is deliberately in the thumb's corner, and a strip
-        // reserved for one circle is height taken off the list on the smallest
-        // screen there is. Inside the content area, so it is above the view
-        // bar and comes and goes with the panels the body fades during focus
-        // mode - which has a thought field of its own.
-        contentSlot(
-          child: content,
-          overlay: _thoughtBubbleShows
-              ? Positioned(
-                  right: ThoughtBubble.margin,
-                  bottom: ThoughtBubble.margin,
-                  child: ThoughtBubble(
-                    accent: T.thoughts,
-                    count: s.thoughts.length,
-                    listOpen: s.showThoughts,
-                    onTap: _openThoughtCapture,
-                    onToggleList: s.toggleThoughts,
-                  ),
-                )
-              : null,
-        ),
+        contentSlot(child: content),
       ],
     );
 
@@ -1830,12 +1890,14 @@ class _WidgetShellState extends State<WidgetShell>
         // Below the content, above the footer. The footer is about the global
         // thought pile and stays the bottom-most thing in the window; this bar
         // is about the workspace above it, so it sits between the two.
-        if (_layout.touch && !_layout.hasRail && !_takesScreen)
+        if (_viewBarShows)
           ViewBar(
             accent: ws,
             openView: _openView,
             onSelect: _selectView,
             parkedReviewDue: s.groupsDueForReview.isNotEmpty,
+            thoughtCount: s.thoughtCount,
+            onSwipeUp: _openThoughtCapture,
           ),
         if (!_takesScreen) _footer(ws),
       ],
@@ -1898,16 +1960,15 @@ class _WidgetShellState extends State<WidgetShell>
 
   void _collapseTask() => setState(() => _expandedTaskUuid = null);
 
-  /// Where the way into the capture pane is a bubble over the list rather than
-  /// the 💭 on the footer.
+  /// Where the bottom view bar is drawn - which is also where it carries the
+  /// pile's count and pressure (Thoughts is its fourth entry), so the footer's
+  /// meter has nothing left to say. On a phone the bar is the way in too (a
+  /// swipe up writes a thought); a mouse keeps the footer's 💭, since a swipe
+  /// is not something a pointer is ever told to try.
   ///
-  /// The same condition the view bar is drawn under, and for the same reason:
-  /// it is the shape a phone wants. A window wide enough for the rail has room
-  /// for the footer's own button beside everything else, and a note that has
-  /// taken the screen is not a surface to float a button over - it has no
-  /// chrome at all by then.
-  bool get _thoughtBubbleShows =>
-      _layout.touch && !_layout.hasRail && !_takesScreen;
+  /// A window wide enough for the rail keeps the footer whole, and a note
+  /// that has taken the screen has no chrome at all.
+  bool get _viewBarShows => _layout.hasViewBar && !_takesScreen;
 
   /// Outside the rail and outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
@@ -1915,14 +1976,14 @@ class _WidgetShellState extends State<WidgetShell>
   Widget _footer(Color ws) => ThoughtFooter(
     key: _footerKey,
     onCapture: _layout.touch ? _openThoughtCapture : null,
-    // Wherever the bubble is drawn it is the whole control - the button, the
-    // count and the escalation - and this bar has nothing of its own left to
-    // say. It stays in the tree rather than being dropped from it because the
-    // field is still what [openAndFocus] focuses and the refusal is still what
-    // the close guard flashes; it simply takes no height until one of those
-    // happens.
-    showCaptureButton: !_thoughtBubbleShows,
-    showPressure: !_thoughtBubbleShows,
+    // Wherever the view bar is drawn it is the whole control - the way in,
+    // the count and the escalation - and this bar has nothing of its own left
+    // to say. It stays in the tree rather than being dropped from it because
+    // the field is still what [openAndFocus] focuses and the refusal is still
+    // what the close guard flashes; it simply takes no height until one of
+    // those happens.
+    showCaptureButton: !_viewBarShows || !_layout.touch,
+    showPressure: !_viewBarShows,
     thoughts: s.thoughts,
     accent: T.thoughts,
     blockedMessage: _blockedMessage,
@@ -2184,7 +2245,9 @@ class _WidgetShellState extends State<WidgetShell>
                 onClear: _clearSelection,
               )
             else if (_addShowing)
-              _addField(ws),
+              _addField(ws)
+            else
+              _addPrompt(ws),
             Expanded(child: _activeView(ws)),
           ],
         ),
@@ -2219,6 +2282,7 @@ class _WidgetShellState extends State<WidgetShell>
         thoughts: s.thoughts,
         onPromote: s.promoteThought,
         onDiscard: s.resolveThought,
+        onMove: _moveThoughts,
       );
     }
     if (s.showParked) {
@@ -2352,6 +2416,33 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
+  /// Thoughts to any workspace's list or shelf, through the same picker a
+  /// task is moved with. "New group…" in it creates a shelf in this workspace.
+  Future<void> _moveThoughts(
+    List<SideThought> thoughts,
+    RelativeRect anchor,
+  ) async {
+    final here = s.currentWorkspaceUuid;
+    if (thoughts.isEmpty || here == null) return;
+    final groups = await s.groupsByWorkspace();
+    if (!mounted) return;
+    final target = await showMovePicker(
+      context,
+      position: anchor,
+      currentWorkspaceUuid: here,
+      workspaces: s.workspaces,
+      groups: groups,
+      onCreateGroup: () => _editGroup(null),
+      includeHereList: true,
+    );
+    if (target == null || !mounted) return;
+    await s.moveThoughts(
+      thoughts,
+      workspaceUuid: target.workspaceUuid,
+      groupUuid: target.groupUuid,
+    );
+  }
+
   // ------------------------------------------------------------ selection
 
   /// The tasks selected with Ctrl+click (or *Select* on touch), by uuid.
@@ -2454,10 +2545,12 @@ class _WidgetShellState extends State<WidgetShell>
       accent: s.workspaceColor,
     );
     if (draft == null || !mounted) return;
+    final target = _addTargetWorkspace;
     _addController.clear();
     _closeAdd();
     await s.addTask(
       draft.text,
+      workspaceUuid: target?.uuid,
       notes: draft.notes,
       priority: draft.priority,
       remindAt: draft.remindAt,
@@ -2495,6 +2588,8 @@ class _WidgetShellState extends State<WidgetShell>
       decoration: InputDecoration(
         isDense: true,
         hintText: 'Add a task…',
+        prefixIcon: _addTargetChip(ws),
+        prefixIconConstraints: const BoxConstraints(minHeight: 30),
         filled: true,
         fillColor: T.surface,
         // The shortcut, made visible - and the only way in on a phone, which
@@ -2533,12 +2628,15 @@ class _WidgetShellState extends State<WidgetShell>
           _closeAdd();
           return;
         }
+        final target = _addTargetWorkspace;
         _addController.clear();
-        await s.addTask(value);
+        await s.addTask(value, workspaceUuid: target?.uuid);
         if (!mounted) return;
+        if (target != null) _sayAddedTo(target.name);
         _addFocus.requestFocus();
       },
       onTapOutside: (_) {
+        if (_pickingAddTarget) return;
         if (_addController.text.trim().isEmpty) _closeAdd();
       },
     );
@@ -2557,7 +2655,179 @@ class _WidgetShellState extends State<WidgetShell>
           const SingleActivator(LogicalKeyboardKey.keyD, control: true):
               _openComposer,
         },
-        child: field,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            field,
+            if (_addedTo != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, 0),
+                child: Text(
+                  'Added to $_addedTo',
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _sayAddedTo(String name) {
+    _addedToTimer?.cancel();
+    setState(() => _addedTo = name);
+    _addedToTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _addedTo = null);
+    });
+  }
+
+  /// The chip at the start of the add field: which list the task goes on.
+  ///
+  /// A dot in the current workspace's colour while it is "here" - the name is
+  /// already on the bar above and repeating it would cost the field its width -
+  /// and the dot plus the name once it points anywhere else, because then it is
+  /// the one thing on screen saying so.
+  Widget _addTargetChip(Color ws) {
+    final target = _addTargetWorkspace;
+    final color = target == null ? ws : T.parseHex(target.color);
+    return Tooltip(
+      message: 'Add to… (${target?.name ?? s.currentWorkspace?.name ?? ''})',
+      child: InkWell(
+        onTap: _pickAddTarget,
+        borderRadius: BorderRadius.circular(T.radius),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              if (target != null) ...[
+                const SizedBox(width: T.s1),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 96),
+                  child: Text(
+                    target.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: T.fsMeta,
+                      color: color,
+                      fontWeight: T.wMedium,
+                    ),
+                  ),
+                ),
+              ],
+              const Icon(Icons.expand_more_rounded, size: 12, color: T.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAddTarget() async {
+    // In the overlay's space, not the screen's: UiScale sits above the
+    // Navigator (see taskActionAnchor).
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final field = _addFocus.context?.findRenderObject() as RenderBox?;
+    if (overlay == null || field == null) return;
+    final rect =
+        field.localToGlobal(Offset.zero, ancestor: overlay) & field.size;
+    final current = _addTargetWorkspace?.uuid ?? s.currentWorkspaceUuid;
+
+    _pickingAddTarget = true;
+    final picked = await showMenu<String>(
+      context: context,
+      color: T.bgSolid,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(rect.left, rect.bottom, rect.width, 0),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        for (final w in s.workspaces)
+          PopupMenuItem<String>(
+            value: w.uuid,
+            height: 38,
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: T.parseHex(w.color),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: T.s2),
+                Expanded(
+                  child: Text(
+                    w.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: T.fsLabel,
+                      color: w.uuid == current ? T.text : T.muted,
+                      fontWeight:
+                          w.uuid == current ? T.wMedium : T.wNormal,
+                    ),
+                  ),
+                ),
+                if (w.uuid == s.currentWorkspaceUuid)
+                  const Text(
+                    'this one',
+                    style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+    _pickingAddTarget = false;
+    if (!mounted) return;
+    if (picked != null) setState(() => _addTarget = picked);
+    _addFocus.requestFocus();
+  }
+
+  /// The add field, folded: one line at the head of the list saying a task can
+  /// be added here, which turns into the field in place when pressed.
+  ///
+  /// The ＋ on the workspace bar and N are still there, but on a wide window
+  /// the ＋ is in the rail - the far side of the window from where the task
+  /// will appear - and a shortcut is only a way in once you know it. Adding a
+  /// task is the commonest thing done in this app, so the way to do it is on
+  /// the list itself. Same `_adding` state as the other two, so there is still
+  /// one field; same padding as the field, so opening it does not move the
+  /// list.
+  Widget _addPrompt(Color ws) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
+      child: Semantics(
+        button: true,
+        label: 'Add a task',
+        child: InkWell(
+          onTap: _openAdd,
+          borderRadius: BorderRadius.circular(T.radius),
+          child: Padding(
+            padding: const EdgeInsets.all(T.s2),
+            child: Row(
+              children: [
+                Icon(Icons.add_rounded, size: 16, color: ws),
+                const SizedBox(width: T.s2),
+                const ExcludeSemantics(
+                  child: Text(
+                    'Add a task',
+                    style: TextStyle(fontSize: T.fsBody, color: T.muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2602,7 +2872,10 @@ class _WidgetShellState extends State<WidgetShell>
             // draws the mark saying so - the list is otherwise unchanged by
             // planning.
             onUnplan: () => s.setTaskEvent(t, null),
-            onOpenAttachments: () => _openAttachments(t),
+            // No blob store means nowhere to put the bytes (the browser
+            // build), so no paperclip rather than a sheet that cannot add.
+            onOpenAttachments:
+                s.blobs == null ? null : () => _openAttachments(t),
             onSetPriority: (high) => s.setPriority(t, high),
             onOpen: () => _openTask(t),
             // Null under a pointer, which is how the row knows to expand

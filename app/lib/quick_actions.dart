@@ -28,10 +28,10 @@
 //
 // Desktop has no such menu, so this is a no-op there.
 
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:quick_actions/quick_actions.dart';
+
+import 'platform.dart';
 
 typedef QuickAction = Future<void> Function();
 
@@ -54,7 +54,7 @@ class AppQuickActions {
   /// and three taps through the app to answer it is two too many.
   final QuickAction onOpenCalendar;
 
-  static bool get supported => Platform.isAndroid || Platform.isIOS;
+  static bool get supported => isMobile;
 
   static const _addTask = 'add_task';
   static const _addThought = 'add_thought';

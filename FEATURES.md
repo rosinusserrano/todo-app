@@ -906,6 +906,16 @@ at the screen gives nothing away) and its lock is **opt-in**.
   in. Windows itself owns this setting (the `Run` key), so turning it off in
   Task Manager's Startup tab is reflected here; if a machine policy refuses the
   change, the switch shows what actually took effect rather than what was asked.
+- **Zoom** (Settings, or **Ctrl +** / **Ctrl −** / **Ctrl 0** on desktop) —
+  draws the whole widget larger or smaller, text, icons and spacing together,
+  from 80% to 150% in steps of ten. It is remembered per device, so the phone
+  and the desktop can each have their own. On a phone it comes on top of the
+  enlargement the phone already gets. The window stays the size it was, so
+  zooming in gives the layout less room and a narrow window takes its narrow
+  shape (the view bar at the bottom, say). Zoom stops before the layout gets
+  narrower than the smallest window the app allows. In a browser the shortcuts
+  are left to the browser's own zoom. Tap the percentage in Settings to go back
+  to 100%.
 - **Resizable** within sensible min bounds.
 - **Custom icon** — gradient (indigo→violet) rounded tile with a white checkmark,
   on every platform: taskbar, tray, iOS home screen, Android launcher. iOS gets
@@ -1081,17 +1091,28 @@ simply stretched.
   (always-on-top has no meaning on a phone). Installed on iPhone from an
   unsigned build signed locally with Sideloadly or AltStore.
 - **Web** — the same app in a browser, served by the sync server itself at its
-  own address (todo.rosinusserrano.de), so there is no certificate to renew and
+  own address (todo.sniggles.de), so there is no certificate to renew and
   a deploy reaches the phone on the next reload. "Add to Home Screen" on iOS
   gives it an icon and a full-screen window. The sync screen starts with the
   page's own address filled in; only the token is typed, once per browser.
   Edits from other devices arrive live, as they do everywhere else.
   - Tasks, workspaces, shelves, the calendar, notes (encryption included),
     thoughts and history all work.
+  - **Notifications by Web Push**, switched on per device under Settings →
+    Notifications. The server sends them, so task reminders and calendar
+    alerts arrive with the app closed, on the lock screen, like the native
+    app's. On an iPhone this needs iOS 16.4 or later and the app opened from
+    the Home Screen (Safari itself cannot receive them); *Test* sends one on
+    the spot. They follow the native rules: a parked task stays quiet, an
+    event uses its own lead or its calendar's, an all-day event only
+    notifies if it was given its own lead.
   - **Not in the browser:** concentration sound, attachments (rows from other
-    devices still sync; there is nowhere to keep the bytes), OS notifications
-    — reminders still surface while the page is open — home-screen quick
+    devices still sync; there is nowhere to keep the bytes), home-screen quick
     actions, the tray, global hotkeys and always-on-top.
+  - **The icon** is the app's own on the iPhone Home Screen. It used to be
+    a letter, because iOS asks for `/apple-touch-icon.png` and got the page.
+    Remove the old icon and add the app again to pick it up: iOS never
+    refreshes a home-screen icon by itself.
   - The browser keeps its own database (IndexedDB), so it is one more device as
     far as sync is concerned, and clearing the site's data is a reinstall.
 - **Home-screen quick actions** — long-press the app icon for "Add task",
@@ -1182,6 +1203,15 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Zoom**: make the whole widget larger or smaller, from Settings or with
+    Ctrl +/−/0 on desktop.
+  - **Notifications in the web app**, by Web Push from the sync server:
+    reminders and calendar alerts with the app closed. Settings →
+    Notifications, per device. Needs the server updated too.
+  - **The web app's Home Screen icon** is the app icon, not a letter.
+  - **The web app keeps clear of the iPhone's home indicator.** The bottom bar
+    sat on top of it, so sliding the bar up to add a thought sent you to the
+    home screen instead.
   - **A web version**, served by the sync server: open the server's address in
     any browser, or add it to the iPhone home screen instead of sideloading.
     See *Platforms*.

@@ -36,6 +36,7 @@ const _kRailCollapsed = 'ui:rail-collapsed';
 const _kSplitFraction = 'ui:split-fraction';
 const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
 const _kTasksPaneCollapsed = 'ui:tasks-pane-collapsed';
+const _kZoom = 'ui:zoom';
 
 /// The three grids. There is deliberately no month view: the year view is
 /// twelve months drawn at once, so a single month would be the same thing with
@@ -1192,7 +1193,42 @@ class AppState extends ChangeNotifier {
   /// time the notes are opened.
   bool tasksPaneCollapsed = false;
 
+  /// How much larger than its own sizes the whole widget is drawn, 1.0 for
+  /// as designed. Device-local like the rest of these: 130% is about the
+  /// screen in front of you, and a phone's answer is not a desktop's.
+  ///
+  /// A notifier as well as a field, because the one thing that draws it -
+  /// [UiScale], above the Navigator - is built by `TodoApp`, which has no
+  /// reason to rebuild on every other change this class announces.
+  final zoom = ValueNotifier<double>(1.0);
+
+  /// Snapped to [T.zoomSteps], so a stored value from a future build with
+  /// finer steps still lands on one this build offers.
+  Future<void> setZoom(double value) async {
+    final next = T.zoomSteps.reduce(
+      (a, b) => (a - value).abs() <= (b - value).abs() ? a : b,
+    );
+    if (next == zoom.value) return;
+    zoom.value = next;
+    notifyListeners();
+    await _store.setSetting(_kZoom, next.toStringAsFixed(2));
+  }
+
+  /// One step bigger or smaller; does nothing at either end.
+  Future<void> stepZoom(int by) async {
+    final i = T.zoomSteps.indexOf(zoom.value);
+    final j = (i < 0 ? T.zoomSteps.indexOf(1.0) : i) + by;
+    if (j < 0 || j >= T.zoomSteps.length) return;
+    await setZoom(T.zoomSteps[j]);
+  }
+
   Future<void> _loadShellPrefs() async {
+    final stored = double.tryParse(await _store.setting(_kZoom) ?? '');
+    if (stored != null) {
+      zoom.value = T.zoomSteps.reduce(
+        (a, b) => (a - stored).abs() <= (b - stored).abs() ? a : b,
+      );
+    }
     railCollapsed = (await _store.setting(_kRailCollapsed)) == '1';
     tasksPaneCollapsed = (await _store.setting(_kTasksPaneCollapsed)) == '1';
     splitFraction = double.tryParse(await _store.setting(_kSplitFraction) ?? '');

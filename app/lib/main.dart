@@ -65,6 +65,7 @@ import 'ui/update_sheet.dart';
 import 'ui/view_bar.dart';
 import 'ui/workspace_bar.dart';
 import 'ui/workspace_rail.dart';
+import 'web_safe_area.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -191,9 +192,17 @@ class TodoApp extends StatelessWidget {
       theme: T.themeData(),
       // Above the Navigator, so dialogs and menus are scaled with everything
       // else rather than staying desktop-sized on top of a zoomed widget.
-      builder: (context, child) => UiScale(
-        scale: isDesktop ? 1.0 : T.mobileScale,
-        child: child ?? const SizedBox.shrink(),
+      // The zoom setting is applied here too, for the same reason.
+      builder: (context, child) => _withWebSafeArea(
+        context,
+        ValueListenableBuilder<double>(
+          valueListenable: state.zoom,
+          builder: (context, zoom, _) => UiScale(
+            scale: isDesktop ? 1.0 : T.mobileScale,
+            zoom: zoom,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        ),
       ),
       home: WidgetShell(
         state: state,
@@ -203,6 +212,24 @@ class TodoApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Hands a browser build the bottom safe area its engine leaves out (see
+/// `web_safe_area.dart`), so the shell's SafeArea keeps the view bar off the
+/// home indicator the way it does in the native app. Not while the keyboard is
+/// up: the keyboard covers the indicator, and the gap would sit above it.
+Widget _withWebSafeArea(BuildContext context, Widget child) {
+  if (!isWeb) return child;
+  final mq = MediaQuery.of(context);
+  final bottom = webSafeBottom();
+  if (bottom <= mq.padding.bottom || mq.viewInsets.bottom > 0) return child;
+  return MediaQuery(
+    data: mq.copyWith(
+      padding: mq.padding.copyWith(bottom: bottom),
+      viewPadding: mq.viewPadding.copyWith(bottom: bottom),
+    ),
+    child: child,
+  );
 }
 
 /// Which stage of the focus transition we are in. The flight and the resting
@@ -1311,6 +1338,28 @@ class _WidgetShellState extends State<WidgetShell>
             _openAdd();
             return KeyEventResult.handled;
           }
+          // Ctrl + / Ctrl - / Ctrl 0, as in a browser. Not in one: the
+          // browser takes those keys for its own zoom, and both at once would
+          // be two zooms multiplied.
+          if (event is KeyDownEvent &&
+              isDesktop &&
+              HardwareKeyboard.instance.isControlPressed) {
+            final step = switch (event.logicalKey) {
+              LogicalKeyboardKey.equal ||
+              LogicalKeyboardKey.add ||
+              LogicalKeyboardKey.numpadAdd =>
+                1,
+              LogicalKeyboardKey.minus ||
+              LogicalKeyboardKey.numpadSubtract =>
+                -1,
+              LogicalKeyboardKey.digit0 || LogicalKeyboardKey.numpad0 => 0,
+              _ => null,
+            };
+            if (step != null) {
+              step == 0 ? s.setZoom(1.0) : s.stepZoom(step);
+              return KeyEventResult.handled;
+            }
+          }
           // Esc unwinds one layer at a time: the sound sheet, then the
           // focus-mode thought field, then focus mode itself.
           if (event is! KeyDownEvent ||
@@ -1445,6 +1494,8 @@ class _WidgetShellState extends State<WidgetShell>
             sync: widget.sync,
             accent: ws,
             onClose: _closeSettings,
+            zoom: s.zoom.value,
+            onZoom: s.setZoom,
             startup: isDesktop && StartupSetting.supported ? _startup : null,
             // Where the view bar is the way between views, History is not on
             // it (Thoughts took its place) and this is where it went.

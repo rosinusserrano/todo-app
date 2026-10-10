@@ -1356,6 +1356,17 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   `test/ui_scale_test.dart` pins both: the subtree fills the screen exactly, and
   never lays out below the design width.
 
+  **The zoom setting rides on the same transform** (`UiScale.zoom`, from
+  `AppState.zoom`). That one multiplies the automatic zoom and *may* take the
+  layout below `designWidth`: that is what "bigger" means in a window that
+  stays the same size, and the narrow layouts already exist. It stops at
+  `T.minLayoutWidth`, the window's resize floor, the narrowest box anything
+  was ever made to work in. `AppState.zoom` is a `ValueNotifier` as well as
+  a setting because `TodoApp` builds `UiScale` and has no other reason to
+  rebuild on AppState's notifications. Ctrl +/−/0 are desktop-only: in a
+  browser those keys are the browser's zoom, and taking them as well would
+  apply two zooms at once.
+
 ### Adapting to the size (`app/lib/layout.dart`)
 
 `Layout` is the **single place** any size-dependent decision is made. Every
@@ -1445,6 +1456,29 @@ publishes it. Three rules keep it compiling and starting:
   picks the implementation by conditional export; on the web it is WASM SQLite
   in IndexedDB, and `web/sqlite3.wasm` + `web/sqflite_sw.js` are fetched by
   `dart run sqflite_common_ffi_web:setup`, not committed.
+- **The safe area comes from the page, not the engine.** Flutter's web engine
+  reports `viewPadding` as zero everywhere, so a home-screen web app on an
+  iPhone laid the view bar over the home indicator and a swipe up on it went
+  home. `web/index.html` adds `viewport-fit=cover` to the viewport tag Flutter
+  inserts (without it iOS reports the inset as zero too) and exposes
+  `todoSafeBottom()`; `web_safe_area.dart` reads it and `_withWebSafeArea` in
+  `main.dart` puts it into the `MediaQuery` above `UiScale`, so the shell's
+  ordinary `SafeArea` does the rest.
+- **Notifications are pushed by the server** (`server/push.js`), because a
+  browser cannot schedule anything: a page that is closed runs no code. The
+  server already holds every task and event row, so it reads what is due once
+  a minute and sends a Web Push to every subscription of that account,
+  claiming each `row:instant` key in `push_sent` first so a restart or an
+  overlapping tick never sends twice. Its rules are the client's - parked
+  tasks are quiet, `eventLead` is `CalendarEvent.notifyLead`, and `nth` is a
+  port of `Recur.nth` counted in the server's local time. **Change one and
+  change the other.** The browser half: `web/push_sw.js` (the site's only
+  service worker - `web/flutter_bootstrap.js` exists to stop Flutter
+  registering its own at the same scope, which would replace it and drop the
+  subscription), `todoPush` in `index.html`, `web_push.dart`, and
+  `ui/push_settings.dart`. The key is fetched when that row appears, and
+  `_turnOn` calls `WebPush.enable` before awaiting anything: a browser shows
+  its permission prompt only while the tap is still being handled.
 - **Native-only features are switched off at their entry point, not stubbed.**
   `main()` skips `MediaKit`, the legacy import and the attachment store on the
   web; `blobs == null` is what hides the paperclip, and a null `onToggleSound`

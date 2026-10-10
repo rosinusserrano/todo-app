@@ -29,6 +29,24 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 55. Zoom, and the web app on an iPhone  `[~]`
+
+Asked for 2026-10-09/10, after the shelf list. Built, analyze clean, tests
+green, not committed; each needs a look on the phone.
+
+- [x] **55.1** A zoom setting (Settings, Ctrl +/−/0 on desktop), 80-150%,
+      device-local, on top of the phone's own enlargement (`UiScale.zoom`).
+- [x] **55.2** The web app kept off the home indicator: Flutter's web
+      engine reports no safe area, so the bar sat on it and the swipe up went
+      home (`web_safe_area.dart`, `viewport-fit=cover` in index.html).
+- [x] **55.3** Home Screen icon: a 180px `apple-touch-icon.png` at the root,
+      and the server no longer answers a missing file with the page.
+- [x] **55.4** Notifications by Web Push for the web app (`server/push.js`,
+      `web/push_sw.js`, Settings → Notifications). Server tests and a scratch
+      server pass; not yet tried with a real browser.
+- [ ] **55.5** Deploy the server (`sudo server/update-server.sh`), publish the
+      web build, re-add the Home Screen icon, turn notifications on, Test.
+
 ### 44. The "Add task" and "Park a thought" quick actions do nothing  `[~]`
 
 Reported on iOS. Fixed in `main.dart` and committed 2026-10-09 (together

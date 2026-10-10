@@ -23,6 +23,15 @@ import { DB_PATH, HOST, PORT, WEB_ROOT, loadSecret } from './config.js';
 import { MIN_CLIENT, PROTOCOL } from './protocol.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
+  deleteSubscription,
+  readSubscription,
+  saveSubscription,
+  sendTo,
+  startPush,
+  subscriptionsOf,
+  vapidKeys,
+} from './push.js';
+import {
   adoptBootstrapSecret,
   createUser,
   getUser,
@@ -230,6 +239,59 @@ app.get('/api/me', middleware(auth), (req, res) => {
   });
 });
 
+// ------------------------------------------------------------------ web push
+//
+// Reminders for the browser build, which cannot schedule anything itself - see
+// push.js. A browser subscribes with this server's public key, hands the
+// subscription over here, and the minute tick does the rest. Every route is
+// the caller's own: a subscription is stored, removed and tested only under the
+// account whose token sent it.
+
+app.get('/api/push/key', middleware(auth), (_req, res) => {
+  res.json({ publicKey: vapidKeys(db).publicKey });
+});
+
+app.put('/api/push/subscription', middleware(auth), (req, res) => {
+  const sub = readSubscription(req.body);
+  if (!sub) return res.status(400).json({ error: 'not a push subscription' });
+  // The page's own address is who the push services should contact about
+  // this sender. Read from Origin, which a browser sets on a POST/PUT and a
+  // proxy passes through, rather than rebuilt from Host behind a proxy.
+  const origin = req.get('origin');
+  const subject = origin && /^https:\/\//.test(origin) ? origin : null;
+  saveSubscription(db, req.userId, sub, subject);
+  res.status(204).end();
+});
+
+app.delete('/api/push/subscription', middleware(auth), (req, res) => {
+  const endpoint = req.body?.endpoint;
+  if (typeof endpoint !== 'string') {
+    return res.status(400).json({ error: 'endpoint required' });
+  }
+  deleteSubscription(db, req.userId, endpoint);
+  res.status(204).end();
+});
+
+// Sends one notification to the caller's subscription for this browser, so
+// "did it work" is answered on the spot rather than at the next reminder.
+app.post('/api/push/test', middleware(auth), async (req, res, next) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    const sub = subscriptionsOf(db, req.userId).find((s) => s.endpoint === endpoint);
+    if (!sub) return res.status(404).json({ error: 'not subscribed' });
+    const result = await sendTo(db, vapidKeys(db), sub, {
+      title: 'Notifications are on',
+      body: 'Reminders will arrive like this one.',
+      tag: 'test',
+      url: '/',
+    });
+    if (result === 'ok') return res.json({ ok: true });
+    res.status(502).json({ error: result === 'gone' ? 'subscription expired' : 'push service refused it' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ------------------------------------------------------------------ admin api
 //
 // The same routes the CLI covers, for the app's user-management panel. They are
@@ -361,6 +423,10 @@ if (hasWebBuild) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api/')) return next();
     if (!req.accepts('html')) return next();
+    // A path that names a file is asking for that file. iOS fetches
+    // /apple-touch-icon-precomposed.png with Accept: */*, and handing it this
+    // page made the home screen draw a letter where the icon should be.
+    if (/\.[a-z0-9]+$/i.test(req.path)) return next();
     res.set('Cache-Control', 'no-cache');
     res.sendFile(join(WEB_ROOT, 'index.html'));
   });
@@ -410,6 +476,8 @@ function lanAddresses() {
     .filter((ip) => !ip.startsWith('169.254.'))
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
+
+startPush(db);
 
 app.listen(PORT, HOST, () => {
   const bar = '─'.repeat(58);

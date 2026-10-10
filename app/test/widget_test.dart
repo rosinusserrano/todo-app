@@ -51,6 +51,25 @@ void main() {
       expect(s.tasks.single.text, 'write the port');
     });
 
+    test('the zoom snaps to a step, stops at the ends and is remembered',
+        () async {
+      final s = await freshState();
+      expect(s.zoom.value, 1.0);
+
+      await s.setZoom(1.27);
+      expect(s.zoom.value, 1.3, reason: 'snapped to the nearest step');
+
+      for (var i = 0; i < 10; i++) {
+        await s.stepZoom(1);
+      }
+      expect(s.zoom.value, T.zoomSteps.last);
+
+      await s.setZoom(1.2);
+      final again = AppState(s.store);
+      await again.load();
+      expect(again.zoom.value, 1.2, reason: 'a device-local setting');
+    });
+
     test('checking off keeps the task and moves it into history', () async {
       final s = await freshState();
       await s.addTask('ship it');

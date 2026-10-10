@@ -25,6 +25,7 @@ import '../sync/sync_client.dart';
 import '../sync/sync_service.dart';
 import '../sync/oidc_client.dart';
 import '../theme.dart';
+import 'push_settings.dart';
 import 'sso_sign_in.dart';
 import 'server_users_view.dart';
 import 'title_bar.dart';
@@ -35,6 +36,8 @@ class SettingsSheet extends StatefulWidget {
     required this.sync,
     required this.accent,
     required this.onClose,
+    this.zoom = 1.0,
+    this.onZoom,
     this.startup,
     this.onOpenHistory,
   });
@@ -42,6 +45,11 @@ class SettingsSheet extends StatefulWidget {
   final SyncService sync;
   final Color accent;
   final VoidCallback onClose;
+
+  /// The whole widget's size, 1.0 for as designed, and how to change it. A
+  /// null [onZoom] hides the row.
+  final double zoom;
+  final ValueChanged<double>? onZoom;
 
   /// Absent on the platforms that have no such concept, which is what hides
   /// the whole section rather than showing a dead switch.
@@ -420,6 +428,58 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  /// − 130% +, with a tap on the number for 100%. Steps rather than a
+  /// slider, because the widget redraws at the new size under the finger and
+  /// a slider would be dragged by a hand that just moved.
+  Widget _zoomRow(ValueChanged<double> onZoom) {
+    final steps = T.zoomSteps;
+    final i = steps.indexOf(widget.zoom);
+    Widget step(IconData icon, String tip, int by) {
+      final j = i + by;
+      final ok = i >= 0 && j >= 0 && j < steps.length;
+      return IconButton(
+        tooltip: tip,
+        icon: Icon(icon, size: 18),
+        color: T.text,
+        disabledColor: T.muted.withValues(alpha: 0.4),
+        onPressed: ok ? () => onZoom(steps[j]) : null,
+      );
+    }
+
+    return Row(
+      children: [
+        const Icon(Icons.text_fields_rounded, size: 18, color: T.muted),
+        const SizedBox(width: T.s2),
+        const Expanded(
+          child: Text(
+            'Zoom',
+            style: TextStyle(fontSize: T.fsBody, color: T.text),
+          ),
+        ),
+        step(Icons.remove_rounded, 'Smaller', -1),
+        Tooltip(
+          message: 'Back to 100%',
+          child: InkWell(
+            onTap: widget.zoom == 1.0 ? null : () => onZoom(1.0),
+            borderRadius: BorderRadius.circular(T.radius),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: T.s1,
+                vertical: T.s2,
+              ),
+              child: Text(
+                '${(widget.zoom * 100).round()}%',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: T.fsLabel, color: T.text),
+              ),
+            ),
+          ),
+        ),
+        step(Icons.add_rounded, 'Larger', 1),
+      ],
+    );
+  }
+
   Widget _settingsBody() {
     final sync = widget.sync;
     final config = _authConfig;
@@ -427,10 +487,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, T.s3),
       children: [
-        if (widget.onOpenHistory != null) ...[
-          _historyRow(widget.onOpenHistory!),
+        if (widget.onOpenHistory != null) _historyRow(widget.onOpenHistory!),
+        if (widget.onZoom != null) _zoomRow(widget.onZoom!),
+        if (widget.onOpenHistory != null || widget.onZoom != null)
           const SizedBox(height: T.s3),
-        ],
         Text(switch (config?.mode) {
           'oidc' =>
             'This server signs you in with your own account. '
@@ -583,6 +643,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'and token — signed in as ${sync.identity?.label ?? 'you'}.',
             style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
           ),
+        ],
+
+        // The browser build only: the native apps schedule their own.
+        if (kIsWeb) ...[
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0x14FFFFFF)),
+          const SizedBox(height: 10),
+          PushSettings(sync: sync),
         ],
 
         if (widget.startup != null) ...[

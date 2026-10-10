@@ -24,7 +24,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Todo">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <!-- 180px at the root, where iOS also looks on its own: a missing one was
+       answered with this page, and the home screen drew a letter instead. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
@@ -41,6 +43,104 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    // The home indicator. Flutter replaces this page's viewport tag with its
+    // own, which has no viewport-fit=cover, and without that iOS reports
+    // env(safe-area-inset-bottom) as zero - so the tag is amended as it
+    // arrives. todoSafeBottom() is read by lib/web_safe_area_web.dart, because
+    // Flutter's web engine reports no safe area of its own.
+    (function () {
+      function cover(meta) {
+        if (meta.name === 'viewport' && !/viewport-fit/.test(meta.content)) {
+          meta.content += ', viewport-fit=cover';
+        }
+      }
+      new MutationObserver(function (changes) {
+        changes.forEach(function (c) {
+          c.addedNodes.forEach(function (n) {
+            if (n.tagName === 'META') cover(n);
+          });
+        });
+      }).observe(document.head, { childList: true });
+      var probe;
+      window.todoSafeBottom = function () {
+        if (!probe) {
+          probe = document.createElement('div');
+          probe.style.cssText =
+            'position:fixed;left:0;bottom:0;width:0;visibility:hidden;' +
+            'pointer-events:none;height:env(safe-area-inset-bottom,0px)';
+          document.documentElement.appendChild(probe);
+        }
+        return probe.getBoundingClientRect().height;
+      };
+    })();
+  </script>
+  <script>
+    // Web Push, for lib/web_push_web.dart. Promises throughout; enable() asks
+    // for permission before its first await, because the browser only shows
+    // the prompt while the tap that asked for it is still being handled.
+    (function () {
+      function ios() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      }
+      function standalone() {
+        return navigator.standalone === true ||
+          window.matchMedia('(display-mode: standalone)').matches;
+      }
+      function supported() {
+        return 'serviceWorker' in navigator && 'PushManager' in window &&
+          'Notification' in window;
+      }
+      function key(base64) {
+        var pad = '='.repeat((4 - (base64.length % 4)) % 4);
+        var raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        var out = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+        return out;
+      }
+      async function current() {
+        if (!supported()) return null;
+        var reg = await navigator.serviceWorker.getRegistration('./');
+        return reg ? reg.pushManager.getSubscription() : null;
+      }
+      window.todoPush = {
+        // 'unsupported' | 'install' | 'denied' | 'off' | 'on'
+        state: async function () {
+          if (!supported()) {
+            return ios() && !standalone() ? 'install' : 'unsupported';
+          }
+          if (Notification.permission === 'denied') return 'denied';
+          return (await current()) ? 'on' : 'off';
+        },
+        // The subscription as JSON, or null if permission was not given.
+        enable: async function (publicKey) {
+          var permission = await Notification.requestPermission();
+          if (permission !== 'granted') return null;
+          var reg = await navigator.serviceWorker.register('push_sw.js', { scope: './' });
+          await navigator.serviceWorker.ready;
+          var sub = await reg.pushManager.getSubscription() ||
+            await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: key(publicKey),
+            });
+          return JSON.stringify(sub);
+        },
+        current: async function () {
+          var sub = await current();
+          return sub ? JSON.stringify(sub) : null;
+        },
+        // The endpoint that was given up, so the server can forget it.
+        disable: async function () {
+          var sub = await current();
+          if (!sub) return null;
+          var endpoint = sub.endpoint;
+          await sub.unsubscribe();
+          return endpoint;
+        },
+      };
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

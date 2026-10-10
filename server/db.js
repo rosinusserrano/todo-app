@@ -21,6 +21,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { deletePushFor, initPush } from './push.js';
 import { deleteUserIdentity, initUsers } from './users.js';
 
 export function openDb(path) {
@@ -272,6 +273,10 @@ function init(db) {
   // carry them. A server that predates the calendar has the table but not the
   // column, and would reject every attachment push without this.
   addColumn(db, 'attachments', 'event_uuid', 'TEXT');
+
+  // Web Push subscriptions and what has been sent - see push.js. Not in
+  // TABLES: they are this server's own bookkeeping and never sync.
+  initPush(db);
 }
 
 /**
@@ -395,6 +400,7 @@ export function purgeUser(db, userId) {
     for (const table of Object.keys(TABLES)) {
       rows += db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId).changes;
     }
+    deletePushFor(db, userId);
     deleteUserIdentity(db, userId);
     return rows;
   });

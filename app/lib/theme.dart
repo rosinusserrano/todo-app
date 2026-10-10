@@ -151,6 +151,16 @@ class T {
   /// The width every size in this app was chosen against - the desktop window.
   static const designWidth = 340.0;
 
+  /// The narrowest box anything here is laid out in: the desktop window's
+  /// resize floor. A zoom the person picked may take the layout below
+  /// [designWidth] - that is what asking for bigger means - but not below this.
+  static const minLayoutWidth = 260.0;
+
+  /// The zoom levels the settings offer, on top of the phone's own enlargement
+  /// (see [UiScale]). Steps rather than a slider: "130%" is something you can
+  /// pick again on the next device, a slider's 1.2734 is not.
+  static const zoomSteps = [0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
+
   /// --hero-dur / --hero-ease. Previously duplicated between CSS and
   /// HERO_MS in main.ts.
   static const heroDur = Duration(milliseconds: 380);
@@ -323,12 +333,25 @@ class T {
 /// lays out for a viewport larger than the one it ends up occupying: the
 /// bottom of the list would fall off the screen, and safe-area insets would be
 /// over-applied by exactly [scale].
+///
+/// [zoom] is the person's own setting, multiplied on top. It is allowed to
+/// cost the layout its design width - a narrower layout is what "bigger" buys
+/// in a window that stays the same size - but never past [T.minLayoutWidth],
+/// the narrowest window the app already has to work in.
 class UiScale extends StatelessWidget {
-  const UiScale({super.key, required this.scale, required this.child});
+  const UiScale({
+    super.key,
+    required this.scale,
+    this.zoom = 1.0,
+    required this.child,
+  });
 
-  /// The **maximum** zoom. The zoom actually applied is whatever leaves at
-  /// least [T.designWidth] to lay out in - see [effectiveScale].
+  /// The **maximum** automatic zoom. The zoom actually applied is whatever
+  /// leaves at least [T.designWidth] to lay out in - see [effectiveScale].
   final double scale;
+
+  /// The setting, 1.0 for none.
+  final double zoom;
 
   final Widget child;
 
@@ -338,18 +361,26 @@ class UiScale extends StatelessWidget {
   /// Never below 1: shrinking the widget to fit a very narrow screen would
   /// make the text smaller than the desktop build, which is the opposite of
   /// what this is for.
+  ///
+  /// [zoom] multiplies that, capped where the layout would fall below
+  /// [T.minLayoutWidth] (and never capped below the automatic zoom, so a
+  /// screen narrower than that floor is no worse off than it was).
   @visibleForTesting
-  static double effectiveScale(double width, double max) {
-    if (max <= 1.0 || width <= 0) return 1.0;
-    return (width / T.designWidth).clamp(1.0, max);
+  static double effectiveScale(double width, double max, {double zoom = 1.0}) {
+    if (width <= 0) return 1.0;
+    final auto =
+        max <= 1.0 ? 1.0 : (width / T.designWidth).clamp(1.0, max).toDouble();
+    final ceiling = width / T.minLayoutWidth;
+    final zoomed = auto * zoom;
+    return zoomed > ceiling ? (auto > ceiling ? auto : ceiling) : zoomed;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (scale <= 1.0) return child;
+    if (scale <= 1.0 && zoom == 1.0) return child;
 
     final mq = MediaQuery.of(context);
-    final applied = effectiveScale(mq.size.width, scale);
+    final applied = effectiveScale(mq.size.width, scale, zoom: zoom);
     if (applied == 1.0) return child;
     final size = mq.size / applied;
 

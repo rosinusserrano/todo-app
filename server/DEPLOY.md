@@ -298,6 +298,32 @@ under a path it was not built for every asset 404s and the page stays blank.
 Every file is sent `Cache-Control: no-cache`. Flutter does not hash its file
 names, so anything weaker lets a phone keep running last week's `main.dart.js`.
 
+### Notifications (Web Push)
+
+The browser build cannot schedule a notification, so the server sends them:
+`server/push.js` looks once a minute for task reminders and calendar alerts
+falling due, for every account that has turned notifications on in a browser
+(Settings → Notifications), and pushes each one once. **There is nothing to
+configure.** The key pair the push services check is made on first start and
+kept in the database; no account with Apple, Google or Mozilla is needed, and
+the push goes out over ordinary outbound HTTPS.
+
+Two optional settings in `/etc/todo-sync.env`:
+
+- `TZ=Europe/Berlin` - the timezone repeating events are counted in. A 09:00
+  weekly block is 09:00 *local*, and "local" is the server process's zone.
+  Only needed if the server's clock is set to a different zone from yours
+  (`timedatectl` says which).
+- `TODO_PUSH_SUBJECT=mailto:you@example.com` - who the push services should
+  contact about this sender. Defaults to the address the page was opened
+  from (`https://todo.example.com`), which they accept.
+
+On an iPhone it works only from the Home Screen app (iOS 16.4+), not from a
+Safari tab - the settings row says so when that is the problem. The bootstrap
+(`app/web/flutter_bootstrap.js`) deliberately does not register Flutter's own
+service worker: there is one worker per site, and Flutter's would replace
+`push_sw.js` and silently end every subscription.
+
 ---
 
 ## Backups

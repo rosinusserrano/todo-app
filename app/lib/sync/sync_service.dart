@@ -159,6 +159,11 @@ class SyncService extends ChangeNotifier {
       (baseUrl?.isNotEmpty ?? false) &&
       ((token?.isNotEmpty ?? false) || oidcSession != null);
 
+  /// The bearer for a request made outside the sync loop - the push routes in
+  /// the settings sheet. The same answer the loop uses, so an SSO session is
+  /// refreshed here too rather than sending a stale token.
+  Future<String?> bearer() => _bearer();
+
   /// The bearer for the next request.
   ///
   /// Returns null when an SSO session exists but could not be refreshed, which

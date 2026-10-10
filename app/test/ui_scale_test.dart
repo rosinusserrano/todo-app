@@ -29,6 +29,7 @@ void main() {
     WidgetTester tester,
     Size screen, {
     double scale = T.mobileScale,
+    double zoom = 1.0,
   }) async {
     tester.view.physicalSize = screen;
     tester.view.devicePixelRatio = 1.0;
@@ -39,7 +40,11 @@ void main() {
       MaterialApp(
         debugShowCheckedModeBanner: false,
         builder: (context, child) =>
-            UiScale(scale: scale, child: child ?? const SizedBox.shrink()),
+            UiScale(
+          scale: scale,
+          zoom: zoom,
+          child: child ?? const SizedBox.shrink(),
+        ),
         home: SizedBox.expand(key: key),
       ),
     );
@@ -106,6 +111,53 @@ void main() {
 
     test('a max of 1 disables it', () {
       expect(UiScale.effectiveScale(390, 1.0), 1.0);
+    });
+  });
+
+  // The zoom setting multiplies whatever the screen already gets, and may cost
+  // the layout its design width - but never the narrowest window's.
+  group('the zoom setting', () {
+    test('multiplies the automatic zoom', () {
+      expect(
+        UiScale.effectiveScale(390, 1.28, zoom: 1.1),
+        closeTo(390 / 340 * 1.1, 0.001),
+      );
+      expect(UiScale.effectiveScale(340, 1.0, zoom: 1.2), closeTo(1.2, 0.001));
+    });
+
+    test('stops where the layout would fall below the narrowest window', () {
+      // 340 / 1.5 = 227, under the 260 floor: capped at 340 / 260.
+      expect(
+        340 / UiScale.effectiveScale(340, 1.0, zoom: 1.5),
+        closeTo(T.minLayoutWidth, 0.001),
+      );
+    });
+
+    test('a screen already under the floor is no worse off', () {
+      expect(UiScale.effectiveScale(200, 1.0, zoom: 1.3), 1.0);
+    });
+
+    test('below 100% the layout gets more room', () {
+      expect(UiScale.effectiveScale(340, 1.0, zoom: 0.8), closeTo(0.8, 0.001));
+    });
+
+    testWidgets('a zoomed desktop window still fills exactly', (tester) async {
+      final (layout, painted) = await measure(
+        tester,
+        const Size(340, 480),
+        scale: 1.0,
+        zoom: 1.3,
+      );
+      expect(painted.width, closeTo(340, 0.01));
+      expect(painted.height, closeTo(480, 0.01));
+      expect(layout.width, closeTo(340 / 1.3, 0.01));
+    });
+
+    testWidgets('and so does a zoomed phone', (tester) async {
+      final (layout, painted) =
+          await measure(tester, const Size(390, 844), zoom: 1.2);
+      expect(painted.width, closeTo(390, 0.01));
+      expect(layout.width, closeTo(390 / (390 / 340 * 1.2), 0.01));
     });
   });
 }

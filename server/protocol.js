@@ -54,5 +54,8 @@
 //   3  The shopping list: `lists` and `list_items`, in TABLE_SINCE, so a client
 //      below 3 is not sent them and a 3 client does not push them to a server
 //      below 3. MIN_CLIENT stays 1.
-export const PROTOCOL = 3;
+//   4  Collections: `collections`, `collection_fields` and
+//      `collection_entries`, in TABLE_SINCE on the same terms as 3.
+//      MIN_CLIENT stays 1.
+export const PROTOCOL = 4;
 export const MIN_CLIENT = 1;

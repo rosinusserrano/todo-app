@@ -31,13 +31,20 @@
 /// 3 added the shopping list's two tables, `lists` and `list_items`, on the
 /// same terms: not pushed to a server below [kListsProtocol], and not sent by
 /// the server to a client that does not say 3.
-const kSyncProtocol = 3;
+///
+/// 4 added collections - `collections`, `collection_fields` and
+/// `collection_entries` - the same way again, held back from a server below
+/// [kCollectionsProtocol].
+const kSyncProtocol = 4;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;
 
 /// The first server wire that has `lists` and `list_items`.
 const kListsProtocol = 3;
+
+/// The first server wire that has the three collection tables.
+const kCollectionsProtocol = 4;
 
 /// The oldest server wire this build can still talk to correctly.
 ///

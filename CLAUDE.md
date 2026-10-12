@@ -115,10 +115,11 @@ window, the focus flight, the tray and the overlays.
 
 ### Data model — SQLite is the source of truth
 
-`LocalStore` (`app/lib/sync/local_store.dart`) owns eleven synced tables:
+`LocalStore` (`app/lib/sync/local_store.dart`) owns fourteen synced tables:
 `workspaces`, `parked_groups`, `tasks`, `attachments`, `side_thoughts`,
 `journal_entries`, `calendars`, `calendar_events`, `calendar_feeds` (v16),
-`lists` and `list_items` (v17), plus a key/value `settings` table used for UI
+`lists` and `list_items` (v17), `collections`, `collection_fields` and
+`collection_entries` (v18), plus a key/value `settings` table used for UI
 prefs (last workspace, nudge, sound volume, calendar mode/scope/hidden/block
 target).
 
@@ -793,6 +794,36 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
   the whole slide animation. It needs a fixed row height, so an item is one
   line. Unticking puts an item back where it was because a tick never touches
   `sort_order`.
+
+### Collections (`app/lib/ui/collections.dart`)
+
+A per-workspace view beside Notes and Parked (`WorkspaceView.collections`,
+`AppState.showCollections`): tables whose fields are defined first. Design in
+ROADMAP.md *Collections*. The rules that are not obvious from the code:
+
+- **Fields are rows, entry values are one JSON column.** `collection_fields`
+  is a table so a rename on one device and a new field on another both
+  survive a merge; `collection_entries.data` is an object keyed by **field
+  uuid** (`data`, because `values` is an SQL keyword), so a rename touches no
+  entry. The trade is that an entry is last-write-wins as a whole.
+- **A removed field's values are kept.** `saveEntry` merges what the form
+  showed over what the row already had, so a value under a field that is no
+  longer drawn is not dropped by the next edit. `options` on a field is unused
+  until choice fields exist and is in the schema so they are not another
+  protocol bump.
+- **The kind is an input hint.** Every value is text; `FieldKind` picks the
+  keyboard, the drawing and the sort (`sortEntries`, `parseNumber`). An unknown
+  kind from a newer build reads as text.
+- **The entry form's Enter is the feature.** Each typed field's
+  `onEditingComplete` is a no-op so the field's own idea of Enter (move along
+  the focus traversal, or let go) does not run; `_submitted` focuses the next
+  *typed* field (a checkbox would put the phone keyboard away), and on the
+  last one adds and clears. `test/collections_test.dart` pins it.
+- **Loaded only while open**, the whole workspace's worth (`refreshCollections`,
+  called from `refreshTasks`, which is also what a sync merge runs). Search and
+  sort are in memory.
+- **Table or rows is decided by the width the view got** (`fitsTable`), not by
+  `Layout.touch`. The view has two rungs and walks Esc back like the journal.
 
 ### The task row, and where its actions went
 

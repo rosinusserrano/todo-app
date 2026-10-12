@@ -343,6 +343,7 @@ void main() {
               onShowTasks: onShowTasks ?? () {},
               onOpenNotes: () {},
               onOpenParked: () {},
+              onOpenCollections: () {},
               onOpenHistory: () {},
               onOpenThoughts: () {},
               thoughtCount: 0,

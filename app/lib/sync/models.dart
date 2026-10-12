@@ -5,6 +5,8 @@
 // resolution, and a `deletedAt` tombstone. Nothing is ever hard-deleted, so a
 // peer can always tell "removed" from "not yet seen".
 
+import 'dart:convert';
+
 import 'package:uuid/uuid.dart';
 
 import '../task_variables.dart';
@@ -2051,6 +2053,280 @@ class ListItem implements SyncRow {
         listUuid: (m['list_uuid'] as String?) ?? '',
         text: (m['text'] as String?) ?? '',
         checkedAt: m['checked_at'] as String?,
+        sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// What a [CollectionField] holds. The kind is an input hint, not a storage
+/// format: every value is stored as text, so changing a field's kind never
+/// loses what was written in it - a value that is not a number just shows as
+/// written. See *Collections* in ROADMAP.md.
+enum FieldKind {
+  text('text', 'Text'),
+  link('link', 'Link'),
+  number('number', 'Number'),
+  check('check', 'Checkbox');
+
+  const FieldKind(this.id, this.label);
+
+  /// What is stored in `kind`.
+  final String id;
+  final String label;
+
+  /// Anything unknown - a kind a newer build added - reads as text, which is
+  /// what every value is underneath.
+  static FieldKind parse(String? id) => FieldKind.values.firstWhere(
+        (k) => k.id == id,
+        orElse: () => FieldKind.text,
+      );
+
+  /// Typed into rather than tapped. The entry form's Enter jumps between
+  /// these and skips the rest.
+  bool get typed => this != check;
+}
+
+/// A workspace's table of [CollectionEntry]s whose [CollectionField]s were
+/// decided first - recipes (name, link), movies (title, year, seen).
+class Collection implements SyncRow {
+  @override
+  final String uuid;
+  final String workspaceUuid;
+  final String name;
+  final int sortOrder;
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const Collection({
+    required this.uuid,
+    required this.workspaceUuid,
+    required this.name,
+    this.sortOrder = 0,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  Collection copyWith({
+    String? workspaceUuid,
+    String? name,
+    int? sortOrder,
+    String? updatedAt,
+    String? deletedAt,
+  }) =>
+      Collection(
+        uuid: uuid,
+        workspaceUuid: workspaceUuid ?? this.workspaceUuid,
+        name: name ?? this.name,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'workspace_uuid': workspaceUuid,
+        'name': name,
+        'sort_order': sortOrder,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  /// Nullable-tolerant for the reason [CalendarFeed.fromMap] is.
+  static Collection fromMap(Map<String, Object?> m) => Collection(
+        uuid: m['uuid']! as String,
+        workspaceUuid: (m['workspace_uuid'] as String?) ?? '',
+        name: (m['name'] as String?) ?? '',
+        sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// One column of a [Collection]. A row of its own rather than part of the
+/// collection, so a rename on one device and a new field on another both
+/// survive a merge.
+class CollectionField implements SyncRow {
+  @override
+  final String uuid;
+  final String collectionUuid;
+  final String name;
+  final FieldKind kind;
+
+  /// Unused until choice fields exist. Carried so a row written by a build
+  /// that has them is not stripped of them by one that does not.
+  final String? options;
+
+  final int sortOrder;
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const CollectionField({
+    required this.uuid,
+    required this.collectionUuid,
+    required this.name,
+    this.kind = FieldKind.text,
+    this.options,
+    this.sortOrder = 0,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  CollectionField copyWith({
+    String? name,
+    FieldKind? kind,
+    int? sortOrder,
+    String? updatedAt,
+    String? deletedAt,
+  }) =>
+      CollectionField(
+        uuid: uuid,
+        collectionUuid: collectionUuid,
+        name: name ?? this.name,
+        kind: kind ?? this.kind,
+        options: options,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'collection_uuid': collectionUuid,
+        'name': name,
+        'kind': kind.id,
+        'options': options,
+        'sort_order': sortOrder,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  static CollectionField fromMap(Map<String, Object?> m) => CollectionField(
+        uuid: m['uuid']! as String,
+        collectionUuid: (m['collection_uuid'] as String?) ?? '',
+        name: (m['name'] as String?) ?? '',
+        kind: FieldKind.parse(m['kind'] as String?),
+        options: m['options'] as String?,
+        sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// One row of a [Collection]: a value per field, keyed by the field's uuid so
+/// renaming a field touches no entry. A removed field's value stays in [data]
+/// and is simply not drawn.
+///
+/// Last-write-wins as a whole: the same entry edited in two different fields
+/// on two offline devices keeps one edit. An entry is filled in one sitting,
+/// the way a note body is; a row per cell would merge it at the price of a
+/// table that is mostly bookkeeping.
+class CollectionEntry implements SyncRow {
+  @override
+  final String uuid;
+  final String collectionUuid;
+
+  /// Field uuid to value. Every value is text; a ticked checkbox is
+  /// [checked], an unticked one is absent.
+  final Map<String, String> data;
+
+  final int sortOrder;
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  static const checked = '1';
+
+  const CollectionEntry({
+    required this.uuid,
+    required this.collectionUuid,
+    this.data = const {},
+    this.sortOrder = 0,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  String valueOf(String fieldUuid) => data[fieldUuid] ?? '';
+
+  bool isChecked(String fieldUuid) => data[fieldUuid] == checked;
+
+  CollectionEntry copyWith({
+    Map<String, String>? data,
+    String? collectionUuid,
+    int? sortOrder,
+    String? updatedAt,
+    String? deletedAt,
+  }) =>
+      CollectionEntry(
+        uuid: uuid,
+        collectionUuid: collectionUuid ?? this.collectionUuid,
+        data: data ?? this.data,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'collection_uuid': collectionUuid,
+        'data': jsonEncode(data),
+        'sort_order': sortOrder,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  /// A `data` that is not a JSON object - damaged, or written by something
+  /// else - reads as empty rather than taking the whole view down with it.
+  static Map<String, String> _decode(Object? raw) {
+    if (raw is! String || raw.isEmpty) return const {};
+    try {
+      final m = jsonDecode(raw);
+      if (m is! Map) return const {};
+      return {
+        for (final e in m.entries)
+          if (e.value != null) '${e.key}': '${e.value}',
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static CollectionEntry fromMap(Map<String, Object?> m) => CollectionEntry(
+        uuid: m['uuid']! as String,
+        collectionUuid: (m['collection_uuid'] as String?) ?? '',
+        data: _decode(m['data']),
         sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
         createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
         updatedAt: m['updated_at']! as String,

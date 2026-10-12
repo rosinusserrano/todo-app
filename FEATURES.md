@@ -774,6 +774,40 @@ window while it is open.
   shows as "Also open", to merge in or finish. Needs the server updated
   (sync protocol 3); until then the list stays on the device it was written on.
 
+## Collections
+
+Per workspace, beside Notes and Parked: lists where you decide the **fields**
+first and then add **entries** - recipes (name, link), movies (title, year,
+seen), books, anything kept with the same few details each time. Reached from
+the phone's bottom bar (where you are → *Collections*), the ▾ views menu, or
+the sidebar.
+
+- **Four kinds of field**: **text**, **link**, **number** and **checkbox**. A
+  link field gets the URL keyboard, a number field the number keyboard (a
+  comma counts as a decimal point), a checkbox is a tap. Every value is kept
+  as text, so changing a field's kind never loses anything.
+- **Adding is typed straight through.** Each field is one line; Enter (or the
+  keyboard's Next) jumps to the next field, past any checkbox. Enter on the
+  **last** field adds the entry and clears the form with the caret back at the
+  top, so several go in one sitting; a line at the top says what was just
+  added. *Add* (or Ctrl+Enter) adds and closes; Enter on an empty form closes
+  it. Cancel throws away only what is not added yet.
+- **A table where there is room**, a column per field: click a header to sort
+  on it, again to reverse; a checkbox column ticks in place. **On a phone**
+  each entry is a row - the first field large, the others on one quiet line
+  under it, a link as its site's name with a ↗ to open it - and the first
+  checkbox field is the row's tick box ("seen" ticked off from the list). The
+  sort button above does what the headers do.
+- **Search** across every field, from the line above the entries.
+- **Tap an entry to edit it**, or delete it from there. A link opens in the
+  browser from its own ↗.
+- **Fields and name** (the sliders button in the header): rename, retype, reorder with the
+  arrows, remove, add. Removing a field that has something in it asks first. A
+  new collection starts with one *Name* field, or from a starter: *Recipes*
+  (Name, Link) or *Movies* (Title, Year, Seen).
+- **Synced**, and deleted with their workspace. Needs the server updated (sync
+  protocol 4); until then collections stay on the device they were made on.
+
 ## History
 
 - **"Done recently" view** — "History" in the ▾ views menu on the workspace bar
@@ -919,7 +953,7 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 - **One bar along the bottom, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
-  Parked or History), **More** - everything that belongs to no workspace:
+  Collections, Parked or History), **More** - everything that belongs to no workspace:
   the calendar, the shopping list, side thoughts and settings - and a narrow
   **＋** at the end for writing something down: *Add a task* or *Add a
   thought*.
@@ -1308,6 +1342,11 @@ reminders are both there now**, queued for 0.18.0.
     under it; History lost its strike-through; the bottom bar runs down under
     the iPhone's home indicator; labels on a coloured block are a deep shade
     of that colour instead of black; no more frame around the app on a phone.
+  - **Collections**: per-workspace lists with fields you define first - text,
+    link, number, checkbox - for recipes, movies and the like. Adding an entry
+    is typed straight through: Enter moves to the next field and, on the last,
+    adds it and starts the next. A table on a wide window, rows with a tick box
+    on a phone, search and sort. Needs the server updated (protocol 4).
   - **Shopping list**: one throwaway list on the title bar that the app opens
     on every time, with a tick-only mode for the shop, ticked items that slide
     down, and Finished to archive it. Needs the server updated (protocol 3).

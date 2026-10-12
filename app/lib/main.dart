@@ -45,6 +45,7 @@ import 'ui/calendar/subscribe_form.dart';
 import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
 import 'ui/calendar/time_grid.dart' show hhmm, kGutter;
+import 'ui/collections.dart';
 import 'ui/content_slot.dart';
 import 'ui/dock.dart';
 import 'ui/footer.dart';
@@ -1051,6 +1052,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.showThoughts) s.toggleThoughts();
     if (s.showParked) s.toggleParked();
     if (s.showJournal) s.toggleJournal();
+    if (s.showCollections) s.toggleCollections();
     if (s.showSession) s.toggleSession();
     if (_expandedTaskUuid != null) _collapseTask();
     _clearSelection();
@@ -1487,6 +1489,8 @@ class _WidgetShellState extends State<WidgetShell>
             s.toggleParked();
           } else if (s.showJournal) {
             s.toggleJournal();
+          } else if (s.showCollections) {
+            s.toggleCollections();
           } else if (s.showSession) {
             s.toggleSession();
           } else if (s.showHistory) {
@@ -1714,6 +1718,11 @@ class _WidgetShellState extends State<WidgetShell>
     s.toggleJournal();
   }
 
+  void _toggleCollections() {
+    if (_clearOverlays()) return;
+    s.toggleCollections();
+  }
+
   void _toggleThoughts() {
     if (_clearOverlays()) return;
     s.toggleThoughts();
@@ -1838,6 +1847,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.showThoughts) s.toggleThoughts();
     if (s.showParked) s.toggleParked();
     if (s.showJournal) s.toggleJournal();
+    if (s.showCollections) s.toggleCollections();
     if (s.showSession) s.toggleSession();
   }
 
@@ -1857,6 +1867,8 @@ class _WidgetShellState extends State<WidgetShell>
         s.toggleJournal();
       case WorkspaceView.parked:
         s.toggleParked();
+      case WorkspaceView.collections:
+        s.toggleCollections();
       case WorkspaceView.history:
         s.toggleHistory();
       case WorkspaceView.thoughts:
@@ -2082,6 +2094,7 @@ class _WidgetShellState extends State<WidgetShell>
                       onShowTasks: _showTasks,
                       onOpenNotes: _toggleJournal,
                       onOpenParked: _toggleParked,
+                      onOpenCollections: _toggleCollections,
                       onOpenHistory: _toggleHistory,
                       onOpenThoughts: _toggleThoughts,
                       thoughtCount: s.thoughtCount,
@@ -2224,6 +2237,7 @@ class _WidgetShellState extends State<WidgetShell>
       null: (Icons.check_circle_outline_rounded, 'Tasks'),
       WorkspaceView.notes: (Icons.notes_rounded, 'Notes'),
       WorkspaceView.parked: (Icons.inbox_rounded, 'Parked'),
+      WorkspaceView.collections: (Icons.table_rows_outlined, 'Collections'),
       WorkspaceView.history: (Icons.history_rounded, 'History'),
     };
     final here = views[view == WorkspaceView.thoughts ? null : view]!;
@@ -2288,6 +2302,7 @@ class _WidgetShellState extends State<WidgetShell>
           items: [
             viewItem(WorkspaceView.history),
             viewItem(WorkspaceView.parked),
+            viewItem(WorkspaceView.collections),
             viewItem(WorkspaceView.notes),
             viewItem(null),
           ],
@@ -2414,6 +2429,7 @@ class _WidgetShellState extends State<WidgetShell>
     onCreate: () => _editWorkspace(null),
     onOpenNotes: _toggleJournal,
     onOpenParked: _toggleParked,
+    onOpenCollections: _toggleCollections,
     onOpenHistory: _toggleHistory,
     parkedReviewDue: s.groupsDueForReview.isNotEmpty,
     // The menu holds three of the four, and lighting its ▾ for a view it
@@ -2577,6 +2593,8 @@ class _WidgetShellState extends State<WidgetShell>
       ? WorkspaceView.notes
       : s.showParked
       ? WorkspaceView.parked
+      : s.showCollections
+      ? WorkspaceView.collections
       : s.showHistory
       ? WorkspaceView.history
       : s.showThoughts
@@ -2728,6 +2746,25 @@ class _WidgetShellState extends State<WidgetShell>
         // Only where there is a list beside it to drag out of - the same rule
         // the calendar's onPlanTask follows, for the same reason.
         onPark: _layout.splitsContent ? _parkDropped : null,
+      );
+    }
+    if (s.showCollections) {
+      return CollectionsView(
+        collections: s.collections,
+        fields: s.collectionFields,
+        entries: s.collectionEntries,
+        accent: ws,
+        onSaveCollection: (existing, name, fields) => s.saveCollection(
+          existing: existing,
+          name: name,
+          fields: fields,
+        ),
+        onDeleteCollection: s.deleteCollection,
+        onSaveEntry: (c, values, existing) =>
+            s.saveEntry(c, values, existing: existing),
+        onDeleteEntry: s.deleteEntry,
+        onSetChecked: s.setEntryChecked,
+        onBack: _toggleCollections,
       );
     }
     if (s.showSession) {

@@ -29,6 +29,33 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 59. Collections  `[~]`
+
+Agreed with Marco 2026-10-13 (name, per workspace, text / link / number /
+checkbox fields). The design is in `ROADMAP.md` under *Collections*; this is
+only the order. Built on `main`, like the shopping list.
+
+- [x] **59.1** Design written down and agreed.
+- [x] **59.2** Store: `collections`, `collection_fields`, `collection_entries`
+      (client v18, `_create` and `_upgrade`, models, migration fixture
+      rollbacks), server tables + `TABLES` + `TABLE_SINCE` at protocol 4,
+      client holds them back from a server below 4. Tests both sides.
+- [x] **59.3** `AppState`: `showCollections` in the view set, load the
+      workspace's collections / fields / entries, save a collection with its
+      fields (diffed), add / edit / delete / tick entries, the workspace
+      cascade, refresh on a sync merge.
+- [x] **59.4** The screens (`ui/collections.dart`): the list of collections,
+      a collection (table when wide, rows when narrow, search, sort), the
+      collection form (fields, types, starters), the entry form (Enter jumps
+      to the next typed field; on the last it adds and starts the next).
+- [x] **59.5** The doors: `WorkspaceView.collections` in the dock, the ▾ menu,
+      the rail (full and strip), the Esc ladder, `_selectView` / `_showTasks`
+      / `_jumpToAddTask`.
+- [x] **59.6** `FEATURES.md` (section + changelog), `CLAUDE.md` architecture
+      note, analyze clean, tests green, commit.
+- [ ] **59.7** Deploy the server (protocol 4), publish the web build,
+      `install-windows.ps1`; Marco tries it with his recipes.
+
 ### 58. The redesign  `[~]`
 
 Asked for 2026-10-12. Worked on in the **`redesign` branch**, checked out as the

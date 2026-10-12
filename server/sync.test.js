@@ -1310,3 +1310,31 @@ test('the shopping list syncs at protocol 3 and is withheld below it', async () 
   assert.equal(older.list_items, undefined);
   assert.ok(Array.isArray(older.calendar_feeds));
 });
+
+test('collections sync at protocol 4 and are withheld below it', async () => {
+  const db = freshDb();
+  const stamp = '2026-10-13T18:00:00+02:00';
+  const row = { created_at: stamp, updated_at: stamp, deleted_at: null };
+  sync(db, USER, 0, {
+    collections: [{ uuid: 'c1', workspace_uuid: 'w1', name: 'Recipes', sort_order: 0, ...row }],
+    collection_fields: [
+      { uuid: 'f1', collection_uuid: 'c1', name: 'Name', kind: 'text', options: null, sort_order: 0, ...row },
+      { uuid: 'f2', collection_uuid: 'c1', name: 'Link', kind: 'link', options: null, sort_order: 1, ...row },
+    ],
+    collection_entries: [
+      { uuid: 'e1', collection_uuid: 'c1', data: '{"f1":"Curry","f2":"https://chefkoch.de/curry"}', sort_order: 0, ...row },
+    ],
+  });
+
+  const now = sync(db, USER, 0, {}).changes;
+  assert.equal(now.collections[0].name, 'Recipes');
+  assert.deepEqual(now.collection_fields.map((f) => f.kind).sort(), ['link', 'text']);
+  assert.equal(JSON.parse(now.collection_entries[0].data).f1, 'Curry');
+
+  // An app on protocol 3 has no tables to put them in.
+  const older = sync(db, USER, 0, {}, 3).changes;
+  assert.equal(older.collections, undefined);
+  assert.equal(older.collection_fields, undefined);
+  assert.equal(older.collection_entries, undefined);
+  assert.ok(Array.isArray(older.lists));
+});

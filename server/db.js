@@ -273,7 +273,51 @@ function init(db) {
       PRIMARY KEY (user_id, uuid)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_workspaces_pull      ON workspaces      (user_id, seq);
+    -- Collections (client v18, protocol 4): a workspace's tables with fields
+    -- defined first. Fields are rows of their own; an entry's data is a JSON
+    -- object keyed by field uuid. Nullable for the same reason.
+    CREATE TABLE IF NOT EXISTS collections (
+      uuid           TEXT NOT NULL,
+      user_id        TEXT NOT NULL,
+      workspace_uuid TEXT,
+      name           TEXT,
+      sort_order     INTEGER,
+      created_at     TEXT,
+      updated_at     TEXT NOT NULL,
+      deleted_at     TEXT,
+      seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    CREATE TABLE IF NOT EXISTS collection_fields (
+      uuid            TEXT NOT NULL,
+      user_id         TEXT NOT NULL,
+      collection_uuid TEXT,
+      name            TEXT,
+      kind            TEXT,
+      options         TEXT,
+      sort_order      INTEGER,
+      created_at      TEXT,
+      updated_at      TEXT NOT NULL,
+      deleted_at      TEXT,
+      seq             INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    CREATE TABLE IF NOT EXISTS collection_entries (
+      uuid            TEXT NOT NULL,
+      user_id         TEXT NOT NULL,
+      collection_uuid TEXT,
+      data            TEXT,
+      sort_order      INTEGER,
+      created_at      TEXT,
+      updated_at      TEXT NOT NULL,
+      deleted_at      TEXT,
+      seq             INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workspaces_pull     ON workspaces      (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_tasks_pull           ON tasks           (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_side_thoughts_pull   ON side_thoughts   (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_parked_groups_pull   ON parked_groups   (user_id, seq);
@@ -284,6 +328,9 @@ function init(db) {
     CREATE INDEX IF NOT EXISTS idx_calendar_feeds_pull  ON calendar_feeds  (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_lists_pull           ON lists           (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_list_items_pull      ON list_items      (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_collections_pull        ON collections        (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_collection_fields_pull  ON collection_fields  (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_collection_entries_pull ON collection_entries (user_id, seq);
   `);
 
   // `CREATE TABLE IF NOT EXISTS` above does nothing to a database that already
@@ -409,6 +456,16 @@ export const TABLES = {
   calendar_feeds: ['calendar_uuid', 'name', 'url', 'alerts', 'created_at'],
   lists: ['name', 'archived_at', 'created_at'],
   list_items: ['list_uuid', 'text', 'checked_at', 'sort_order', 'created_at'],
+  collections: ['workspace_uuid', 'name', 'sort_order', 'created_at'],
+  collection_fields: [
+    'collection_uuid',
+    'name',
+    'kind',
+    'options',
+    'sort_order',
+    'created_at',
+  ],
+  collection_entries: ['collection_uuid', 'data', 'sort_order', 'created_at'],
 };
 
 // What a client on an older protocol does not have, and so must not be sent.
@@ -419,7 +476,14 @@ export const TABLES = {
 // protocol 2 on is listed here with the protocol that brought it; a table
 // likewise. A client that does not say which protocol it speaks is 1.
 const COLUMN_SINCE = { calendar_events: { feed_uuid: 2 } };
-const TABLE_SINCE = { calendar_feeds: 2, lists: 3, list_items: 3 };
+const TABLE_SINCE = {
+  calendar_feeds: 2,
+  lists: 3,
+  list_items: 3,
+  collections: 4,
+  collection_fields: 4,
+  collection_entries: 4,
+};
 
 function knows(table, field, protocol) {
   return (COLUMN_SINCE[table]?.[field] ?? 1) <= protocol;

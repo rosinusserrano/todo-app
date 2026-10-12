@@ -35,7 +35,7 @@ import '../theme.dart';
 /// count on the footer, which is where the pressure is shown. It is in this
 /// enum because [WorkspaceRail] lists every view that can own the content area
 /// and would otherwise light up Tasks while the thoughts panel is on screen.
-enum WorkspaceView { notes, parked, history, thoughts }
+enum WorkspaceView { notes, parked, collections, history, thoughts }
 
 class WorkspaceBar extends StatelessWidget {
   const WorkspaceBar({
@@ -48,6 +48,7 @@ class WorkspaceBar extends StatelessWidget {
     required this.onCreate,
     required this.onOpenNotes,
     required this.onOpenParked,
+    required this.onOpenCollections,
     required this.onOpenHistory,
     required this.parkedReviewDue,
     required this.openView,
@@ -67,6 +68,7 @@ class WorkspaceBar extends StatelessWidget {
 
   final VoidCallback onOpenNotes;
   final VoidCallback onOpenParked;
+  final VoidCallback onOpenCollections;
   final VoidCallback onOpenHistory;
 
   /// A parked group in this workspace has gone past its review interval - the
@@ -131,6 +133,7 @@ class WorkspaceBar extends StatelessWidget {
               openView: openView,
               onOpenNotes: onOpenNotes,
               onOpenParked: onOpenParked,
+              onOpenCollections: onOpenCollections,
               onOpenHistory: onOpenHistory,
             ),
           const SizedBox(width: 6),
@@ -150,6 +153,7 @@ class _ViewsMenu extends StatelessWidget {
     required this.openView,
     required this.onOpenNotes,
     required this.onOpenParked,
+    required this.onOpenCollections,
     required this.onOpenHistory,
   });
 
@@ -158,6 +162,7 @@ class _ViewsMenu extends StatelessWidget {
   final WorkspaceView? openView;
   final VoidCallback onOpenNotes;
   final VoidCallback onOpenParked;
+  final VoidCallback onOpenCollections;
   final VoidCallback onOpenHistory;
 
   @override
@@ -170,6 +175,7 @@ class _ViewsMenu extends StatelessWidget {
       onSelected: (v) => switch (v) {
         0 => onOpenNotes(),
         1 => onOpenParked(),
+        3 => onOpenCollections(),
         _ => onOpenHistory(),
       },
       itemBuilder: (context) => [
@@ -184,6 +190,12 @@ class _ViewsMenu extends StatelessWidget {
                   style: TextStyle(
                       fontSize: T.fsMeta, color: dueTint, fontWeight: T.wMedium))
               : null,
+        ),
+        _item(
+          3,
+          Icons.table_rows_outlined,
+          'Collections',
+          WorkspaceView.collections,
         ),
         _item(2, Icons.history_rounded, 'History', WorkspaceView.history),
       ],

@@ -9,6 +9,93 @@ work that is about to happen.
 
 ## In progress
 
+### Collections — agreed 2026-10-13
+
+Asked for and settled with Marco on 2026-10-13: next to Notes and Parked, a
+third kind of thing a workspace keeps, where you decide the **fields** first
+and then add **entries** that fill them in. The first two uses named were
+recipes (name, link) and movies. Build order is TODO 59.
+
+**The name.** "Lists" is taken twice already (the task list, the shopping
+list) and "database" is a word for the machinery, not for the thing in your
+hand. **Collections** - "my recipe collection" is how people say it. A
+collection has **fields**; it holds **entries**.
+
+**Where it lives: a per-workspace view**, beside Notes and Parked
+(`WorkspaceView.collections`): the dock's "where" segment, the ▾ menu, the
+rail. Per workspace because Notes and Parked are, and because the recipes
+belong to "Home" and not to "Uni". The view opens on the workspace's
+collections as rows (name, entry count, fields); a tap opens one. Esc walks
+back from a collection to the list of them, the way the journal's ladder does.
+
+**Four field types, and the type is an input hint, not a storage format.**
+**Text**, **link**, **number**, **checkbox**. Every value is stored as text,
+and the type only decides the input (a URL keyboard, a number keyboard, a
+tick box), how the value is drawn (a link shows its host, `chefkoch.de`, and
+opens on tap; a checkbox is a tick) and how it sorts. So changing a field
+from text to number loses nothing - a value that is not a number just shows
+as written. A **choice** field (a drop-down from options you define first) is
+the obvious next type; `options` is already in the schema so adding it is not
+another protocol bump.
+
+**Adding an entry is a form you type straight through.** This is the part
+Marco called very important. One input per field, in field order. Enter (or
+the keyboard's Next) jumps to the next **typed** field - a checkbox is a tap,
+and landing the caret on one would just put the phone's keyboard away. Enter
+on the **last** typed field adds the entry and clears the form with the caret
+back in the first field, so five movies in a row is five lines of typing and
+nothing else; a line at the top says what was just added. "Add" saves and
+closes; Ctrl+Enter does the same from anywhere. Cancel / ✕ throws away only
+the unsaved form - everything added with Enter is already written. It is the
+existing form sheet (`showFormSheet`), so it looks like every other form.
+Editing an entry is the same form, filled in, with Delete.
+
+**Reading it.**
+- **Wide (the view has room for a column per field):** a table - one column
+  per field, a header that sorts on click (again to reverse), rules between
+  rows. A checkbox column is tickable in place.
+- **Narrow / phone:** one row per entry: the **first field** large as the
+  entry's name, the rest as one muted line underneath (`2019 · netflix.com`).
+  If the collection has a checkbox field, the first one is the row's leading
+  tick box and toggles in place - "seen" ticked off from the list, like a
+  task. Rows with rules, no tiles.
+- A **search** line at the top filters across every field. With fifty
+  recipes, "what was that curry" is the question you open it with.
+- A sort menu (added, or any field) for the narrow form, which has no header
+  to click. Newest first until told otherwise.
+- Tap a row to edit it; a link is its own tap target and opens the browser.
+
+**Defining a collection.** Name, then the fields: a row per field with its
+name and a type, ＋ to add one, arrows to reorder, ✕ to remove. Editable at
+any time, entries already in it included; removing a field that holds values
+asks first. A new collection starts with one text field, "Name", and offers
+two starters (Recipes: Name, Link; Movies: Title, Year, Seen) as chips.
+
+**Storage: three tables, synced like everything else.**
+- `collections`: uuid, workspace_uuid, name, sort_order, created/updated/
+  deleted.
+- `collection_fields`: uuid, collection_uuid, name, kind (`text` / `link` /
+  `number` / `check`), options (null; the choice list later), sort_order,
+  created/updated/deleted. Fields are **rows**, not a JSON column on the
+  collection, so renaming a field on the phone and adding one on the desktop
+  both survive a merge.
+- `collection_entries`: uuid, collection_uuid, `data` (a JSON object keyed by
+  **field uuid**), sort_order, created/updated/deleted. Keyed by uuid so a
+  rename touches no entry; a removed field's values are simply not drawn.
+  (`data`, not `values`: that one is an SQL keyword.)
+  - The trade: an entry is last-write-wins as a whole, so the same movie edited
+    in two different fields on two offline devices keeps one edit. A row per
+    cell would merge those, at the price of a table that is mostly
+    bookkeeping; an entry is filled in one sitting, the same way a note body
+    already is.
+- Deleting a workspace cascades to its collections. Client v18, **wire
+  protocol 4**, all three tables in `TABLE_SINCE`, the same path
+  `lists` / `list_items` took at protocol 3.
+
+**Not in the first version:** choice fields, dates, entries turning into
+tasks ("cook this on Sunday"), import from CSV, sharing a collection across
+workspaces.
+
 ### The redesign — started 2026-10-12
 
 Marco is not happy with how the app looks, and this is the rework the

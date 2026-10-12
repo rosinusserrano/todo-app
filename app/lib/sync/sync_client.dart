@@ -210,6 +210,12 @@ class SyncClient {
         ..remove('lists')
         ..remove('list_items');
     }
+    if (server.speaks < kCollectionsProtocol) {
+      outgoing
+        ..remove('collections')
+        ..remove('collection_fields')
+        ..remove('collection_entries');
+    }
 
     final http.Response res;
     try {

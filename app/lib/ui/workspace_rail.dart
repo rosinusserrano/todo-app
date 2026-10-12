@@ -41,6 +41,7 @@ class WorkspaceRail extends StatelessWidget {
     required this.onShowTasks,
     required this.onOpenNotes,
     required this.onOpenParked,
+    required this.onOpenCollections,
     required this.onOpenHistory,
     required this.onOpenThoughts,
     required this.thoughtCount,
@@ -74,6 +75,7 @@ class WorkspaceRail extends StatelessWidget {
 
   final VoidCallback onOpenNotes;
   final VoidCallback onOpenParked;
+  final VoidCallback onOpenCollections;
   final VoidCallback onOpenHistory;
   final VoidCallback onOpenThoughts;
 
@@ -177,6 +179,13 @@ class WorkspaceRail extends StatelessWidget {
                 : null,
           ),
           _RailItem(
+            icon: Icons.table_rows_outlined,
+            label: 'Collections',
+            selected: openView == WorkspaceView.collections,
+            accent: accent,
+            onTap: onOpenCollections,
+          ),
+          _RailItem(
             icon: Icons.history_rounded,
             label: 'History',
             selected: openView == WorkspaceView.history,
@@ -275,6 +284,8 @@ extension on WorkspaceRail {
             onOpenParked,
             badge: parkedReviewDue ? _Dot(color: dueTint) : null,
           ),
+          view(Icons.table_rows_outlined, 'Collections',
+              WorkspaceView.collections, onOpenCollections),
           view(Icons.history_rounded, 'History', WorkspaceView.history,
               onOpenHistory),
           if (thoughtCount > 0)

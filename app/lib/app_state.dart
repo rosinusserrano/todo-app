@@ -135,6 +135,7 @@ class AppState extends ChangeNotifier {
   bool showParked = false;
   bool showJournal = false;
   bool showSession = false;
+  bool showCollections = false;
 
   Workspace? get currentWorkspace {
     for (final w in workspaces) {
@@ -325,6 +326,8 @@ class AppState extends ChangeNotifier {
     for (final e in await _store.journalEntries(uuid)) {
       await _store.putJournal(e.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
+    // Collections are per-workspace as well, fields and entries with them.
+    await _tombstoneCollections(uuid, stamp);
 
     // The workspace's calendar and everything on it. Its uuid is the
     // workspace's, so it is found by id rather than by scanning.
@@ -371,6 +374,10 @@ class AppState extends ChangeNotifier {
     // is open, so it is not swept up in every task edit. refreshJournal itself
     // handles the locked case by clearing the list.
     if (showJournal) await refreshJournal();
+    // Collections likewise load only while their view is open; a sync merge
+    // reaches this through refreshTasks too, so an entry added on the phone
+    // turns up on the desktop's open table.
+    await refreshCollections();
     // Unconditionally, like the parked groups above: checking a task off is one
     // of the things that changes what a live block still has left on it, and
     // the banner has to be right whether or not the session view is open.
@@ -803,18 +810,27 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> toggleCollections() async {
+    showCollections = !showCollections;
+    if (showCollections) _closeOtherViews(keepCollections: true);
+    await refreshCollections();
+    notifyListeners();
+  }
+
   void _closeOtherViews({
     bool keepHistory = false,
     bool keepThoughts = false,
     bool keepParked = false,
     bool keepJournal = false,
     bool keepSession = false,
+    bool keepCollections = false,
   }) {
     showHistory = keepHistory;
     showThoughts = keepThoughts;
     showParked = keepParked;
     showJournal = keepJournal;
     showSession = keepSession;
+    showCollections = keepCollections;
     // The shopping list is not a per-workspace view, but it owns the same
     // content area, so anything opening there closes it.
     showList = false;
@@ -2604,6 +2620,223 @@ class AppState extends ChangeNotifier {
     await _listChanged();
   }
 
+  // ---------------------------------------------------------- collections
+  //
+  // A workspace's tables with fields decided first - recipes, movies. See
+  // *Collections* in ROADMAP.md. The whole workspace's worth is held in memory
+  // while the view is open: they are small, and holding them whole is what
+  // lets search and sort be done without a query per keystroke.
+
+  /// The current workspace's collections, in their order. Empty while the
+  /// view is closed.
+  List<Collection> collections = [];
+
+  /// Each collection's live fields, in field order.
+  Map<String, List<CollectionField>> collectionFields = {};
+
+  /// Each collection's live entries, newest first.
+  Map<String, List<CollectionEntry>> collectionEntries = {};
+
+  /// Loads the current workspace's collections while the view is open, and
+  /// lets go of them when it is not.
+  Future<void> refreshCollections() async {
+    final ws = currentWorkspaceUuid;
+    if (!showCollections || ws == null) {
+      collections = [];
+      collectionFields = {};
+      collectionEntries = {};
+      return;
+    }
+    collections = await _store.collections(ws);
+    collectionFields = {for (final c in collections) c.uuid: []};
+    for (final f in await _store.collectionFields(ws)) {
+      collectionFields[f.collectionUuid]?.add(f);
+    }
+    collectionEntries = {for (final c in collections) c.uuid: []};
+    for (final e in await _store.collectionEntries(ws)) {
+      collectionEntries[e.collectionUuid]?.add(e);
+    }
+  }
+
+  Future<void> _collectionsChanged() async {
+    await refreshCollections();
+    notifyListeners();
+    _mutated();
+  }
+
+  /// Create a collection, or rename one and bring its fields in line with
+  /// [fields]: a field with a uuid is kept (renamed, retyped, moved), one
+  /// without is new, and an existing field missing from the list is removed.
+  /// A removed field's values stay in the entries and are simply not drawn.
+  Future<Collection?> saveCollection({
+    Collection? existing,
+    required String name,
+    required List<FieldDraft> fields,
+    String? workspaceUuid,
+  }) async {
+    final trimmed = name.trim();
+    final ws = workspaceUuid ?? existing?.workspaceUuid ?? currentWorkspaceUuid;
+    if (trimmed.isEmpty || ws == null) return null;
+    final stamp = nowStamp();
+
+    final Collection saved;
+    if (existing == null) {
+      saved = Collection(
+        uuid: newId(),
+        workspaceUuid: ws,
+        name: trimmed,
+        sortOrder: collections.length,
+        createdAt: stamp,
+        updatedAt: stamp,
+      );
+      await _store.putCollection(saved);
+    } else {
+      saved = existing.name == trimmed
+          ? existing
+          : existing.copyWith(name: trimmed);
+      if (saved != existing) await _store.putCollection(saved);
+    }
+
+    final before = {
+      for (final f in collectionFields[saved.uuid] ?? const <CollectionField>[])
+        f.uuid: f,
+    };
+    final kept = <String>{};
+    var order = 0;
+    for (final draft in fields) {
+      final fieldName = draft.name.trim();
+      if (fieldName.isEmpty) continue;
+      final old = draft.uuid == null ? null : before[draft.uuid];
+      if (old == null) {
+        await _store.putCollectionField(CollectionField(
+          uuid: newId(),
+          collectionUuid: saved.uuid,
+          name: fieldName,
+          kind: draft.kind,
+          sortOrder: order,
+          createdAt: stamp,
+          updatedAt: stamp,
+        ));
+      } else {
+        kept.add(old.uuid);
+        if (old.name != fieldName ||
+            old.kind != draft.kind ||
+            old.sortOrder != order) {
+          await _store.putCollectionField(
+              old.copyWith(name: fieldName, kind: draft.kind, sortOrder: order));
+        }
+      }
+      order++;
+    }
+    for (final old in before.values) {
+      if (kept.contains(old.uuid)) continue;
+      await _store.putCollectionField(
+          old.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+
+    await _collectionsChanged();
+    return saved;
+  }
+
+  /// A collection, its fields and its entries, tombstoned so the removal
+  /// reaches the other devices.
+  Future<void> deleteCollection(Collection c) async {
+    final stamp = nowStamp();
+    await _tombstoneCollection(c, stamp);
+    await _collectionsChanged();
+  }
+
+  Future<void> _tombstoneCollection(Collection c, String stamp) async {
+    final ws = c.workspaceUuid;
+    for (final f in await _store.collectionFields(ws)) {
+      if (f.collectionUuid != c.uuid) continue;
+      await _store.putCollectionField(
+          f.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    for (final e in await _store.collectionEntries(ws)) {
+      if (e.collectionUuid != c.uuid) continue;
+      await _store.putCollectionEntry(
+          e.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    await _store.putCollection(c.copyWith(deletedAt: stamp, updatedAt: stamp));
+  }
+
+  Future<void> _tombstoneCollections(String workspaceUuid, String stamp) async {
+    for (final c in await _store.collections(workspaceUuid)) {
+      await _tombstoneCollection(c, stamp);
+    }
+  }
+
+  /// Add an entry, or rewrite [existing]. [values] is field uuid to value for
+  /// the fields the form showed; values are trimmed and an empty one is
+  /// dropped. A value under a field the form did not show - one removed from
+  /// the collection - is kept, so putting the field back is not the only way
+  /// to lose it.
+  ///
+  /// Returns the row written. Null means nothing was: a new entry with
+  /// nothing in it is not one, and an existing entry cleared to nothing is
+  /// deleted, as a task cleared to nothing is.
+  Future<CollectionEntry?> saveEntry(
+    Collection c,
+    Map<String, String> values, {
+    CollectionEntry? existing,
+  }) async {
+    final cleaned = <String, String>{
+      for (final e in values.entries)
+        if (e.value.trim().isNotEmpty) e.key: e.value.trim(),
+    };
+    if (cleaned.isEmpty) {
+      if (existing != null) await deleteEntry(existing);
+      return null;
+    }
+
+    final CollectionEntry saved;
+    if (existing == null) {
+      final stamp = nowStamp();
+      saved = CollectionEntry(
+        uuid: newId(),
+        collectionUuid: c.uuid,
+        data: cleaned,
+        createdAt: stamp,
+        updatedAt: stamp,
+      );
+    } else {
+      final data = {
+        for (final e in existing.data.entries)
+          if (!values.containsKey(e.key)) e.key: e.value,
+        ...cleaned,
+      };
+      saved = existing.copyWith(data: data);
+    }
+    await _store.putCollectionEntry(saved);
+    await _collectionsChanged();
+    return saved;
+  }
+
+  Future<void> deleteEntry(CollectionEntry e) async {
+    final stamp = nowStamp();
+    await _store.putCollectionEntry(
+        e.copyWith(deletedAt: stamp, updatedAt: stamp));
+    await _collectionsChanged();
+  }
+
+  /// Tick or untick one checkbox field on an entry, in place from the list.
+  Future<void> setEntryChecked(
+    CollectionEntry e,
+    CollectionField field,
+    bool checked,
+  ) async {
+    if (e.isChecked(field.uuid) == checked) return;
+    final data = Map<String, String>.of(e.data);
+    if (checked) {
+      data[field.uuid] = CollectionEntry.checked;
+    } else {
+      data.remove(field.uuid);
+    }
+    await _store.putCollectionEntry(e.copyWith(data: data));
+    await _collectionsChanged();
+  }
+
   // ---------------------------------------------------------------- tint
 
   Color get workspaceColor {
@@ -2665,4 +2898,14 @@ class FeedStatus {
       return const FeedStatus();
     }
   }
+}
+
+/// One field as the collection form hands it back. [uuid] is the existing
+/// field it edits, or null for a new one.
+class FieldDraft {
+  const FieldDraft({this.uuid, required this.name, this.kind = FieldKind.text});
+
+  final String? uuid;
+  final String name;
+  final FieldKind kind;
 }

@@ -60,6 +60,9 @@ class LocalStore {
     'calendar_feeds',
     'lists',
     'list_items',
+    'collections',
+    'collection_fields',
+    'collection_entries',
   ];
 
   /// [singleInstance] false forces a genuinely new database rather than a
@@ -73,7 +76,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 17,
+        version: 18,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -228,6 +231,17 @@ class LocalStore {
       await db.execute(_listsTable);
       await db.execute(_listItemsTable);
       await db.execute(_listItemsIndex);
+    }
+    if (from < 18) {
+      // Collections. Three new tables and nothing to backfill, for the reason
+      // v17 gave: no server below protocol 4 has them to have held anything
+      // back.
+      await db.execute(_collectionsTable);
+      await db.execute(_collectionFieldsTable);
+      await db.execute(_collectionEntriesTable);
+      await db.execute(_collectionsWorkspaceIndex);
+      await db.execute(_collectionFieldsIndex);
+      await db.execute(_collectionEntriesIndex);
     }
   }
 
@@ -398,6 +412,61 @@ class LocalStore {
 
   static const _listItemsIndex =
       'CREATE INDEX idx_list_items_list ON list_items (list_uuid)';
+
+  /// Collections (v18): a workspace's tables of entries with fields you define
+  /// first. Nullable for the reason [_calendarFeedsTable] is.
+  static const _collectionsTable = '''
+      CREATE TABLE collections (
+        uuid           TEXT PRIMARY KEY,
+        workspace_uuid TEXT,
+        name           TEXT,
+        sort_order     INTEGER,
+        created_at     TEXT,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT,
+        dirty          INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  /// One row per field rather than a JSON column on the collection, so a
+  /// rename on one device and a new field on another both survive a merge.
+  /// `options` is unused until choice fields exist; it is here so adding them
+  /// is not another protocol bump.
+  static const _collectionFieldsTable = '''
+      CREATE TABLE collection_fields (
+        uuid            TEXT PRIMARY KEY,
+        collection_uuid TEXT,
+        name            TEXT,
+        kind            TEXT,
+        options         TEXT,
+        sort_order      INTEGER,
+        created_at      TEXT,
+        updated_at      TEXT NOT NULL,
+        deleted_at      TEXT,
+        dirty           INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  /// `data` is a JSON object keyed by field uuid. Not `values`, which is an
+  /// SQL keyword.
+  static const _collectionEntriesTable = '''
+      CREATE TABLE collection_entries (
+        uuid            TEXT PRIMARY KEY,
+        collection_uuid TEXT,
+        data            TEXT,
+        sort_order      INTEGER,
+        created_at      TEXT,
+        updated_at      TEXT NOT NULL,
+        deleted_at      TEXT,
+        dirty           INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  static const _collectionsWorkspaceIndex =
+      'CREATE INDEX idx_collections_workspace ON collections (workspace_uuid)';
+  static const _collectionFieldsIndex =
+      'CREATE INDEX idx_collection_fields_collection '
+      'ON collection_fields (collection_uuid)';
+  static const _collectionEntriesIndex =
+      'CREATE INDEX idx_collection_entries_collection '
+      'ON collection_entries (collection_uuid)';
 
   /// A refresh asks for every row one feed wrote.
   static const _eventsFeedIndex =
@@ -585,6 +654,9 @@ class LocalStore {
     await db.execute(_calendarFeedsTable);
     await db.execute(_listsTable);
     await db.execute(_listItemsTable);
+    await db.execute(_collectionsTable);
+    await db.execute(_collectionFieldsTable);
+    await db.execute(_collectionEntriesTable);
 
     await db.execute('''
       CREATE TABLE side_thoughts (
@@ -618,6 +690,9 @@ class LocalStore {
     await db.execute(_eventsStartIndex);
     await db.execute(_eventsFeedIndex);
     await db.execute(_listItemsIndex);
+    await db.execute(_collectionsWorkspaceIndex);
+    await db.execute(_collectionFieldsIndex);
+    await db.execute(_collectionEntriesIndex);
 
     // A first workspace, so the app is never in a state with nowhere to add a
     // task.
@@ -1106,6 +1181,41 @@ class LocalStore {
     };
   }
 
+  /// A workspace's collections, in their order.
+  Future<List<Collection>> collections(String workspaceUuid) async {
+    final rows = await _db.query('collections',
+        where: 'workspace_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [workspaceUuid],
+        orderBy: 'sort_order, created_at');
+    return rows.map(Collection.fromMap).toList();
+  }
+
+  /// The live fields of every live collection in a workspace, in field order.
+  /// One query for the whole view rather than one per collection: the list of
+  /// collections names each one's fields.
+  Future<List<CollectionField>> collectionFields(String workspaceUuid) async {
+    final rows = await _db.rawQuery('''
+      SELECT f.* FROM collection_fields f
+        JOIN collections c ON c.uuid = f.collection_uuid
+       WHERE c.workspace_uuid = ? AND c.deleted_at IS NULL
+         AND f.deleted_at IS NULL
+       ORDER BY f.sort_order, f.created_at''', [workspaceUuid]);
+    return rows.map(CollectionField.fromMap).toList();
+  }
+
+  /// The live entries of every live collection in a workspace, newest first.
+  /// A workspace's collections are small enough to hold whole, which is what
+  /// lets search and sort be done in memory.
+  Future<List<CollectionEntry>> collectionEntries(String workspaceUuid) async {
+    final rows = await _db.rawQuery('''
+      SELECT e.* FROM collection_entries e
+        JOIN collections c ON c.uuid = e.collection_uuid
+       WHERE c.workspace_uuid = ? AND c.deleted_at IS NULL
+         AND e.deleted_at IS NULL
+       ORDER BY e.created_at DESC, e.uuid''', [workspaceUuid]);
+    return rows.map(CollectionEntry.fromMap).toList();
+  }
+
   /// Every live event one feed wrote, for unsubscribing.
   Future<List<CalendarEvent>> feedEvents(String feedUuid) async {
     final rows = await _db.query('calendar_events',
@@ -1243,6 +1353,11 @@ class LocalStore {
   Future<void> putFeed(CalendarFeed f) => put('calendar_feeds', f);
   Future<void> putList(ShoppingList l) => put('lists', l);
   Future<void> putListItem(ListItem i) => put('list_items', i);
+  Future<void> putCollection(Collection c) => put('collections', c);
+  Future<void> putCollectionField(CollectionField f) =>
+      put('collection_fields', f);
+  Future<void> putCollectionEntry(CollectionEntry e) =>
+      put('collection_entries', e);
 
   /// Focus mode is globally exclusive: flagging one task clears every other.
   Future<void> setInProgress(String uuid, bool value) async {

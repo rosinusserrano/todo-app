@@ -99,6 +99,7 @@ class DockSegment {
     this.dot = false,
     this.pressure = 0,
     this.semanticLabel,
+    this.width,
   });
 
   final String label;
@@ -123,6 +124,10 @@ class DockSegment {
   final int pressure;
 
   final String? semanticLabel;
+
+  /// A fixed width. Null shares what is left equally with the other null
+  /// segments - the three places do; the quick-action ＋ is a fixed square.
+  final double? width;
 }
 
 class Dock extends StatefulWidget {
@@ -250,8 +255,14 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (dock != null && dock.hasSize) {
       final local = dock.globalToLocal(e.position);
       if ((Offset.zero & dock.size).contains(local)) {
-        final n = widget.segments.length;
-        final at = (local.dx / (dock.size.width / n)).floor().clamp(0, n - 1);
+        final spans = _spans(dock.size.width);
+        var at = spans.length - 1;
+        for (var i = 0; i < spans.length; i++) {
+          if (local.dx < spans[i].$1 + spans[i].$2) {
+            at = i;
+            break;
+          }
+        }
         if (at != _open) {
           HapticFeedback.selectionClick();
           _openMenu(at, sticky: false);
@@ -340,8 +351,9 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (var i = 0; i < widget.segments.length; i++)
-                Expanded(
-                  child: Listener(
+                _sized(
+                  widget.segments[i],
+                  Listener(
                     behavior: HitTestBehavior.opaque,
                     onPointerDown: (e) => _down(i, e),
                     onPointerMove: _move,
@@ -355,6 +367,29 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  Widget _sized(DockSegment seg, Widget child) => seg.width == null
+      ? Expanded(child: child)
+      : SizedBox(width: seg.width, child: child);
+
+  /// Each segment's left edge and width across a bar [total] wide - the same
+  /// split the Row makes, for the code that has to find a segment from a
+  /// point (the slide along the bar) or a menu's place from a segment.
+  List<(double, double)> _spans(double total) {
+    final fixed = widget.segments.fold(0.0, (w, s) => w + (s.width ?? 0));
+    final shared = widget.segments.where((s) => s.width == null).length;
+    final each = shared == 0 ? 0.0 : (total - fixed) / shared;
+    var x = 0.0;
+    return [
+      for (final s in widget.segments)
+        () {
+          final w = s.width ?? each;
+          final span = (x, w);
+          x += w;
+          return span;
+        }(),
+    ];
   }
 
   Widget _segment(DockSegment seg, {required bool open}) {
@@ -384,21 +419,22 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (seg.icon != null) ...[
-              Icon(seg.icon, size: 18, color: ink),
-              const SizedBox(width: T.s1 + 2),
+              Icon(seg.icon, size: seg.label.isEmpty ? 22 : 18, color: ink),
+              if (seg.label.isNotEmpty) const SizedBox(width: T.s1 + 2),
             ],
-            Flexible(
-              child: Text(
-                seg.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: T.fsLabel,
-                  fontWeight: T.wMedium,
-                  color: ink,
+            if (seg.label.isNotEmpty)
+              Flexible(
+                child: Text(
+                  seg.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: T.fsLabel,
+                    fontWeight: T.wMedium,
+                    color: ink,
+                  ),
                 ),
               ),
-            ),
             if (seg.count > 0) ...[
               const SizedBox(width: T.s1),
               Text(
@@ -428,12 +464,10 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     }
     final origin = dock.localToGlobal(Offset.zero, ancestor: overlay);
     final dockWidth = dock.size.width;
-    final n = widget.segments.length;
-    final segWidth = dockWidth / n;
+    final (segLeft, segWidth) = _spans(dockWidth)[open];
     final width = math.min(dockWidth, math.max(segWidth, Dock.menuMinWidth));
     // Over its own segment where it fits, kept inside the bar where it does not:
     // the first menu grows from the left edge, the last from the right.
-    final segLeft = segWidth * open;
     final left = (segLeft + segWidth / 2 - width / 2).clamp(
       0.0,
       dockWidth - width,

@@ -35,11 +35,15 @@ Asked for 2026-10-12. Worked on in the **`redesign` branch**, checked out as the
 worktree `../todo-app-redesign`, and tried on the phone at the dev site (see
 58.1). Reasoning is in `ROADMAP.md` under *The redesign*.
 
+- [x] **58.2b** A fourth, narrow ＋ segment: Add a task / Add a thought (the
+      quick actions). The slide-right add/write on Tasks and Thoughts went
+      with it; slide-right is now only Edit on a workspace.
 - [x] **58.1** A dev copy of everything: `server/setup-dev.sh <domain>` - a
       second server on a snapshot of the live database, its own web root, a
       Caddy site. Publish with `server/build-web.sh /srv/todo-dev-web`.
-- [ ] **58.1b** Marco runs `sudo server/setup-dev.sh todo-dev.sniggles.de`;
-      publish the first build there.
+- [x] **58.1b** Marco ran `sudo server/setup-dev.sh todo-dev.sniggles.de`;
+      first build published (restart needed once: the server only looks for
+      a web build at startup).
 - [x] **58.2** The dock (`ui/dock.dart`): one bar of three filled segments on a
       phone - workspace / where / more - press, slide up, let go; slide right
       for a row's second action. Replaces the workspace bar, the view bar and

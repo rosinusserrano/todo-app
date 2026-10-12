@@ -24,7 +24,8 @@ overdue, in focus).
 **One bar at the bottom, in the order you think in.** Three filled segments
 that touch: the workspace, where in it (Tasks / Notes / Parked / History), and
 everything that belongs to no workspace (Calendar, the list, Thoughts,
-Settings). Press a segment and its menu grows upward; slide to a row; let go to
+Settings) - plus a fourth, narrow ＋ for the quick actions (add a task, add a
+thought), the category Marco remembered after the first build. Press a segment and its menu grows upward; slide to a row; let go to
 go there; let go off the menu to change your mind. Sliding right on a row is
 its second action (edit a workspace, add a task, write a thought) - Marco's
 "hold on a workspace and move right to edit", generalised. Phone first; the

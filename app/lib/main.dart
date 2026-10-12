@@ -2215,10 +2215,6 @@ class _WidgetShellState extends State<WidgetShell>
       current: !global && view == v,
       dot: v == WorkspaceView.parked && s.groupsDueForReview.isNotEmpty,
       onChoose: () => _dockToView(v),
-      // Tasks' second action is the one asked for most: add one.
-      secondaryIcon: v == null ? Icons.add_rounded : null,
-      secondaryLabel: v == null ? 'Add a task' : null,
-      onSecondary: v == null ? _jumpToAddTask : null,
     );
 
     final (moreIcon, moreLabel) = s.showCalendar
@@ -2309,9 +2305,33 @@ class _WidgetShellState extends State<WidgetShell>
                   !s.showList &&
                   view == WorkspaceView.thoughts,
               onChoose: () => _dockToView(WorkspaceView.thoughts),
-              secondaryIcon: Icons.edit_outlined,
-              secondaryLabel: 'Write a thought',
-              onSecondary: _openThoughtCapture,
+            ),
+          ],
+        ),
+        // The fourth kind of thing: not a place but an act. Writing something
+        // down is the commonest reason to open the app at all, so it is a
+        // door of its own rather than a second action hidden on a row - the
+        // same as the home-screen quick actions, minus "Note on <task>": that
+        // one names the focused task, and focus mode hides this bar.
+        DockSegment(
+          icon: Icons.add_rounded,
+          label: '',
+          semanticLabel: 'Quick add',
+          width: 56,
+          fill: Color.lerp(T.bgSolid, T.text, 0.16)!,
+          ink: T.text,
+          items: [
+            DockItem(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Add a task',
+              onChoose: _jumpToAddTask,
+            ),
+            // Nearest the thumb: a thought is the thing that has to be down
+            // before it is gone.
+            DockItem(
+              icon: Icons.cloud_outlined,
+              label: 'Add a thought',
+              onChoose: _openThoughtCapture,
             ),
           ],
         ),

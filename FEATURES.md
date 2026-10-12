@@ -919,18 +919,19 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 *(The `redesign` branch - not in a release yet.)*
 
-- **One bar along the bottom, in three parts**, which touch: the **workspace**
+- **One bar along the bottom, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
-  Parked or History), and **More** - everything that belongs to no workspace:
-  the calendar, the shopping list, side thoughts and settings.
+  Parked or History), **More** - everything that belongs to no workspace:
+  the calendar, the shopping list, side thoughts and settings - and a narrow
+  **＋** at the end for writing something down: *Add a task* or *Add a
+  thought*.
 - **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
   finger to a row - it lights, and the phone ticks - and let go to go there.
   Let go anywhere off the menu and nothing happens. Sliding along the bar
   itself switches to the neighbouring menu without lifting.
-- **Slide right for the second thing.** Some rows have a second action at their
-  right-hand end: **edit** a workspace, **add** a task (on Tasks), **write** a
-  thought (on Thoughts). Carry your finger onto it and the row says what
-  letting go will do.
+- **Slide right to edit a workspace.** Each workspace row has a pencil at its
+  right-hand end; carry your finger onto it and the row says "Edit …" - let go
+  there to edit it.
 - **Tapping works too**: a tap opens the menu and leaves it open, a second tap
   picks. Tap the part again, or anywhere above the menu, to close it.
 - The pile of side thoughts shows on **More**: its count, and the same tint and
@@ -1289,9 +1290,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **Redesign** — *(in progress, `redesign` branch)*
-  - **The phone's bottom bar is new**: workspace, where, and more, as three
-    filled parts; press, slide up to where you want to go, let go. Slide right
-    on a workspace to edit it. See *Getting around on a phone*.
+  - **The phone's bottom bar is new**: workspace, where, more and ＋ (add a
+    task or a thought); press, slide up to where you want to go, let go. Slide
+    right on a workspace to edit it. See *Getting around on a phone*.
   - **No more tiles**: tasks, notes and thoughts are separated by short bars
     instead of each sitting in its own box.
 

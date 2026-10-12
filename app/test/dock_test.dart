@@ -44,6 +44,14 @@ void main() {
                     ink: Colors.white,
                     items: [item('Calendar')],
                   ),
+                  DockSegment(
+                    label: '',
+                    icon: Icons.add,
+                    width: 56,
+                    fill: Colors.white,
+                    ink: Colors.black,
+                    items: [item('Add a task'), item('Add a thought')],
+                  ),
                 ],
               ),
             ],
@@ -53,8 +61,8 @@ void main() {
     );
   }
 
-  // The bar is 48 tall at the bottom of an 800 screen; each segment is 133
-  // wide. Menu rows are Dock.rowHeight tall, stacked up from the bar's top.
+  // The bar is 48 tall at the bottom of an 800 screen. The last segment is a
+  // fixed 56 wide and the other three share the remaining 344 (~115 each). Menu rows are Dock.rowHeight tall, stacked up from the bar's top.
   const barY = 800 - 24.0;
   Offset rowCentre(int fromBottom, {double x = 60}) =>
       Offset(x, 800 - 48 - Dock.rowHeight * (fromBottom + 0.5));
@@ -133,7 +141,7 @@ void main() {
     await pump(tester);
     final g = await tester.startGesture(const Offset(60, barY));
     await tester.pump();
-    await g.moveTo(const Offset(350, barY));
+    await g.moveTo(const Offset(290, barY));
     await tester.pump();
     expect(find.text('Calendar'), findsOneWidget);
     expect(find.text('Home'), findsNothing);
@@ -143,5 +151,24 @@ void main() {
     await g.up();
     await tester.pumpAndSettle();
     expect(fired, ['Calendar']);
+  });
+
+  testWidgets('a fixed-width segment is found by the slide, and its menu fits', (
+    tester,
+  ) async {
+    await pump(tester);
+    final g = await tester.startGesture(const Offset(60, barY));
+    await tester.pump();
+    await g.moveTo(const Offset(380, barY));
+    await tester.pump();
+    expect(find.text('Add a thought'), findsOneWidget);
+
+    // The menu is wider than its segment and kept inside the bar, so its
+    // rows reach well left of the segment itself.
+    await g.moveTo(rowCentre(0, x: 250));
+    await tester.pump();
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(fired, ['Add a thought']);
   });
 }

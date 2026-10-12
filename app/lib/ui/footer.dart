@@ -35,6 +35,7 @@ import 'package:flutter/services.dart';
 import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
+import 'list_rule.dart';
 import 'thought_pressure.dart';
 
 class ThoughtFooter extends StatefulWidget {
@@ -52,6 +53,7 @@ class ThoughtFooter extends StatefulWidget {
   });
 
   final List<SideThought> thoughts;
+
   /// [T.thoughts] in the app - the pile is global, see there.
   final Color accent;
 
@@ -266,12 +268,8 @@ class ThoughtFooterState extends State<ThoughtFooter>
             '💭 $_count',
             style: TextStyle(
               fontSize: T.fsMeta + hot * 1.5,
-              color: widget.listOpen
-                  ? T.text
-                  : Color.lerp(T.muted, alarm, hot),
-              fontWeight: widget.listOpen || hot > 0.5
-                  ? T.wMedium
-                  : T.wNormal,
+              color: widget.listOpen ? T.text : Color.lerp(T.muted, alarm, hot),
+              fontWeight: widget.listOpen || hot > 0.5 ? T.wMedium : T.wNormal,
             ),
           ),
         ),
@@ -383,9 +381,9 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
   final _selected = <String>{};
 
   List<SideThought> get _selection => [
-        for (final t in widget.thoughts)
-          if (_selected.contains(t.uuid)) t,
-      ];
+    for (final t in widget.thoughts)
+      if (_selected.contains(t.uuid)) t,
+  ];
 
   @override
   void dispose() {
@@ -464,7 +462,8 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: T.s2),
                 children: [
-                  for (final t in widget.thoughts)
+                  for (final (i, t) in widget.thoughts.indexed) ...[
+                    if (i > 0) const ListRule(),
                     _ThoughtTile(
                       thought: t,
                       selected: _selected.contains(t.uuid),
@@ -476,6 +475,7 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
                           : (anchor) => widget.onMove!([t], anchor),
                       onDiscard: () => widget.onDiscard(t),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -595,13 +595,14 @@ class _ThoughtTile extends StatelessWidget {
     final layout = Layout.of(context);
     final size = layout.actionIcon;
 
+    // Filled only when selected - see list_rule.dart.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
-        color: selected ? T.thoughts.withValues(alpha: 0.18) : T.surface,
-        borderRadius: BorderRadius.circular(T.radius),
+        color: selected
+            ? T.thoughts.withValues(alpha: 0.18)
+            : Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(T.radius),
           onTap: () {
             if (selecting || HardwareKeyboard.instance.isControlPressed) {
               onToggleSelect();
@@ -636,9 +637,8 @@ class _ThoughtTile extends StatelessWidget {
                         tooltip: 'Move to a list or shelf',
                         size: size,
                         side: layout.tapTarget,
-                        onTap: () => onMove!(
-                          _ThoughtsPanelState._anchor(context),
-                        ),
+                        onTap: () =>
+                            onMove!(_ThoughtsPanelState._anchor(context)),
                       ),
                     ),
                   _ThoughtButton(

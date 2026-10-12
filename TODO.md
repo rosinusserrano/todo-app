@@ -29,6 +29,30 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 58. The redesign  `[~]`
+
+Asked for 2026-10-12. Worked on in the **`redesign` branch**, checked out as the
+worktree `../todo-app-redesign`, and tried on the phone at the dev site (see
+58.1). Reasoning is in `ROADMAP.md` under *The redesign*.
+
+- [x] **58.1** A dev copy of everything: `server/setup-dev.sh <domain>` - a
+      second server on a snapshot of the live database, its own web root, a
+      Caddy site. Publish with `server/build-web.sh /srv/todo-dev-web`.
+- [ ] **58.1b** Marco runs `sudo server/setup-dev.sh todo-dev.sniggles.de`;
+      publish the first build there.
+- [x] **58.2** The dock (`ui/dock.dart`): one bar of three filled segments on a
+      phone - workspace / where / more - press, slide up, let go; slide right
+      for a row's second action. Replaces the workspace bar, the view bar and
+      the title bar's calendar / list / settings buttons on touch.
+- [x] **58.3** Rows without tiles (`ui/list_rule.dart`): tasks, notes, thoughts.
+- [ ] **58.4** Marco tries 58.2-58.3 on the phone; changes from that.
+- [ ] **58.5** The rest of the tiles: parked group cards, the add field's box,
+      shopping list items, the sheets and forms.
+- [ ] **58.6** Decide what the desktop and the narrow window get (the dock is
+      touch-only so far).
+- [ ] **58.7** Merge to `main`: FEATURES changelog entry moves under the
+      release it ships in.
+
 ### 57. The shopping list  `[~]`
 
 Agreed with Marco 2026-10-12. The design is in `ROADMAP.md` under *The shopping

@@ -40,6 +40,7 @@ import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../theme.dart';
+import 'list_rule.dart';
 import 'markdown_text.dart';
 import 'panel_header.dart';
 
@@ -88,7 +89,11 @@ class JournalView extends StatefulWidget {
   /// nothing was saved (an empty entry, or one cleared to nothing, which
   /// deletes).
   final Future<JournalItem?> Function(
-      String title, String body, JournalItem? existing) onSave;
+    String title,
+    String body,
+    JournalItem? existing,
+  )
+  onSave;
   final Future<void> Function(JournalItem) onDelete;
 
   /// Back to the task list, from the list state's header.
@@ -225,7 +230,10 @@ class _JournalViewState extends State<JournalView> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: const Text('Remove password?', style: TextStyle(fontSize: T.fsMenu)),
+        title: const Text(
+          'Remove password?',
+          style: TextStyle(fontSize: T.fsMenu),
+        ),
         content: const Text(
           'The notes will be stored unencrypted and readable without a password.',
           style: TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
@@ -311,9 +319,9 @@ class _JournalViewState extends State<JournalView> {
   }
 
   void _closeReader() => setState(() {
-        _reading = false;
-        _editing = null;
-      });
+    _reading = false;
+    _editing = null;
+  });
 
   /// [toList] is Ctrl+Alt+S; otherwise this is Ctrl+S and the Save button, and
   /// lands on the rendered entry.
@@ -475,20 +483,25 @@ class _JournalViewState extends State<JournalView> {
           ],
           if (_error != null) ...[
             const SizedBox(height: 8),
-            Text(_error!,
-                style: const TextStyle(fontSize: T.fsMeta, color: T.danger)),
+            Text(
+              _error!,
+              style: const TextStyle(fontSize: T.fsMeta, color: T.danger),
+            ),
           ],
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (setup)
-                _textAction('Cancel', _busy
-                    ? null
-                    : () => setState(() {
+                _textAction(
+                  'Cancel',
+                  _busy
+                      ? null
+                      : () => setState(() {
                           _settingUp = false;
                           _error = null;
-                        })),
+                        }),
+                ),
               const SizedBox(width: 4),
               FilledButton(
                 onPressed: _busy ? null : (setup ? _setup : _unlock),
@@ -523,12 +536,16 @@ class _JournalViewState extends State<JournalView> {
             _iconButton(Icons.add, 'New', _openNew),
             if (!widget.configured)
               _iconButton(
-                  Icons.lock_open_outlined, 'Set a password',
-                  () => setState(() => _settingUp = true))
+                Icons.lock_open_outlined,
+                'Set a password',
+                () => setState(() => _settingUp = true),
+              )
             else ...[
               _iconButton(
-                  Icons.no_encryption_outlined, 'Remove password',
-                  _busy ? () {} : _confirmRemove),
+                Icons.no_encryption_outlined,
+                'Remove password',
+                _busy ? () {} : _confirmRemove,
+              ),
               _iconButton(Icons.lock_outline, 'Lock', widget.onLock),
             ],
           ],
@@ -544,7 +561,13 @@ class _JournalViewState extends State<JournalView> {
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: T.s2),
                   itemCount: widget.items.length,
-                  itemBuilder: (context, i) => _row(widget.items[i]),
+                  itemBuilder: (context, i) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (i > 0) const ListRule(),
+                      _row(widget.items[i]),
+                    ],
+                  ),
                 ),
         ),
       ],
@@ -556,16 +579,12 @@ class _JournalViewState extends State<JournalView> {
     final label = item.locked
         ? 'Locked'
         : (untitled ? 'Untitled' : item.title.trim());
+    // No tile: the entry is its text on the pane's colour, and a ListRule
+    // between two says where one ends.
     return InkWell(
       onTap: () => _clickRow(item),
-      borderRadius: BorderRadius.circular(T.radius),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
-        decoration: BoxDecoration(
-          color: T.surface,
-          borderRadius: BorderRadius.circular(T.radius),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s3),
         child: Row(
           children: [
             if (item.locked) ...[
@@ -612,8 +631,11 @@ class _JournalViewState extends State<JournalView> {
           actions: [
             _iconButton(Icons.edit_outlined, 'Edit', _edit),
             if (_editing != null)
-              _iconButton(Icons.delete_outline, 'Delete',
-                  _busy ? () {} : _deleteEditing),
+              _iconButton(
+                Icons.delete_outline,
+                'Delete',
+                _busy ? () {} : _deleteEditing,
+              ),
           ],
         ),
         Expanded(
@@ -637,7 +659,10 @@ class _JournalViewState extends State<JournalView> {
                 MarkdownText(
                   _body.text,
                   style: const TextStyle(
-                      fontSize: T.fsBody, color: T.text, height: 1.4),
+                    fontSize: T.fsBody,
+                    color: T.text,
+                    height: 1.4,
+                  ),
                   onTapText: _edit,
                 ),
               ],
@@ -685,7 +710,11 @@ class _JournalViewState extends State<JournalView> {
               maxLines: null,
               minLines: null,
               textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(fontSize: T.fsBody, color: T.text, height: 1.4),
+              style: const TextStyle(
+                fontSize: T.fsBody,
+                color: T.text,
+                height: 1.4,
+              ),
               decoration: const InputDecoration(
                 isDense: true,
                 hintText: 'Markdown, if you want it.',
@@ -698,8 +727,11 @@ class _JournalViewState extends State<JournalView> {
           Row(
             children: [
               if (_editing != null)
-                _textAction('Delete', _busy ? null : _deleteEditing,
-                    color: T.danger),
+                _textAction(
+                  'Delete',
+                  _busy ? null : _deleteEditing,
+                  color: T.danger,
+                ),
               const Spacer(),
               _textAction('Cancel', _busy ? null : _closeEditor),
               const SizedBox(width: 4),
@@ -710,8 +742,10 @@ class _JournalViewState extends State<JournalView> {
                   style: FilledButton.styleFrom(
                     backgroundColor: T.surfaceHover,
                     foregroundColor: T.text,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: T.s3, vertical: T.s2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: T.s3,
+                      vertical: T.s2,
+                    ),
                   ),
                   child: const Text('Save'),
                 ),
@@ -728,11 +762,8 @@ class _JournalViewState extends State<JournalView> {
   /// Only the list state carries this bar, which is what keeps the back arrow
   /// honest: from the editor, Esc backs out to the list first, so a "back to
   /// tasks" control there would skip a step the user did not ask to skip.
-  Widget _topBar({required List<Widget> right}) => PanelHeader(
-        title: 'Notes',
-        onBack: widget.onBack,
-        actions: right,
-      );
+  Widget _topBar({required List<Widget> right}) =>
+      PanelHeader(title: 'Notes', onBack: widget.onBack, actions: right);
 
   Widget _field({
     required TextEditingController controller,
@@ -740,26 +771,27 @@ class _JournalViewState extends State<JournalView> {
     bool obscure = false,
     bool autofocus = false,
     ValueChanged<String>? onSubmitted,
-  }) =>
-      TextField(
-        controller: controller,
-        obscureText: obscure,
-        autofocus: autofocus,
-        style: const TextStyle(fontSize: T.fsBody),
-        onSubmitted: onSubmitted,
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: hint,
-          filled: true,
-          fillColor: T.surface,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(T.radius),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      );
+  }) => TextField(
+    controller: controller,
+    obscureText: obscure,
+    autofocus: autofocus,
+    style: const TextStyle(fontSize: T.fsBody),
+    onSubmitted: onSubmitted,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      filled: true,
+      fillColor: T.surface,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: T.s2,
+        vertical: T.s2,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(T.radius),
+        borderSide: BorderSide.none,
+      ),
+    ),
+  );
 
   Widget _iconButton(IconData icon, String tooltip, VoidCallback onTap) =>
       Tooltip(
@@ -774,19 +806,32 @@ class _JournalViewState extends State<JournalView> {
         ),
       );
 
-  Widget _textAction(String label, VoidCallback? onTap, {Color color = T.muted}) =>
-      TextButton(
-        onPressed: onTap,
-        style: TextButton.styleFrom(
-          foregroundColor: color,
-          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
-        ),
-        child: Text(label, style: const TextStyle(fontSize: T.fsLabel)),
-      );
+  Widget _textAction(
+    String label,
+    VoidCallback? onTap, {
+    Color color = T.muted,
+  }) => TextButton(
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      foregroundColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s2),
+    ),
+    child: Text(label, style: const TextStyle(fontSize: T.fsLabel)),
+  );
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   /// "Jul 20, 14:32" - a plain, unremarkable timestamp.

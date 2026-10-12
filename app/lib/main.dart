@@ -46,6 +46,7 @@ import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
 import 'ui/calendar/time_grid.dart' show hhmm, kGutter;
 import 'ui/content_slot.dart';
+import 'ui/dock.dart';
 import 'ui/footer.dart';
 import 'ui/journal_panel.dart';
 import 'ui/panel_header.dart';
@@ -1439,11 +1440,9 @@ class _WidgetShellState extends State<WidgetShell>
             final step = switch (event.logicalKey) {
               LogicalKeyboardKey.equal ||
               LogicalKeyboardKey.add ||
-              LogicalKeyboardKey.numpadAdd =>
-                1,
+              LogicalKeyboardKey.numpadAdd => 1,
               LogicalKeyboardKey.minus ||
-              LogicalKeyboardKey.numpadSubtract =>
-                -1,
+              LogicalKeyboardKey.numpadSubtract => -1,
               LogicalKeyboardKey.digit0 || LogicalKeyboardKey.numpad0 => 0,
               _ => null,
             };
@@ -1593,7 +1592,7 @@ class _WidgetShellState extends State<WidgetShell>
             startup: isDesktop && StartupSetting.supported ? _startup : null,
             // Where the view bar is the way between views, History is not on
             // it (Thoughts took its place) and this is where it went.
-            onOpenHistory: _layout.touch && !_layout.hasRail
+            onOpenHistory: _layout.touch && !_layout.hasRail && !_dockLayout
                 ? () {
                     _closeSettings();
                     _selectView(WorkspaceView.history);
@@ -1627,10 +1626,12 @@ class _WidgetShellState extends State<WidgetShell>
             // the calendar's own toolbar already uses for an active control.
             accent: _neutralChrome ? T.accent : ws,
             onClose: () => isDesktop ? windowManager.close() : null,
-            onOpenSettings: _openSettings,
-            onToggleCalendar: _toggleCalendar,
+            // On a phone the dock holds all three; a second door to each at
+            // the far end of the screen is one too many.
+            onOpenSettings: _dockLayout ? null : _openSettings,
+            onToggleCalendar: _dockLayout ? null : _toggleCalendar,
             calendarOpen: s.showCalendar,
-            onToggleList: _toggleList,
+            onToggleList: _dockLayout ? null : _toggleList,
             listOpen: s.showList,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
@@ -1956,7 +1957,23 @@ class _WidgetShellState extends State<WidgetShell>
     SyncStatus.outdated => T.danger,
   };
 
+  /// Everything under the title bar, with the dock along the bottom on a
+  /// phone.
+  ///
+  /// The column is built whether or not the dock is in it, and the body is
+  /// always its first child, so the dock coming and going (a note taking the
+  /// screen) never changes the body's parent - see content_slot.dart for what
+  /// that costs when it does.
   Widget _body(Color ws) {
+    return Column(
+      children: [
+        Expanded(child: _bodyAbove(ws)),
+        if (_dockShows) _dock(ws),
+      ],
+    );
+  }
+
+  Widget _bodyAbove(Color ws) {
     // The calendar replaces the whole body, workspace bar and footer included:
     // it spans workspaces, so a workspace tab above it would be saying
     // something the grid underneath does not agree with.
@@ -2012,7 +2029,8 @@ class _WidgetShellState extends State<WidgetShell>
 
     final middle = Column(
       children: [
-        if (!_layout.hasRail && !_takesScreen) _workspaceBar(ws),
+        if (!_layout.hasRail && !_dockLayout && !_takesScreen)
+          _workspaceBar(ws),
         if (s.hasLiveSession && !s.showSession && !_takesScreen)
           _sessionBanner(),
         // The content keeps its element through every one of those `if`s
@@ -2137,7 +2155,15 @@ class _WidgetShellState extends State<WidgetShell>
   ///
   /// A window wide enough for the rail keeps the footer whole, and a note
   /// that has taken the screen has no chrome at all.
-  bool get _viewBarShows => _layout.hasViewBar && !_takesScreen;
+  bool get _viewBarShows => _layout.hasViewBar && !_dockLayout && !_takesScreen;
+
+  /// A phone: the dock is the whole navigation - workspace, view, and
+  /// everything global - and replaces the workspace bar, the view bar and the
+  /// title bar's calendar, list and settings buttons. Only on touch for now; a
+  /// pointer keeps what it had.
+  bool get _dockLayout => _layout.touch && !_layout.hasRail;
+
+  bool get _dockShows => _dockLayout && !_takesScreen;
 
   /// Outside the rail and outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
@@ -2151,8 +2177,8 @@ class _WidgetShellState extends State<WidgetShell>
     // the field is still what [openAndFocus] focuses and the refusal is still
     // what the close guard flashes; it simply takes no height until one of
     // those happens.
-    showCaptureButton: !_viewBarShows || !_layout.touch,
-    showPressure: !_viewBarShows,
+    showCaptureButton: !(_viewBarShows || _dockShows) || !_layout.touch,
+    showPressure: !(_viewBarShows || _dockShows),
     thoughts: s.thoughts,
     accent: T.thoughts,
     blockedMessage: _blockedMessage,
@@ -2160,6 +2186,179 @@ class _WidgetShellState extends State<WidgetShell>
     listOpen: s.showThoughts,
     onToggleList: s.toggleThoughts,
   );
+
+  /// The phone's bar: workspace, view, everything else. See ui/dock.dart.
+  ///
+  /// Every row is a *destination*, not a toggle - picking Notes lands on Notes
+  /// whatever was showing, and picking the open one again changes nothing -
+  /// for the same reason [_selectView] is.
+  Widget _dock(Color ws) {
+    final view = _openView;
+    final global =
+        s.showCalendar || s.showList || view == WorkspaceView.thoughts;
+    const views = {
+      null: (Icons.check_circle_outline_rounded, 'Tasks'),
+      WorkspaceView.notes: (Icons.notes_rounded, 'Notes'),
+      WorkspaceView.parked: (Icons.inbox_rounded, 'Parked'),
+      WorkspaceView.history: (Icons.history_rounded, 'History'),
+    };
+    final here = views[view == WorkspaceView.thoughts ? null : view]!;
+    final current = s.currentWorkspace;
+    final syncNeedsYou = switch (widget.sync.status) {
+      SyncStatus.blocked || SyncStatus.outdated => true,
+      _ => false,
+    };
+
+    DockItem viewItem(WorkspaceView? v) => DockItem(
+      icon: views[v]!.$1,
+      label: views[v]!.$2,
+      current: !global && view == v,
+      dot: v == WorkspaceView.parked && s.groupsDueForReview.isNotEmpty,
+      onChoose: () => _dockToView(v),
+      // Tasks' second action is the one asked for most: add one.
+      secondaryIcon: v == null ? Icons.add_rounded : null,
+      secondaryLabel: v == null ? 'Add a task' : null,
+      onSecondary: v == null ? _jumpToAddTask : null,
+    );
+
+    final (moreIcon, moreLabel) = s.showCalendar
+        ? (Icons.calendar_month_outlined, 'Calendar')
+        : s.showList
+        ? (Icons.shopping_basket_outlined, 'List')
+        : view == WorkspaceView.thoughts
+        ? (Icons.cloud_outlined, 'Thoughts')
+        : (Icons.more_horiz_rounded, 'More');
+
+    return Dock(
+      height: 52,
+      segments: [
+        DockSegment(
+          label: current?.name ?? 'Workspace',
+          fill: ws,
+          ink: dockInkOn(ws),
+          dimmed: s.showCalendar || s.showList,
+          semanticLabel: 'Workspace: ${current?.name ?? ''}',
+          items: [
+            DockItem(
+              icon: Icons.add_rounded,
+              label: 'New workspace',
+              onChoose: () => _editWorkspace(null),
+            ),
+            for (final w in s.workspaces)
+              DockItem(
+                label: w.name,
+                fill: T.parseHex(w.color),
+                current: w.uuid == s.currentWorkspaceUuid,
+                onChoose: () => _dockToWorkspace(w),
+                secondaryIcon: Icons.edit_outlined,
+                secondaryLabel: 'Edit ${w.name}',
+                onSecondary: () => _editWorkspace(w),
+              ),
+          ],
+        ),
+        DockSegment(
+          icon: here.$1,
+          label: here.$2,
+          fill: Color.lerp(T.bgSolid, ws, 0.30)!,
+          ink: T.text,
+          dimmed: global,
+          dot: s.groupsDueForReview.isNotEmpty,
+          // Nearest the thumb at the bottom: Tasks is the one you go back to.
+          items: [
+            viewItem(WorkspaceView.history),
+            viewItem(WorkspaceView.parked),
+            viewItem(WorkspaceView.notes),
+            viewItem(null),
+          ],
+        ),
+        DockSegment(
+          icon: moreIcon,
+          label: moreLabel,
+          fill: Color.lerp(T.bgSolid, T.text, 0.07)!,
+          ink: T.text,
+          count: s.thoughtCount,
+          pressure: s.thoughtCount,
+          dot: syncNeedsYou,
+          items: [
+            DockItem(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              dot: syncNeedsYou,
+              onChoose: () {
+                if (!_settingsOpen) _openSettings();
+              },
+            ),
+            DockItem(
+              icon: Icons.shopping_basket_outlined,
+              label: 'List',
+              current: s.showList,
+              onChoose: _dockToList,
+            ),
+            DockItem(
+              icon: Icons.calendar_month_outlined,
+              label: 'Calendar',
+              current: s.showCalendar,
+              onChoose: _dockToCalendar,
+            ),
+            DockItem(
+              icon: Icons.cloud_outlined,
+              label: 'Thoughts',
+              count: s.thoughtCount,
+              current:
+                  !s.showCalendar &&
+                  !s.showList &&
+                  view == WorkspaceView.thoughts,
+              onChoose: () => _dockToView(WorkspaceView.thoughts),
+              secondaryIcon: Icons.edit_outlined,
+              secondaryLabel: 'Write a thought',
+              onSecondary: _openThoughtCapture,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Clears what stands in front of the workspace - every overlay, the
+  /// calendar, the list - before a dock destination is shown. All of them,
+  /// unlike [_clearOverlays]: a row picked in the dock is a decision, not a
+  /// tap that might have been aimed at the thing in the way.
+  Future<void> _dockClear({
+    bool keepCalendar = false,
+    bool keepList = false,
+  }) async {
+    for (var i = 0; i < 6 && _clearOverlays(); i++) {}
+    // Through _toggleCalendar, not the flag: leaving the calendar is one of the
+    // places quick-add's pending blocks are committed.
+    if (!keepCalendar && s.showCalendar) await _toggleCalendar();
+    if (!keepList && s.showList) await s.setListOpen(false);
+    if (_expandedTaskUuid != null) _collapseTask();
+  }
+
+  Future<void> _dockToView(WorkspaceView? view) async {
+    await _dockClear();
+    if (!mounted) return;
+    _selectView(view);
+  }
+
+  Future<void> _dockToWorkspace(Workspace w) async {
+    await _dockClear();
+    if (!mounted) return;
+    // selectWorkspace closes every view, so this lands on its task list.
+    await _switchWorkspace(w);
+  }
+
+  Future<void> _dockToCalendar() async {
+    await _dockClear(keepCalendar: true);
+    if (!mounted || s.showCalendar) return;
+    await _toggleCalendar();
+  }
+
+  Future<void> _dockToList() async {
+    await _dockClear(keepList: true);
+    if (!mounted || s.showList) return;
+    await _toggleList();
+  }
 
   Widget _workspaceBar(Color ws) => WorkspaceBar(
     workspaces: s.workspaces,
@@ -2942,8 +3141,7 @@ class _WidgetShellState extends State<WidgetShell>
                     style: TextStyle(
                       fontSize: T.fsLabel,
                       color: w.uuid == current ? T.text : T.muted,
-                      fontWeight:
-                          w.uuid == current ? T.wMedium : T.wNormal,
+                      fontWeight: w.uuid == current ? T.wMedium : T.wNormal,
                     ),
                   ),
                 ),
@@ -3033,6 +3231,7 @@ class _WidgetShellState extends State<WidgetShell>
             key: key,
             task: t,
             accent: ws,
+            divider: i < s.tasks.length - 1,
             onComplete: () => s.completeTask(t),
             onDelete: () => s.deleteTask(t),
             onFocus: () => _startFocus(t),
@@ -3044,8 +3243,9 @@ class _WidgetShellState extends State<WidgetShell>
             onUnplan: () => s.setTaskEvent(t, null),
             // No blob store means nowhere to put the bytes (the browser
             // build), so no paperclip rather than a sheet that cannot add.
-            onOpenAttachments:
-                s.blobs == null ? null : () => _openAttachments(t),
+            onOpenAttachments: s.blobs == null
+                ? null
+                : () => _openAttachments(t),
             onSetPriority: (high) => s.setPriority(t, high),
             onOpen: () => _openTask(t),
             // Null under a pointer, which is how the row knows to expand

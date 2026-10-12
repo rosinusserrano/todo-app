@@ -35,10 +35,10 @@ class TitleBar extends StatelessWidget {
     required this.onVolumeChanged,
     required this.accent,
     required this.onClose,
-    required this.onOpenSettings,
-    required this.onToggleCalendar,
+    this.onOpenSettings,
+    this.onToggleCalendar,
     required this.calendarOpen,
-    required this.onToggleList,
+    this.onToggleList,
     required this.listOpen,
     required this.syncColor,
     required this.syncTooltip,
@@ -77,7 +77,7 @@ class TitleBar extends StatelessWidget {
   final Color accent;
 
   final VoidCallback onClose;
-  final VoidCallback onOpenSettings;
+  final VoidCallback? onOpenSettings;
 
   /// Sync state, surfaced as the settings icon's colour. A silent failure is
   /// worse than a visible one here: the user would otherwise believe two devices
@@ -89,12 +89,12 @@ class TitleBar extends StatelessWidget {
   /// even though it has a per-workspace scope: it can show *every* workspace at
   /// once, it replaces the whole window rather than the content area, and it
   /// has to stay reachable while a per-workspace view is open.
-  final VoidCallback onToggleCalendar;
+  final VoidCallback? onToggleCalendar;
   final bool calendarOpen;
 
   /// The shopping list, beside the calendar for the same reason: it belongs
   /// to no workspace and replaces the whole body.
-  final VoidCallback onToggleList;
+  final VoidCallback? onToggleList;
   final bool listOpen;
 
   @override
@@ -113,28 +113,31 @@ class TitleBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _Btn(
-            tooltip: listOpen ? 'Back to tasks' : 'Shopping list',
-            icon: listOpen
-                ? Icons.shopping_basket
-                : Icons.shopping_basket_outlined,
-            tint: listOpen ? accent : null,
-            onPressed: onToggleList,
-          ),
-          _Btn(
-            tooltip: calendarOpen ? 'Back to tasks' : 'Calendar',
-            icon: calendarOpen
-                ? Icons.calendar_month
-                : Icons.calendar_month_outlined,
-            tint: calendarOpen ? accent : null,
-            onPressed: onToggleCalendar,
-          ),
-          _Btn(
-            tooltip: syncTooltip,
-            icon: Icons.settings_outlined,
-            tint: syncColor,
-            onPressed: onOpenSettings,
-          ),
+          if (onToggleList != null)
+            _Btn(
+              tooltip: listOpen ? 'Back to tasks' : 'Shopping list',
+              icon: listOpen
+                  ? Icons.shopping_basket
+                  : Icons.shopping_basket_outlined,
+              tint: listOpen ? accent : null,
+              onPressed: onToggleList!,
+            ),
+          if (onToggleCalendar != null)
+            _Btn(
+              tooltip: calendarOpen ? 'Back to tasks' : 'Calendar',
+              icon: calendarOpen
+                  ? Icons.calendar_month
+                  : Icons.calendar_month_outlined,
+              tint: calendarOpen ? accent : null,
+              onPressed: onToggleCalendar!,
+            ),
+          if (onOpenSettings != null)
+            _Btn(
+              tooltip: syncTooltip,
+              icon: Icons.settings_outlined,
+              tint: syncColor,
+              onPressed: onOpenSettings!,
+            ),
           if (soundPlaying)
             _TransportButton(
               paused: soundPaused,
@@ -166,11 +169,7 @@ class TitleBar extends StatelessWidget {
               icon: Icons.remove,
               onPressed: windowManager.minimize,
             ),
-            _Btn(
-              tooltip: 'Close',
-              icon: Icons.close,
-              onPressed: onClose,
-            ),
+            _Btn(tooltip: 'Close', icon: Icons.close, onPressed: onClose),
           ],
           const SizedBox(width: 6),
         ],
@@ -326,8 +325,7 @@ class _VolumePanelState extends State<_VolumePanel> {
       child: Material(
         color: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: T.s2, vertical: T.s1),
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
           decoration: BoxDecoration(
             color: T.bgSolid,
             borderRadius: BorderRadius.circular(T.radius),
@@ -346,8 +344,8 @@ class _VolumePanelState extends State<_VolumePanel> {
                 _value == 0
                     ? Icons.volume_off_rounded
                     : _value < 0.5
-                        ? Icons.volume_down_rounded
-                        : Icons.volume_up_rounded,
+                    ? Icons.volume_down_rounded
+                    : Icons.volume_up_rounded,
                 size: 14,
                 color: T.muted,
               ),
@@ -359,8 +357,9 @@ class _VolumePanelState extends State<_VolumePanel> {
                     inactiveTrackColor: T.surfaceHover,
                     thumbColor: widget.accent,
                     overlayShape: SliderComponentShape.noOverlay,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 5,
+                    ),
                   ),
                   child: Slider(
                     value: _value,

@@ -9,6 +9,31 @@ work that is about to happen.
 
 ## In progress
 
+### The redesign — started 2026-10-12
+
+Marco is not happy with how the app looks, and this is the rework the
+backlog's "Thoughts on the title bar … part of a wider design rework" line was
+waiting for. Two directions so far, both from him:
+
+**Nothing is a tile.** Every row being its own rounded, bordered, filled box is
+the stock "digital UI" look. A surface is its colour and nothing else - no
+border, no radius - and rows in a list are separated by short bars that stop
+before the edges. A fill is kept only where it means something (selected,
+overdue, in focus).
+
+**One bar at the bottom, in the order you think in.** Three filled segments
+that touch: the workspace, where in it (Tasks / Notes / Parked / History), and
+everything that belongs to no workspace (Calendar, the list, Thoughts,
+Settings). Press a segment and its menu grows upward; slide to a row; let go to
+go there; let go off the menu to change your mind. Sliding right on a row is
+its second action (edit a workspace, add a task, write a thought) - Marco's
+"hold on a workspace and move right to edit", generalised. Phone first; the
+desktop keeps its controls until the phone version has been lived with.
+
+Built in the `redesign` branch so `main` keeps shipping; the dev site
+(`server/setup-dev.sh`) runs a snapshot of the real data so it can be judged
+with real lists in it. Order is TODO 58.
+
 ### The shopping list — agreed 2026-10-12
 
 Asked for and settled with Marco on 2026-10-12. Build order is TODO 57.

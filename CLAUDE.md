@@ -362,6 +362,27 @@ footer's button *and* the pane. The escalation lives in
 `ui/thought_pressure.dart` (`ThoughtPulse`), which the footer and the view bar
 each own one of: it is one signal drawn wherever the layout put the control.
 
+**On a phone the dock replaces all of that** (`ui/dock.dart`, the `redesign`
+branch): `_dockLayout` is `touch && !hasRail`, and there the workspace bar, the
+view bar and the title bar's calendar / list / settings buttons are not drawn
+(`_viewBarShows` is false, `TitleBar`'s three callbacks are null). Three things
+about it are load-bearing:
+
+- **One pointer, one `Listener` per segment, no recognisers.** Pointer events
+  go to whatever was hit at the press for the pointer's whole life, so the
+  segment sees every move and asks the menu's `RenderBox` (`globalToLocal`)
+  which row the finger is on. A `GestureDetector` would have to win an arena
+  against nothing, and would lose the finger the moment it left the segment.
+- **Geometry through `RenderBox` transforms only.** The menu is an
+  `OverlayPortal` placed with `localToGlobal(ancestor: overlay)`; pointer
+  positions are screen pixels and the overlay is in layout units, with
+  `UiScale` between them.
+- **The dock is always the second child of `_body`'s `Column`**, after the
+  `Expanded` body, so it appearing and disappearing (`_takesScreen`) never
+  moves the body to another index - the content_slot lesson again.
+  Its rows are destinations (`_dockClear` then go), never toggles, and leaving
+  the calendar goes through `_toggleCalendar` so pending blocks commit.
+
 **Quick actions wait for the first layout** (`_afterLayout` in `main.dart`).
 iOS delivers the shortcut that launched the app as soon as the handler is
 installed, which is in `initState`; until the first build `_layout` is the

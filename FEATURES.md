@@ -915,6 +915,34 @@ at the screen gives nothing away) and its lock is **opt-in**.
   footer bar and the phone's bottom bar run the same escalation off the same
   numbers — it is one signal, drawn wherever the layout put the control.
 
+## Getting around on a phone
+
+*(The `redesign` branch - not in a release yet.)*
+
+- **One bar along the bottom, in three parts**, which touch: the **workspace**
+  you are in (filled in its colour), **where** in it you are (Tasks, Notes,
+  Parked or History), and **More** - everything that belongs to no workspace:
+  the calendar, the shopping list, side thoughts and settings.
+- **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
+  finger to a row - it lights, and the phone ticks - and let go to go there.
+  Let go anywhere off the menu and nothing happens. Sliding along the bar
+  itself switches to the neighbouring menu without lifting.
+- **Slide right for the second thing.** Some rows have a second action at their
+  right-hand end: **edit** a workspace, **add** a task (on Tasks), **write** a
+  thought (on Thoughts). Carry your finger onto it and the row says what
+  letting go will do.
+- **Tapping works too**: a tap opens the menu and leaves it open, a second tap
+  picks. Tap the part again, or anywhere above the menu, to close it.
+- The pile of side thoughts shows on **More**: its count, and the same tint and
+  pulse as it grows that the old bar had. A red dot there means sync needs you.
+- It replaces the workspace pill at the top, the old four-icon bar, and the
+  calendar, list and settings buttons on the title bar. It stays put over the
+  calendar and the list, so leaving either is picking where to go.
+- **Lists without boxes.** Tasks, notes and thoughts are no longer tiles: each
+  row sits on the window's own colour, with a short bar between rows that stops
+  before the edges. A row is filled only when the fill says something -
+  selected, overdue, or the one you are focused on.
+
 ## Window & look
 
 - **Frameless, always-on-top widget** — small (340×480), transparent rounded
@@ -1242,9 +1270,6 @@ Wishes with no design behind them yet. Once one has a shape, it moves to
 reminders are both there now**, queued for 0.18.0.
 
 - Light theme / theme toggle.
-- **Thoughts on the title bar**, beside the calendar and the shopping list,
-  instead of the phone's view bar - part of a wider design rework Marco has in
-  mind (2026-10-12).
 - Configurable shortcut combinations (currently fixed at Ctrl+Alt+T / Ctrl+Alt+H).
 - **Syncing attachment bytes.** Needs a second channel beside the JSON sync —
   `PUT/GET /blob/:sha256`, content-addressed, plus an upload/download queue with
@@ -1262,6 +1287,13 @@ reminders are both there now**, queued for 0.18.0.
 ---
 
 ## Changelog
+
+- **Redesign** — *(in progress, `redesign` branch)*
+  - **The phone's bottom bar is new**: workspace, where, and more, as three
+    filled parts; press, slide up to where you want to go, let go. Slide right
+    on a workspace to edit it. See *Getting around on a phone*.
+  - **No more tiles**: tasks, notes and thoughts are separated by short bars
+    instead of each sitting in its own box.
 
 - **0.29.0** — *(in progress)*
   - **Shopping list**: one throwaway list on the title bar that the app opens

@@ -63,6 +63,7 @@ import 'package:flutter/services.dart';
 import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
+import 'list_rule.dart';
 import 'markdown_text.dart';
 import 'reminder_menu.dart';
 import 'task_actions.dart';
@@ -85,6 +86,7 @@ class TaskRow extends StatefulWidget {
     this.onExpand,
     this.attachmentCount = 0,
     this.dragHandle,
+    this.divider = true,
     this.selected = false,
     this.selecting = false,
     this.onToggleSelect,
@@ -152,6 +154,10 @@ class TaskRow extends StatefulWidget {
   /// permanent six-dot glyph would be a mark for a gesture that does not need
   /// one.
   final Widget? dragHandle;
+
+  /// A [ListRule] under the row. The list turns it off for its last row, so
+  /// the bars separate items rather than underline them.
+  final bool divider;
 
   @override
   State<TaskRow> createState() => _TaskRowState();
@@ -450,121 +456,122 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           behavior: HitTestBehavior.opaque,
           // Only while it means something: an onTap here would otherwise sit
           // in the arena against the text's own tap on every click.
-          onTap: widget.onToggleSelect != null &&
-                  (widget.selecting || !touch)
+          onTap: widget.onToggleSelect != null && (widget.selecting || !touch)
               ? _selectInstead
               : null,
-          onSecondaryTapUp:
-              touch ? null : (d) => _openActions(at: d.globalPosition),
-          child: Container(
-            key: _rowKey,
-            // Half a step, so the gap between two rows is one whole one.
-            margin: const EdgeInsets.symmetric(vertical: T.s1 / 2),
-            padding: const EdgeInsets.all(T.s2),
-            decoration: BoxDecoration(
-              // A due reminder outranks focus for the row's colour: focus is a
-              // state you chose and can see, an overdue reminder is the thing
-              // asking for attention.
-              // Selected outranks everything: it is the state you are about to
-              // act on, and a row that is both overdue and selected has to be
-              // unmistakably part of the batch.
-              color: widget.selected
-                  ? widget.accent.withValues(alpha: 0.24)
-                  : due
-                  ? T.warn.withValues(alpha: 0.14)
-                  : widget.task.inProgress
+          onSecondaryTapUp: touch
+              ? null
+              : (d) => _openActions(at: d.globalPosition),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                key: _rowKey,
+                // No gap between rows and no box around one: the rule below says
+                // where a row ends (see list_rule.dart). Taller padding instead, so
+                // a row is still a finger's height.
+                padding: const EdgeInsets.symmetric(
+                  horizontal: T.s2,
+                  vertical: T.s2 + 2,
+                ),
+                decoration: BoxDecoration(
+                  // A due reminder outranks focus for the row's colour: focus is a
+                  // state you chose and can see, an overdue reminder is the thing
+                  // asking for attention.
+                  // Selected outranks everything: it is the state you are about to
+                  // act on, and a row that is both overdue and selected has to be
+                  // unmistakably part of the batch.
+                  color: widget.selected
+                      ? widget.accent.withValues(alpha: 0.24)
+                      : due
+                      ? T.warn.withValues(alpha: 0.14)
+                      : widget.task.inProgress
                       ? widget.accent.withValues(alpha: 0.16)
                       : high
-                          ? T.flagged.withValues(alpha: 0.09)
-                          : (_hovered ? T.surfaceHover : T.surface),
-              borderRadius: BorderRadius.circular(T.radius),
-              // Three states want this border and only one can have it. Due
-              // outranks focus for the reason above; priority comes last
-              // because it is the one of the three that also has a mark of its
-              // own - the bar below - so it is still legible when it loses the
-              // border.
-              border: widget.selected
-                  ? Border.all(color: widget.accent.withValues(alpha: 0.9))
-                  : due
-                  ? Border.all(color: T.warn.withValues(alpha: 0.55))
-                  : widget.task.inProgress
-                      ? Border.all(color: widget.accent.withValues(alpha: 0.5))
-                      : high
-                          ? Border.all(color: T.flagged.withValues(alpha: 0.45))
-                          : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+                      ? T.flagged.withValues(alpha: 0.09)
+                      // At rest a row has no fill at all - only a state
+                      // is coloured, so a colour always means something.
+                      : (_hovered ? T.surface : null),
+                  // No border on any state: the fill alone says it, and a row
+                  // that is a block of colour reads as one thing where a ruled
+                  // box reads as a form field.
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // The invariant mark of a flagged task: a bar down the
-                    // leading edge, which is the one channel neither the
-                    // overdue nor the focus state uses. A row can therefore say
-                    // "urgent, overdue and being worked on" without any of the
-                    // three overwriting another.
-                    if (high) ...[
-                      Container(
-                        width: 3,
-                        height: 17,
-                        decoration: BoxDecoration(
-                          color: T.flagged,
-                          borderRadius: BorderRadius.circular(2),
+                    Row(
+                      children: [
+                        // The invariant mark of a flagged task: a bar down the
+                        // leading edge, which is the one channel neither the
+                        // overdue nor the focus state uses. A row can therefore say
+                        // "urgent, overdue and being worked on" without any of the
+                        // three overwriting another.
+                        if (high) ...[
+                          Container(
+                            width: 3,
+                            height: 17,
+                            decoration: BoxDecoration(
+                              color: T.flagged,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: T.s1),
+                        ],
+                        _Checkbox(
+                          accent: widget.accent,
+                          onChanged: () => _leave(widget.onComplete),
+                        ),
+                        const SizedBox(width: T.s2),
+                        Expanded(
+                          child: _TaskText(
+                            task: widget.task,
+                            // The preview is what the expansion replaces, so it
+                            // only earns its line while the row is closed.
+                            showPreview: !_expanded,
+                            // A finger asks for the actions, a mouse reads the
+                            // task - see the table in the file header.
+                            onTap: () {
+                              if (_selectInstead()) return;
+                              touch ? _openActions() : _clickText();
+                            },
+                          ),
+                        ),
+                        _StateMarks(
+                          accent: widget.accent,
+                          size: touch ? 15 : 13,
+                          due: due,
+                          armed: armed != null,
+                          attached: widget.attachmentCount > 0,
+                          planned: widget.task.isPlanned,
+                        ),
+                        if (widget.dragHandle != null) widget.dragHandle!,
+                      ],
+                    ),
+
+                    // The read view, in place. Only ever reached under a pointer:
+                    // on touch [TaskRow.onExpand] hands this to the shell, which
+                    // gives it the screen.
+                    if (_expanded)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: _textInset(high),
+                          right: T.s1,
+                          top: T.s2,
+                          bottom: T.s1 / 2,
+                        ),
+                        child: TaskDetail(
+                          task: widget.task,
+                          accent: widget.accent,
+                          attachmentCount: widget.attachmentCount,
                         ),
                       ),
-                      const SizedBox(width: T.s1),
-                    ],
-                    _Checkbox(
-                      accent: widget.accent,
-                      onChanged: () => _leave(widget.onComplete),
-                    ),
-                    const SizedBox(width: T.s2),
-                    Expanded(
-                      child: _TaskText(
-                        task: widget.task,
-                        // The preview is what the expansion replaces, so it
-                        // only earns its line while the row is closed.
-                        showPreview: !_expanded,
-                        // A finger asks for the actions, a mouse reads the
-                        // task - see the table in the file header.
-                        onTap: () {
-                          if (_selectInstead()) return;
-                          touch ? _openActions() : _clickText();
-                        },
-                      ),
-                    ),
-                    _StateMarks(
-                      accent: widget.accent,
-                      size: touch ? 15 : 13,
-                      due: due,
-                      armed: armed != null,
-                      attached: widget.attachmentCount > 0,
-                      planned: widget.task.isPlanned,
-                    ),
-                    if (widget.dragHandle != null) widget.dragHandle!,
                   ],
                 ),
-
-                // The read view, in place. Only ever reached under a pointer:
-                // on touch [TaskRow.onExpand] hands this to the shell, which
-                // gives it the screen.
-                if (_expanded)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      left: _textInset(high),
-                      right: T.s1,
-                      top: T.s2,
-                      bottom: T.s1 / 2,
-                    ),
-                    child: TaskDetail(
-                      task: widget.task,
-                      accent: widget.accent,
-                      attachmentCount: widget.attachmentCount,
-                    ),
-                  ),
-              ],
-            ),
+              ),
+              if (widget.divider) const ListRule(),
+            ],
           ),
         ),
       ),
@@ -616,8 +623,7 @@ class _StateMarks extends StatelessWidget {
           size: size,
           color: due ? T.warn : accent,
         ),
-      if (attached)
-        Icon(Icons.attach_file_rounded, size: size, color: accent),
+      if (attached) Icon(Icons.attach_file_rounded, size: size, color: accent),
       if (planned)
         Icon(Icons.event_available_rounded, size: size, color: accent),
     ];
@@ -629,7 +635,10 @@ class _StateMarks extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final m in marks)
-            Padding(padding: const EdgeInsets.only(left: T.s1 / 2), child: m),
+            Padding(
+              padding: const EdgeInsets.only(left: T.s1 / 2),
+              child: m,
+            ),
         ],
       ),
     );
@@ -664,7 +673,11 @@ class _TaskText extends StatelessWidget {
       children: [
         Text(
           task.text,
-          style: const TextStyle(fontSize: T.fsBody, color: T.text, height: 1.4),
+          style: const TextStyle(
+            fontSize: T.fsBody,
+            color: T.text,
+            height: 1.4,
+          ),
         ),
         if (task.hasNotes && showPreview)
           Padding(
@@ -678,8 +691,11 @@ class _TaskText extends StatelessWidget {
               markdownPlainText(task.notes),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style:
-                  const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.35),
+              style: const TextStyle(
+                fontSize: T.fsMeta,
+                color: T.muted,
+                height: 1.35,
+              ),
             ),
           ),
       ],
@@ -716,7 +732,10 @@ class _Checkbox extends StatelessWidget {
           height: 18,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: accent.withValues(alpha: 0.7), width: 1.5),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.7),
+              width: 1.5,
+            ),
           ),
         ),
       ),

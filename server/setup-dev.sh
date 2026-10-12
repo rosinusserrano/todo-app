@@ -16,7 +16,7 @@
 #   - /var/lib/todo-sync-dev: a **snapshot** of the live database, taken with
 #     SQLite's online backup so the live server need not stop. Your usual token
 #     therefore works on the dev site and the real tasks are on it - but it is a
-#     copy, and nothing done there ever reaches the live server. Two things are
+#     copy, and nothing done there ever reaches the live server.
 #     One thing is taken out of the copy, because it reaches outside it: push
 #     subscriptions (and the VAPID keys they were made against), or the dev
 #     server would send every reminder to your phone a second time. push.js

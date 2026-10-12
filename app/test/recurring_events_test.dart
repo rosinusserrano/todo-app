@@ -478,6 +478,9 @@ END:VCALENDAR
       // ...and no subscriptions (v16): the feed table, and the column on
       // calendar_events with the index built on it.
       await store.raw.execute('DROP TABLE calendar_feeds');
+      // ...and no shopping list (v17).
+      await store.raw.execute('DROP TABLE lists');
+      await store.raw.execute('DROP TABLE list_items');
       await store.raw.execute('DROP INDEX idx_events_feed');
       await store.raw
           .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');

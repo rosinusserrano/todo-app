@@ -1907,3 +1907,153 @@ Uri? feedUri(String input) {
   if (uri == null || uri.host.isEmpty) return null;
   return uri;
 }
+
+/// The shopping list: one throwaway list the app opens on while it is open.
+///
+/// There is at most one *current* list - the newest that is not archived - and
+/// that is a rule every device works out for itself, so nothing needs to keep
+/// it exclusive. Finishing archives it ([archivedAt]); the archive is read-only.
+/// See *The shopping list* in ROADMAP.md.
+class ShoppingList implements SyncRow {
+  @override
+  final String uuid;
+  final String name;
+
+  /// When it was finished. Null is the open list.
+  final String? archivedAt;
+
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const ShoppingList({
+    required this.uuid,
+    required this.name,
+    this.archivedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  bool get isArchived => archivedAt != null;
+
+  ShoppingList copyWith({
+    String? name,
+    String? archivedAt,
+    String? updatedAt,
+    String? deletedAt,
+  }) =>
+      ShoppingList(
+        uuid: uuid,
+        name: name ?? this.name,
+        archivedAt: archivedAt ?? this.archivedAt,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'name': name,
+        'archived_at': archivedAt,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  /// Nullable-tolerant for the reason [CalendarFeed.fromMap] is.
+  static ShoppingList fromMap(Map<String, Object?> m) => ShoppingList(
+        uuid: m['uuid']! as String,
+        name: (m['name'] as String?) ?? '',
+        archivedAt: m['archived_at'] as String?,
+        createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// One line on a [ShoppingList]. Text only - "2× milk" is text.
+class ListItem implements SyncRow {
+  @override
+  final String uuid;
+  final String listUuid;
+  final String text;
+
+  /// When it was ticked; null is still to get. A ticked item stays on the
+  /// list, in the Ticked section, rather than going anywhere.
+  final String? checkedAt;
+
+  final int sortOrder;
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const ListItem({
+    required this.uuid,
+    required this.listUuid,
+    required this.text,
+    this.checkedAt,
+    this.sortOrder = 0,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  bool get isChecked => checkedAt != null;
+
+  /// [clearChecked] unticks: `copyWith` cannot otherwise tell "leave alone"
+  /// from "set back to null".
+  ListItem copyWith({
+    String? listUuid,
+    String? text,
+    String? checkedAt,
+    bool clearChecked = false,
+    int? sortOrder,
+    String? updatedAt,
+    String? deletedAt,
+  }) =>
+      ListItem(
+        uuid: uuid,
+        listUuid: listUuid ?? this.listUuid,
+        text: text ?? this.text,
+        checkedAt: clearChecked ? null : checkedAt ?? this.checkedAt,
+        sortOrder: sortOrder ?? this.sortOrder,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'list_uuid': listUuid,
+        'text': text,
+        'checked_at': checkedAt,
+        'sort_order': sortOrder,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  static ListItem fromMap(Map<String, Object?> m) => ListItem(
+        uuid: m['uuid']! as String,
+        listUuid: (m['list_uuid'] as String?) ?? '',
+        text: (m['text'] as String?) ?? '',
+        checkedAt: m['checked_at'] as String?,
+        sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}

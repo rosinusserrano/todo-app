@@ -27,10 +27,17 @@
 /// dirty, until it is updated. The other direction is the server's: it sends
 /// the table and the new `feed_uuid` column only to a client that says it
 /// speaks 2, which is why the push carries this number.
-const kSyncProtocol = 2;
+///
+/// 3 added the shopping list's two tables, `lists` and `list_items`, on the
+/// same terms: not pushed to a server below [kListsProtocol], and not sent by
+/// the server to a client that does not say 3.
+const kSyncProtocol = 3;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;
+
+/// The first server wire that has `lists` and `list_items`.
+const kListsProtocol = 3;
 
 /// The oldest server wire this build can still talk to correctly.
 ///

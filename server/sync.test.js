@@ -1289,3 +1289,24 @@ test('an edit from a protocol-1 app keeps the column it never saw', async () => 
   assert.equal(after.title, 'Standup (moved)');
   assert.equal(after.feed_uuid, 'f1');
 });
+
+test('the shopping list syncs at protocol 3 and is withheld below it', async () => {
+  const db = freshDb();
+  const stamp = '2026-10-12T18:00:00+02:00';
+  sync(db, USER, 0, {
+    lists: [{ uuid: 'l1', name: 'Shopping', archived_at: null, created_at: stamp, updated_at: stamp, deleted_at: null }],
+    list_items: [
+      { uuid: 'i1', list_uuid: 'l1', text: 'Milk', checked_at: null, sort_order: 0, created_at: stamp, updated_at: stamp, deleted_at: null },
+    ],
+  });
+
+  const now = sync(db, USER, 0, {}).changes;
+  assert.equal(now.lists[0].name, 'Shopping');
+  assert.equal(now.list_items[0].text, 'Milk');
+
+  // An app on protocol 2 has no table to put them in.
+  const older = sync(db, USER, 0, {}, 2).changes;
+  assert.equal(older.lists, undefined);
+  assert.equal(older.list_items, undefined);
+  assert.ok(Array.isArray(older.calendar_feeds));
+});

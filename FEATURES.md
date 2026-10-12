@@ -745,6 +745,35 @@ Three tiers, none of which need an account, an API key, or a licence:
   addresses unless `TODO_FEED_ALLOW_PRIVATE=1`, and anything that is not a
   calendar.
 
+## Shopping list
+
+One throwaway list - a shopping list, a packing list - behind the basket on the
+title bar, beside the calendar. It belongs to no workspace and takes the whole
+window while it is open.
+
+- **The app opens on it.** While there is a list, launching the app opens on
+  it, and so does every return to it: unlocking the phone, coming back from
+  another app or browser tab. Moving around *inside* the app does not: go to
+  Tasks and come back when you like. On the desktop widget, which is always
+  open, it is launching and bringing the window back from the tray or from
+  being minimised that count, not clicking on it. It never takes the screen
+  from something being written (an open form, a half-typed task, a thought),
+  nor from focus mode.
+- **Two modes.** *Use* shows only the items, with large rows: a tap ticks.
+  Nothing there edits or deletes. *Edit* has an add field at the top (Enter
+  adds and keeps the caret), retitling in place, ✕ to delete, a handle to
+  reorder, and the list's name. The big **Edit / Done** button switches; Done
+  saves. An empty list opens in Edit.
+- **Ticked items slide down** into a greyed *Ticked* section below what is
+  left, newest first. Tap one to untick it and it slides back to its place.
+- **Finished** archives the list as it is, and the next list starts empty. It
+  is the green button once everything is ticked, and quieter before. Finished
+  lists are under a small *Archived lists →* at the top: read-only, deletable.
+- **Synced**, so a list written at the desk is open on the phone in the shop.
+  If two devices each start a list offline, the newer is the list and the other
+  shows as "Also open", to merge in or finish. Needs the server updated
+  (sync protocol 3); until then the list stays on the device it was written on.
+
 ## History
 
 - **"Done recently" view** — "History" in the ▾ views menu on the workspace bar
@@ -1235,6 +1264,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Shopping list**: one throwaway list on the title bar that the app opens
+    on every time, with a tick-only mode for the shop, ticked items that slide
+    down, and Finished to archive it. Needs the server updated (protocol 3).
+  - **Fixed: updating the server stopped un-updated devices syncing.** Since
+    protocol 2 the server only sends an app the fields it can store.
   - **Subscribe to calendars by address** (Google, Outlook, iCloud…), into a
     new calendar or merged into an existing one. Read-only, refreshed every
     half hour. **Needs the server updated too** (sync protocol 2); until then

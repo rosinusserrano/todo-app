@@ -29,31 +29,33 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
-### 57. The shopping list  `[ ]`
+### 57. The shopping list  `[~]`
 
 Agreed with Marco 2026-10-12. The design is in `ROADMAP.md` under *The shopping
 list*; this is only the order.
 
 - [x] **57.1** Design written down and agreed.
-- [ ] **57.2** Store: `lists` + `list_items` (client v17, `_create` and
+- [x] **57.2** Store: `lists` + `list_items` (client v17, `_create` and
       `_upgrade`, models, migration fixture rollbacks), server tables + `TABLES`
       + `TABLE_SINCE` at protocol 3, client holds them back from a server below
       3. Tests both sides.
-- [ ] **57.3** `AppState`: the current list (newest unarchived), add / retitle /
+- [x] **57.3** `AppState`: the current list (newest unarchived), add / retitle /
       delete / reorder / tick / untick items, rename, finish (archive), the
       archive, "also open" lists from an offline conflict.
-- [ ] **57.4** The list screen: Use and Edit modes, the big Edit / Done and
+- [x] **57.4** The list screen: Use and Edit modes, the big Edit / Done and
       Finished buttons, ticked items sliding into the Ticked section and back,
       the empty "New list" start, and the quiet "Archived lists →" with its
       read-only view.
-- [ ] **57.5** The title-bar icon beside the calendar's; the list takes the
+- [x] **57.5** The title-bar icon beside the calendar's; the list takes the
       whole content area like the calendar does (add it to `_clearOverlays`
       and the Esc ladder).
-- [ ] **57.6** Opening on the list: launch, every lifecycle resume on phone and
+- [x] **57.6** Opening on the list: launch, every lifecycle resume on phone and
       web, tray-show / un-minimise on desktop (not focus). Never over a
       half-typed field.
-- [ ] **57.7** `FEATURES.md` (section + changelog), `CLAUDE.md` architecture
+- [x] **57.7** `FEATURES.md` (section + changelog), `CLAUDE.md` architecture
       note, analyze clean, tests green, commit.
+- [ ] **57.8** Deploy the server (protocol 3), publish the web build,
+      `install-windows.ps1`; try it in a shop on the phone.
 
 ### 56. Subscribed calendars, and the week slides  `[~]`
 

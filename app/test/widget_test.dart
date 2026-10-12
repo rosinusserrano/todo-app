@@ -444,6 +444,8 @@ void main() {
               onOpenSettings: () {},
               onToggleCalendar: () {},
               calendarOpen: false,
+              onToggleList: () {},
+              listOpen: false,
               syncColor: T.muted,
               syncTooltip: 'Sync off',
             ),

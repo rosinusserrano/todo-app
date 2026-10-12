@@ -245,6 +245,34 @@ function init(db) {
       PRIMARY KEY (user_id, uuid)
     );
 
+    -- The shopping list (client v17, protocol 3): one open list at a time,
+    -- archived when finished, and its items. Nullable for the same reason.
+    CREATE TABLE IF NOT EXISTS lists (
+      uuid        TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      name        TEXT,
+      archived_at TEXT,
+      created_at  TEXT,
+      updated_at  TEXT NOT NULL,
+      deleted_at  TEXT,
+      seq         INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    CREATE TABLE IF NOT EXISTS list_items (
+      uuid       TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      list_uuid  TEXT,
+      text       TEXT,
+      checked_at TEXT,
+      sort_order INTEGER,
+      created_at TEXT,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      seq        INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_workspaces_pull      ON workspaces      (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_tasks_pull           ON tasks           (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_side_thoughts_pull   ON side_thoughts   (user_id, seq);
@@ -254,6 +282,8 @@ function init(db) {
     CREATE INDEX IF NOT EXISTS idx_calendars_pull       ON calendars       (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_calendar_events_pull ON calendar_events (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_calendar_feeds_pull  ON calendar_feeds  (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_lists_pull           ON lists           (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_list_items_pull      ON list_items      (user_id, seq);
   `);
 
   // `CREATE TABLE IF NOT EXISTS` above does nothing to a database that already
@@ -377,6 +407,8 @@ export const TABLES = {
     'created_at',
   ],
   calendar_feeds: ['calendar_uuid', 'name', 'url', 'alerts', 'created_at'],
+  lists: ['name', 'archived_at', 'created_at'],
+  list_items: ['list_uuid', 'text', 'checked_at', 'sort_order', 'created_at'],
 };
 
 // What a client on an older protocol does not have, and so must not be sent.
@@ -387,7 +419,7 @@ export const TABLES = {
 // protocol 2 on is listed here with the protocol that brought it; a table
 // likewise. A client that does not say which protocol it speaks is 1.
 const COLUMN_SINCE = { calendar_events: { feed_uuid: 2 } };
-const TABLE_SINCE = { calendar_feeds: 2 };
+const TABLE_SINCE = { calendar_feeds: 2, lists: 3, list_items: 3 };
 
 function knows(table, field, protocol) {
   return (COLUMN_SINCE[table]?.[field] ?? 1) <= protocol;

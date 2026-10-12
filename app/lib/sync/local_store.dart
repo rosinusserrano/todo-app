@@ -58,6 +58,8 @@ class LocalStore {
     'calendars',
     'calendar_events',
     'calendar_feeds',
+    'lists',
+    'list_items',
   ];
 
   /// [singleInstance] false forces a genuinely new database rather than a
@@ -71,7 +73,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 16,
+        version: 17,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -219,6 +221,14 @@ class LocalStore {
       await db.update('sync_state', {'value': '0'},
           where: 'key = ?', whereArgs: ['cursor']);
     }
+    if (from < 17) {
+      // The shopping list. Two new tables and nothing to backfill; the cursor
+      // reset v16 does is not needed again here, since no server below
+      // protocol 3 has these tables to have held anything back.
+      await db.execute(_listsTable);
+      await db.execute(_listItemsTable);
+      await db.execute(_listItemsIndex);
+    }
   }
 
   /// Collapse every seeded "Tasks" workspace onto [defaultWorkspaceUuid].
@@ -359,6 +369,35 @@ class LocalStore {
         deleted_at    TEXT,
         dirty         INTEGER NOT NULL DEFAULT 1
       )''';
+
+  /// The shopping list (v17). Nullable for the reason [_calendarFeedsTable]
+  /// is.
+  static const _listsTable = '''
+      CREATE TABLE lists (
+        uuid        TEXT PRIMARY KEY,
+        name        TEXT,
+        archived_at TEXT,
+        created_at  TEXT,
+        updated_at  TEXT NOT NULL,
+        deleted_at  TEXT,
+        dirty       INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  static const _listItemsTable = '''
+      CREATE TABLE list_items (
+        uuid       TEXT PRIMARY KEY,
+        list_uuid  TEXT,
+        text       TEXT,
+        checked_at TEXT,
+        sort_order INTEGER,
+        created_at TEXT,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        dirty      INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  static const _listItemsIndex =
+      'CREATE INDEX idx_list_items_list ON list_items (list_uuid)';
 
   /// A refresh asks for every row one feed wrote.
   static const _eventsFeedIndex =
@@ -544,6 +583,8 @@ class LocalStore {
     await db.execute(_calendarsTable);
     await db.execute(_calendarEventsTable);
     await db.execute(_calendarFeedsTable);
+    await db.execute(_listsTable);
+    await db.execute(_listItemsTable);
 
     await db.execute('''
       CREATE TABLE side_thoughts (
@@ -576,6 +617,7 @@ class LocalStore {
     await db.execute(_eventsCalendarIndex);
     await db.execute(_eventsStartIndex);
     await db.execute(_eventsFeedIndex);
+    await db.execute(_listItemsIndex);
 
     // A first workspace, so the app is never in a state with nowhere to add a
     // task.
@@ -1026,6 +1068,44 @@ class LocalStore {
     return rows.map(CalendarFeed.fromMap).toList();
   }
 
+  /// Lists not yet finished, newest first. The first is the current one; any
+  /// more are what two devices each starting a list offline leaves behind.
+  Future<List<ShoppingList>> openLists() async {
+    final rows = await _db.query('lists',
+        where: 'archived_at IS NULL AND deleted_at IS NULL',
+        orderBy: 'created_at DESC, uuid');
+    return rows.map(ShoppingList.fromMap).toList();
+  }
+
+  /// Finished lists, most recently finished first.
+  Future<List<ShoppingList>> archivedLists() async {
+    final rows = await _db.query('lists',
+        where: 'archived_at IS NOT NULL AND deleted_at IS NULL',
+        orderBy: 'archived_at DESC');
+    return rows.map(ShoppingList.fromMap).toList();
+  }
+
+  /// A list's live items, in the order they were put in.
+  Future<List<ListItem>> listItems(String listUuid) async {
+    final rows = await _db.query('list_items',
+        where: 'list_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [listUuid],
+        orderBy: 'sort_order, created_at');
+    return rows.map(ListItem.fromMap).toList();
+  }
+
+  /// Live items per list, for the archive's counts.
+  Future<Map<String, int>> listItemCounts() async {
+    final rows = await _db.rawQuery(
+        'SELECT list_uuid, COUNT(*) AS n FROM list_items '
+        'WHERE deleted_at IS NULL GROUP BY list_uuid');
+    return {
+      for (final r in rows)
+        if (r['list_uuid'] != null)
+          r['list_uuid']! as String: (r['n']! as num).toInt(),
+    };
+  }
+
   /// Every live event one feed wrote, for unsubscribing.
   Future<List<CalendarEvent>> feedEvents(String feedUuid) async {
     final rows = await _db.query('calendar_events',
@@ -1161,6 +1241,8 @@ class LocalStore {
   Future<void> putCalendar(Calendar c) => put('calendars', c);
   Future<void> putEvent(CalendarEvent e) => put('calendar_events', e);
   Future<void> putFeed(CalendarFeed f) => put('calendar_feeds', f);
+  Future<void> putList(ShoppingList l) => put('lists', l);
+  Future<void> putListItem(ListItem i) => put('list_items', i);
 
   /// Focus mode is globally exclusive: flagging one task clears every other.
   Future<void> setInProgress(String uuid, bool value) async {

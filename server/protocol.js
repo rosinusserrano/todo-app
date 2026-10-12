@@ -51,5 +51,8 @@
 //      verbatim, and a column it lacks fails its whole merge (see COLUMN_SINCE
 //      in db.js). From 2 on, a client says which protocol it speaks in the
 //      body of /api/sync, and absent means 1.
-export const PROTOCOL = 2;
+//   3  The shopping list: `lists` and `list_items`, in TABLE_SINCE, so a client
+//      below 3 is not sent them and a 3 client does not push them to a server
+//      below 3. MIN_CLIENT stays 1.
+export const PROTOCOL = 3;
 export const MIN_CLIENT = 1;

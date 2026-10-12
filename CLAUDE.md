@@ -115,9 +115,10 @@ window, the focus flight, the tray and the overlays.
 
 ### Data model — SQLite is the source of truth
 
-`LocalStore` (`app/lib/sync/local_store.dart`) owns eight tables: `workspaces`,
-`parked_groups`, `tasks`, `attachments`, `side_thoughts`, `journal_entries`,
-`calendars`, `calendar_events`, plus a key/value `settings` table used for UI
+`LocalStore` (`app/lib/sync/local_store.dart`) owns eleven synced tables:
+`workspaces`, `parked_groups`, `tasks`, `attachments`, `side_thoughts`,
+`journal_entries`, `calendars`, `calendar_events`, `calendar_feeds` (v16),
+`lists` and `list_items` (v17), plus a key/value `settings` table used for UI
 prefs (last workspace, nudge, sound volume, calendar mode/scope/hidden/block
 target).
 
@@ -740,6 +741,34 @@ time on one. The rules that are not obvious from the schema:
   with blanks. A month needs four to six depending on where its 1st falls, and
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it
   adaptive again to save a row of pixels.
+
+### The shopping list (`app/lib/ui/shopping_list.dart`)
+
+One throwaway list on the title bar beside the calendar; design in ROADMAP.md
+*The shopping list*. The rules that are not obvious from the code:
+
+- **"Current" is derived, never stored**: the newest list with no
+  `archived_at` (`LocalStore.openLists`, `AppState.currentList`). Every device
+  works it out the same way, so nothing has to keep it exclusive the way
+  `enforceSingleInProgress` keeps focus. Two lists started offline leave an
+  older open one behind; it is shown as "Also open" (`otherOpenLists`) to merge
+  or finish, never hidden.
+- **It opens on every return, and the rule lives in one place**,
+  `_openListOnReturn` in `main.dart`: after the first frame at launch, on a
+  lifecycle `resumed` that followed `hidden`/`paused` (`_wentAway` - plain
+  `inactive` is a blink, not a return), and on desktop from `_surfaceWindow`
+  and `onWindowRestore` only, because the widget is always open and focus
+  changes would drag you to the list every click. It refuses while something
+  is being written (a route on top, the add field, a capture) and in focus
+  mode. Moving inside the app never calls it.
+- **It owns the content area like the calendar**: `showList` is cleared by
+  `_closeOtherViews`, so every other view and `toggleCalendar` close it, and
+  `setListOpen` commits quick-add blocks when it closes the calendar.
+- **Use mode places rows with `AnimatedPositioned` keyed on uuid** at a
+  position computed from the row's index (to get, header, ticked), which is
+  the whole slide animation. It needs a fixed row height, so an item is one
+  line. Unticking puts an item back where it was because a tick never touches
+  `sort_order`.
 
 ### The task row, and where its actions went
 

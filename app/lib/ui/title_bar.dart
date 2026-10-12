@@ -38,6 +38,8 @@ class TitleBar extends StatelessWidget {
     required this.onOpenSettings,
     required this.onToggleCalendar,
     required this.calendarOpen,
+    required this.onToggleList,
+    required this.listOpen,
     required this.syncColor,
     required this.syncTooltip,
   });
@@ -90,6 +92,11 @@ class TitleBar extends StatelessWidget {
   final VoidCallback onToggleCalendar;
   final bool calendarOpen;
 
+  /// The shopping list, beside the calendar for the same reason: it belongs
+  /// to no workspace and replaces the whole body.
+  final VoidCallback onToggleList;
+  final bool listOpen;
+
   @override
   Widget build(BuildContext context) {
     final bar = SizedBox(
@@ -106,6 +113,14 @@ class TitleBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          _Btn(
+            tooltip: listOpen ? 'Back to tasks' : 'Shopping list',
+            icon: listOpen
+                ? Icons.shopping_basket
+                : Icons.shopping_basket_outlined,
+            tint: listOpen ? accent : null,
+            onPressed: onToggleList,
+          ),
           _Btn(
             tooltip: calendarOpen ? 'Back to tasks' : 'Calendar',
             icon: calendarOpen

@@ -160,6 +160,7 @@ class AppState extends ChangeNotifier {
     await refreshThoughts();
     await restoreFocus();
     await loadFeeds();
+    await loadList();
   }
 
   // -------------------------------------------------------------- sessions
@@ -814,6 +815,9 @@ class AppState extends ChangeNotifier {
     showParked = keepParked;
     showJournal = keepJournal;
     showSession = keepSession;
+    // The shopping list is not a per-workspace view, but it owns the same
+    // content area, so anything opening there closes it.
+    showList = false;
   }
 
   // ----------------------------------------------------------- attachments
@@ -1897,7 +1901,7 @@ class AppState extends ChangeNotifier {
   Future<void> toggleCalendar() async {
     showCalendar = !showCalendar;
     if (showCalendar) {
-      _closeOtherViews();
+      _closeOtherViews(); // the shopping list too
       await loadCalendarPrefs();
       await refreshCalendars();
     }
@@ -2419,6 +2423,185 @@ class AppState extends ChangeNotifier {
       _mutated();
     }
     notifyListeners();
+  }
+
+  // -------------------------------------------------------- shopping list
+  //
+  // One throwaway list the app opens on while it exists - see *The shopping
+  // list* in ROADMAP.md. "Current" is derived (the newest list that is not
+  // archived), never stored, so there is no flag for two devices to disagree
+  // about and nothing for the server to keep exclusive.
+
+  /// Whether the list owns the content area. Like the calendar it replaces
+  /// the whole body; the two are never open at once.
+  bool showList = false;
+
+  /// The open list, or null when there is none and the screen offers to start
+  /// one.
+  ShoppingList? currentList;
+
+  /// Open lists older than [currentList]. Only two devices each starting a
+  /// list offline produce one; they are offered for merging, never hidden.
+  List<ShoppingList> otherOpenLists = [];
+
+  /// [currentList]'s items, in their order, ticked and unticked alike.
+  List<ListItem> listItems = [];
+
+  /// Default name for a new list. It is a shopping list nine times out of ten,
+  /// and the tenth is one tap in Edit away.
+  static const defaultListName = 'Shopping';
+
+  Future<void> loadList() async {
+    final open = await _store.openLists();
+    currentList = open.isEmpty ? null : open.first;
+    otherOpenLists = open.length > 1 ? open.sublist(1) : [];
+    final current = currentList;
+    listItems = current == null ? [] : await _store.listItems(current.uuid);
+    notifyListeners();
+  }
+
+  /// Open or close the list. Opening closes every other view and the calendar,
+  /// for the same reason [toggleCalendar] does: it owns the content area.
+  Future<void> toggleList() => setListOpen(!showList);
+
+  Future<void> setListOpen(bool open) async {
+    if (open == showList) return;
+    if (open) {
+      _closeOtherViews();
+      // Leaving the calendar this way ends quick-add like every other way out
+      // does - see commitPendingBlocks.
+      if (showCalendar) await commitPendingBlocks();
+      showCalendar = false;
+      await loadList();
+    }
+    showList = open;
+    notifyListeners();
+  }
+
+  /// The list this edit lands on, starting one if there is none: typing the
+  /// first item into the empty screen *is* starting a list.
+  Future<ShoppingList> _ensureList() async {
+    final current = currentList;
+    if (current != null) return current;
+    final stamp = nowStamp();
+    final made = ShoppingList(
+      uuid: newId(),
+      name: defaultListName,
+      createdAt: stamp,
+      updatedAt: stamp,
+    );
+    await _store.putList(made);
+    currentList = made;
+    return made;
+  }
+
+  Future<void> _listChanged() async {
+    await loadList();
+    _mutated();
+  }
+
+  Future<void> renameList(String name) async {
+    final current = currentList;
+    final trimmed = name.trim();
+    if (current == null || trimmed.isEmpty || trimmed == current.name) return;
+    await _store.putList(current.copyWith(name: trimmed));
+    await _listChanged();
+  }
+
+  /// Add an item at the end of what is still to get.
+  Future<void> addListItem(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    final list = await _ensureList();
+    final last = listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m);
+    final stamp = nowStamp();
+    await _store.putListItem(ListItem(
+      uuid: newId(),
+      listUuid: list.uuid,
+      text: trimmed,
+      sortOrder: last + 1,
+      createdAt: stamp,
+      updatedAt: stamp,
+    ));
+    await _listChanged();
+  }
+
+  /// Retitle an item; clearing it to nothing deletes it, as a task's does.
+  Future<void> editListItem(ListItem item, String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return deleteListItem(item);
+    if (trimmed == item.text) return;
+    await _store.putListItem(item.copyWith(text: trimmed));
+    await _listChanged();
+  }
+
+  Future<void> deleteListItem(ListItem item) async {
+    final stamp = nowStamp();
+    await _store.putListItem(item.copyWith(deletedAt: stamp, updatedAt: stamp));
+    await _listChanged();
+  }
+
+  /// Tick or untick. An unticked item goes back to the place it had: its
+  /// sort order never changed while it was ticked.
+  Future<void> setListItemChecked(ListItem item, bool checked) async {
+    if (item.isChecked == checked) return;
+    await _store.putListItem(checked
+        ? item.copyWith(checkedAt: nowStamp())
+        : item.copyWith(clearChecked: true));
+    await _listChanged();
+  }
+
+  /// Put the still-to-get items in this order. Ticked ones keep theirs.
+  Future<void> reorderListItems(List<String> uuids) async {
+    final byUuid = {for (final i in listItems) i.uuid: i};
+    for (final (index, uuid) in uuids.indexed) {
+      final item = byUuid[uuid];
+      if (item == null || item.sortOrder == index) continue;
+      await _store.putListItem(item.copyWith(sortOrder: index));
+    }
+    await _listChanged();
+  }
+
+  /// Done with it: archived exactly as it is, ticks and all, and the next
+  /// list starts empty.
+  Future<void> finishList([ShoppingList? list]) async {
+    final target = list ?? currentList;
+    if (target == null) return;
+    await _store.putList(target.copyWith(archivedAt: nowStamp()));
+    await _listChanged();
+  }
+
+  /// Fold an older open list into the current one: its items move over (ticks
+  /// kept, placed after what is here) and it is archived, so nothing written
+  /// on either device is lost.
+  Future<void> mergeListIntoCurrent(ShoppingList other) async {
+    final current = currentList;
+    if (current == null || other.uuid == current.uuid) return;
+    var next = listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m) + 1;
+    for (final item in await _store.listItems(other.uuid)) {
+      await _store.putListItem(
+          item.copyWith(listUuid: current.uuid, sortOrder: next++));
+    }
+    await _store.putList(other.copyWith(archivedAt: nowStamp()));
+    await _listChanged();
+  }
+
+  Future<List<ShoppingList>> archivedLists() => _store.archivedLists();
+
+  Future<Map<String, int>> listItemCounts() => _store.listItemCounts();
+
+  Future<List<ListItem>> itemsOfList(String listUuid) =>
+      _store.listItems(listUuid);
+
+  /// Remove an archived list for good, items and all (tombstoned, so the
+  /// removal reaches the other devices).
+  Future<void> deleteList(ShoppingList list) async {
+    final stamp = nowStamp();
+    for (final item in await _store.listItems(list.uuid)) {
+      await _store.putListItem(item.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    await _store.putList(list.copyWith(deletedAt: stamp, updatedAt: stamp));
+    await _listChanged();
   }
 
   // ---------------------------------------------------------------- tint

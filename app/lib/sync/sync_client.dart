@@ -205,6 +205,11 @@ class SyncClient {
     final since = await store.cursor();
     final outgoing = await store.dirtyRows();
     if (server.speaks < kFeedsProtocol) outgoing.remove('calendar_feeds');
+    if (server.speaks < kListsProtocol) {
+      outgoing
+        ..remove('lists')
+        ..remove('list_items');
+    }
 
     final http.Response res;
     try {

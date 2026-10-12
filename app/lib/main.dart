@@ -54,6 +54,7 @@ import 'ui/session_view.dart';
 import 'ui/move_picker.dart';
 import 'ui/selection_bar.dart';
 import 'ui/settings_sheet.dart';
+import 'ui/shopping_list.dart';
 import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/split_pane.dart';
@@ -159,6 +160,8 @@ Future<void> main() async {
       // wrote. Subscriptions sync so that every device keeps them fresh.
       await state.loadFeeds();
       if (state.showCalendar) await state.refreshCalendars();
+      // A list started or ticked on another device - the point of syncing it.
+      await state.loadList();
     },
   );
   state.onMutated = sync.scheduleSync;
@@ -529,6 +532,9 @@ class _WidgetShellState extends State<WidgetShell>
     // was closed lands now rather than up to an interval later.
     _reminders.tick();
     _reminders.start();
+    // Launching is opening the app, so it opens on the list - after the first
+    // layout, and after any quick action that launched it, which wins.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openListOnReturn());
   }
 
   /// Coming back from the background.
@@ -540,9 +546,59 @@ class _WidgetShellState extends State<WidgetShell>
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
     super.didChangeAppLifecycleState(lifecycle);
+    if (lifecycle == AppLifecycleState.hidden ||
+        lifecycle == AppLifecycleState.paused) {
+      _wentAway = true;
+    }
     if (lifecycle != AppLifecycleState.resumed) return;
     widget.sync.resume();
     _reminders.tick();
+    // Every return opens on the list - but a return, not a blink: `inactive`
+    // alone is a notification shade pulled down or a browser losing focus to
+    // its own address bar, and the app never went anywhere. The desktop widget
+    // is always open and gains and loses focus constantly; its returns are
+    // the tray and un-minimising (see _surfaceWindow, onWindowRestore).
+    if (_wentAway && !isDesktop) {
+      _wentAway = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openListOnReturn());
+    }
+  }
+
+  /// The app went to the background (hidden or paused) since it last came
+  /// back. See [didChangeAppLifecycleState].
+  bool _wentAway = false;
+
+  // ---------------------------------------------------------- shopping list
+
+  Future<void> _toggleList() async {
+    // Same clearing as the calendar: the list owns the content area.
+    if (s.focusTask != null) _exitFocus();
+    _closeSound();
+    _closeSettings();
+    _collapseTask();
+    await s.toggleList();
+  }
+
+  /// The app was opened - launched, or back from the background - so it opens
+  /// on the list, if there is one. Moving around inside the app never calls
+  /// this: go to Tasks and come back when you like.
+  ///
+  /// It does not take the screen from anything being written. A form or dialog
+  /// on top, the add field open, a thought or a note being captured - those
+  /// are someone in the middle of something, and in the case of a quick action
+  /// they are what this opening was *for*. Focus mode is left alone too: it
+  /// is already "the app opens on this one thing", and leaving it is an edit.
+  Future<void> _openListOnReturn() async {
+    if (!mounted || s.showList || s.currentList == null) return;
+    if (ModalRoute.of(context)?.isCurrent == false) return;
+    if (_adding || _thoughtCapture || _noteOn != null || _focusThoughtOpen) {
+      return;
+    }
+    if (s.focusTask != null) return;
+    _closeSound();
+    _closeSettings();
+    _collapseTask();
+    await s.setListOpen(true);
   }
 
   // --------------------------------------------------------------- calendar
@@ -921,6 +977,7 @@ class _WidgetShellState extends State<WidgetShell>
     await windowManager.show();
     await windowManager.focus();
     _taskbar.refresh();
+    await _openListOnReturn();
   }
 
   /// The taskbar toolbar cannot be set while the window is hidden - Windows
@@ -928,7 +985,10 @@ class _WidgetShellState extends State<WidgetShell>
   /// ways back have to re-apply it: this one covers an OS-driven restore
   /// (clicking the taskbar button), [_surfaceWindow] covers ours.
   @override
-  void onWindowRestore() => _taskbar.refresh();
+  void onWindowRestore() {
+    _taskbar.refresh();
+    _openListOnReturn();
+  }
 
   /// Hide rather than minimise: the tray icon is now the way back, so the
   /// widget can leave the taskbar entirely.
@@ -978,6 +1038,7 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _jumpToAddTask() async {
     if (!await _surfaceForCapture(leaveFocus: true)) return;
     if (s.showCalendar && !_layout.splitsCalendar) await _toggleCalendar();
+    if (s.showList) await s.setListOpen(false);
     if (!mounted) return;
     // Land on the task list, not on whichever view was covering it. Not
     // [_showTasks]: that stops after closing one overlay, which is right for a
@@ -1336,7 +1397,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// pile belonged to that workspace. Including in the split, where the tint is
   /// no more needed than it is beside the calendar - the pill on the workspace
   /// bar is still saying which list is on the left.
-  bool get _neutralChrome => s.showCalendar || s.showThoughts;
+  bool get _neutralChrome => s.showCalendar || s.showThoughts || s.showList;
 
   @override
   Widget build(BuildContext context) {
@@ -1362,6 +1423,7 @@ class _WidgetShellState extends State<WidgetShell>
                       ?.findAncestorStateOfType<EditableTextState>() ==
                   null &&
               !s.showCalendar &&
+              !s.showList &&
               s.focusTask == null &&
               !_soundOpen &&
               !_settingsOpen) {
@@ -1414,6 +1476,8 @@ class _WidgetShellState extends State<WidgetShell>
             _collapseTask();
           } else if (_selectedTasks.isNotEmpty) {
             _clearSelection();
+          } else if (s.showList) {
+            _toggleList();
           } else if (s.showCalendar) {
             _toggleCalendar();
           } else if (s.showThoughts) {
@@ -1566,6 +1630,8 @@ class _WidgetShellState extends State<WidgetShell>
             onOpenSettings: _openSettings,
             onToggleCalendar: _toggleCalendar,
             calendarOpen: s.showCalendar,
+            onToggleList: _toggleList,
+            listOpen: s.showList,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
           ),
@@ -1899,6 +1965,17 @@ class _WidgetShellState extends State<WidgetShell>
     // and opens beside the list instead - which is the one arrangement in which
     // a task can be dragged onto a block, because both ends of that gesture
     // have to be on screen at once.
+    // The shopping list replaces the whole body the same way: it belongs to no
+    // workspace, and it is meant to be the only thing on screen.
+    if (s.showList) {
+      return Column(
+        children: [
+          const SizedBox(height: TitleBar.height),
+          Expanded(child: ShoppingListView(state: s)),
+        ],
+      );
+    }
+
     if (s.showCalendar) {
       if (_layout.splitsCalendar) return _splitCalendar(ws);
       return Column(
@@ -2041,6 +2118,7 @@ class _WidgetShellState extends State<WidgetShell>
       _openView == null &&
       !s.showSession &&
       !s.showCalendar &&
+      !s.showList &&
       s.focusTask == null &&
       _expandedTask != null;
 

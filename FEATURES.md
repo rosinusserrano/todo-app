@@ -917,8 +917,6 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 ## Getting around on a phone
 
-*(The `redesign` branch - not in a release yet.)*
-
 - **One bar along the bottom, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
   Parked or History), **More** - everything that belongs to no workspace:
@@ -1289,14 +1287,12 @@ reminders are both there now**, queued for 0.18.0.
 
 ## Changelog
 
-- **Redesign** — *(in progress, `redesign` branch)*
+- **0.29.0** — *(in progress)*
   - **The phone's bottom bar is new**: workspace, where, more and ＋ (add a
     task or a thought); press, slide up to where you want to go, let go. Slide
     right on a workspace to edit it. See *Getting around on a phone*.
   - **No more tiles**: tasks, notes and thoughts are separated by short bars
     instead of each sitting in its own box.
-
-- **0.29.0** — *(in progress)*
   - **Shopping list**: one throwaway list on the title bar that the app opens
     on every time, with a tick-only mode for the shop, ticked items that slide
     down, and Finished to archive it. Needs the server updated (protocol 3).

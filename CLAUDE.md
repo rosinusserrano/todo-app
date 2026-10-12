@@ -362,8 +362,7 @@ footer's button *and* the pane. The escalation lives in
 `ui/thought_pressure.dart` (`ThoughtPulse`), which the footer and the view bar
 each own one of: it is one signal drawn wherever the layout put the control.
 
-**On a phone the dock replaces all of that** (`ui/dock.dart`, the `redesign`
-branch): `_dockLayout` is `touch && !hasRail`, and there the workspace bar, the
+**On a phone the dock replaces all of that** (`ui/dock.dart`): `_dockLayout` is `touch && !hasRail`, and there the workspace bar, the
 view bar and the title bar's calendar / list / settings buttons are not drawn
 (`_viewBarShows` is false, `TitleBar`'s three callbacks are null). Three things
 about it are load-bearing:

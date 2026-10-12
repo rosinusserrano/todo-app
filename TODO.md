@@ -33,7 +33,8 @@ keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
 Asked for 2026-10-12. Worked on in the **`redesign` branch**, checked out as the
 worktree `../todo-app-redesign`, and tried on the phone at the dev site (see
-58.1). Reasoning is in `ROADMAP.md` under *The redesign*.
+58.1). 58.1-58.3 merged to `main` and published to the web app on 2026-10-12;
+later rounds go the same way (branch, dev site, then main). Reasoning is in `ROADMAP.md` under *The redesign*.
 
 - [x] **58.1** A dev copy of everything: `server/setup-dev.sh <domain>` - a
       second server on a snapshot of the live database, its own web root, a
@@ -54,8 +55,8 @@ worktree `../todo-app-redesign`, and tried on the phone at the dev site (see
       shopping list items, the sheets and forms.
 - [ ] **58.6** Decide what the desktop and the narrow window get (the dock is
       touch-only so far).
-- [ ] **58.7** Merge to `main`: FEATURES changelog entry moves under the
-      release it ships in.
+- [x] **58.7** First round merged to `main` (changelog under 0.29.0) and the
+      web app published.
 
 ### 57. The shopping list  `[~]`
 

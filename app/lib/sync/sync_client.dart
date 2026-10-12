@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'feeds.dart' show FeedError;
 import 'local_store.dart';
 import 'protocol.dart';
 
@@ -192,9 +193,18 @@ class SyncClient {
   }
 
   /// One full reconcile: push local changes, apply what comes back.
-  Future<SyncResult> syncOnce(LocalStore store) async {
+  ///
+  /// [server] is what the handshake learned. A table it does not know is left
+  /// out of the push rather than sent: the server would reject the whole
+  /// request over it. Those rows stay dirty, since [LocalStore.clearDirty]
+  /// only clears what went out, and go up once the server is updated.
+  Future<SyncResult> syncOnce(
+    LocalStore store, {
+    ServerProtocol server = ServerProtocol.legacy,
+  }) async {
     final since = await store.cursor();
     final outgoing = await store.dirtyRows();
+    if (server.speaks < kFeedsProtocol) outgoing.remove('calendar_feeds');
 
     final http.Response res;
     try {
@@ -206,7 +216,13 @@ class SyncClient {
               'Authorization': 'Bearer $token',
               'X-Device-Id': ?deviceId,
             },
-            body: jsonEncode({'since': since, 'changes': outgoing}),
+            body: jsonEncode({
+              'since': since,
+              'changes': outgoing,
+              // What we can store. Without it the server sends only what a
+              // protocol-1 build has columns for.
+              'protocol': kSyncProtocol,
+            }),
           )
           .timeout(_timeout);
     } catch (e) {
@@ -271,6 +287,29 @@ class SyncClient {
 
     await store.setCursor(cursor);
     return SyncOk(cursor, applied, pushed);
+  }
+
+  /// A subscribed calendar's text, fetched by the server on our behalf.
+  ///
+  /// Only the web build asks: a browser is refused the response from a
+  /// calendar service (no CORS headers), and the server is not. Throws a
+  /// [FeedError] carrying the server's own explanation.
+  Future<String> fetchFeed(Uri url) async {
+    final http.Response res;
+    try {
+      res = await _http.get(
+        _endpoint('/api/feed').replace(queryParameters: {'url': '$url'}),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 45));
+    } catch (e) {
+      throw FeedError('Cannot reach the sync server: ${_short(e)}');
+    }
+    if (res.statusCode == 404 && !res.body.trimLeft().startsWith('{')) {
+      throw const FeedError('The sync server is too old to fetch calendars - '
+          'update it.');
+    }
+    if (res.statusCode != 200) throw FeedError(_errorOf(res.body));
+    return utf8.decode(res.bodyBytes, allowMalformed: true);
   }
 
   void dispose() => _http.close();

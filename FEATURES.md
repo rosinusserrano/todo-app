@@ -640,7 +640,10 @@ Three tiers, none of which need an account, an API key, or a licence:
   the week view, day in the day view, year in the year view. The swipe used to
   change D/W/Y, which is the setting you touch once a session; where you are in
   time is the question you ask twenty times, and it meant reaching for the ‹ ›
-  at the top of the screen each time.
+  at the top of the screen each time. **The page follows your finger** and
+  slides off as the next one slides in; a quick flick or a drag past about a
+  third of the width turns it, anything less springs back. The day stays
+  scrolled to the hour you were looking at.
 - **On a phone the header is one line**: ‹ the date ›, a chip showing the view
   (D, W or Y — tap it for the next), and ⋯. **Tap the date to go back to
   today.** ⋯ holds Today, **quick add** (the ⋯ lights up while it is on), and
@@ -715,6 +718,32 @@ Three tiers, none of which need an account, an API key, or a licence:
   a file of five costs that one event, not the import.
 - Times written as UTC are converted; times written without a zone keep their
   reading, which is what a printed ticket means.
+
+## Subscribed calendars
+
+- **Subscribe to a calendar by its address** from the calendar's tune menu:
+  paste a `webcal://` or `https://….ics` link (Google: Settings → the
+  calendar → *Secret address in iCal format*; Outlook, iCloud and Fastmail
+  publish one too). The address is checked first and the form shows how many
+  events it found and the next few, so a page link instead of the iCal one is
+  caught before anything is written.
+- **A new calendar, or merged into one you have.** By default the events get a
+  calendar of their own, named after the feed. They can instead go into any
+  existing calendar, a workspace's included, beside the blocks already there.
+- **Read-only, and stays in step.** Subscribed events cannot be edited or
+  deleted here: the card says where they came from. Refreshed every 30
+  minutes while the app runs (5 after a failure), or on demand. Moved and
+  cancelled meetings, repeat rules of any shape and time zones come across as
+  the source has them. A failed refresh keeps what was there and says why.
+- **Quiet by default**, since the calendar's own app is probably alerting
+  already; a switch per subscription turns notifications on.
+- **Subscribing syncs**, so every device has it. Unsubscribing removes the
+  feed's events everywhere, and the calendar too if subscribing made it and
+  nothing else is on it. Your own events in a merged calendar stay.
+- In the browser the sync server fetches the calendar (calendar services do
+  not let a web page fetch them directly). It refuses private-network
+  addresses unless `TODO_FEED_ALLOW_PRIVATE=1`, and anything that is not a
+  calendar.
 
 ## History
 
@@ -1203,6 +1232,12 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Subscribe to calendars by address** (Google, Outlook, iCloud…), into a
+    new calendar or merged into an existing one. Read-only, refreshed every
+    half hour. **Needs the server updated too** (sync protocol 2); until then
+    the subscription stays on the device that made it.
+  - **Swiping the calendar slides**: the week follows your finger and the next
+    one slides in, instead of jumping.
   - **Zoom**: make the whole widget larger or smaller, from Settings or with
     Ctrl +/−/0 on desktop.
   - **Notifications in the web app**, by Web Push from the sync server:

@@ -475,6 +475,12 @@ END:VCALENDAR
       });
       // Roll the database back past v13 - the column has to go with it, or the
       // migration on the way up finds it already there.
+      // ...and no subscriptions (v16): the feed table, and the column on
+      // calendar_events with the index built on it.
+      await store.raw.execute('DROP TABLE calendar_feeds');
+      await store.raw.execute('DROP INDEX idx_events_feed');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');
       await store.raw
           .execute('ALTER TABLE calendar_events DROP COLUMN recur');
       // ...and none of the four recurrence columns (v15). The index on `recur`

@@ -240,7 +240,9 @@ there are no local edits to lose.
 Three steps, each of which is useful on its own and none of which is wasted if
 the next never happens:
 
-**Step 0 — subscribe to the private .ics address.** Every Google calendar has a
+**Step 0 — subscribe to the private .ics address.** *(Shipped in 0.29.0 as a
+`calendar_feeds` table rather than a URL on `calendars`, so a feed can be
+merged into an existing calendar - see TODO 56.)* Every Google calendar has a
 "Secret address in iCal format" under its settings: a URL that returns the whole
 calendar as a file `sync/ics.dart` can already read. Subscribing to one is a
 `calendars` row that carries a URL, a poll, and `parseIcs` — no OAuth, no

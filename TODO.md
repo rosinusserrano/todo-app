@@ -29,6 +29,28 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 56. Subscribed calendars, and the week slides  `[~]`
+
+Asked for 2026-10-11/12. Design is *Step 0* in `ROADMAP.md` (Google calendar
+section). Committed; this supersedes the stashed .ics work 32.2 mentions (that
+stash was never found in this clone - drop it rather than pop it).
+
+- [x] **56.1** The week/day/year swipe slides (`ui/calendar/time_swipe.dart`).
+- [x] **56.2** Subscribe to an .ics / webcal address, into a new calendar or
+      merged into an existing one; read-only events, refreshed every 30 min,
+      RRULE/EXDATE/RECURRENCE-ID expanded per instance (`sync/feeds.dart`,
+      `sync/rrule.dart`, `ui/calendar/subscribe_form.dart`, client v16).
+- [x] **56.3** The web build fetches through the server (`/api/feed`,
+      `server/feeds.js`, SSRF-checked). Wire protocol 2.
+- [x] **56.4** Fix: protocol 2's first deploy broke every un-updated device -
+      a pulled `feed_uuid` column failed their whole merge. The server now
+      withholds columns a client's protocol does not cover (`COLUMN_SINCE`),
+      the client announces its protocol and drops unknown columns, and v16
+      re-pulls once.
+- [ ] **56.5** Deploy the server again (`sudo server/update-server.sh`), publish
+      the web build, `install-windows.ps1`; check the Uni subscription shows
+      read-only on every device.
+
 ### 55. Zoom, and the web app on an iPhone  `[~]`
 
 Asked for 2026-10-09/10, after the shelf list. Built, analyze clean, tests

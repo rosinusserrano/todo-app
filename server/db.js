@@ -21,6 +21,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { PROTOCOL } from './protocol.js';
 import { deletePushFor, initPush } from './push.js';
 import { deleteUserIdentity, initUsers } from './users.js';
 
@@ -217,10 +218,30 @@ function init(db) {
       notify_minutes INTEGER,
       recur          TEXT,
       all_day        INTEGER NOT NULL DEFAULT 0,
+      feed_uuid      TEXT,
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
+      PRIMARY KEY (user_id, uuid)
+    );
+
+    -- A subscribed calendar (client v16): where to fetch and which calendar
+    -- its events land in. The events are ordinary calendar_events rows carrying
+    -- feed_uuid. Every payload column nullable, for the reason recur_from is:
+    -- mergeRow writes row[field] ?? null, so NOT NULL is one malformed peer
+    -- away from a constraint failure that aborts a whole push.
+    CREATE TABLE IF NOT EXISTS calendar_feeds (
+      uuid          TEXT NOT NULL,
+      user_id       TEXT NOT NULL,
+      calendar_uuid TEXT,
+      name          TEXT,
+      url           TEXT,
+      alerts        INTEGER,
+      created_at    TEXT,
+      updated_at    TEXT NOT NULL,
+      deleted_at    TEXT,
+      seq           INTEGER NOT NULL,
       PRIMARY KEY (user_id, uuid)
     );
 
@@ -232,6 +253,7 @@ function init(db) {
     CREATE INDEX IF NOT EXISTS idx_journal_entries_pull ON journal_entries (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_calendars_pull       ON calendars       (user_id, seq);
     CREATE INDEX IF NOT EXISTS idx_calendar_events_pull ON calendar_events (user_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_calendar_feeds_pull  ON calendar_feeds  (user_id, seq);
   `);
 
   // `CREATE TABLE IF NOT EXISTS` above does nothing to a database that already
@@ -265,6 +287,10 @@ function init(db) {
   // Whole days (client v14). 0 is what every existing row means: a span of
   // hours. The instants are unchanged - this only says how to draw it.
   addColumn(db, 'calendar_events', 'all_day', 'INTEGER NOT NULL DEFAULT 0');
+  // The subscription that wrote an event (client v16), which is what makes it
+  // read-only on every device. Without the column a server would drop it and
+  // hand the event back editable.
+  addColumn(db, 'calendar_events', 'feed_uuid', 'TEXT');
   // A server that first synced a journal before entries had titles has the
   // table but not these columns; without them a journal push would fail.
   addColumn(db, 'journal_entries', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -347,9 +373,25 @@ export const TABLES = {
     'notify_minutes',
     'recur',
     'all_day',
+    'feed_uuid',
     'created_at',
   ],
+  calendar_feeds: ['calendar_uuid', 'name', 'url', 'alerts', 'created_at'],
 };
+
+// What a client on an older protocol does not have, and so must not be sent.
+//
+// An older client inserts a pulled row verbatim, so a column it has no column
+// for is not ignored - it fails the insert, which aborts its whole merge, and
+// that device stops receiving anything at all. Every column added from
+// protocol 2 on is listed here with the protocol that brought it; a table
+// likewise. A client that does not say which protocol it speaks is 1.
+const COLUMN_SINCE = { calendar_events: { feed_uuid: 2 } };
+const TABLE_SINCE = { calendar_feeds: 2 };
+
+function knows(table, field, protocol) {
+  return (COLUMN_SINCE[table]?.[field] ?? 1) <= protocol;
+}
 
 function nextSeq(db) {
   db.prepare("UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'seq'").run();
@@ -370,8 +412,8 @@ export function currentSeq(db) {
  * watermark (the counter is monotonic, so a later row of theirs is always
  * above it) and a tighter one.
  *
- * Each MAX is served by the (user_id, seq) pull index, so this is eight index
- * probes, not eight scans.
+ * Each MAX is served by the (user_id, seq) pull index, so this is one index
+ * probe per table, not a scan.
  */
 export function userCursor(db, userId) {
   let max = 0;
@@ -449,11 +491,13 @@ function compareStamps(a, b) {
 /**
  * Merge one incoming row, last-write-wins on `updated_at`.
  * Returns true if the row was actually written.
+ *
+ * [protocol] is the client's: see COLUMN_SINCE.
  */
-function mergeRow(db, table, userId, row) {
+function mergeRow(db, table, userId, row, protocol = PROTOCOL) {
   const fields = TABLES[table];
   const existing = db
-    .prepare(`SELECT updated_at FROM ${table} WHERE user_id = ? AND uuid = ?`)
+    .prepare(`SELECT * FROM ${table} WHERE user_id = ? AND uuid = ?`)
     .get(userId, row.uuid);
 
   // Ties go to the incumbent: a device replaying an unchanged row must not
@@ -467,7 +511,11 @@ function mergeRow(db, table, userId, row) {
   const values = [
     row.uuid,
     userId,
-    ...fields.map((f) => row[f] ?? null),
+    // A column the client has never heard of keeps what is stored: its
+    // absence from the row says nothing about the value.
+    ...fields.map((f) =>
+      knows(table, f, protocol) ? row[f] ?? null : existing?.[f] ?? null
+    ),
     row.updated_at,
     row.deleted_at ?? null,
     seq,
@@ -531,23 +579,32 @@ function enforceSingleInProgress(db, userId) {
  * make the quietest client the noisiest. It is not part of the response - the
  * route strips it - because it describes what the server did, not what the
  * caller now has.
+ *
+ * `protocol` is the client's, and decides which columns and tables it is sent
+ * and which of its own it is trusted with - see COLUMN_SINCE.
  */
-export function sync(db, userId, since, incoming) {
+export function sync(db, userId, since, incoming, protocol = PROTOCOL) {
   const run = db.transaction(() => {
     let merged = 0;
     for (const table of Object.keys(TABLES)) {
       for (const row of incoming[table] ?? []) {
-        if (mergeRow(db, table, userId, row)) merged++;
+        if (mergeRow(db, table, userId, row, protocol)) merged++;
       }
     }
     enforceSingleInProgress(db, userId);
 
     const changes = {};
     for (const table of Object.keys(TABLES)) {
+      if ((TABLE_SINCE[table] ?? 1) > protocol) continue;
       changes[table] = db
         .prepare(`SELECT * FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq`)
         .all(userId, since)
-        .map(({ user_id, ...rest }) => rest);
+        .map(({ user_id, ...rest }) => {
+          for (const f of Object.keys(COLUMN_SINCE[table] ?? {})) {
+            if (!knows(table, f, protocol)) delete rest[f];
+          }
+          return rest;
+        });
     }
     // Computed inside the transaction, from the same rows just read, for the
     // same reason the pull is: a cursor read outside it could sit above a write

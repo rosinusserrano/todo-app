@@ -21,10 +21,80 @@
 //      literal punctuation. Skipping this turns every comma in a summary into
 //      a visible backslash.
 //   3. **Three kinds of timestamp.** `...Z` is UTC, a bare local time is
-//      floating (whatever the reader's timezone is), and `TZID=` names a zone
-//      we cannot resolve without a database. See [_parseStamp].
+//      floating (whatever the reader's timezone is), and `TZID=` names a zone,
+//      resolved through the IANA database the notification code already
+//      carries. See [_parseStamp].
+//
+// A subscribed calendar (feeds.dart) needs more of a VEVENT than an invite
+// does, and it is all read here so there is one parser: the UID, the raw
+// RRULE, EXDATE and RDATE, RECURRENCE-ID (one occurrence of a series moved or
+// retitled) and STATUS:CANCELLED. The import ignores all of them except as
+// before; the feed is what expands them.
+
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 import 'models.dart' show Recur;
+
+/// A time as an .ics file wrote it: the reading, and what it is a reading of.
+///
+/// Kept apart from the instant because a repeat is counted in the *reading*.
+/// A weekly 09:00 meeting written in Europe/Berlin is at 09:00 Berlin time in
+/// both halves of the year, which is two different UTC hours; stepping the
+/// instant by seven days would move it an hour for half the year.
+class IcsTime {
+  const IcsTime(this.wall, {this.zone, this.utc = false, this.date = false});
+
+  /// The reading, in a UTC [DateTime] used purely as a container for the
+  /// fields - UTC because it has no DST, so adding days to it is exact.
+  final DateTime wall;
+
+  /// The TZID it was written in, or null.
+  final String? zone;
+
+  /// Written with a trailing `Z`.
+  final bool utc;
+
+  /// A DATE rather than a DATE-TIME: a whole day, floating.
+  final bool date;
+
+  /// The same kind of time at another reading - an occurrence of a series.
+  IcsTime at(DateTime wall) =>
+      IcsTime(wall, zone: zone, utc: utc, date: date);
+
+  /// The instant this names, as a local [DateTime].
+  ///
+  /// A zone the database does not know - Outlook writes Windows names like
+  /// "W. Europe Standard Time" - is read as floating, which keeps the reading
+  /// as written. That is right whenever the zone is the one the device is in,
+  /// which is nearly always, and an event at the time printed on the invite is
+  /// the better failure than one moved by a guessed offset.
+  DateTime toLocal() {
+    final w = wall;
+    if (date) return DateTime(w.year, w.month, w.day);
+    if (utc) return w.toLocal();
+    final location = _location(zone);
+    if (location != null) {
+      final at = tz.TZDateTime(location, w.year, w.month, w.day, w.hour,
+          w.minute, w.second);
+      return DateTime.fromMillisecondsSinceEpoch(at.millisecondsSinceEpoch);
+    }
+    return DateTime(w.year, w.month, w.day, w.hour, w.minute, w.second);
+  }
+
+  static tz.Location? _location(String? name) {
+    if (name == null || name.isEmpty) return null;
+    // Initialised on first use rather than at startup: most runs never meet a
+    // TZID. Not when it already is - initialising again resets tz.local to
+    // UTC, which is what the notification schedule reads.
+    if (!tz.timeZoneDatabase.isInitialized) tzdata.initializeTimeZones();
+    try {
+      return tz.getLocation(name);
+    } catch (_) {
+      return null;
+    }
+  }
+}
 
 /// One event out of an .ics file.
 class IcsEvent {
@@ -38,6 +108,12 @@ class IcsEvent {
     this.recurring = false,
     this.recur,
     this.uid,
+    this.startTime,
+    this.rrule,
+    this.exdates = const [],
+    this.rdates = const [],
+    this.recurrenceId,
+    this.cancelled = false,
   });
 
   final String summary;
@@ -70,7 +146,44 @@ class IcsEvent {
 
   final String? uid;
 
+  /// [start] as written, for counting a series in its own timezone. Null only
+  /// for an event built by hand rather than parsed.
+  final IcsTime? startTime;
+
+  /// The RRULE value as written, for a subscription to expand. The import
+  /// reads [recur] instead.
+  final String? rrule;
+
+  /// Occurrences struck out of the series (EXDATE), as local instants.
+  final List<DateTime> exdates;
+
+  /// Occurrences added to it (RDATE), as local instants.
+  final List<DateTime> rdates;
+
+  /// Set when this VEVENT replaces one occurrence of the series sharing its
+  /// [uid]: the instant that occurrence would otherwise have had.
+  final DateTime? recurrenceId;
+
+  /// STATUS:CANCELLED. A cancelled occurrence is how some producers strike one
+  /// out instead of an EXDATE.
+  final bool cancelled;
+
   Duration get duration => end.difference(start);
+}
+
+/// The calendar's own name (`X-WR-CALNAME`), which Google, Apple and Outlook
+/// all write, or null. What a new subscription is called until renamed.
+String? icsCalendarName(String text) {
+  for (final line in _unfold(text)) {
+    final upper = line.toUpperCase();
+    if (upper == 'BEGIN:VEVENT') break;
+    if (upper.startsWith('X-WR-CALNAME')) {
+      final prop = _Prop.parse(line);
+      final name = prop == null ? '' : _unescape(prop.value).trim();
+      return name.isEmpty ? null : name;
+    }
+  }
+  return null;
 }
 
 /// Everything importable in one file, in the order it appeared.
@@ -81,7 +194,7 @@ class IcsEvent {
 List<IcsEvent> parseIcs(String text) {
   final out = <IcsEvent>[];
 
-  Map<String, _Prop>? current;
+  Map<String, List<_Prop>>? current;
 
   // How deep we are inside a component nested in the VEVENT - a VALARM, in
   // practice. Its properties must not land in the event's map: an alarm has its
@@ -121,9 +234,11 @@ List<IcsEvent> parseIcs(String text) {
     if (nested > 0) continue;
 
     final prop = _Prop.parse(line);
-    // First occurrence wins. A malformed file with two SUMMARYs should not have
-    // the later one silently replace a good earlier one.
-    if (prop != null) current.putIfAbsent(prop.name, () => prop);
+    // Every occurrence is kept, because EXDATE and RDATE may legitimately
+    // appear several times. Everything else reads the first: a malformed file
+    // with two SUMMARYs should not have the later one silently replace a good
+    // earlier one.
+    if (prop != null) (current[prop.name] ??= []).add(prop);
   }
 
   return out;
@@ -216,38 +331,26 @@ String _unescape(String v) {
   return buffer.toString();
 }
 
-/// A parsed DTSTART/DTEND: the instant, and whether it was a whole day.
-class _Stamp {
-  const _Stamp(this.at, this.allDay);
-  final DateTime at;
-  final bool allDay;
-}
-
 /// Parse one of iCalendar's three timestamp shapes.
 ///
-/// `20260814T093000Z` is UTC and is converted to local. `20260814T093000`
-/// without a zone is *floating* - it means that reading wherever it is opened,
-/// which is what a train ticket wants - so it is taken as local as-is.
-///
-/// `TZID=Europe/Berlin:20260814T093000` names a zone. Resolving it properly
-/// needs a timezone database keyed by name, which this app does not carry, so
-/// it is treated as floating: the reading is kept as written. That is right
-/// whenever the named zone is the one the device is in, which is nearly always,
-/// and wrong by the offset between them when it is not. Keeping the reading is
-/// the better failure - an event at the time printed on the invite, rather than
-/// one silently moved by an hour.
-_Stamp? _parseStamp(_Prop prop) {
-  final raw = prop.value.trim();
+/// `20260814T093000Z` is UTC. `20260814T093000` without a zone is *floating* -
+/// it means that reading wherever it is opened, which is what a train ticket
+/// wants. `TZID=Europe/Berlin:20260814T093000` is that reading in that zone;
+/// see [IcsTime.toLocal] for a zone that cannot be resolved.
+IcsTime? _parseStamp(_Prop prop) =>
+    _parseValue(prop.value.trim(), prop.params);
+
+IcsTime? _parseValue(String raw, Map<String, String> params) {
   final isDate =
-      prop.params['VALUE']?.toUpperCase() == 'DATE' ||
+      params['VALUE']?.toUpperCase() == 'DATE' ||
       RegExp(r'^\d{8}$').hasMatch(raw);
 
   if (isDate) {
     final m = RegExp(r'^(\d{4})(\d{2})(\d{2})$').firstMatch(raw);
     if (m == null) return null;
-    return _Stamp(
-      DateTime(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!)),
-      true,
+    return IcsTime(
+      DateTime.utc(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!)),
+      date: true,
     );
   }
 
@@ -256,8 +359,7 @@ _Stamp? _parseStamp(_Prop prop) {
   ).firstMatch(raw);
   if (m == null) return null;
 
-  final utc = m[7] == 'Z';
-  final at = DateTime.utc(
+  final wall = DateTime.utc(
     int.parse(m[1]!),
     int.parse(m[2]!),
     int.parse(m[3]!),
@@ -265,28 +367,33 @@ _Stamp? _parseStamp(_Prop prop) {
     int.parse(m[5]!),
     int.parse(m[6]!),
   );
-  if (utc) return _Stamp(at.toLocal(), false);
-
-  // Floating, or a named zone we are treating as floating: keep the reading.
-  return _Stamp(
-    DateTime(at.year, at.month, at.day, at.hour, at.minute, at.second),
-    false,
-  );
+  if (m[7] == 'Z') return IcsTime(wall, utc: true);
+  return IcsTime(wall, zone: params['TZID']);
 }
 
-IcsEvent? _build(Map<String, _Prop> props) {
+/// Every instant in a list-valued property (EXDATE, RDATE), across however
+/// many lines it was written on.
+List<DateTime> _instants(List<_Prop>? props) => [
+      for (final p in props ?? const <_Prop>[])
+        for (final v in p.value.split(','))
+          ?_parseValue(v.trim(), p.params)?.toLocal(),
+    ];
+
+IcsEvent? _build(Map<String, List<_Prop>> all) {
+  final props = {for (final e in all.entries) e.key: e.value.first};
   final startProp = props['DTSTART'];
   if (startProp == null) return null;
 
-  final start = _parseStamp(startProp);
-  if (start == null) return null;
+  final startTime = _parseStamp(startProp);
+  if (startTime == null) return null;
+  final start = (at: startTime.toLocal(), allDay: startTime.date);
 
   // DTEND is optional. DURATION is the other way of saying it, and a bare
   // DTSTART means a default length rather than a zero-length event, which no
   // calendar can draw.
   DateTime? end;
   final endProp = props['DTEND'];
-  if (endProp != null) end = _parseStamp(endProp)?.at;
+  if (endProp != null) end = _parseStamp(endProp)?.toLocal();
   end ??= _addDuration(start.at, props['DURATION']?.value);
   end ??= start.allDay
       ? start.at.add(const Duration(days: 1))
@@ -312,6 +419,14 @@ IcsEvent? _build(Map<String, _Prop> props) {
     recurring: props.containsKey('RRULE'),
     recur: icsRecurRule(props['RRULE']?.value, start.at),
     uid: props['UID']?.value.trim(),
+    startTime: startTime,
+    rrule: props['RRULE']?.value.trim(),
+    exdates: _instants(all['EXDATE']),
+    rdates: _instants(all['RDATE']),
+    recurrenceId: props['RECURRENCE-ID'] == null
+        ? null
+        : _parseStamp(props['RECURRENCE-ID']!)?.toLocal(),
+    cancelled: props['STATUS']?.value.trim().toUpperCase() == 'CANCELLED',
   );
 }
 

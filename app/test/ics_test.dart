@@ -101,8 +101,68 @@ void main() {
         'END:VEVENT'));
 
     final e = events.single;
-    expect(e.start, DateTime(2026, 8, 14, 9, 30));
+    // 09:30 in Berlin in August is 07:30 UTC - compared as an instant, so the
+    // test means the same thing on a machine in any timezone.
+    expect(e.start.toUtc(), DateTime.utc(2026, 8, 14, 7, 30));
     expect(e.duration, const Duration(minutes: 15));
+  });
+
+  test('a named zone is resolved, not read as the local clock', () {
+    // A flight booked in New York: 08:00 there is 12:00 UTC in August,
+    // wherever the device reading it happens to be.
+    final events = parseIcs(_wrap('BEGIN:VEVENT\r\n'
+        'SUMMARY:JFK to BER\r\n'
+        'DTSTART;TZID=America/New_York:20260814T080000\r\n'
+        'DTEND;TZID=America/New_York:20260814T160000\r\n'
+        'END:VEVENT'));
+
+    expect(events.single.start.toUtc(), DateTime.utc(2026, 8, 14, 12));
+  });
+
+  test('a zone the database does not know keeps its reading', () {
+    // Outlook writes Windows zone names. Guessing an offset for one would be
+    // worse than the time printed on the invite.
+    final events = parseIcs(_wrap('BEGIN:VEVENT\r\n'
+        'SUMMARY:Review\r\n'
+        'DTSTART;TZID=W. Europe Standard Time:20260814T093000\r\n'
+        'END:VEVENT'));
+
+    expect(events.single.start, DateTime(2026, 8, 14, 9, 30));
+  });
+
+  test('a subscription gets what an invite does not need', () {
+    final text = 'BEGIN:VCALENDAR\r\n'
+        'X-WR-CALNAME:Team\\, shared\r\n'
+        'BEGIN:VEVENT\r\n'
+        'UID:abc@example.com\r\n'
+        'SUMMARY:Standup\r\n'
+        'DTSTART:20260810T070000Z\r\n'
+        'RRULE:FREQ=WEEKLY;COUNT=4\r\n'
+        'EXDATE:20260817T070000Z\r\n'
+        'EXDATE:20260824T070000Z,20260831T070000Z\r\n'
+        'END:VEVENT\r\n'
+        'BEGIN:VEVENT\r\n'
+        'UID:abc@example.com\r\n'
+        'RECURRENCE-ID:20260817T070000Z\r\n'
+        'SUMMARY:Standup (moved)\r\n'
+        'DTSTART:20260818T070000Z\r\n'
+        'STATUS:CANCELLED\r\n'
+        'END:VEVENT\r\n'
+        'END:VCALENDAR\r\n';
+
+    expect(icsCalendarName(text), 'Team, shared');
+    final events = parseIcs(text);
+    final series = events.first;
+    expect(series.rrule, 'FREQ=WEEKLY;COUNT=4');
+    // Two EXDATE lines, one of them carrying two values: all three count.
+    expect(series.exdates.map((d) => d.toUtc()), [
+      DateTime.utc(2026, 8, 17, 7),
+      DateTime.utc(2026, 8, 24, 7),
+      DateTime.utc(2026, 8, 31, 7),
+    ]);
+    final moved = events.last;
+    expect(moved.recurrenceId!.toUtc(), DateTime.utc(2026, 8, 17, 7));
+    expect(moved.cancelled, isTrue);
   });
 
   test('DURATION stands in for a missing DTEND', () {

@@ -1111,15 +1111,24 @@ server had neither column, and the only symptom was those fields arriving null
 on the other device. Nothing said anything, and nothing could.
 
 - **What moves `PROTOCOL`.** A required field, a renamed one, a changed meaning,
-  a different conflict rule, an endpoint the client cannot work without. **Not**
-  a new optional column (v13, v14, and the four v15 added for recurrence) and
-  **not** an optional endpoint — `/api/events` returning 404 already means "no
-  instant sync, carry on". `MIN_CLIENT` moves far more rarely still: raising it
-  cuts devices off until they update. Note what an un-deployed server *does*
-  cost in the v15 case: the rule still crosses, but `recur_from` and
-  `recur_lead` do not, so a repeat set on one device arrives on the other as the
-  legacy shape. That is a reason to deploy the server with the release, not a
-  reason to cut the devices off until it happens.
+  a different conflict rule, an endpoint the client cannot work without — and
+  **a new column**, however optional. That last one used to be listed as *not*
+  moving it, and it was wrong in the direction nobody looked at: an older server
+  drops a column it does not know, but an older **client** inserts pulled rows
+  verbatim, so one unknown column fails its whole merge and the device stops
+  receiving anything. v16's `feed_uuid` did exactly that to every un-updated
+  device the moment the server was deployed. So a new column now bumps the
+  number and goes in `COLUMN_SINCE` (a table in `TABLE_SINCE`) in `db.js`; the
+  client sends its protocol in the `/api/sync` body, and the server withholds
+  what that protocol does not cover — and keeps the stored value when such a
+  client pushes the row back without it. Clients from 0.29.0 on also drop an
+  unknown pulled column themselves (`_columnsOf` in `applyRemote`), but the
+  server rule is what protects the builds already out there. A client gaining
+  a protocol has to re-pull what was withheld: v16 resets the cursor for that.
+  `MIN_CLIENT` moves far more rarely still: raising it cuts devices off until
+  they update.
+  **Not** an optional endpoint — `/api/events` returning 404 already means "no
+  instant sync, carry on".
 - **An absent number is 1**, on both sides. Protocol 1 is what the wire was on
   the day the number was invented, so every server already deployed is protocol
   1 by definition and nothing had to be upgraded in lockstep. Without that rule

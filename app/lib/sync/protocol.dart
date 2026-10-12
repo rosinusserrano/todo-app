@@ -18,7 +18,19 @@
 // upgrade this feature exists to avoid.
 
 /// The wire this build speaks.
-const kSyncProtocol = 1;
+///
+/// 2 added the `calendar_feeds` table. That is a wire change and not an
+/// optional column, because a server rejects a push naming a table it does not
+/// know - the *whole* push, so every other row would stop moving too. It is
+/// handled without cutting anyone off: a server below [kFeedsProtocol] is
+/// simply not sent the table (see `SyncClient.syncOnce`), and the rows wait,
+/// dirty, until it is updated. The other direction is the server's: it sends
+/// the table and the new `feed_uuid` column only to a client that says it
+/// speaks 2, which is why the push carries this number.
+const kSyncProtocol = 2;
+
+/// The first server wire that has the `calendar_feeds` table.
+const kFeedsProtocol = 2;
 
 /// The oldest server wire this build can still talk to correctly.
 ///

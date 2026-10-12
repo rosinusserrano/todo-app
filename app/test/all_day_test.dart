@@ -291,6 +291,12 @@ END:VCALENDAR
       // has to go first: SQLite refuses to drop a column an index is built on,
       // and although `recur` itself survives this rollback the index is what
       // the v15 step will put back.
+      // ...and no subscriptions (v16): the feed table, and the column on
+      // calendar_events with the index built on it.
+      await store.raw.execute('DROP TABLE calendar_feeds');
+      await store.raw.execute('DROP INDEX idx_events_feed');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');
       await store.raw.execute('DROP INDEX idx_tasks_recur');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_from');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_lead');

@@ -1527,6 +1527,15 @@ class CalendarEvent implements SyncRow {
   /// the todos planned into it) needs no special handling at all.
   final CalendarEvent? series;
 
+  /// The subscription this was written by, or null for an event made here.
+  ///
+  /// Non-null means **read-only**, and the column is how the app knows: the
+  /// feed is the authority for the row, so an edit made here would be undone
+  /// by the next refresh without a word. Every write path in the UI checks
+  /// [fromFeed] and offers nothing instead - which is also what makes it safe
+  /// for a feed to land in a calendar that has events of your own on it.
+  final String? feedUuid;
+
   final String createdAt;
   @override
   final String updatedAt;
@@ -1544,6 +1553,7 @@ class CalendarEvent implements SyncRow {
     this.allDay = false,
     this.recur,
     this.series,
+    this.feedUuid,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -1551,6 +1561,9 @@ class CalendarEvent implements SyncRow {
 
   @override
   bool get isDeleted => deletedAt != null;
+
+  /// Written by a subscription, and therefore not editable here.
+  bool get fromFeed => feedUuid != null;
 
   /// True for an occurrence that was expanded out of a series.
   bool get isOccurrence => series != null;
@@ -1626,6 +1639,7 @@ class CalendarEvent implements SyncRow {
         allDay: allDay,
         recur: recur,
         series: stored,
+        feedUuid: feedUuid,
         createdAt: createdAt,
         updatedAt: updatedAt,
         deletedAt: deletedAt,
@@ -1729,6 +1743,7 @@ class CalendarEvent implements SyncRow {
           clearNotify ? null : (notifyMinutes ?? base.notifyMinutes),
       allDay: allDay ?? base.allDay,
       recur: clearRecur ? null : (recur ?? base.recur),
+      feedUuid: base.feedUuid,
       createdAt: base.createdAt,
       updatedAt: updatedAt ?? nowStamp(),
       deletedAt: clearDeleted ? null : (deletedAt ?? base.deletedAt),
@@ -1746,6 +1761,7 @@ class CalendarEvent implements SyncRow {
         'notify_minutes': notifyMinutes,
         'all_day': allDay ? 1 : 0,
         'recur': recur,
+        'feed_uuid': feedUuid,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -1761,8 +1777,133 @@ class CalendarEvent implements SyncRow {
         notifyMinutes: (m['notify_minutes'] as num?)?.toInt(),
         allDay: ((m['all_day'] as num?)?.toInt() ?? 0) != 0,
         recur: m['recur'] as String?,
+        feedUuid: m['feed_uuid'] as String?,
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );
+}
+
+/// A calendar someone else publishes, subscribed to by its address.
+///
+/// The row is the *subscription*: where to fetch, which calendar the events
+/// land in, and whether they may notify. It syncs, so subscribing on one
+/// device subscribes every device, and each of them refreshes it - the events
+/// they write have derived ids (see feeds.dart), so two devices refreshing the
+/// same feed write the same rows rather than two copies.
+///
+/// [calendarUuid] can be a calendar made for the feed or one that already
+/// existed - a workspace's own, say. The events carry [CalendarEvent.feedUuid]
+/// either way, which is what keeps them read-only and what a refresh
+/// reconciles against, so they can share a calendar with events made here
+/// without either being mistaken for the other.
+///
+/// When it was last fetched is **not** here. That is a fact about one device,
+/// and writing it on every refresh would be a row synced every half hour by
+/// every device for nothing; it lives in device-local settings.
+class CalendarFeed implements SyncRow {
+  @override
+  final String uuid;
+  final String calendarUuid;
+  final String name;
+
+  /// The address as entered, `webcal://` and all. [fetchUri] is what is
+  /// actually requested.
+  final String url;
+
+  /// Whether its events may notify. Off by default: the phone with Google
+  /// Calendar on it is already going to alert for the same meeting, and two
+  /// alerts for one event is worse than none.
+  final bool alerts;
+
+  final String createdAt;
+  @override
+  final String updatedAt;
+  @override
+  final String? deletedAt;
+
+  const CalendarFeed({
+    required this.uuid,
+    required this.calendarUuid,
+    required this.name,
+    required this.url,
+    this.alerts = false,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+
+  @override
+  bool get isDeleted => deletedAt != null;
+
+  /// `webcal://` is only a hint to the OS about which app should open the
+  /// link; the calendar itself is served over https.
+  Uri? get fetchUri => feedUri(url);
+
+  CalendarFeed copyWith({
+    String? calendarUuid,
+    String? name,
+    String? url,
+    bool? alerts,
+    String? updatedAt,
+    String? deletedAt,
+  }) =>
+      CalendarFeed(
+        uuid: uuid,
+        calendarUuid: calendarUuid ?? this.calendarUuid,
+        name: name ?? this.name,
+        url: url ?? this.url,
+        alerts: alerts ?? this.alerts,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? nowStamp(),
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+
+  @override
+  Map<String, Object?> toMap() => {
+        'uuid': uuid,
+        'calendar_uuid': calendarUuid,
+        'name': name,
+        'url': url,
+        'alerts': alerts ? 1 : 0,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'deleted_at': deletedAt,
+      };
+
+  /// Every column nullable in the database and read with a default here, for
+  /// the reason `recur_from` is: the server's merge writes `row[field] ?? null`
+  /// for each column it knows, so NOT NULL on either side is one malformed peer
+  /// away from a constraint failure that aborts a whole merge.
+  static CalendarFeed fromMap(Map<String, Object?> m) => CalendarFeed(
+        uuid: m['uuid']! as String,
+        calendarUuid: (m['calendar_uuid'] as String?) ?? '',
+        name: (m['name'] as String?) ?? '',
+        url: (m['url'] as String?) ?? '',
+        alerts: ((m['alerts'] as num?)?.toInt() ?? 0) != 0,
+        createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
+        updatedAt: m['updated_at']! as String,
+        deletedAt: m['deleted_at'] as String?,
+      );
+}
+
+/// What a typed or pasted calendar address means, or null if it is not one.
+///
+/// `webcal://` and `webcals://` become https - they only exist to tell the OS
+/// which app should open the link. No scheme at all is taken as https, which
+/// is what every calendar service publishes on.
+Uri? feedUri(String input) {
+  var s = input.trim();
+  if (s.isEmpty) return null;
+  final lower = s.toLowerCase();
+  if (lower.startsWith('webcals://')) {
+    s = 'https://${s.substring(10)}';
+  } else if (lower.startsWith('webcal://')) {
+    s = 'https://${s.substring(9)}';
+  } else if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+    s = 'https://$s';
+  }
+  final uri = Uri.tryParse(s);
+  if (uri == null || uri.host.isEmpty) return null;
+  return uri;
 }

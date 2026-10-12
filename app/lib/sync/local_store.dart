@@ -57,6 +57,7 @@ class LocalStore {
     'journal_entries',
     'calendars',
     'calendar_events',
+    'calendar_feeds',
   ];
 
   /// [singleInstance] false forces a genuinely new database rather than a
@@ -70,7 +71,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 15,
+        version: 16,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -202,6 +203,22 @@ class LocalStore {
       await db.execute('ALTER TABLE tasks ADD COLUMN recur_notes TEXT');
       await db.execute(_tasksRecurIndex);
     }
+    if (from < 16) {
+      // Subscribed calendars. The subscription is a table of its own; its
+      // events are ordinary calendar_events rows marked with the feed that
+      // wrote them. Null is what every existing event means - made here - so
+      // there is nothing to backfill.
+      await db.execute(_calendarFeedsTable);
+      await db.execute('ALTER TABLE calendar_events ADD COLUMN feed_uuid TEXT');
+      await db.execute(_eventsFeedIndex);
+      // Pull everything once more. A protocol-1 build is not sent feed_uuid or
+      // the feeds table, and its cursor walked past those rows all the same;
+      // starting over is what brings them in now that it can store them. Ties
+      // are re-applied by applyRemote, so it fills in what was held back and
+      // changes nothing else.
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
+    }
   }
 
   /// Collapse every seeded "Tasks" workspace onto [defaultWorkspaceUuid].
@@ -321,11 +338,31 @@ class LocalStore {
         notify_minutes INTEGER,
         recur          TEXT,
         all_day        INTEGER NOT NULL DEFAULT 0,
+        feed_uuid      TEXT,
         created_at     TEXT NOT NULL,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,
         dirty          INTEGER NOT NULL DEFAULT 1
       )''';
+
+  /// Every column but the key and the stamps nullable, for the reason
+  /// `tasks.recur_from` is - see [CalendarFeed.fromMap].
+  static const _calendarFeedsTable = '''
+      CREATE TABLE calendar_feeds (
+        uuid          TEXT PRIMARY KEY,
+        calendar_uuid TEXT,
+        name          TEXT,
+        url           TEXT,
+        alerts        INTEGER,
+        created_at    TEXT,
+        updated_at    TEXT NOT NULL,
+        deleted_at    TEXT,
+        dirty         INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  /// A refresh asks for every row one feed wrote.
+  static const _eventsFeedIndex =
+      'CREATE INDEX idx_events_feed ON calendar_events (feed_uuid)';
 
   /// The v8 shape, kept verbatim for the upgrade path only. A database coming
   /// from v7 or earlier creates the table here and then has `recur` added by
@@ -506,6 +543,7 @@ class LocalStore {
     await db.execute(_journalTable);
     await db.execute(_calendarsTable);
     await db.execute(_calendarEventsTable);
+    await db.execute(_calendarFeedsTable);
 
     await db.execute('''
       CREATE TABLE side_thoughts (
@@ -537,6 +575,7 @@ class LocalStore {
     await db.execute(_calendarsWsIndex);
     await db.execute(_eventsCalendarIndex);
     await db.execute(_eventsStartIndex);
+    await db.execute(_eventsFeedIndex);
 
     // A first workspace, so the app is never in a state with nowhere to add a
     // task.
@@ -981,6 +1020,118 @@ class LocalStore {
     return CalendarEvent.fromMap(rows.first);
   }
 
+  Future<List<CalendarFeed>> calendarFeeds() async {
+    final rows = await _db.query('calendar_feeds',
+        where: 'deleted_at IS NULL', orderBy: 'created_at');
+    return rows.map(CalendarFeed.fromMap).toList();
+  }
+
+  /// Every live event one feed wrote, for unsubscribing.
+  Future<List<CalendarEvent>> feedEvents(String feedUuid) async {
+    final rows = await _db.query('calendar_events',
+        where: 'feed_uuid = ? AND deleted_at IS NULL', whereArgs: [feedUuid]);
+    return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  /// Make one feed's events in `[from, to)` exactly [rows], writing only what
+  /// differs.
+  ///
+  /// **Only what differs** is the property everything else rests on. Every
+  /// device holding the subscription refreshes it, and the rows have derived
+  /// ids, so the second device to fetch an unchanged feed computes rows it
+  /// already has from the first one's sync - and must write nothing, or each
+  /// refresh would push the whole calendar back to the server and wake every
+  /// other device to pull it.
+  ///
+  /// A row outside the window is left alone, whatever the feed now says.
+  /// Behind it, that is history: the feed is only expanded so far back, and an
+  /// old meeting falling out of the window is not a meeting that was
+  /// cancelled. Ahead of it, another device whose clock reads a little later
+  /// may have written an occurrence this one has not reached yet; removing it
+  /// would have the two of them taking turns.
+  Future<({int added, int changed, int removed})> applyFeedRows(
+    String feedUuid,
+    List<CalendarEvent> rows, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    var added = 0, changed = 0, removed = 0;
+    await _db.transaction((txn) async {
+      final existing = {
+        for (final r in await txn.query('calendar_events',
+            where: 'feed_uuid = ?', whereArgs: [feedUuid]))
+          r['uuid']! as String: r,
+      };
+      final stamp = nowStamp();
+      final wanted = <String>{};
+
+      for (final row in rows) {
+        wanted.add(row.uuid);
+        final map = row.toMap();
+        final old = existing[row.uuid];
+        if (old != null && old['deleted_at'] == null && _sameEvent(old, map)) {
+          continue;
+        }
+        await txn.insert(
+          'calendar_events',
+          {
+            ...map,
+            'created_at': old?['created_at'] ?? stamp,
+            'updated_at': stamp,
+            'deleted_at': null,
+            'dirty': 1,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        if (old == null || old['deleted_at'] != null) {
+          added++;
+        } else {
+          changed++;
+        }
+      }
+
+      final fromStamp = reminderStamp(from);
+      final toStamp = reminderStamp(to);
+      for (final old in existing.values) {
+        if (old['deleted_at'] != null || wanted.contains(old['uuid'])) continue;
+        final end = old['end_at']! as String;
+        final start = old['start_at']! as String;
+        if (end.compareTo(fromStamp) <= 0 || start.compareTo(toStamp) >= 0) {
+          continue;
+        }
+        await txn.update(
+          'calendar_events',
+          {'deleted_at': stamp, 'updated_at': stamp, 'dirty': 1},
+          where: 'uuid = ?',
+          whereArgs: [old['uuid']],
+        );
+        removed++;
+      }
+    });
+    return (added: added, changed: changed, removed: removed);
+  }
+
+  /// The columns a feed decides. The stamps are not among them - they say when
+  /// a row was written, and two devices write the same row at different times.
+  static const _feedColumns = [
+    'calendar_uuid',
+    'title',
+    'description',
+    'start_at',
+    'end_at',
+    'notify_minutes',
+    'all_day',
+    'recur',
+    'feed_uuid',
+  ];
+
+  static bool _sameEvent(Map<String, Object?> a, Map<String, Object?> b) {
+    for (final c in _feedColumns) {
+      if ('${a[c]}' != '${b[c]}') return false;
+    }
+    return true;
+  }
+
   Future<List<SideThought>> pendingThoughts() async {
     final rows = await _db.query('side_thoughts',
         where: 'resolved_at IS NULL AND deleted_at IS NULL',
@@ -1009,6 +1160,7 @@ class LocalStore {
   Future<void> putJournal(JournalEntry e) => put('journal_entries', e);
   Future<void> putCalendar(Calendar c) => put('calendars', c);
   Future<void> putEvent(CalendarEvent e) => put('calendar_events', e);
+  Future<void> putFeed(CalendarFeed f) => put('calendar_feeds', f);
 
   /// Focus mode is globally exclusive: flagging one task clears every other.
   Future<void> setInProgress(String uuid, bool value) async {
@@ -1184,8 +1336,25 @@ class LocalStore {
             if (compareStamps(remoteUpdated, localUpdated) < 0) continue;
           }
 
-          final row = Map<String, Object?>.from(remote)
+          // A column the server did not send is one it does not have - a pull
+          // is `SELECT *`, so a column it knows always comes back, null or not.
+          // Keep ours rather than letting the replace reset it to its default:
+          // a server one release behind would otherwise erase whatever the
+          // newer column holds every time a row comes back from it (a feed's
+          // events would stop being read-only, and the next refresh would
+          // rewrite every one of them, every time).
+          //
+          // And the other way round: a column *we* do not have is dropped. A
+          // newer server should not send one (it withholds what a client's
+          // protocol does not cover), but the insert failing on it would abort
+          // this whole merge, so one stray column would stop every row moving.
+          final known = await _columnsOf(txn, table);
+          final row = <String, Object?>{
+            if (existing.isNotEmpty) ...existing.first,
+            ...remote,
+          }
             ..remove('seq')
+            ..removeWhere((k, _) => !known.contains(k))
             ..['dirty'] = 0;
           await txn.insert(table, row,
               conflictAlgorithm: ConflictAlgorithm.replace);
@@ -1193,6 +1362,14 @@ class LocalStore {
       }
     });
   }
+
+  final _columns = <String, Set<String>>{};
+
+  Future<Set<String>> _columnsOf(DatabaseExecutor db, String table) async =>
+      _columns[table] ??= {
+        for (final c in await db.rawQuery('PRAGMA table_info($table)'))
+          c['name']! as String,
+      };
 
   /// Clear the dirty flag on rows the server accepted.
   ///

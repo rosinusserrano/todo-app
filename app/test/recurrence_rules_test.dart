@@ -487,6 +487,12 @@ void main() {
         'remind_at': reminderStamp(DateTime(2026, 8, 31, 9)),
         'recur': Recur.daily,
       });
+      // ...and no subscriptions (v16): the feed table, and the column on
+      // calendar_events with the index built on it.
+      await store.raw.execute('DROP TABLE calendar_feeds');
+      await store.raw.execute('DROP INDEX idx_events_feed');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');
       await store.raw.execute('DROP INDEX idx_tasks_recur');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_from');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN recur_lead');

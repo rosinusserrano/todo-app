@@ -4,7 +4,7 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
-import 'dart:async' show Timer;
+import 'dart:async' show Timer, unawaited;
 import 'dart:convert' show utf8;
 import 'dart:io' show File;
 
@@ -28,6 +28,7 @@ import 'sound/sound_service.dart';
 import 'sound/taskbar_transport.dart';
 import 'startup.dart';
 import 'sync/attachment_store.dart';
+import 'sync/feeds.dart';
 import 'sync/legacy_import.dart';
 import 'sync/ics.dart';
 import 'sync/local_store.dart';
@@ -40,6 +41,7 @@ import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
 import 'ui/calendar/calendar_view.dart';
 import 'ui/calendar/ics_import.dart';
+import 'ui/calendar/subscribe_form.dart';
 import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
 import 'ui/calendar/time_grid.dart' show hhmm, kGutter;
@@ -153,9 +155,17 @@ Future<void> main() async {
       // A journal entry merged in from another device should appear if the
       // journal is on screen; refreshJournal clears to empty when it is locked.
       if (state.showJournal) await state.refreshJournal();
+      // A subscription made on another device, and the events its refreshes
+      // wrote. Subscriptions sync so that every device keeps them fresh.
+      await state.loadFeeds();
+      if (state.showCalendar) await state.refreshCalendars();
     },
   );
   state.onMutated = sync.scheduleSync;
+  // Natively a calendar address is simply asked; a browser is refused the
+  // answer (calendar services send no CORS headers), so the web build has the
+  // sync server fetch it instead.
+  state.fetchFeed = isWeb ? sync.fetchFeedViaServer : fetchFeedDirect;
   await sync.load();
 
   final sound = SoundService(store);
@@ -446,6 +456,10 @@ class _WidgetShellState extends State<WidgetShell>
     await s.sweepRecurrences();
     await s.refreshSessions();
     await _ensurePinned();
+    // Last, and not awaited: a fetch can take seconds, and nothing else on
+    // this tick should wait on somebody else's calendar server. Due-ness is
+    // checked inside, so a tick with nothing due costs a comparison per feed.
+    unawaited(s.refreshFeeds());
   }
 
   /// Put the window back on top if Windows has taken it off.
@@ -623,9 +637,18 @@ class _WidgetShellState extends State<WidgetShell>
       loadTasks: () => s.tasksForEvent(event.uuid),
       loadAttachments: () => s.eventAttachments(event),
       offerWorkspace: s.workspaceForEvent(event) != null,
+      feedName: _feedNameFor(event),
     );
     if (action == null || !mounted) return;
     await _runEventAction(event, action);
+  }
+
+  /// The subscription a block came from, by name, or null for one made here.
+  /// A feed that has since been removed on another device still makes the
+  /// block read-only; it just has no name to give.
+  String? _feedNameFor(CalendarEvent event) {
+    if (!event.fromFeed) return null;
+    return s.feedByUuid(event.feedUuid)?.name ?? 'a subscribed calendar';
   }
 
   /// Right-click, or long-press on a phone. The same things the details card
@@ -669,13 +692,17 @@ class _WidgetShellState extends State<WidgetShell>
             Icons.checklist_rounded,
             'Go to workspace',
           ),
-        _menuItem(EventAction.edit, Icons.edit_outlined, 'Edit'),
-        _menuItem(
-          EventAction.delete,
-          Icons.delete_outline,
-          'Delete',
-          color: T.danger,
-        ),
+        // A subscribed block is the feed's to change, so the menu offers
+        // only what does not write to it - the details card's rule.
+        if (!event.fromFeed) ...[
+          _menuItem(EventAction.edit, Icons.edit_outlined, 'Edit'),
+          _menuItem(
+            EventAction.delete,
+            Icons.delete_outline,
+            'Delete',
+            color: T.danger,
+          ),
+        ],
       ],
     );
     if (action == null || !mounted) return;
@@ -705,6 +732,9 @@ class _WidgetShellState extends State<WidgetShell>
   }
 
   Future<void> _runEventAction(CalendarEvent event, EventAction action) async {
+    // Neither surface offers these on a subscribed block; this is the
+    // backstop for any path that one day does.
+    if (event.fromFeed && action != EventAction.openWorkspace) return;
     switch (action) {
       case EventAction.edit:
         await _editEvent(event);
@@ -1603,6 +1633,16 @@ class _WidgetShellState extends State<WidgetShell>
     s.toggleSession();
   }
 
+  /// The first time, straight to subscribing; after that, the list, which is
+  /// where subscribing another one is too.
+  Future<void> _subscriptions() async {
+    if (s.feeds.isEmpty) {
+      await showSubscribeForm(context, s);
+    } else {
+      await showSubscriptions(context, s);
+    }
+  }
+
   /// Bring in events from an .ics file another application produced.
   ///
   /// A file picker rather than the share sheet, and for now that is the whole
@@ -2078,6 +2118,7 @@ class _WidgetShellState extends State<WidgetShell>
           onCreate: _createEvent,
           onNewCalendar: () => _editCalendar(null),
           onImportIcs: _importIcs,
+          onSubscriptions: _subscriptions,
           onEditCalendar: (c) => _editCalendar(c),
           // Only where there is a list beside it to drag out of.
           onPlanTask: _layout.splitsCalendar

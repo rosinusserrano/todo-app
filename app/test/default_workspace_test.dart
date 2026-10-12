@@ -83,6 +83,12 @@ void main() {
       // Roll back so the next open runs the v9 migration. v9 adds no tables,
       // but v10 adds tasks.event_uuid, so that column (and the index on it,
       // which SQLite will not let the column be dropped under) has to go too.
+      // ...and no subscriptions (v16): the feed table, and the column on
+      // calendar_events with the index built on it.
+      await store.raw.execute('DROP TABLE calendar_feeds');
+      await store.raw.execute('DROP INDEX idx_events_feed');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');
       await store.raw.execute('DROP INDEX idx_tasks_event');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
       // v11 added notes and priority, which the migration would collide on.
@@ -237,6 +243,12 @@ void main() {
       // find "duplicates" to fold all over again. The first open just ran the
       // v10 step, so its column and index have to come back off before the
       // version does.
+      // ...and no subscriptions (v16): the feed table, and the column on
+      // calendar_events with the index built on it.
+      await store.raw.execute('DROP TABLE calendar_feeds');
+      await store.raw.execute('DROP INDEX idx_events_feed');
+      await store.raw
+          .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');
       await store.raw.execute('DROP INDEX idx_tasks_event');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN event_uuid');
       // v11 added notes and priority, which the migration would collide on.

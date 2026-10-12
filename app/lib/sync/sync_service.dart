@@ -27,6 +27,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'change_stream.dart';
+import 'feeds.dart' show FeedError;
 import 'local_store.dart';
 import 'protocol.dart';
 import 'models.dart' show newId;
@@ -163,6 +164,22 @@ class SyncService extends ChangeNotifier {
   /// the settings sheet. The same answer the loop uses, so an SSO session is
   /// refreshed here too rather than sending a stale token.
   Future<String?> bearer() => _bearer();
+
+  /// A calendar feed fetched through the server - the web build's only way to
+  /// reach one. See [SyncClient.fetchFeed].
+  Future<String> fetchFeedViaServer(Uri url) async {
+    final bearer = await _bearer();
+    if (!isConfigured || bearer == null) {
+      throw const FeedError('In the browser, calendars are fetched through '
+          'your sync server - set one up in Settings first.');
+    }
+    final client = SyncClient(baseUrl: baseUrl!, token: bearer);
+    try {
+      return await client.fetchFeed(url);
+    } finally {
+      client.dispose();
+    }
+  }
 
   /// The bearer for the next request.
   ///
@@ -549,7 +566,10 @@ class SyncService extends ChangeNotifier {
         SyncClient(baseUrl: baseUrl!, token: bearer, deviceId: _deviceId);
     SyncResult result;
     try {
-      result = await client.syncOnce(_store);
+      result = await client.syncOnce(
+        _store,
+        server: serverProtocol ?? identity?.protocol ?? ServerProtocol.legacy,
+      );
       // Only once per configuration, and only on the back of a sync that
       // already worked - so this is never the reason a sync is slow, and never
       // a request made against a server that just refused us.

@@ -7,6 +7,7 @@
 // which is what made focus mode survivable across restarts.
 
 import 'dart:async';
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:io' show File;
 import 'dart:ui' show Color;
 
@@ -16,6 +17,7 @@ import 'journal_crypto.dart';
 import 'task_variables.dart';
 import 'notifications.dart';
 import 'sync/attachment_store.dart';
+import 'sync/feeds.dart';
 import 'sync/ics.dart';
 import 'sync/local_store.dart';
 import 'sync/models.dart';
@@ -157,6 +159,7 @@ class AppState extends ChangeNotifier {
     await refreshTasks();
     await refreshThoughts();
     await restoreFocus();
+    await loadFeeds();
   }
 
   // -------------------------------------------------------------- sessions
@@ -331,6 +334,7 @@ class AppState extends ChangeNotifier {
       if (c.workspaceUuid != uuid) continue;
       await _store.putCalendar(c.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
+    await _dropFeedsOn(uuid, stamp);
 
     final ws = workspaces.firstWhere((w) => w.uuid == uuid);
     await _store.putWorkspace(ws.copyWith(deletedAt: stamp, updatedAt: stamp));
@@ -1994,6 +1998,7 @@ class AppState extends ChangeNotifier {
       await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
     await _store.putCalendar(c.copyWith(deletedAt: stamp, updatedAt: stamp));
+    await _dropFeedsOn(c.uuid, stamp);
     hiddenCalendars.remove(c.uuid);
     await refreshCalendars();
     await refreshTasks();
@@ -2168,10 +2173,313 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
+  // -------------------------------------------------------- subscriptions
+  //
+  // A subscribed calendar is a [CalendarFeed] row plus the events it wrote;
+  // feeds.dart has the reasoning. What lives here is the bookkeeping: when to
+  // fetch, what happened last time, and what subscribing and unsubscribing
+  // write.
+
+  /// Every live subscription. Loaded with the app, not with the calendar,
+  /// because refreshing them is not something the calendar has to be open for.
+  List<CalendarFeed> feeds = [];
+
+  /// How each feed's last refresh on *this device* went, keyed by feed uuid.
+  /// Device-local, in settings - see [CalendarFeed] for why it is not a column.
+  Map<String, FeedStatus> feedStatus = {};
+
+  /// How a feed's text is fetched, which depends on the platform (see
+  /// [FeedFetcher]). Null in tests that do not fetch, and on the web before a
+  /// sync server is set up - there is no way for a browser to fetch a calendar
+  /// without one.
+  FeedFetcher? fetchFeed;
+
+  /// The feeds being refreshed right now. A tick arriving while a slow fetch
+  /// is still out must not start a second one of the same feed.
+  final Set<String> _refreshing = {};
+
+  bool isRefreshingFeed(String uuid) => _refreshing.contains(uuid);
+
+  /// Subscriptions writing into [calendarUuid].
+  List<CalendarFeed> feedsOn(String calendarUuid) =>
+      [for (final f in feeds) if (f.calendarUuid == calendarUuid) f];
+
+  CalendarFeed? feedByUuid(String? uuid) {
+    for (final f in feeds) {
+      if (f.uuid == uuid) return f;
+    }
+    return null;
+  }
+
+  static String _feedKey(String uuid) => 'feed:$uuid';
+
+  Future<void> loadFeeds() async {
+    feeds = await _store.calendarFeeds();
+    for (final f in feeds) {
+      if (feedStatus.containsKey(f.uuid)) continue;
+      feedStatus[f.uuid] =
+          FeedStatus.decode(await _store.setting(_feedKey(f.uuid)));
+    }
+    feedStatus.removeWhere((k, _) => !feeds.any((f) => f.uuid == k));
+    notifyListeners();
+  }
+
+  /// Fetch a calendar address without subscribing to it, for the subscribe
+  /// form to show what is there. Throws a [FeedError] in words.
+  Future<String> previewFeed(String url) async {
+    final uri = feedUri(url);
+    if (uri == null) throw const FeedError('That is not a web address.');
+    final fetch = fetchFeed;
+    if (fetch == null) {
+      throw const FeedError('In the browser, subscribing goes through your '
+          'sync server - set one up in Settings first.');
+    }
+    return fetch(uri);
+  }
+
+  /// Subscribe to [url], into [calendarUuid] when given and otherwise into a
+  /// new calendar called [name] in [color].
+  ///
+  /// [text] is the fetch the form already made, so subscribing does not ask
+  /// the address twice.
+  Future<CalendarFeed?> subscribe({
+    required String url,
+    required String name,
+    String? calendarUuid,
+    String color = '#6c8cff',
+    bool alerts = false,
+    String? text,
+  }) async {
+    final trimmed = name.trim();
+    var target = calendarUuid;
+    if (target == null) {
+      final made = await saveCalendar(
+        name: trimmed.isEmpty ? 'Subscribed' : trimmed,
+        color: color,
+      );
+      if (made == null) return null;
+      target = made.uuid;
+    }
+    final stamp = nowStamp();
+    final feed = CalendarFeed(
+      uuid: newId(),
+      calendarUuid: target,
+      name: trimmed.isEmpty ? 'Subscribed' : trimmed,
+      url: url.trim(),
+      alerts: alerts,
+      createdAt: stamp,
+      updatedAt: stamp,
+    );
+    await _store.putFeed(feed);
+    await loadFeeds();
+    _mutated();
+    await refreshFeed(feed, text: text);
+    return feed;
+  }
+
+  /// Rename, retarget or change the alerts of a subscription. The events
+  /// follow on the refresh this triggers: they are the feed's rows, and the
+  /// refresh is what writes them.
+  Future<void> updateFeed(
+    CalendarFeed feed, {
+    String? name,
+    String? calendarUuid,
+    bool? alerts,
+  }) async {
+    final next = feed.copyWith(
+      name: name?.trim().isEmpty ?? true ? null : name!.trim(),
+      calendarUuid: calendarUuid,
+      alerts: alerts,
+    );
+    await _store.putFeed(next);
+    await loadFeeds();
+    _mutated();
+    await refreshFeed(next);
+  }
+
+  /// Stop subscribing: its events go, and so does the calendar it was given if
+  /// nothing else is on it.
+  ///
+  /// The calendar goes only when it is a standalone one holding nothing but
+  /// this feed's events - which is exactly the calendar subscribing made. A
+  /// feed that was merged into an existing calendar leaves that calendar and
+  /// everything you put on it alone.
+  Future<void> unsubscribe(CalendarFeed feed) async {
+    final stamp = nowStamp();
+    await _dropFeed(feed, stamp);
+
+    Calendar? calendar;
+    for (final c in await _store.calendars()) {
+      if (c.uuid == feed.calendarUuid) calendar = c;
+    }
+    final emptied = calendar != null &&
+        !calendar.isWorkspaceCalendar &&
+        (await _store.eventsOnCalendar(calendar.uuid)).isEmpty &&
+        !feeds.any((f) => f.calendarUuid == calendar!.uuid);
+    if (emptied) {
+      await deleteCalendar(calendar);
+    } else {
+      await refreshCalendars();
+    }
+    await refreshTasks();
+    await _rescheduleNotifications();
+    _mutated();
+  }
+
+  Future<void> _dropFeed(CalendarFeed feed, String stamp) async {
+    for (final e in await _store.feedEvents(feed.uuid)) {
+      await _releaseEventTasks(e.uuid);
+      await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
+    }
+    await _store.putFeed(feed.copyWith(deletedAt: stamp, updatedAt: stamp));
+    await _store.clearSetting(_feedKey(feed.uuid));
+    feedStatus.remove(feed.uuid);
+    await loadFeeds();
+  }
+
+  /// A calendar going away takes its subscriptions with it - otherwise the
+  /// next refresh would go on writing events into a calendar nobody can see.
+  Future<void> _dropFeedsOn(String calendarUuid, String stamp) async {
+    for (final f in await _store.calendarFeeds()) {
+      if (f.calendarUuid == calendarUuid) await _dropFeed(f, stamp);
+    }
+  }
+
+  /// Refresh every feed that is due, or all of them when [force]d.
+  ///
+  /// Called from the poll, so it is cheap when nothing is due: a comparison of
+  /// timestamps per feed, and no fetch at all.
+  Future<void> refreshFeeds({bool force = false, DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    for (final f in List.of(feeds)) {
+      if (force || (feedStatus[f.uuid] ?? const FeedStatus()).isDue(at)) {
+        await refreshFeed(f, now: at);
+      }
+    }
+  }
+
+  /// Fetch one feed and bring its events in line with it.
+  ///
+  /// A failure keeps what is there. A calendar that cannot be fetched for an
+  /// afternoon should go on showing this morning's meetings, not none.
+  Future<void> refreshFeed(CalendarFeed feed, {String? text, DateTime? now}) async {
+    if (!_refreshing.add(feed.uuid)) return;
+    final at = now ?? DateTime.now();
+    final before = feedStatus[feed.uuid] ?? const FeedStatus();
+    feedStatus[feed.uuid] = before.copyWith(triedAt: at);
+    notifyListeners();
+
+    FeedStatus result;
+    var wrote = false;
+    try {
+      if (!(await _store.calendars()).any((c) => c.uuid == feed.calendarUuid)) {
+        throw const FeedError('Its calendar was deleted.');
+      }
+      final uri = feed.fetchUri;
+      if (uri == null) throw const FeedError('That is not a web address.');
+      String body;
+      if (text != null) {
+        body = text;
+      } else {
+        final fetch = fetchFeed;
+        if (fetch == null) {
+          throw const FeedError('Needs a sync server to fetch through in the '
+              'browser.');
+        }
+        body = await fetch(uri);
+      }
+      final window = feedWindow(at);
+      final rows = feedRows(feed, body, from: window.from, to: window.to);
+      final applied = await _store.applyFeedRows(
+        feed.uuid,
+        rows,
+        from: window.from,
+        to: window.to,
+      );
+      wrote = applied.added + applied.changed + applied.removed > 0;
+      result = FeedStatus(
+        fetchedAt: at,
+        triedAt: at,
+        count: rows.length,
+      );
+    } on FeedError catch (e) {
+      result = before.copyWith(triedAt: at, error: e.message);
+    } catch (e) {
+      result = before.copyWith(triedAt: at, error: 'Could not read it: $e');
+    } finally {
+      _refreshing.remove(feed.uuid);
+    }
+
+    feedStatus[feed.uuid] = result;
+    await _store.setSetting(_feedKey(feed.uuid), result.encode());
+    if (wrote) {
+      if (showCalendar) await refreshEvents();
+      await refreshSessions();
+      await _rescheduleNotifications();
+      _mutated();
+    }
+    notifyListeners();
+  }
+
   // ---------------------------------------------------------------- tint
 
   Color get workspaceColor {
     final ws = currentWorkspace;
     return ws == null ? T.accent : T.parseHex(ws.color);
+  }
+}
+
+
+/// How a feed's refreshes have gone on this device.
+class FeedStatus {
+  const FeedStatus({this.fetchedAt, this.triedAt, this.error, this.count = 0});
+
+  /// The last refresh that worked.
+  final DateTime? fetchedAt;
+
+  /// The last attempt, worked or not.
+  final DateTime? triedAt;
+
+  /// Why the last attempt failed, or null when it did not.
+  final String? error;
+
+  /// How many occurrences the last good fetch had in the window.
+  final int count;
+
+  bool isDue(DateTime now) {
+    final last = triedAt;
+    if (last == null) return true;
+    return !now.isBefore(last.add(error == null ? feedInterval : feedRetry));
+  }
+
+  FeedStatus copyWith({DateTime? triedAt, String? error}) => FeedStatus(
+        fetchedAt: fetchedAt,
+        triedAt: triedAt ?? this.triedAt,
+        error: error,
+        count: count,
+      );
+
+  String encode() => jsonEncode({
+        'fetched': fetchedAt?.toUtc().toIso8601String(),
+        'tried': triedAt?.toUtc().toIso8601String(),
+        'error': error,
+        'count': count,
+      });
+
+  static FeedStatus decode(String? raw) {
+    if (raw == null) return const FeedStatus();
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      DateTime? at(Object? v) =>
+          v is String ? DateTime.tryParse(v)?.toLocal() : null;
+      return FeedStatus(
+        fetchedAt: at(m['fetched']),
+        triedAt: at(m['tried']),
+        error: m['error'] as String?,
+        count: (m['count'] as num?)?.toInt() ?? 0,
+      );
+    } catch (_) {
+      return const FeedStatus();
+    }
   }
 }

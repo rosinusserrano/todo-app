@@ -47,11 +47,13 @@ Future<EventAction?> showEventDetails(
   required Future<List<Task>> Function() loadTasks,
   required Future<List<Attachment>> Function() loadAttachments,
   bool offerWorkspace = false,
+  String? feedName,
 }) {
   return showFormSheet<EventAction>(
     context,
     builder: (context, layout) => _DetailsDialog(
       offerWorkspace: offerWorkspace,
+      feedName: feedName,
       event: event,
       calendarName: calendarName,
       color: color,
@@ -109,7 +111,13 @@ class _DetailsDialog extends StatefulWidget {
     required this.loadAttachments,
     required this.layout,
     this.offerWorkspace = false,
+    this.feedName,
   });
+
+  /// The subscription this event came from, or null for one made here. Set,
+  /// the card has nothing to offer but reading: Edit and Delete would both be
+  /// undone by the feed's next refresh.
+  final String? feedName;
 
   /// The block's calendar is a workspace's, so the card can take you to that
   /// workspace's list - which is usually the next question after "what is this
@@ -192,10 +200,11 @@ class _DetailsDialogState extends State<_DetailsDialog> {
       title: e.title,
       onClose: () => Navigator.pop(context),
       actions: [
-        FormSheet.dangerButton(
-          touch: touch,
-          onTap: () => Navigator.pop(context, EventAction.delete),
-        ),
+        if (widget.feedName == null)
+          FormSheet.dangerButton(
+            touch: touch,
+            onTap: () => Navigator.pop(context, EventAction.delete),
+          ),
         if (widget.offerWorkspace)
           FormSheet.plainButton(
             touch: touch,
@@ -203,12 +212,19 @@ class _DetailsDialogState extends State<_DetailsDialog> {
             label: 'Go to workspace',
             onTap: () => Navigator.pop(context, EventAction.openWorkspace),
           ),
-        FormSheet.saveButton(
-          touch: touch,
-          accent: widget.color,
-          label: 'Edit',
-          onTap: () => Navigator.pop(context, EventAction.edit),
-        ),
+        if (widget.feedName == null)
+          FormSheet.saveButton(
+            touch: touch,
+            accent: widget.color,
+            label: 'Edit',
+            onTap: () => Navigator.pop(context, EventAction.edit),
+          )
+        else
+          FormSheet.cancelButton(
+            touch: touch,
+            label: 'Close',
+            onTap: () => Navigator.pop(context),
+          ),
       ],
       child: SingleChildScrollView(
           child: Column(
@@ -223,6 +239,11 @@ class _DetailsDialogState extends State<_DetailsDialog> {
                   text: widget.calendarName,
                 ),
               ],
+              if (widget.feedName != null)
+                _Line(
+                  icon: Icons.sync_rounded,
+                  text: 'From ${widget.feedName} - read-only here',
+                ),
               _Line(
                 icon: Icons.schedule_rounded,
                 text: '$_when  ·  ${describeLength(e.end.difference(e.start))}',

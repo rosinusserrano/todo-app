@@ -36,6 +36,7 @@ import '../../sync/models.dart';
 import '../../theme.dart';
 import 'agenda_view.dart';
 import 'time_grid.dart';
+import 'time_swipe.dart';
 import 'year_view.dart';
 
 class CalendarView extends StatelessWidget {
@@ -49,6 +50,7 @@ class CalendarView extends StatelessWidget {
     required this.onNewCalendar,
     required this.onEditCalendar,
     required this.onImportIcs,
+    required this.onSubscriptions,
     this.onPlanTask,
   });
 
@@ -68,6 +70,10 @@ class CalendarView extends StatelessWidget {
 
   /// Bring events in from an .ics file another application produced.
   final VoidCallback onImportIcs;
+
+  /// Subscribing to a calendar by address, or the list of subscriptions once
+  /// there are any.
+  final VoidCallback onSubscriptions;
 
   /// A task was dragged out of the list beside the calendar and dropped on a
   /// block. Only wired up when the two really are side by side - see
@@ -177,6 +183,8 @@ class CalendarView extends StatelessWidget {
           onNewCalendar: onNewCalendar,
           onEditCalendar: onEditCalendar,
           onImportIcs: onImportIcs,
+          onSubscriptions: onSubscriptions,
+          subscribed: {for (final f in state.feeds) f.calendarUuid},
         ),
         if (block != null)
           _BlockStrip(
@@ -202,19 +210,9 @@ class CalendarView extends StatelessWidget {
           // belongs to nobody else.
           //
           // Unclamped, unlike the mode swipe it replaces: time has no ends.
+          // The page follows the finger and slides; see time_swipe.dart.
           child: layout.touch
-              ? GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onHorizontalDragEnd: (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    if (v.abs() < 220) return;
-                    // Leftwards - the content sliding away to the left - is
-                    // forwards, which is the direction every calendar on a
-                    // phone agrees on.
-                    state.stepCalendar(v < 0 ? 1 : -1);
-                  },
-                  child: _grid(layout),
-                )
+              ? TimeSwipe(onStep: state.stepCalendar, child: _grid(layout))
               : _grid(layout),
         ),
       ],
@@ -441,6 +439,8 @@ class _Header extends StatelessWidget {
     required this.onNewCalendar,
     required this.onEditCalendar,
     required this.onImportIcs,
+    required this.onSubscriptions,
+    this.subscribed = const {},
   });
 
   final String title;
@@ -471,6 +471,13 @@ class _Header extends StatelessWidget {
   final VoidCallback onNewCalendar;
   final void Function(Calendar) onEditCalendar;
   final VoidCallback onImportIcs;
+
+  /// Subscribing to a calendar by address, or the list of subscriptions once
+  /// there are any.
+  final VoidCallback onSubscriptions;
+
+  /// Calendars a subscription writes into, for the mark in the filter list.
+  final Set<String> subscribed;
 
   @override
   Widget build(BuildContext context) {
@@ -551,6 +558,8 @@ class _Header extends StatelessWidget {
               onNewCalendar: onNewCalendar,
               onEditCalendar: onEditCalendar,
               onImportIcs: onImportIcs,
+              onSubscriptions: onSubscriptions,
+              subscribed: subscribed,
               size: layout.tapTarget,
               iconSize: layout.actionIcon,
               blocking: blocking,
@@ -641,12 +650,13 @@ class _Header extends StatelessWidget {
             onNewCalendar: onNewCalendar,
             onEditCalendar: onEditCalendar,
             onImportIcs: onImportIcs,
+            onSubscriptions: onSubscriptions,
+            subscribed: subscribed,
           ),
         ],
       ),
     );
   }
-
 }
 
 /// The view mode as one chip on touch: the current letter, and a tap moves to
@@ -738,14 +748,20 @@ class _IconBtn extends StatelessWidget {
         child: size == null
             ? Padding(
                 padding: const EdgeInsets.all(4),
-                child: Icon(icon,
-                    size: iconSize ?? 16, color: active ? T.accent : T.muted),
+                child: Icon(
+                  icon,
+                  size: iconSize ?? 16,
+                  color: active ? T.accent : T.muted,
+                ),
               )
             : SizedBox(
                 width: size,
                 height: size,
-                child: Icon(icon,
-                    size: iconSize ?? 16, color: active ? T.accent : T.muted),
+                child: Icon(
+                  icon,
+                  size: iconSize ?? 16,
+                  color: active ? T.accent : T.muted,
+                ),
               ),
       ),
     );
@@ -755,10 +771,7 @@ class _IconBtn extends StatelessWidget {
 /// D / W / Y on desktop - touch gets [_ModeCycle]. Three letters rather than a dropdown: switching view is the most
 /// frequent thing done up here, and a menu would put two taps behind it.
 class _ModeSwitch extends StatelessWidget {
-  const _ModeSwitch({
-    required this.mode,
-    required this.onMode,
-  });
+  const _ModeSwitch({required this.mode, required this.onMode});
 
   final CalendarViewMode mode;
   final void Function(CalendarViewMode) onMode;
@@ -786,7 +799,10 @@ class _ModeSwitch extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   child: Text(
                     m.name[0].toUpperCase(),
                     style: TextStyle(
@@ -816,6 +832,8 @@ class _FilterMenu extends StatelessWidget {
     required this.onNewCalendar,
     required this.onEditCalendar,
     required this.onImportIcs,
+    required this.onSubscriptions,
+    this.subscribed = const {},
     this.size,
     this.iconSize,
     this.blocking = false,
@@ -844,6 +862,13 @@ class _FilterMenu extends StatelessWidget {
   final void Function(Calendar) onEditCalendar;
   final VoidCallback onImportIcs;
 
+  /// Subscribing to a calendar by address, or the list of subscriptions once
+  /// there are any.
+  final VoidCallback onSubscriptions;
+
+  /// Calendars a subscription writes into, for the mark in the filter list.
+  final Set<String> subscribed;
+
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<Object>(
@@ -861,6 +886,8 @@ class _FilterMenu extends StatelessWidget {
           onNewCalendar();
         } else if (value == 'import') {
           onImportIcs();
+        } else if (value == 'subscribe') {
+          onSubscriptions();
         } else if (value is String) {
           onToggleHidden(value);
         }
@@ -884,8 +911,11 @@ class _FilterMenu extends StatelessWidget {
             height: 40,
             child: Row(
               children: [
-                Icon(Icons.bolt,
-                    size: 15, color: blocking ? T.accent : T.muted),
+                Icon(
+                  Icons.bolt,
+                  size: 15,
+                  color: blocking ? T.accent : T.muted,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -949,6 +979,11 @@ class _FilterMenu extends StatelessWidget {
                     style: const TextStyle(fontSize: T.fsLabel),
                   ),
                 ),
+                if (subscribed.contains(c.uuid))
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 3),
+                    child: Icon(Icons.sync_rounded, size: 12, color: T.muted),
+                  ),
                 // Only standalone calendars are editable here - a workspace
                 // calendar's name and colour belong to the workspace.
                 if (!c.isWorkspaceCalendar)
@@ -985,6 +1020,22 @@ class _FilterMenu extends StatelessWidget {
               Icon(Icons.file_download_outlined, size: 14, color: T.muted),
               SizedBox(width: 8),
               Text('Import .ics…', style: TextStyle(fontSize: T.fsLabel)),
+            ],
+          ),
+        ),
+        PopupMenuItem<Object>(
+          value: 'subscribe',
+          height: 34,
+          child: Row(
+            children: [
+              const Icon(Icons.sync_rounded, size: 14, color: T.muted),
+              const SizedBox(width: 8),
+              Text(
+                subscribed.isEmpty
+                    ? 'Subscribe to a calendar…'
+                    : 'Subscriptions…',
+                style: const TextStyle(fontSize: T.fsLabel),
+              ),
             ],
           ),
         ),

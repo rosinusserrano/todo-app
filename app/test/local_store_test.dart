@@ -236,10 +236,11 @@ void main() {
 
     expect(task.text, 'written before reminders existed');
     expect(task.remindAt, isNull);
-    // Everything else has to come through untouched, including the sync
-    // cursor - resetting it would re-pull the entire history from the server.
+    // Everything else has to come through untouched. The sync cursor is the
+    // one exception, and only once: v16 starts it over so a build that was
+    // too old to be sent feed_uuid gets it now (see the v16 upgrade).
     expect((await store.workspaces()).single.name, 'Work');
-    expect(await store.cursor(), 7);
+    expect(await store.cursor(), 0);
 
     // The new column has to be writable, not merely present.
     final at = DateTime.now().add(const Duration(minutes: 5));

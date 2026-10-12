@@ -21,6 +21,7 @@ import { publish, subscribe } from './events.js';
 import { adminOnly, middleware } from './auth.js';
 import { DB_PATH, HOST, PORT, WEB_ROOT, loadSecret } from './config.js';
 import { MIN_CLIENT, PROTOCOL } from './protocol.js';
+import { FeedError, fetchFeed } from './feeds.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
   deleteSubscription,
@@ -183,7 +184,9 @@ app.post('/api/sync', middleware(auth), (req, res, next) => {
       db,
       req.userId,
       req.body.since ?? 0,
-      req.body.changes ?? {}
+      req.body.changes ?? {},
+      // Absent is 1, as everywhere: every app from before the field existed.
+      Number.isInteger(req.body.protocol) ? req.body.protocol : 1
     );
     res.json(result);
 
@@ -237,6 +240,27 @@ app.get('/api/me', middleware(auth), (req, res) => {
     protocol: PROTOCOL,
     minClient: MIN_CLIENT,
   });
+});
+
+// ------------------------------------------------------------- calendar feeds
+//
+// A subscribed calendar, fetched for a browser that cannot fetch it itself -
+// see feeds.js for why, and for what keeps this from being a way to make the
+// server request arbitrary addresses. The client parses the text; nothing here
+// is stored.
+
+const FEEDS_ALLOW_PRIVATE = process.env.TODO_FEED_ALLOW_PRIVATE === '1';
+
+app.get('/api/feed', middleware(auth), async (req, res, next) => {
+  try {
+    const text = await fetchFeed(req.query.url, { allowPrivate: FEEDS_ALLOW_PRIVATE });
+    res.type('text/calendar; charset=utf-8').send(text);
+  } catch (err) {
+    if (err instanceof FeedError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    next(err);
+  }
 });
 
 // ------------------------------------------------------------------ web push

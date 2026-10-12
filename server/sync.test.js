@@ -1212,3 +1212,80 @@ test('auth rejects a missing, malformed or wrong token', async () => {
   // row was written by, so an existing setup keeps its data.
   assert.equal(await identify(req('Bearer correct-horse'), config), LAN_USER);
 });
+
+function subscribed(db) {
+  sync(db, USER, 0, {
+    calendar_feeds: [
+      {
+        uuid: 'f1',
+        calendar_uuid: 'cal-1',
+        name: 'Work',
+        url: 'webcal://example.com/basic.ics',
+        alerts: 0,
+        created_at: '2026-10-11T10:00:00+02:00',
+        updated_at: '2026-10-11T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+    calendar_events: [
+      {
+        uuid: 'e1',
+        calendar_uuid: 'cal-1',
+        title: 'Standup',
+        description: '',
+        start_at: '2026-10-12T07:00:00.000Z',
+        end_at: '2026-10-12T07:15:00.000Z',
+        notify_minutes: -1,
+        recur: null,
+        all_day: 0,
+        feed_uuid: 'f1',
+        created_at: '2026-10-11T10:00:00+02:00',
+        updated_at: '2026-10-11T10:00:00+02:00',
+        deleted_at: null,
+      },
+    ],
+  });
+}
+
+test('a subscription and the events it wrote round-trip, feed and all', async () => {
+  const db = freshDb();
+  subscribed(db);
+
+  // A second device starting from nothing gets both, and the event still says
+  // which feed wrote it - which is what keeps it read-only over there.
+  const { changes } = sync(db, USER, 0, {});
+  assert.equal(changes.calendar_feeds.length, 1);
+  assert.equal(changes.calendar_feeds[0].url, 'webcal://example.com/basic.ics');
+  assert.equal(changes.calendar_events[0].feed_uuid, 'f1');
+});
+
+test('an app on protocol 1 is sent nothing it has no column for', async () => {
+  // It inserts pulled rows verbatim: one unknown column fails its whole merge,
+  // and that device stops receiving anything at all.
+  const db = freshDb();
+  subscribed(db);
+
+  const { changes } = sync(db, USER, 0, {}, 1);
+  assert.equal(changes.calendar_feeds, undefined);
+  assert.equal(changes.calendar_events.length, 1);
+  assert.equal('feed_uuid' in changes.calendar_events[0], false);
+  assert.equal(changes.calendar_events[0].title, 'Standup');
+});
+
+test('an edit from a protocol-1 app keeps the column it never saw', async () => {
+  const db = freshDb();
+  subscribed(db);
+
+  const { changes } = sync(db, USER, 0, {}, 1);
+  const edited = {
+    ...changes.calendar_events[0],
+    title: 'Standup (moved)',
+    updated_at: '2026-10-11T11:00:00+02:00',
+  };
+  delete edited.seq;
+  sync(db, USER, 0, { calendar_events: [edited] }, 1);
+
+  const after = sync(db, USER, 0, {}).changes.calendar_events[0];
+  assert.equal(after.title, 'Standup (moved)');
+  assert.equal(after.feed_uuid, 'f1');
+});

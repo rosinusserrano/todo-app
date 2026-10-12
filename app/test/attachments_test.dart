@@ -316,6 +316,12 @@ void main() {
     // attachments table, no journal_entries (which arrived in v5) and no
     // calendars (v8). Dropping them is what makes the reopen exercise the real
     // upgrade path rather than colliding on a table _create already made.
+    // ...and no subscriptions (v16): the feed table, and the column on
+    // calendar_events with the index built on it.
+    await store.raw.execute('DROP TABLE calendar_feeds');
+    await store.raw.execute('DROP INDEX idx_events_feed');
+    await store.raw
+        .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');
     await store.raw.execute('DROP TABLE attachments');
     await store.raw.execute('DROP TABLE journal_entries');
     await store.raw.execute('DROP TABLE calendars');

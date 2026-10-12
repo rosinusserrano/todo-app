@@ -1213,6 +1213,9 @@ Wishes with no design behind them yet. Once one has a shape, it moves to
 reminders are both there now**, queued for 0.18.0.
 
 - Light theme / theme toggle.
+- **Thoughts on the title bar**, beside the calendar and the shopping list,
+  instead of the phone's view bar - part of a wider design rework Marco has in
+  mind (2026-10-12).
 - Configurable shortcut combinations (currently fixed at Ctrl+Alt+T / Ctrl+Alt+H).
 - **Syncing attachment bytes.** Needs a second channel beside the JSON sync —
   `PUT/GET /blob/:sha256`, content-addressed, plus an upload/download queue with

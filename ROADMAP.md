@@ -9,6 +9,102 @@ work that is about to happen.
 
 ## In progress
 
+### The shopping list — agreed 2026-10-12
+
+Asked for and settled with Marco on 2026-10-12. Build order is TODO 57.
+
+**What it is.** One throwaway list that is not a workspace: a shopping list, a
+packing list, "things to ask the landlord". There is **at most one current
+list**. While it exists, the app **opens on it** every time it is opened -
+phone, web or desktop. It is not a lock: Tasks, the calendar and everything
+else are one tap away, as usual. Opening the app again puts you back on the
+list, though, because looking for it in the shop is the thing this exists to
+stop. When it is done you **finish** it, it is archived, and the next list
+starts empty. You throw it away, like a paper shopping list.
+
+**Where it lives: an icon on the title bar, beside the calendar's**, on every
+platform. It belongs to no workspace, and like the calendar it takes the whole
+content area while it is open. It is not a fifth entry on the phone's view bar.
+(Marco wants Thoughts to move up there too eventually. That waits for a design
+rework, and is in FEATURES.md's backlog.)
+
+**Two modes, and the switch is big.**
+- **Use** (the default whenever the list has items): just the items, with large
+  tap targets. A tap ticks an item. No editing, no delete, no menu on the row -
+  in a shop the hand is full and the screen is half-looked-at, and a mis-tap
+  must not cost anything.
+- **Edit**: an add field at the top (Enter adds and keeps the caret, as the
+  task add field does), retitle by tapping, ✕ to delete, drag to reorder, and
+  rename the list. A new, empty list opens straight in Edit.
+- One prominent **Edit / Done** button in the header switches between them,
+  not a pencil in a menu.
+
+**Ticked items slide down, not away.** Unticked items are on top, in your
+order. A tick animates the row down into a **Ticked** section below, greyed and
+struck through, newest first. Tapping one there unticks it and it slides back
+to its old place. Nothing goes to History. Items are **text only**: "2× milk"
+is text.
+
+**Finishing archives it.** A **Finished** button sits in the header. It is the
+prominent action once everything is ticked, and still available before that,
+since leaving the shop without the tomatoes is allowed. Finishing stamps the
+list as archived, exactly as it is, ticks and all, and the screen shows the
+empty start: "New list". The archive is not something you go back to often, so
+the way in is deliberately quiet: a small "Archived lists →" in muted text at
+the top of the screen. It opens a read-only list of past lists, newest first,
+each one tappable to read and deletable. There is no "use again": a new list is
+a new list.
+
+```
+┌──────────────────────────────┐
+│ Archived lists →             │
+│ Shopping   [Finished] [Edit] │
+│                              │
+│  ○  Milk                     │
+│  ○  Bread                    │
+│  ○  Tomatoes                 │
+│                              │
+│  Ticked · 2  ───────────────│
+│  ●  E̶g̶g̶s̶                     │
+│  ●  C̶o̶f̶f̶e̶e̶                   │
+└──────────────────────────────┘
+```
+
+**When "opening the app" counts: every return.** Moving around *inside* the app
+never sends you back - go and look at Tasks, come back when you like. But each
+time the app comes back from the background, the screen locking, another app,
+the Home Screen, it opens on the list. A cold start, or a reload of the web
+page, obviously counts too. On the phone and the web this is Flutter's lifecycle
+`resumed` (on the web that is `visibilitychange`, so switching back to the
+browser tab counts as well). The **desktop widget** is the exception: it is
+always open and gains and loses focus constantly, so focus changes do not
+count (the same reason `SyncService.resume` is rate-limited). What counts there
+is launch, and the window being shown again from the tray or from being
+minimised. "Opens on it" means the shell closes whatever view or calendar
+was showing and shows the list. A half-typed field is the only thing it leaves
+alone, the way `_closeAdd` already refuses to fold one.
+
+**Synced.** You write the list at the desk and it has to be open on the phone in
+the shop. The *current* list is "the newest list that is not archived". That is
+a rule every device can work out for itself, so nothing like
+`enforceSingleInProgress` is needed on the server. Two devices each starting a
+list offline is the one way to end up with two open lists. The older one is
+then not lost: it shows as a line above the items ("Also open: Hardware - open
+/ finish"), and is otherwise left alone.
+
+**Its own tables, not tasks.**
+- `lists`: uuid, name, archived_at, created/updated/deleted.
+- `list_items`: uuid, list_uuid, text, checked_at, sort_order,
+  created/updated/deleted.
+- Reusing tasks would inherit everything an item does not have: History,
+  reminders, focus, repeats, the reminder sweep, Parked. A workspace of kind
+  "list" would get a calendar provisioned for it, because every workspace gets
+  one.
+- Two tables means client v17 and **wire protocol 3**, with both tables in
+  `TABLE_SINCE`. That is the case the protocol-2 fix (TODO 56.4) was for: an
+  older app is not sent the tables and keeps working, and a v17 app holds the
+  tables back from a server below 3, as it does `calendar_feeds` below 2.
+
 ### Capture should be fast — agreed 2026-10-08
 
 Marco: adding a task and adding a thought "should be engineered such that it

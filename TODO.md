@@ -35,9 +35,6 @@ Asked for 2026-10-12. Worked on in the **`redesign` branch**, checked out as the
 worktree `../todo-app-redesign`, and tried on the phone at the dev site (see
 58.1). Reasoning is in `ROADMAP.md` under *The redesign*.
 
-- [x] **58.2b** A fourth, narrow ＋ segment: Add a task / Add a thought (the
-      quick actions). The slide-right add/write on Tasks and Thoughts went
-      with it; slide-right is now only Edit on a workspace.
 - [x] **58.1** A dev copy of everything: `server/setup-dev.sh <domain>` - a
       second server on a snapshot of the live database, its own web root, a
       Caddy site. Publish with `server/build-web.sh /srv/todo-dev-web`.
@@ -48,6 +45,9 @@ worktree `../todo-app-redesign`, and tried on the phone at the dev site (see
       phone - workspace / where / more - press, slide up, let go; slide right
       for a row's second action. Replaces the workspace bar, the view bar and
       the title bar's calendar / list / settings buttons on touch.
+- [x] **58.2b** A fourth, narrow ＋ segment: Add a task / Add a thought (the
+      quick actions). The slide-right add/write on Tasks and Thoughts went
+      with it; slide-right is now only Edit on a workspace.
 - [x] **58.3** Rows without tiles (`ui/list_rule.dart`): tasks, notes, thoughts.
 - [ ] **58.4** Marco tries 58.2-58.3 on the phone; changes from that.
 - [ ] **58.5** The rest of the tiles: parked group cards, the add field's box,

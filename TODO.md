@@ -60,8 +60,8 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       into the home indicator's strip (`Dock.underhang`), dimmed segments fade
       their fill not their label, counts in the segment corner, the menu's
       "current" bar no longer shifts its row, no window frame on touch, the
-      list's add field unboxed. On the dev site, not on `main` yet.
-- [ ] **58.9** Marco tries 58.8 on the dev site; merge to `main` when agreed.
+      list's add field unboxed.
+- [x] **58.9** Marco tried 58.8 on the dev site; merged to `main` 2026-10-13.
 - [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
       forms, the task action bar.
 - [ ] **58.6** Decide what the desktop and the narrow window get (the dock is

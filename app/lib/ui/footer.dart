@@ -36,6 +36,7 @@ import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'list_rule.dart';
+import 'panel_header.dart';
 import 'thought_pressure.dart';
 
 class ThoughtFooter extends StatefulWidget {
@@ -445,16 +446,12 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (selection.isEmpty)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(T.s3, 2, T.s3, T.s2),
-                child: Text(
-                  'Parked thoughts',
-                  style: TextStyle(
-                    fontSize: T.fsLabel,
-                    color: T.muted,
-                    fontWeight: T.wMedium,
-                  ),
-                ),
+              // The same header every other view has. It used to be a small
+              // grey "Parked thoughts", the one view titled in a different
+              // voice from the rest - and "parked" is the shelves' word.
+              PanelHeader(
+                title: 'Thoughts',
+                count: widget.thoughts.isEmpty ? null : widget.thoughts.length,
               )
             else
               _selectionBar(selection.length, layout),

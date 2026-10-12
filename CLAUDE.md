@@ -376,6 +376,10 @@ about it are load-bearing:
   `OverlayPortal` placed with `localToGlobal(ancestor: overlay)`; pointer
   positions are screen pixels and the overlay is in layout units, with
   `UiScale` between them.
+- **The dock paints below its own box** (`Dock.underhang`, the bottom
+  inset recorded in `build` before the SafeArea eats it), so its colours run
+  under the home indicator. That only shows because `_shell`'s Stack is
+  `Clip.none`; clip it again and the strip goes back to bare window.
 - **The dock is always the second child of `_body`'s `Column`**, after the
   `Expanded` body, so it appearing and disappearing (`_takesScreen`) never
   moves the body to another index - the content_slot lesson again.
@@ -1383,7 +1387,12 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   by a timeout on purpose — a hung stop must not be why the app cannot quit.
 - **Design tokens live in `theme.dart` (`T.*`) and nothing may pick its own
   number.** One radius (`T.radius`), one spacing scale (`T.s1`-`T.s5`), four
-  type sizes (`T.fsBody`/`fsLabel`/`fsMeta`/`fsMenu`) and two weights. There
+  type sizes (`T.fsBody`/`fsLabel`/`fsMeta`/`fsMenu`) plus `T.fsTitle` for a
+  view's name and nothing else, and two weights. Two faces: the platform one
+  for body text and `T.fontDisplay` (Space Grotesk, bundled in
+  `assets/fonts`, Regular and Medium only) for what names things - view
+  titles, counts, the dock, group titles. Text on a solid colour is
+  `T.inkOn(fill)`, a deep shade of the fill's hue, never black. There
   were six radii and six sizes inside a 4.5-point range before 0.27.0, which is
   what "too standard productivity app" turned out to mean. Two escapes exist
   and both are documented at the token: `T.wStrong` for **content** emphasis

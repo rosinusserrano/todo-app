@@ -937,6 +937,14 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - It replaces the workspace pill at the top, the old four-icon bar, and the
   calendar, list and settings buttons on the title bar. It stays put over the
   calendar and the list, so leaving either is picking where to go.
+- **The bar reaches the bottom edge.** Under the iPhone's home indicator the
+  four parts carry on in their own colours, rather than stopping above a band
+  of bare background.
+- **Text on a colour is that colour, deeper**: a pastel red workspace is
+  labelled in a deep red, a mint one in deep green - never plain black.
+- **Every view has a title**, large, with how many things are in it: the task
+  list under the workspace's name (in its colour), then Parked, Notes,
+  Thoughts, History, the shopping list.
 - **Lists without boxes.** Tasks, notes and thoughts are no longer tiles: each
   row sits on the window's own colour, with a short bar between rows that stops
   before the edges. A row is filled only when the fill says something -
@@ -1293,6 +1301,13 @@ reminders are both there now**, queued for 0.18.0.
     right on a workspace to edit it. See *Getting around on a phone*.
   - **No more tiles**: tasks, notes and thoughts are separated by short bars
     instead of each sitting in its own box.
+  - **A second design pass**: every view opens under a large title with its
+    count (the task list under its workspace's name, in its colour); titles,
+    the bottom bar and group names are set in Space Grotesk; parked groups are
+    sections with the title on its own line and the controls in one column
+    under it; History lost its strike-through; the bottom bar runs down under
+    the iPhone's home indicator; labels on a coloured block are a deep shade
+    of that colour instead of black; no more frame around the app on a phone.
   - **Shopping list**: one throwaway list on the title bar that the app opens
     on every time, with a tick-only mode for the shop, ticked items that slide
     down, and Finished to archive it. Needs the server updated (protocol 3).

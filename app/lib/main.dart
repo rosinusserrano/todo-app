@@ -49,6 +49,7 @@ import 'ui/content_slot.dart';
 import 'ui/dock.dart';
 import 'ui/footer.dart';
 import 'ui/journal_panel.dart';
+import 'ui/list_rule.dart';
 import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
 import 'ui/session_view.dart';
@@ -1403,6 +1404,7 @@ class _WidgetShellState extends State<WidgetShell>
   @override
   Widget build(BuildContext context) {
     final ws = s.workspaceColor;
+    _bottomInset = isDesktop ? 0 : MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1496,17 +1498,30 @@ class _WidgetShellState extends State<WidgetShell>
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
+          // The rounded, bordered frame is a desktop window's: it is what
+          // tells this widget apart from whatever is behind it. A phone has
+          // nothing behind it - the app *is* the screen - and there the frame
+          // was a hairline box drawn round the whole app, the one tile left
+          // after every other one was taken away.
           decoration: BoxDecoration(
             color: _neutralChrome
                 ? T.calendarBackground
                 : T.tintedBackground(ws),
-            borderRadius: BorderRadius.circular(T.radius),
-            border: Border.all(
-              color: _neutralChrome ? T.calendarBorder : T.tintedBorder(ws),
-            ),
+            borderRadius: isDesktop
+                ? BorderRadius.circular(T.radius)
+                : BorderRadius.zero,
+            border: isDesktop
+                ? Border.all(
+                    color: _neutralChrome
+                        ? T.calendarBorder
+                        : T.tintedBorder(ws),
+                  )
+                : null,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(T.radius),
+            borderRadius: isDesktop
+                ? BorderRadius.circular(T.radius)
+                : BorderRadius.zero,
             child: _inset(
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -1528,6 +1543,10 @@ class _WidgetShellState extends State<WidgetShell>
   Widget _shell(Color ws) {
     return Stack(
       key: _stackKey,
+      // Not clipped: the dock paints its colours down into the home
+      // indicator's strip, which is outside this box (the SafeArea above
+      // keeps it out). The window's own ClipRRect is still the edge.
+      clipBehavior: Clip.none,
       children: [
         // Panels keep their layout and only fade, which is what lets the tile
         // fly back to the exact row it came from.
@@ -1666,6 +1685,11 @@ class _WidgetShellState extends State<WidgetShell>
   /// On desktop there is nothing to avoid, and a SafeArea there would add the
   /// window's own insets back into a layout that already accounts for them.
   Widget _inset(Widget child) => isDesktop ? child : SafeArea(child: child);
+
+  /// The bottom inset that [_inset] keeps the content out of - recorded so
+  /// the dock can paint down into it. Read in [build], outside the SafeArea,
+  /// which is the only place it is still in the MediaQuery.
+  double _bottomInset = 0;
 
   Future<void> _togglePin() async {
     await windowManager.setAlwaysOnTop(!_pinned);
@@ -2227,11 +2251,12 @@ class _WidgetShellState extends State<WidgetShell>
 
     return Dock(
       height: 52,
+      underhang: _bottomInset,
       segments: [
         DockSegment(
           label: current?.name ?? 'Workspace',
           fill: ws,
-          ink: dockInkOn(ws),
+          ink: T.inkOn(ws),
           dimmed: s.showCalendar || s.showList,
           semanticLabel: 'Workspace: ${current?.name ?? ''}',
           items: [
@@ -2624,6 +2649,18 @@ class _WidgetShellState extends State<WidgetShell>
         constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),
         child: Column(
           children: [
+            // On a phone the workspace's name is otherwise only in the dock,
+            // at the far end of the screen from the list it names. Every
+            // other view opens under its own title, so the list does too -
+            // in the workspace's colour, which is the one thing that makes
+            // "Work" mean that workspace. Kept while selecting, so the list
+            // below it keeps its place in this Column (and its scroll).
+            if (_dockLayout)
+              PanelHeader(
+                title: s.currentWorkspace?.name ?? 'Tasks',
+                color: ws,
+                count: s.tasks.isEmpty ? null : s.tasks.length,
+              ),
             if (_selectedTasks.isNotEmpty)
               SelectionBar(
                 count: _selectedTasks.length,
@@ -3354,40 +3391,60 @@ class _WidgetShellState extends State<WidgetShell>
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: T.s2),
                   itemCount: s.historyTasks.length,
                   itemBuilder: (context, i) {
                     final t = s.historyTasks[i];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: T.s1),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              t.text,
-                              style: const TextStyle(
-                                fontSize: T.fsLabel,
-                                color: T.muted,
-                                decoration: TextDecoration.lineThrough,
+                    // The same row shape as the list it came from - content
+                    // at T.s4, a rule between - minus the strike-through:
+                    // everything in History is done, so crossing each one out
+                    // said the one thing the title already says, on every row.
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (i > 0) const ListRule(),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            T.s4,
+                            T.s3,
+                            T.s4,
+                            T.s3,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  t.text,
+                                  style: const TextStyle(
+                                    fontSize: T.fsBody,
+                                    color: T.muted,
+                                    height: 1.35,
+                                  ),
+                                ),
                               ),
-                            ),
+                              // The only place a repeat with no open
+                              // occurrence can be reached. A
+                              // completion-anchored task is invisible between
+                              // being ticked and coming back, and a scheduled
+                              // one is invisible until its lead - so without
+                              // this the way to stop a repeat would be to wait
+                              // for it to come round again.
+                              if (t.recur != null) _stopRepeatingButton(t),
+                              const SizedBox(width: T.s2),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  _formatWhen(t.completedAt),
+                                  style: const TextStyle(
+                                    fontSize: T.fsMeta,
+                                    color: T.muted,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          // The only place a repeat with no open occurrence can
-                          // be reached. A completion-anchored task is invisible
-                          // between being ticked and coming back, and a
-                          // scheduled one is invisible until its lead - so
-                          // without this the way to stop a repeat would be to
-                          // wait for it to come round again.
-                          if (t.recur != null) _stopRepeatingButton(t),
-                          Text(
-                            _formatWhen(t.completedAt),
-                            style: const TextStyle(
-                              fontSize: T.fsMeta,
-                              color: T.muted,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     );
                   },
                 ),

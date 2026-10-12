@@ -40,6 +40,7 @@ import 'package:flutter/services.dart';
 import '../sync/models.dart';
 import '../layout.dart';
 import '../theme.dart';
+import 'list_rule.dart';
 import 'panel_header.dart';
 import 'parked_review.dart';
 import 'task_drag.dart';
@@ -135,9 +136,9 @@ class _ParkedPanelState extends State<ParkedPanel>
   }
 
   void _endReview() => setState(() {
-        _reviewing = null;
-        _queue = const [];
-      });
+    _reviewing = null;
+    _queue = const [];
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -168,16 +169,16 @@ class _ParkedPanelState extends State<ParkedPanel>
   }
 
   Widget _review(ParkedGroup g) => ParkedReview(
-        // Keyed on the shelf, so starting a second review resets the funnel
-        // rather than resuming the first one part way through.
-        key: ValueKey('review-${g.uuid}'),
-        group: g,
-        tasks: _queue,
-        accent: widget.accent,
-        onDecide: _decide,
-        onFinished: () => widget.onReviewed(g),
-        onClose: _endReview,
-      );
+    // Keyed on the shelf, so starting a second review resets the funnel
+    // rather than resuming the first one part way through.
+    key: ValueKey('review-${g.uuid}'),
+    group: g,
+    tasks: _queue,
+    accent: widget.accent,
+    onDecide: _decide,
+    onFinished: () => widget.onReviewed(g),
+    onClose: _endReview,
+  );
 
   /// One decision, applied straight to the database. Keep never gets here.
   Future<void> _decide(Task t, ReviewChoice choice) async {
@@ -194,45 +195,42 @@ class _ParkedPanelState extends State<ParkedPanel>
   }
 
   Widget _shelves() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          PanelHeader(
-            title: 'Parked',
-            onBack: widget.onBack,
-            actions: [
-              Tooltip(
-                message: 'New group',
-                child: InkWell(
-                  onTap: widget.onCreateGroup,
-                  borderRadius: BorderRadius.circular(T.radius),
-                  child: const Padding(
-                    padding: EdgeInsets.all(T.s1),
-                    child: Icon(Icons.add, size: 15, color: T.muted),
-                  ),
-                ),
-              ),
-            ],
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      PanelHeader(
+        title: 'Parked',
+        onBack: widget.onBack,
+        count: widget.groups.isEmpty ? null : widget.groups.length,
+        actions: [
+          Tooltip(
+            message: 'New group',
+            child: _ShelfButton(
+              icon: Icons.add_rounded,
+              onTap: widget.onCreateGroup,
+            ),
           ),
-          Expanded(child: widget.groups.isEmpty ? _empty() : _list()),
         ],
-      );
+      ),
+      Expanded(child: widget.groups.isEmpty ? _empty() : _list()),
+    ],
+  );
 
   Widget _empty() => const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: T.s5),
-          child: Text(
-            'No groups yet.\nMake one for the things you are not doing now.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: T.muted, fontSize: T.fsLabel, height: 1.5),
-          ),
-        ),
-      );
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: T.s5),
+      child: Text(
+        'No groups yet.\nMake one for the things you are not doing now.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: T.muted, fontSize: T.fsLabel, height: 1.5),
+      ),
+    ),
+  );
 
   Widget _list() {
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: T.s2),
       children: [
-        for (final g in widget.groups)
+        for (final (i, g) in widget.groups.indexed) ...[
+          if (i > 0) const ListRule(),
           _Group(
             group: g,
             tasks: widget.parked[g.uuid] ?? const [],
@@ -251,6 +249,7 @@ class _ParkedPanelState extends State<ParkedPanel>
             onActivate: () => _activate(g),
             onDrop: widget.onPark == null ? null : (t) => _park(g, t),
           ),
+        ],
       ],
     );
   }
@@ -290,14 +289,21 @@ Future<bool> _confirmActivate(
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: T.bgSolid,
-      title: const Text('Activate this group?', style: TextStyle(fontSize: T.fsMenu)),
+      title: const Text(
+        'Activate this group?',
+        style: TextStyle(fontSize: T.fsMenu),
+      ),
       content: Text(
         count == 1
             ? 'The one todo in "${group.title}" will be put onto the active '
-                'todo list.'
+                  'todo list.'
             : 'All $count todos in "${group.title}" will be put onto the '
-                'active todo list.',
-        style: const TextStyle(fontSize: T.fsLabel, color: T.muted, height: 1.4),
+                  'active todo list.',
+        style: const TextStyle(
+          fontSize: T.fsLabel,
+          color: T.muted,
+          height: 1.4,
+        ),
       ),
       actions: [
         TextButton(
@@ -350,138 +356,166 @@ class _Group extends StatelessWidget {
     final due = group.isReviewDue();
     final tint = due ? T.complementary(accent) : accent;
 
-    // The whole card, collapsed or not, is the target. Aiming at a group's
+    // The whole group, collapsed or not, is the target. Aiming at a group's
     // *contents* would mean an empty or closed shelf had nothing to hit, and
     // those are the ones a task is most likely being put away into.
-    //
-    // The gap between cards is a Padding out here rather than a margin on the
-    // Container, so the highlight is drawn around the card and not around the
-    // card plus six pixels of nothing.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: T.s2),
-      child: TaskDropTarget(
-        onDrop: onDrop,
-        color: accent,
-        radius: 9,
-        child: _card(due, tint),
-      ),
+    return TaskDropTarget(
+      onDrop: onDrop,
+      color: accent,
+      radius: T.radius,
+      child: _section(context, due, tint),
     );
   }
 
-  Widget _card(bool due, Color tint) {
-    return Container(
-      decoration: BoxDecoration(
-        color: T.surface,
-        borderRadius: BorderRadius.circular(T.radius),
-        border: Border.all(
-          color: due ? tint.withValues(alpha: 0.55) : Colors.transparent,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(T.radius),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(T.s2, T.s2, T.s2, T.s2),
-              child: Row(
-                children: [
-                  Icon(
+  /// A group is a section of the page, not a card on it: a title with the
+  /// whole width to itself, a line of facts and controls under it, and a rule
+  /// to the next group.
+  ///
+  /// The controls used to share one row with the title, which did two things
+  /// wrong. The title lost - "Todo Wi…", "Journal A…" - to four controls that
+  /// say nothing about which group this is. And the row's right-hand end was
+  /// wherever the controls happened to finish: an empty group has no ↗, so its
+  /// ⋯ sat one slot further left than every other group's. Now the ↗ keeps its
+  /// slot even when it is not drawn, so the ⋯ - and the chevron above it - are
+  /// one column down the whole page.
+  Widget _section(BuildContext context, bool due, Color tint) {
+    final layout = Layout.of(context);
+    final review = _reviewLabel(group);
+    final facts = [
+      tasks.isEmpty
+          ? 'Empty'
+          : tasks.length == 1
+          ? '1 todo'
+          : '${tasks.length} todos',
+      if (review.isNotEmpty) review,
+    ].join('  ·  ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s2, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    group.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: T.fsMenu,
+                      fontFamily: T.fontDisplay,
+                      height: 1.25,
+                      color: due ? tint : T.text,
+                      fontWeight: T.wMedium,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: layout.tapTarget,
+                  height: T.fsMenu * 1.25,
+                  child: Icon(
                     open
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_right_rounded,
-                    size: 16,
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: layout.actionIcon,
                     color: T.muted,
                   ),
-                  const SizedBox(width: 2),
-                  Flexible(
-                    child: Text(
-                      group.title,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: T.fsBody,
-                        color: due ? tint : T.text,
-                        fontWeight: T.wMedium,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${tasks.length}',
-                    style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
-                  ),
-                  const Spacer(),
-                  Text(
-                    _reviewLabel(group),
-                    style: TextStyle(
-                      fontSize: T.fsMeta,
-                      color: due ? tint : T.muted,
-                      fontWeight: due ? T.wMedium : T.wNormal,
-                    ),
-                  ),
-                  const SizedBox(width: T.s1),
-                  _ReviewButton(
-                    empty: tasks.isEmpty,
-                    due: due,
-                    tint: tint,
-                    onPressed: onReview,
-                  ),
-                  // The same ↗ a single parked row carries, meaning the same
-                  // thing one level up. Offered only when there is something to
-                  // move: on an empty shelf it would be a control that opens a
-                  // dialog to do nothing.
-                  if (tasks.isNotEmpty)
-                    Tooltip(
-                      message: tasks.length == 1
-                          ? 'Put it back onto the list'
-                          : 'Put all ${tasks.length} back onto the list',
-                      child: _ShelfButton(
-                        icon: Icons.north_east_rounded,
-                        color: accent,
-                        onTap: onActivate,
-                      ),
-                    ),
-                  Tooltip(
-                    message: 'Edit the group',
-                    child: _ShelfButton(
-                      icon: Icons.more_horiz,
-                      onTap: onEdit,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          if (open) ...[
-            for (final t in tasks)
-              _ParkedRow(
-                task: t,
-                accent: accent,
-                onUnpark: () => onUnpark(t),
-                onComplete: () => onComplete(t),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  facts,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: T.fsMeta,
+                    color: due ? tint : T.muted,
+                    fontWeight: due ? T.wMedium : T.wNormal,
+                  ),
+                ),
               ),
-            // The way in that needs nothing else on screen. Under the shelf's
-            // own contents rather than above them, so it reads as the end of
-            // this list and not as a second add field competing with the one at
-            // the top of the window.
-            _AddToShelf(group: group, accent: accent, onAdd: onAdd),
-            const SizedBox(height: T.s1),
+              _ReviewButton(
+                empty: tasks.isEmpty,
+                due: due,
+                tint: tint,
+                onPressed: onReview,
+              ),
+              // The same ↗ a single parked row carries, meaning the same
+              // thing one level up. Offered only when there is something to
+              // move - on an empty shelf it would be a control that opens a
+              // dialog to do nothing - but its slot is kept either way.
+              if (tasks.isNotEmpty)
+                Tooltip(
+                  message: tasks.length == 1
+                      ? 'Put it back onto the list'
+                      : 'Put all ${tasks.length} back onto the list',
+                  child: _ShelfButton(
+                    icon: Icons.north_east_rounded,
+                    color: accent,
+                    onTap: onActivate,
+                  ),
+                )
+              else
+                SizedBox(width: layout.tapTarget),
+              Tooltip(
+                message: 'Edit the group',
+                child: _ShelfButton(icon: Icons.more_horiz, onTap: onEdit),
+              ),
+            ],
+          ),
+        ),
+        if (open) ...[
+          for (final t in tasks) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: _indent - T.s4),
+              child: ListRule(),
+            ),
+            _ParkedRow(
+              task: t,
+              accent: accent,
+              onUnpark: () => onUnpark(t),
+              onComplete: () => onComplete(t),
+            ),
           ],
+          // The way in that needs nothing else on screen. Under the shelf's
+          // own contents rather than above them, so it reads as the end of
+          // this list and not as a second add field competing with the one at
+          // the top of the window.
+          const Padding(
+            padding: EdgeInsets.only(left: _indent - T.s4),
+            child: ListRule(),
+          ),
+          _AddToShelf(group: group, accent: accent, onAdd: onAdd),
         ],
-      ),
+        const SizedBox(height: T.s1),
+      ],
     );
   }
 
-  /// "in 12d" / "review due" - short enough to sit on the header row of a
-  /// 340px window without pushing the title out.
+  /// Where a shelf's own todos start: in from the group's title, which is the
+  /// only thing saying they belong to it now that there is no card around
+  /// them.
+  static const _indent = T.s4 + T.s4;
+
+  /// "review in 12d" / "review due" - the second fact on the group's line.
   static String _reviewLabel(ParkedGroup g) {
     if (g.reviewEveryDays <= 0) return '';
     if (g.isReviewDue()) return 'review due';
     final at = g.reviewDueAt;
     if (at == null) return '';
     final days = at.difference(DateTime.now()).inDays;
-    return days < 1 ? 'today' : 'in ${days}d';
+    return days < 1 ? 'review today' : 'review in ${days}d';
   }
 }
 
@@ -536,11 +570,11 @@ class _AddToShelfState extends State<_AddToShelf> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s2, T.s1),
+      padding: const EdgeInsets.fromLTRB(_Group._indent, T.s1, T.s2, 0),
       child: Row(
         children: [
           Icon(Icons.add, size: 16, color: widget.accent),
-          const SizedBox(width: 4),
+          const SizedBox(width: T.s2),
           Expanded(
             child: TextField(
               controller: _controller,
@@ -552,10 +586,7 @@ class _AddToShelfState extends State<_AddToShelf> {
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: T.s2),
                 hintText: 'Add to ${widget.group.title}',
-                hintStyle: const TextStyle(
-                  fontSize: T.fsBody,
-                  color: T.muted,
-                ),
+                hintStyle: const TextStyle(fontSize: T.fsBody, color: T.muted),
               ),
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
@@ -583,7 +614,7 @@ class _ParkedRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(T.s5, 1, T.s2, 1),
+      padding: const EdgeInsets.fromLTRB(_Group._indent, 2, T.s2, 2),
       child: Row(
         children: [
           Expanded(
@@ -627,7 +658,10 @@ class GroupEdit {
   static const deleted = GroupEdit('', 0, delete: true);
 }
 
-Future<GroupEdit?> showGroupForm(BuildContext context, {ParkedGroup? existing}) {
+Future<GroupEdit?> showGroupForm(
+  BuildContext context, {
+  ParkedGroup? existing,
+}) {
   return showDialog<GroupEdit>(
     context: context,
     builder: (context) => _GroupDialog(existing: existing),
@@ -705,7 +739,10 @@ class _GroupDialogState extends State<_GroupDialog> {
             children: [
               for (final e in _options.entries)
                 ChoiceChip(
-                  label: Text(e.value, style: const TextStyle(fontSize: T.fsLabel)),
+                  label: Text(
+                    e.value,
+                    style: const TextStyle(fontSize: T.fsLabel),
+                  ),
                   selected: _days == e.key,
                   onSelected: (_) => setState(() => _days = e.key),
                 ),
@@ -765,15 +802,12 @@ class _ReviewButton extends StatelessWidget {
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(T.radius),
+        // A word, not a chip: the rest of the line is plain text and icons,
+        // and a filled pill was the last box left on the shelf.
         child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: T.s2,
-            vertical: Layout.of(context).touch ? T.s2 : 2,
-          ),
-          decoration: BoxDecoration(
-            color: due ? tint.withValues(alpha: 0.16) : T.surface,
-            borderRadius: BorderRadius.circular(T.radius),
-          ),
+          height: Layout.of(context).tapTarget,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: T.s2),
           child: Text(
             'Review',
             style: TextStyle(

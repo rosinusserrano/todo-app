@@ -762,8 +762,12 @@ class _JournalViewState extends State<JournalView> {
   /// Only the list state carries this bar, which is what keeps the back arrow
   /// honest: from the editor, Esc backs out to the list first, so a "back to
   /// tasks" control there would skip a step the user did not ask to skip.
-  Widget _topBar({required List<Widget> right}) =>
-      PanelHeader(title: 'Notes', onBack: widget.onBack, actions: right);
+  Widget _topBar({required List<Widget> right}) => PanelHeader(
+    title: 'Notes',
+    onBack: widget.onBack,
+    count: widget.items.isEmpty ? null : widget.items.length,
+    actions: right,
+  );
 
   Widget _field({
     required TextEditingController controller,

@@ -5,6 +5,7 @@
 // old code warned about keeping in sync with CSS; now there is only one copy of
 // each, which removes that hazard entirely.
 
+import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
@@ -114,6 +115,12 @@ class T {
   /// Menu and picker items, which are targets before they are text.
   static const fsMenu = 15.0;
 
+  /// The name of the view you are in - Parked, Notes, History, Thoughts, the
+  /// list - set large, the way an editorial page heads a section. The one
+  /// size above the menus, and only ever used for that: a title that is the
+  /// same size as the rows under it is a row.
+  static const fsTitle = 20.0;
+
   /// Text laid *into* the calendar grid: the hour gutter, a weekday initial, a
   /// day number in a month tile, the label inside a block.
   ///
@@ -203,6 +210,19 @@ class T {
     'system-ui',
   ];
 
+  /// The display face, bundled (assets/fonts): a grotesk with some character
+  /// in its numerals and its round letters, for what *names* things - a
+  /// view's title and its count, a parked group's title, the dock's labels
+  /// and menus. Two faces with two jobs is what reads as designed rather
+  /// than defaulted; one face at several sizes is what every stock app does.
+  ///
+  /// Body text - tasks, notes, thoughts - stays on the platform face above.
+  /// It is read in quantity, at small sizes, and the system faces are hinted
+  /// for exactly that; a display face set at 13px in a list of forty rows is
+  /// the wrong tool. Only [wNormal] and [wMedium] are bundled, which are the
+  /// only two weights chrome is allowed.
+  static const fontDisplay = 'Space Grotesk';
+
   /// The eight, at roughly 60% of the chroma they carried.
   ///
   /// The hues are unchanged and in the same order, which is the whole point:
@@ -278,8 +298,11 @@ class T {
   /// thickly as a colour.
   static final calendarBackground = Color.lerp(bg, calendarInk, 0.12)!;
 
-  static final calendarBorder =
-      Color.lerp(const Color(0x14FFFFFF), calendarInk, 0.22)!;
+  static final calendarBorder = Color.lerp(
+    const Color(0x14FFFFFF),
+    calendarInk,
+    0.22,
+  )!;
 
   /// The side-thought pile's colour, wherever it is drawn - the bubble, the
   /// capture pane, the footer's meter and the list.
@@ -292,6 +315,34 @@ class T {
   /// escalates towards is derived from this, so it no longer changes hue as
   /// you move between workspaces either.
   static const thoughts = accent;
+
+  /// Text and icons laid on a solid [fill] - a workspace's colour, mostly.
+  ///
+  /// **A deep shade of the fill's own hue, not black.** Black on a pastel red
+  /// is legible and looks wrong: the two have nothing to do with each other,
+  /// so the label reads as printed on rather than belonging to the block.
+  /// The same hue at a sixth of the lightness keeps black's contrast (about
+  /// 5:1 on the pastels) and reads as one object. White was the other way
+  /// out and does not work on these colours: on a pastel red it is under 3:1,
+  /// and on the mint and the amber it is barely there at all - and darkening
+  /// the fills until white works turns the amber brown.
+  ///
+  /// A dark fill gets the mirror image, a near-white tinted the same way.
+  /// Saturation is capped so a vivid fill does not get a neon ink; a grey
+  /// fill has none to cap and gets a plain dark grey.
+  static Color inkOn(Color fill) {
+    final hsl = HSLColor.fromColor(fill);
+    if (fill.computeLuminance() > 0.3) {
+      return hsl
+          .withSaturation(math.min(hsl.saturation, 0.55))
+          .withLightness(0.14)
+          .toColor();
+    }
+    return hsl
+        .withSaturation(math.min(hsl.saturation, 0.35))
+        .withLightness(0.95)
+        .toColor();
+  }
 
   /// Hue-rotate 180 degrees from the workspace colour, but force high
   /// saturation and mid lightness. A pale or desaturated workspace colour would
@@ -368,8 +419,9 @@ class UiScale extends StatelessWidget {
   @visibleForTesting
   static double effectiveScale(double width, double max, {double zoom = 1.0}) {
     if (width <= 0) return 1.0;
-    final auto =
-        max <= 1.0 ? 1.0 : (width / T.designWidth).clamp(1.0, max).toDouble();
+    final auto = max <= 1.0
+        ? 1.0
+        : (width / T.designWidth).clamp(1.0, max).toDouble();
     final ceiling = width / T.minLayoutWidth;
     final zoomed = auto * zoom;
     return zoomed > ceiling ? (auto > ceiling ? auto : ceiling) : zoomed;

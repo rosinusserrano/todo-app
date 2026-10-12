@@ -137,18 +137,18 @@ class _ShoppingListViewState extends State<ShoppingListView> {
         builder: (context, _) => switch (_rung) {
           _Rung.list => _list(layout),
           _Rung.archive => _ArchiveView(
-              state: s,
-              onBack: () => setState(() => _rung = _Rung.list),
-              onOpen: (l) => setState(() {
-                _reading = l;
-                _rung = _Rung.archived;
-              }),
-            ),
+            state: s,
+            onBack: () => setState(() => _rung = _Rung.list),
+            onOpen: (l) => setState(() {
+              _reading = l;
+              _rung = _Rung.archived;
+            }),
+          ),
           _Rung.archived => _ArchivedListView(
-              state: s,
-              list: _reading!,
-              onBack: () => setState(() => _rung = _Rung.archive),
-            ),
+            state: s,
+            list: _reading!,
+            onBack: () => setState(() => _rung = _Rung.archive),
+          ),
         },
       ),
     );
@@ -157,7 +157,10 @@ class _ShoppingListViewState extends State<ShoppingListView> {
   Widget _list(Layout layout) {
     final current = s.currentList;
     final items = s.listItems;
-    final open = [for (final i in items) if (!i.isChecked) i];
+    final open = [
+      for (final i in items)
+        if (!i.isChecked) i,
+    ];
     final allTicked = items.isNotEmpty && open.isEmpty;
 
     return Padding(
@@ -174,17 +177,20 @@ class _ShoppingListViewState extends State<ShoppingListView> {
               },
               style: TextButton.styleFrom(
                 foregroundColor: T.muted,
-                padding: const EdgeInsets.symmetric(horizontal: T.s1),
+                padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('Archived lists →',
-                  style: TextStyle(fontSize: T.fsMeta)),
+              child: const Text(
+                'Archived lists →',
+                style: TextStyle(fontSize: T.fsMeta),
+              ),
             ),
           ),
           const SizedBox(height: T.s1),
           _header(layout, current, allTicked),
-          for (final other in s.otherOpenLists) _AlsoOpen(state: s, list: other),
+          for (final other in s.otherOpenLists)
+            _AlsoOpen(state: s, list: other),
           const SizedBox(height: T.s2),
           if (_editing) _addField(layout),
           Expanded(
@@ -193,7 +199,9 @@ class _ShoppingListViewState extends State<ShoppingListView> {
                     state: s,
                     layout: layout,
                     controllerFor: (item) => _edits.putIfAbsent(
-                        item.uuid, () => TextEditingController(text: item.text)),
+                      item.uuid,
+                      () => TextEditingController(text: item.text),
+                    ),
                     onTick: _tick,
                   )
                 : _UseItems(items: items, layout: layout, onTick: _tick),
@@ -208,7 +216,11 @@ class _ShoppingListViewState extends State<ShoppingListView> {
         ? TextField(
             controller: _name,
             style: const TextStyle(
-                fontSize: T.fsMenu + 3, fontWeight: T.wMedium, color: T.text),
+              fontSize: T.fsTitle,
+              fontFamily: T.fontDisplay,
+              fontWeight: T.wMedium,
+              color: T.text,
+            ),
             decoration: const InputDecoration(
               isDense: true,
               border: InputBorder.none,
@@ -221,7 +233,11 @@ class _ShoppingListViewState extends State<ShoppingListView> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-                fontSize: T.fsMenu + 3, fontWeight: T.wMedium, color: T.text),
+              fontSize: T.fsTitle,
+              fontFamily: T.fontDisplay,
+              fontWeight: T.wMedium,
+              color: T.text,
+            ),
           );
     final height = layout.touch ? 40.0 : 32.0;
 
@@ -256,7 +272,10 @@ class _ShoppingListViewState extends State<ShoppingListView> {
             child: FilledButton.icon(
               onPressed: () => _setEditing(!_editing),
               style: FilledButton.styleFrom(backgroundColor: T.accent),
-              icon: Icon(_editing ? Icons.check : Icons.edit_outlined, size: 18),
+              icon: Icon(
+                _editing ? Icons.check : Icons.edit_outlined,
+                size: 18,
+              ),
               label: Text(_editing ? 'Done' : 'Edit'),
             ),
           ),
@@ -265,29 +284,30 @@ class _ShoppingListViewState extends State<ShoppingListView> {
   }
 
   Widget _addField(Layout layout) => Padding(
-        padding: const EdgeInsets.only(bottom: T.s2),
-        child: TextField(
-          controller: _add,
-          focusNode: _addFocus,
-          autofocus: s.listItems.isEmpty,
-          textInputAction: TextInputAction.done,
-          style: const TextStyle(fontSize: T.fsMenu, color: T.text),
-          decoration: InputDecoration(
-            hintText: 'Add an item',
-            hintStyle: const TextStyle(color: T.muted),
-            prefixIcon: const Icon(Icons.add, color: T.muted),
-            filled: true,
-            fillColor: T.surface,
-            isDense: !layout.touch,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(T.radius),
-              borderSide: BorderSide.none,
-            ),
-          ),
-          // Enter adds and keeps the caret, as the task add field does.
-          onSubmitted: (_) => _submitAdd(),
+    padding: const EdgeInsets.only(bottom: T.s2),
+    child: TextField(
+      controller: _add,
+      focusNode: _addFocus,
+      autofocus: s.listItems.isEmpty,
+      textInputAction: TextInputAction.done,
+      style: const TextStyle(fontSize: T.fsMenu, color: T.text),
+      decoration: InputDecoration(
+        hintText: 'Add an item',
+        hintStyle: const TextStyle(color: T.muted),
+        // A line like the task list's "Add a task", not a filled box:
+        // the field is the first row of the list, not a form above it.
+        prefixIcon: const Padding(
+          padding: EdgeInsets.only(right: T.s3),
+          child: Icon(Icons.add, color: T.muted),
         ),
-      );
+        prefixIconConstraints: const BoxConstraints(),
+        isDense: !layout.touch,
+        border: InputBorder.none,
+      ),
+      // Enter adds and keeps the caret, as the task add field does.
+      onSubmitted: (_) => _submitAdd(),
+    ),
+  );
 }
 
 /// Use mode: tap to tick, and every row slides to where it now belongs.
@@ -309,11 +329,16 @@ class _UseItems extends StatelessWidget {
     final rowHeight = layout.touch ? 52.0 : 40.0;
     const headerHeight = 36.0;
 
-    final open = [for (final i in items) if (!i.isChecked) i];
+    final open = [
+      for (final i in items)
+        if (!i.isChecked) i,
+    ];
     // Newest tick first: the thing just put in the basket is the one most
     // likely to be unticked again.
-    final ticked = [for (final i in items) if (i.isChecked) i]
-      ..sort((a, b) => b.checkedAt!.compareTo(a.checkedAt!));
+    final ticked = [
+      for (final i in items)
+        if (i.isChecked) i,
+    ]..sort((a, b) => b.checkedAt!.compareTo(a.checkedAt!));
 
     final placed = <Widget>[];
     var y = 0.0;
@@ -322,16 +347,18 @@ class _UseItems extends StatelessWidget {
       y += rowHeight;
     }
     if (ticked.isNotEmpty) {
-      placed.add(AnimatedPositioned(
-        key: const ValueKey('ticked-header'),
-        duration: _slide,
-        curve: T.heroEase,
-        top: y,
-        left: 0,
-        right: 0,
-        height: headerHeight,
-        child: _TickedHeader(count: ticked.length),
-      ));
+      placed.add(
+        AnimatedPositioned(
+          key: const ValueKey('ticked-header'),
+          duration: _slide,
+          curve: T.heroEase,
+          top: y,
+          left: 0,
+          right: 0,
+          height: headerHeight,
+          child: _TickedHeader(count: ticked.length),
+        ),
+      );
       y += headerHeight;
       for (final item in ticked) {
         placed.add(_place(item, y, rowHeight));
@@ -351,15 +378,15 @@ class _UseItems extends StatelessWidget {
   }
 
   Widget _place(ListItem item, double top, double height) => AnimatedPositioned(
-        key: ValueKey(item.uuid),
-        duration: _slide,
-        curve: T.heroEase,
-        top: top,
-        left: 0,
-        right: 0,
-        height: height,
-        child: _ItemRow(item: item, onTap: () => onTick(item)),
-      );
+    key: ValueKey(item.uuid),
+    duration: _slide,
+    curve: T.heroEase,
+    top: top,
+    left: 0,
+    right: 0,
+    height: height,
+    child: _ItemRow(item: item, onTap: () => onTick(item)),
+  );
 }
 
 class _TickedHeader extends StatelessWidget {
@@ -369,13 +396,15 @@ class _TickedHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        children: [
-          Text('Ticked · $count',
-              style: const TextStyle(fontSize: T.fsLabel, color: T.muted)),
-          const SizedBox(width: T.s2),
-          const Expanded(child: Divider(color: T.surfaceHover, height: 1)),
-        ],
-      );
+    children: [
+      Text(
+        'Ticked · $count',
+        style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
+      ),
+      const SizedBox(width: T.s2),
+      const Expanded(child: Divider(color: T.surfaceHover, height: 1)),
+    ],
+  );
 }
 
 /// One row in Use: the whole width is the tap target.
@@ -412,12 +441,16 @@ class _ItemRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: T.fsMenu,
                   color: done ? T.muted : T.text,
-                  decoration:
-                      done ? TextDecoration.lineThrough : TextDecoration.none,
+                  decoration: done
+                      ? TextDecoration.lineThrough
+                      : TextDecoration.none,
                   decorationColor: T.muted,
                 ),
-                child: Text(item.text,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  item.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
           ],
@@ -444,41 +477,47 @@ class _EditItems extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final open = [for (final i in state.listItems) if (!i.isChecked) i];
-    final ticked = [for (final i in state.listItems) if (i.isChecked) i];
+    final open = [
+      for (final i in state.listItems)
+        if (!i.isChecked) i,
+    ];
+    final ticked = [
+      for (final i in state.listItems)
+        if (i.isChecked) i,
+    ];
 
     Widget row(ListItem item, {Widget? handle}) => Row(
-          children: [
-            IconButton(
-              tooltip: item.isChecked ? 'Untick' : 'Tick',
-              onPressed: () => onTick(item),
-              icon: Icon(
-                item.isChecked ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: item.isChecked ? T.ok.withValues(alpha: 0.6) : T.muted,
-              ),
+      children: [
+        IconButton(
+          tooltip: item.isChecked ? 'Untick' : 'Tick',
+          onPressed: () => onTick(item),
+          icon: Icon(
+            item.isChecked ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: item.isChecked ? T.ok.withValues(alpha: 0.6) : T.muted,
+          ),
+        ),
+        Expanded(
+          child: TextField(
+            controller: controllerFor(item),
+            style: TextStyle(
+              fontSize: T.fsMenu,
+              color: item.isChecked ? T.muted : T.text,
             ),
-            Expanded(
-              child: TextField(
-                controller: controllerFor(item),
-                style: TextStyle(
-                  fontSize: T.fsMenu,
-                  color: item.isChecked ? T.muted : T.text,
-                ),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                ),
-                onSubmitted: (text) => state.editListItem(item, text),
-              ),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
             ),
-            IconButton(
-              tooltip: 'Delete',
-              onPressed: () => state.deleteListItem(item),
-              icon: const Icon(Icons.close, color: T.muted, size: 20),
-            ),
-            ?handle,
-          ],
-        );
+            onSubmitted: (text) => state.editListItem(item, text),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Delete',
+          onPressed: () => state.deleteListItem(item),
+          icon: const Icon(Icons.close, color: T.muted, size: 20),
+        ),
+        ?handle,
+      ],
+    );
 
     return CustomScrollView(
       slivers: [
@@ -530,27 +569,29 @@ class _AlsoOpen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: T.s2),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text('Also open: ${list.name}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: T.fsLabel, color: T.warn)),
-            ),
-            TextButton(
-              onPressed: () => state.mergeListIntoCurrent(list),
-              child: const Text('Merge here'),
-            ),
-            TextButton(
-              onPressed: () => state.finishList(list),
-              style: TextButton.styleFrom(foregroundColor: T.muted),
-              child: const Text('Finish'),
-            ),
-          ],
+    padding: const EdgeInsets.only(top: T.s2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Also open: ${list.name}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: T.fsLabel, color: T.warn),
+          ),
         ),
-      );
+        TextButton(
+          onPressed: () => state.mergeListIntoCurrent(list),
+          child: const Text('Merge here'),
+        ),
+        TextButton(
+          onPressed: () => state.finishList(list),
+          style: TextButton.styleFrom(foregroundColor: T.muted),
+          child: const Text('Finish'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Finished lists, newest first. Read-only; delete is the one thing to do.
@@ -580,8 +621,10 @@ class _ArchiveViewState extends State<_ArchiveView> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: T.bgSolid,
-        title: Text('Delete ${list.name}?',
-            style: const TextStyle(fontSize: T.fsMenu)),
+        title: Text(
+          'Delete ${list.name}?',
+          style: const TextStyle(fontSize: T.fsMenu),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -602,43 +645,47 @@ class _ArchiveViewState extends State<_ArchiveView> {
 
   @override
   Widget build(BuildContext context) => _Rung2(
-        title: 'Archived lists',
-        onBack: widget.onBack,
-        child: FutureBuilder(
-          future: _load,
-          builder: (context, snap) {
-            final data = snap.data;
-            if (data == null) return const SizedBox.shrink();
-            final (lists, counts) = data;
-            if (lists.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(T.s4),
-                child: Text('Nothing finished yet.',
-                    style: TextStyle(color: T.muted)),
-              );
-            }
-            return ListView(
-              children: [
-                for (final l in lists)
-                  ListTile(
-                    title: Text(l.name,
-                        style: const TextStyle(color: T.text, fontSize: T.fsMenu)),
-                    subtitle: Text(
-                      '${_day(l.archivedAt)} · ${_items(counts[l.uuid] ?? 0)}',
-                      style: const TextStyle(color: T.muted, fontSize: T.fsMeta),
-                    ),
-                    onTap: () => widget.onOpen(l),
-                    trailing: IconButton(
-                      tooltip: 'Delete',
-                      onPressed: () => _delete(l),
-                      icon: const Icon(Icons.delete_outline, color: T.muted),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      );
+    title: 'Archived lists',
+    onBack: widget.onBack,
+    child: FutureBuilder(
+      future: _load,
+      builder: (context, snap) {
+        final data = snap.data;
+        if (data == null) return const SizedBox.shrink();
+        final (lists, counts) = data;
+        if (lists.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(T.s4),
+            child: Text(
+              'Nothing finished yet.',
+              style: TextStyle(color: T.muted),
+            ),
+          );
+        }
+        return ListView(
+          children: [
+            for (final l in lists)
+              ListTile(
+                title: Text(
+                  l.name,
+                  style: const TextStyle(color: T.text, fontSize: T.fsMenu),
+                ),
+                subtitle: Text(
+                  '${_day(l.archivedAt)} · ${_items(counts[l.uuid] ?? 0)}',
+                  style: const TextStyle(color: T.muted, fontSize: T.fsMeta),
+                ),
+                onTap: () => widget.onOpen(l),
+                trailing: IconButton(
+                  tooltip: 'Delete',
+                  onPressed: () => _delete(l),
+                  icon: const Icon(Icons.delete_outline, color: T.muted),
+                ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
 
   static String _items(int n) => n == 1 ? '1 item' : '$n items';
 
@@ -646,8 +693,18 @@ class _ArchiveViewState extends State<_ArchiveView> {
     final d = stamp == null ? null : DateTime.tryParse(stamp)?.toLocal();
     if (d == null) return '';
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
@@ -667,50 +724,54 @@ class _ArchivedListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _Rung2(
-        title: list.name,
-        onBack: onBack,
-        child: FutureBuilder(
-          future: state.itemsOfList(list.uuid),
-          builder: (context, snap) => ListView(
-            children: [
-              for (final i in snap.data ?? const <ListItem>[])
-                SizedBox(
-                  height: 40,
-                  child: Row(
-                    children: [
-                      Icon(
-                        i.isChecked
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        color: T.muted,
-                        size: 20,
-                      ),
-                      const SizedBox(width: T.s3),
-                      Expanded(
-                        child: Text(
-                          i.text,
-                          style: TextStyle(
-                            color: T.muted,
-                            fontSize: T.fsMenu,
-                            decoration: i.isChecked
-                                ? TextDecoration.lineThrough
-                                : null,
-                            decorationColor: T.muted,
-                          ),
-                        ),
-                      ),
-                    ],
+    title: list.name,
+    onBack: onBack,
+    child: FutureBuilder(
+      future: state.itemsOfList(list.uuid),
+      builder: (context, snap) => ListView(
+        children: [
+          for (final i in snap.data ?? const <ListItem>[])
+            SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  Icon(
+                    i.isChecked
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: T.muted,
+                    size: 20,
                   ),
-                ),
-            ],
-          ),
-        ),
-      );
+                  const SizedBox(width: T.s3),
+                  Expanded(
+                    child: Text(
+                      i.text,
+                      style: TextStyle(
+                        color: T.muted,
+                        fontSize: T.fsMenu,
+                        decoration: i.isChecked
+                            ? TextDecoration.lineThrough
+                            : null,
+                        decorationColor: T.muted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// A rung below the list: a back line and a title over its own body.
 class _Rung2 extends StatelessWidget {
-  const _Rung2({required this.title, required this.onBack, required this.child});
+  const _Rung2({
+    required this.title,
+    required this.onBack,
+    required this.child,
+  });
 
   final String title;
   final VoidCallback onBack;
@@ -718,27 +779,31 @@ class _Rung2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: onBack,
-                style: TextButton.styleFrom(foregroundColor: T.muted),
-                icon: const Icon(Icons.chevron_left, size: 18),
-                label: const Text('Back'),
-              ),
-            ),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: T.fsMenu + 3,
-                    fontWeight: T.wMedium,
-                    color: T.text)),
-            const SizedBox(height: T.s2),
-            Expanded(child: child),
-          ],
+    padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, 0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onBack,
+            style: TextButton.styleFrom(foregroundColor: T.muted),
+            icon: const Icon(Icons.chevron_left, size: 18),
+            label: const Text('Back'),
+          ),
         ),
-      );
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: T.fsTitle,
+            fontFamily: T.fontDisplay,
+            fontWeight: T.wMedium,
+            color: T.text,
+          ),
+        ),
+        const SizedBox(height: T.s2),
+        Expanded(child: child),
+      ],
+    ),
+  );
 }

@@ -144,7 +144,7 @@ void main() {
       expect(moved, [
         ['a', 'c'],
       ]);
-      expect(find.text('Parked thoughts'), findsOneWidget,
+      expect(find.text('Thoughts'), findsOneWidget,
           reason: 'moving ends the selection');
     });
 

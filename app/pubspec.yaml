@@ -129,6 +129,16 @@ flutter:
     - assets/sound_pause.ico
     - assets/sound_play.ico
 
+  # The display face: view titles, the dock, counts. SIL Open Font License,
+  # which travels with it (assets/fonts/SpaceGrotesk-OFL.txt). Body text stays
+  # on the platform face - see T.fontDisplay for why the two are split.
+  fonts:
+    - family: Space Grotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Regular.ttf
+        - asset: assets/fonts/SpaceGrotesk-Medium.ttf
+          weight: 500
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

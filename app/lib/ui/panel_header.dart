@@ -18,16 +18,19 @@ class PanelHeader extends StatelessWidget {
   const PanelHeader({
     super.key,
     required this.title,
-    required this.onBack,
+    this.onBack,
     this.actions = const [],
+    this.count,
+    this.color = T.text,
     this.backTooltip = 'Back to tasks (Esc)',
   });
 
   final String title;
 
   /// Back to the task list. Esc does the same thing, and the tooltip says so -
-  /// the shortcut should not have to be discovered separately.
-  final VoidCallback onBack;
+  /// the shortcut should not have to be discovered separately. Null for a view
+  /// with no "back" of its own (the thought pile is left through the dock).
+  final VoidCallback? onBack;
 
   /// What Esc and the arrow actually do here. Overridden where this bar is one
   /// rung of a ladder rather than the way out of a view - the journal's reader
@@ -38,44 +41,80 @@ class PanelHeader extends StatelessWidget {
   /// Trailing controls belonging to the view itself (new group, new note).
   final List<Widget> actions;
 
+  /// How many things the view holds, set beside the title in the same size
+  /// and a quieter colour - "Parked 4" - rather than as a badge. Null draws
+  /// nothing.
+  final int? count;
+
+  /// The title's colour. A workspace's list is titled in the workspace's.
+  final Color color;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      // Tighter on the left than the old plain label, so the arrow starts where
-      // the text used to and the title lands just right of it.
-      padding: const EdgeInsets.fromLTRB(T.s2, 2, T.s2, T.s2),
-      child: Row(
-        children: [
-          Tooltip(
-            message: backTooltip,
-            child: InkWell(
-              onTap: onBack,
-              borderRadius: BorderRadius.circular(T.radius),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(T.s2, 3, T.s2, 3),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.arrow_back_rounded,
-                      size: 13,
-                      color: T.muted,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: T.fsLabel,
-                        color: T.muted,
-                        fontWeight: T.wMedium,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    // The title is set large: it is the one thing on screen that says where
+    // you are, and at the size of the rows under it it read as one more row.
+    // Its left edge is the content's (T.s4), so the title and the list under
+    // it start on one line.
+    final heading = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (onBack != null) ...[
+          const Icon(Icons.arrow_back_rounded, size: 18, color: T.muted),
+          const SizedBox(width: T.s2),
+        ],
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: T.fsTitle,
+              fontFamily: T.fontDisplay,
+              color: color,
+              fontWeight: T.wMedium,
+              height: 1.2,
             ),
           ),
-          const Spacer(),
+        ),
+        if (count != null) ...[
+          const SizedBox(width: T.s2),
+          Text(
+            '$count',
+            style: const TextStyle(
+              fontSize: T.fsTitle,
+              fontFamily: T.fontDisplay,
+              color: T.muted,
+              fontWeight: T.wNormal,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s4 - T.s1, T.s1, T.s2, T.s3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: onBack == null
+                  ? Padding(padding: const EdgeInsets.all(T.s1), child: heading)
+                  : Tooltip(
+                      message: backTooltip,
+                      child: InkWell(
+                        onTap: onBack,
+                        borderRadius: BorderRadius.circular(T.radius),
+                        child: Padding(
+                          padding: const EdgeInsets.all(T.s1),
+                          child: heading,
+                        ),
+                      ),
+                    ),
+            ),
+          ),
           ...actions,
         ],
       ),

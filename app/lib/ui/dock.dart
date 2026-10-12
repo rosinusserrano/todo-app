@@ -131,10 +131,24 @@ class DockSegment {
 }
 
 class Dock extends StatefulWidget {
-  const Dock({super.key, required this.segments, this.height = 48});
+  const Dock({
+    super.key,
+    required this.segments,
+    this.height = 48,
+    this.underhang = 0,
+  });
 
   final List<DockSegment> segments;
   final double height;
+
+  /// How far below its own box the bar's colours carry on: the home
+  /// indicator's strip on a phone, which the shell's SafeArea keeps content
+  /// out of. Without it that strip was a band of bare window under the bar,
+  /// and the bar looked like it was hovering a finger's width off the edge.
+  /// Painted only - nothing there takes a touch, which is the system's swipe
+  /// home anyway. The ancestors between here and the window must not clip
+  /// (see `_shell` in main.dart).
+  final double underhang;
 
   /// A menu row. Wide enough for a thumb that is not looking.
   static const rowHeight = 48.0;
@@ -347,19 +361,51 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         height: widget.height,
         child: AnimatedBuilder(
           animation: _pulse.controller,
-          builder: (context, _) => Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          builder: (context, _) => Stack(
+            clipBehavior: Clip.none,
             children: [
-              for (var i = 0; i < widget.segments.length; i++)
-                _sized(
-                  widget.segments[i],
-                  Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (e) => _down(i, e),
-                    onPointerMove: _move,
-                    onPointerUp: _up,
-                    onPointerCancel: _cancel,
-                    child: _segment(widget.segments[i], open: _open == i),
+              Positioned.fill(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < widget.segments.length; i++)
+                      _sized(
+                        widget.segments[i],
+                        Listener(
+                          behavior: HitTestBehavior.opaque,
+                          onPointerDown: (e) => _down(i, e),
+                          onPointerMove: _move,
+                          onPointerUp: _up,
+                          onPointerCancel: _cancel,
+                          child: _segment(widget.segments[i], open: _open == i),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (widget.underhang > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: widget.height,
+                  height: widget.underhang,
+                  child: IgnorePointer(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < widget.segments.length; i++)
+                          _sized(
+                            widget.segments[i],
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 120),
+                              color: _fillOf(
+                                widget.segments[i],
+                                open: _open == i,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
             ],
@@ -392,7 +438,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     ];
   }
 
-  Widget _segment(DockSegment seg, {required bool open}) {
+  Color _fillOf(DockSegment seg, {required bool open}) {
     var fill = seg.fill;
     if (seg.pressure > 0) {
       final hot = ThoughtPulse.intensityOf(seg.pressure);
@@ -405,8 +451,16 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         hot * (0.35 + glow * 0.25),
       )!;
     }
+    // Dimmed fades the block, not its label: something else owns the screen,
+    // so this one steps back - but it is still a door and still has to read.
+    if (seg.dimmed) fill = Color.lerp(fill, T.bgSolid, 0.55)!;
     if (open) fill = Color.lerp(fill, Colors.white, 0.14)!;
-    final ink = seg.dimmed ? seg.ink.withValues(alpha: 0.55) : seg.ink;
+    return fill;
+  }
+
+  Widget _segment(DockSegment seg, {required bool open}) {
+    final fill = _fillOf(seg, open: open);
+    final ink = seg.dimmed ? T.inkOn(fill).withValues(alpha: 0.75) : seg.ink;
 
     return Semantics(
       button: true,
@@ -414,38 +468,65 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         color: fill,
-        padding: const EdgeInsets.symmetric(horizontal: T.s2),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            if (seg.icon != null) ...[
-              Icon(seg.icon, size: seg.label.isEmpty ? 22 : 18, color: ink),
-              if (seg.label.isNotEmpty) const SizedBox(width: T.s1 + 2),
-            ],
-            if (seg.label.isNotEmpty)
-              Flexible(
-                child: Text(
-                  seg.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: T.fsLabel,
-                    fontWeight: T.wMedium,
-                    color: ink,
-                  ),
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: T.s2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (seg.icon != null) ...[
+                      Icon(
+                        seg.icon,
+                        size: seg.label.isEmpty ? 22 : 18,
+                        color: ink,
+                      ),
+                      if (seg.label.isNotEmpty) const SizedBox(width: T.s1 + 2),
+                    ],
+                    if (seg.label.isNotEmpty)
+                      Flexible(
+                        child: Text(
+                          seg.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: T.fsLabel,
+                            fontFamily: T.fontDisplay,
+                            fontWeight: T.wMedium,
+                            color: ink,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            if (seg.count > 0) ...[
-              const SizedBox(width: T.s1),
-              Text(
-                '${seg.count}',
-                style: TextStyle(
-                  fontSize: T.fsMeta,
-                  color: ink.withValues(alpha: 0.75),
+            ),
+            // The count and the dot sit in the corner, not after the label:
+            // inline, they took the room the label needed and "Thoughts 3"
+            // came out as "Thoug… 3".
+            if (seg.count > 0 || seg.dot)
+              Positioned(
+                top: T.s1,
+                right: T.s1 + 2,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (seg.count > 0)
+                      Text(
+                        '${seg.count}',
+                        style: TextStyle(
+                          fontSize: T.fsMeta,
+                          fontFamily: T.fontDisplay,
+                          fontWeight: T.wMedium,
+                          color: ink.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    if (seg.count > 0 && seg.dot) const SizedBox(width: 3),
+                    if (seg.dot) const _Dot(),
+                  ],
                 ),
               ),
-            ],
-            if (seg.dot) ...[const SizedBox(width: T.s1), const _Dot()],
           ],
         ),
       ),
@@ -554,7 +635,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   }) {
     final own = item.fill;
     final base = own ?? _menuFill;
-    final ink = own == null ? T.text : _inkOn(own);
+    final ink = own == null ? T.text : T.inkOn(own);
     final fill = hovered
         ? Color.lerp(base, Colors.white, own == null ? 0.14 : 0.38)!
         : base;
@@ -592,16 +673,23 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                     color: ink.withValues(alpha: 0.12),
                   ),
                 ),
+              // Where you are now: a short bar laid over the leading edge, not
+              // a box around the row - and not *in* the row either, where it
+              // pushed the current row's label sideways out of line with the
+              // others.
+              Positioned(
+                left: 0,
+                top: (Dock.rowHeight - 20) / 2,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: item.current ? 4 : 0,
+                  height: 20,
+                  color: ink,
+                ),
+              ),
               Positioned.fill(
                 child: Row(
                   children: [
-                    // Where you are now: a short bar, not a box around the row.
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      width: item.current ? 4 : 0,
-                      height: 20,
-                      color: ink,
-                    ),
                     SizedBox(width: hovered ? T.s4 + 4 : T.s4),
                     if (item.icon != null) ...[
                       Icon(item.icon, size: 18, color: ink),
@@ -614,6 +702,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: T.fsMenu,
+                          fontFamily: T.fontDisplay,
                           fontWeight: item.current || hovered
                               ? T.wMedium
                               : T.wNormal,
@@ -627,6 +716,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                         '${item.count}',
                         style: TextStyle(
                           fontSize: T.fsLabel,
+                          fontFamily: T.fontDisplay,
                           color: ink.withValues(alpha: 0.7),
                         ),
                       ),
@@ -670,13 +760,6 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
 
   static final _menuFill = Color.lerp(T.bgSolid, T.text, 0.10)!;
 }
-
-/// Dark ink on a light fill, light ink on a dark one. The workspace palette is
-/// all pastels, but a workspace's colour is the user's to pick.
-Color _inkOn(Color fill) => fill.computeLuminance() > 0.3 ? T.bgSolid : T.text;
-
-/// Public for the shell, which fills the workspace segment with the same rule.
-Color dockInkOn(Color fill) => _inkOn(fill);
 
 class _Dot extends StatelessWidget {
   const _Dot();

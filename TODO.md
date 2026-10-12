@@ -51,8 +51,19 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       with it; slide-right is now only Edit on a workspace.
 - [x] **58.3** Rows without tiles (`ui/list_rule.dart`): tasks, notes, thoughts.
 - [ ] **58.4** Marco tries 58.2-58.3 on the phone; changes from that.
-- [ ] **58.5** The rest of the tiles: parked group cards, the add field's box,
-      shopping list items, the sheets and forms.
+- [x] **58.8** Second pass after a walk through every screen on the dev copy
+      (with Marco's data) and a look at Dribbble: large view titles with counts
+      (`PanelHeader`, `T.fsTitle`), a display face for chrome (Space Grotesk,
+      `T.fontDisplay`), tonal ink on coloured fills (`T.inkOn`), parked groups
+      as sections (title alone on its line, controls in fixed slots, rules),
+      History without strike-through and with rules, the dock painted down
+      into the home indicator's strip (`Dock.underhang`), dimmed segments fade
+      their fill not their label, counts in the segment corner, the menu's
+      "current" bar no longer shifts its row, no window frame on touch, the
+      list's add field unboxed. On the dev site, not on `main` yet.
+- [ ] **58.9** Marco tries 58.8 on the dev site; merge to `main` when agreed.
+- [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
+      forms, the task action bar.
 - [ ] **58.6** Decide what the desktop and the narrow window get (the dock is
       touch-only so far).
 - [x] **58.7** First round merged to `main` (changelog under 0.29.0) and the

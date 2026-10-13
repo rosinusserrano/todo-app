@@ -89,7 +89,7 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       "current" bar no longer shifts its row, no window frame on touch, the
       list's add field unboxed.
 - [x] **58.9** Marco tried 58.8 on the dev site; merged to `main` 2026-10-13.
-- [ ] **58.10** Round 3, on the dev site for Marco to try: the shopping list
+- [x] **58.10** Round 3, merged to `main` 2026-10-13: the shopping list
       stays in Edit while a new list is typed; the calendar swipe draws the
       neighbouring week/day (`calendarLoadRange` loads one step either side,
       `TimeSwipe.builder`, a shared scroll offset); press-to-create takes the
@@ -98,7 +98,7 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       title stands up in a tall narrow block. Merge to `main` once tried.
       Needs `sudo systemctl restart todo-sync-dev` for the dev server to speak
       protocol 4.
-- [ ] **58.11** Round 4, on the dev site with 58.10: the dock at every size
+- [x] **58.11** Round 4, merged to `main` 2026-10-13: the dock at every size
       (bottom when narrow; top, side or bottom past `Layout.hasRail`, picked
       in Settings as `AppState.wideDock`), replacing the workspace bar, the
       rail, the view bar and the title bar's calendar / list / settings;

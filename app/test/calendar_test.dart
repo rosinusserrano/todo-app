@@ -22,6 +22,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind, kLongPressTimeout
 import 'package:todo_widget/ui/calendar/time_grid.dart'
     show
         EventBlock,
+        kGutter,
         TimeGridView,
         kHourHeight,
         kHourHeightMax,
@@ -1046,6 +1047,148 @@ void main() {
         day.add(const Duration(hours: 9)),
         day.add(const Duration(hours: 10, minutes: 15)),
       ));
+    });
+  });
+
+  group('moving a block', () {
+    final monday = DateTime(2026, 7, 27);
+    final days = [for (var i = 0; i < 7; i++) monday.add(Duration(days: i))];
+    final wed10 = days[2].add(const Duration(hours: 10));
+
+    late List<(CalendarEvent, DateTime, DateTime)> moved;
+    late List<CalendarEvent> menus;
+
+    // 800 wide is the roomy geometry: a 38px gutter and ~109px days.
+    const width = 800.0;
+    final col = (width - kGutter) / 7;
+
+    Future<Offset> pump(WidgetTester tester, CalendarEvent e) async {
+      await tester.binding.setSurfaceSize(const Size(width, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      moved = [];
+      menus = [];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: days,
+            events: [e],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => false,
+            taskCountFor: (_) => 0,
+            onOpenEvent: (_) {},
+            onEventMenu: (e, _) => menus.add(e),
+            onCreate: (_, _) {},
+            onMoveEvent: (e, from, to) => moved.add((e, from, to)),
+          ),
+        ),
+      ));
+      return tester.getCenter(find.byType(EventBlock));
+    }
+
+    Future<void> carry(TestGesture g, Offset from, Offset by,
+        WidgetTester tester) async {
+      for (var i = 1; i <= 8; i++) {
+        await g.moveTo(from + by * (i / 8));
+        await tester.pump();
+      }
+    }
+
+    testWidgets('a mouse drags it straight away, to another day and hour',
+        (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      final at = await pump(tester, e);
+
+      final g = await tester.startGesture(at, kind: PointerDeviceKind.mouse);
+      await carry(g, at, Offset(col, kHourHeight), tester);
+      // The outline says where it is going before it gets there.
+      expect(find.text('11:00 – 13:00'), findsOneWidget);
+      await g.up();
+      await tester.pumpAndSettle();
+
+      expect(moved.single.$2, wed10);
+      expect(moved.single.$3, days[3].add(const Duration(hours: 11)));
+      expect(menus, isEmpty);
+    });
+
+    testWidgets('a finger has to hold it first; a plain drag is a scroll',
+        (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      final at = await pump(tester, e);
+
+      var g = await tester.startGesture(at);
+      await carry(g, at, Offset(0, kHourHeight), tester);
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(moved, isEmpty);
+
+      final now = tester.getCenter(find.byType(EventBlock));
+      g = await tester.startGesture(now);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await carry(g, now, Offset(-col, kHourHeight * 2), tester);
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(moved.single.$3, days[1].add(const Duration(hours: 12)));
+    });
+
+    testWidgets('held and let go in place, it is the menu', (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      final at = await pump(tester, e);
+
+      final g = await tester.startGesture(at);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(moved, isEmpty);
+      expect(menus.single.uuid, 'e1');
+    });
+
+    testWidgets("a subscribed calendar's event stays put", (tester) async {
+      final e = CalendarEvent(
+        uuid: 'f1',
+        calendarUuid: 'cal-1',
+        title: 'from a feed',
+        startAt: reminderStamp(wed10),
+        endAt: reminderStamp(wed10.add(const Duration(hours: 2))),
+        feedUuid: 'feed-1',
+        createdAt: nowStamp(),
+        updatedAt: nowStamp(),
+      );
+      final at = await pump(tester, e);
+
+      final g = await tester.startGesture(at, kind: PointerDeviceKind.mouse);
+      await carry(g, at, Offset(col, kHourHeight), tester);
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(moved, isEmpty);
+    });
+
+    test('a move shifts the series by the distance, keeping its length',
+        () async {
+      final s = await device();
+      await s.refreshCalendars();
+      final cal = s.calendars.single.uuid;
+      final first = DateTime(2026, 7, 6, 9);
+      final saved = await s.saveEvent(
+        calendarUuid: cal,
+        title: 'Stand-up',
+        start: first,
+        end: first.add(const Duration(minutes: 30)),
+        recur: 'weekly',
+      );
+      // An occurrence three weeks on, dragged from Monday 09:00 to Tuesday
+      // 10:15: the series moves a day and an hour and a quarter.
+      final occurrence = saved!
+          .occurrencesBetween(days.first, days.last)
+          .single;
+      await s.moveEvent(
+        occurrence,
+        from: occurrence.start,
+        to: DateTime(2026, 7, 28, 10, 15),
+      );
+      final row = (await s.store.eventByUuid(saved.uuid))!;
+      expect(row.start, DateTime(2026, 7, 7, 10, 15));
+      expect(row.end, DateTime(2026, 7, 7, 10, 45));
+      await s.store.close();
     });
   });
 

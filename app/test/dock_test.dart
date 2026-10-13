@@ -13,49 +13,69 @@ void main() {
     onSecondary: second ? () => fired.add('edit $name') : null,
   );
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    DockEdge edge = DockEdge.bottom,
+  }) async {
     fired = [];
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    final dock = Dock(
+      edge: edge,
+      segments: [
+        DockSegment(
+          label: 'Work',
+          fill: Colors.blue,
+          ink: Colors.black,
+          items: [item('Home', second: true), item('Work', second: true)],
+        ),
+        DockSegment(
+          label: 'Tasks',
+          fill: Colors.grey,
+          ink: Colors.white,
+          items: [item('Notes'), item('Tasks')],
+        ),
+        DockSegment(
+          label: 'More',
+          fill: Colors.black,
+          ink: Colors.white,
+          items: [item('Calendar')],
+        ),
+        DockSegment(
+          label: '',
+          icon: Icons.add,
+          extent: 56,
+          fill: Colors.white,
+          ink: Colors.black,
+          items: [item('Add a task'), item('Add a thought')],
+        ),
+      ],
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Column(
-            children: [
-              const Expanded(child: SizedBox()),
-              Dock(
-                segments: [
-                  DockSegment(
-                    label: 'Work',
-                    fill: Colors.blue,
-                    ink: Colors.black,
-                    items: [item('Home', second: true), item('Work', second: true)],
-                  ),
-                  DockSegment(
-                    label: 'Tasks',
-                    fill: Colors.grey,
-                    ink: Colors.white,
-                    items: [item('Notes'), item('Tasks')],
-                  ),
-                  DockSegment(
-                    label: 'More',
-                    fill: Colors.black,
-                    ink: Colors.white,
-                    items: [item('Calendar')],
-                  ),
-                  DockSegment(
-                    label: '',
-                    icon: Icons.add,
-                    width: 56,
-                    fill: Colors.white,
-                    ink: Colors.black,
-                    items: [item('Add a task'), item('Add a thought')],
-                  ),
-                ],
-              ),
-            ],
-          ),
+          body: switch (edge) {
+            DockEdge.bottom => Column(
+              children: [
+                const Expanded(child: SizedBox()),
+                dock,
+              ],
+            ),
+            DockEdge.top => Column(
+              children: [
+                dock,
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+            DockEdge.left => Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                dock,
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+          },
         ),
       ),
     );
@@ -153,22 +173,78 @@ void main() {
     expect(fired, ['Calendar']);
   });
 
-  testWidgets('a fixed-width segment is found by the slide, and its menu fits', (
-    tester,
-  ) async {
-    await pump(tester);
-    final g = await tester.startGesture(const Offset(60, barY));
-    await tester.pump();
-    await g.moveTo(const Offset(380, barY));
-    await tester.pump();
-    expect(find.text('Add a thought'), findsOneWidget);
+  testWidgets(
+    'a fixed-width segment is found by the slide, and its menu fits',
+    (tester) async {
+      await pump(tester);
+      final g = await tester.startGesture(const Offset(60, barY));
+      await tester.pump();
+      await g.moveTo(const Offset(380, barY));
+      await tester.pump();
+      expect(find.text('Add a thought'), findsOneWidget);
 
-    // The menu is wider than its segment and kept inside the bar, so its
-    // rows reach well left of the segment itself.
-    await g.moveTo(rowCentre(0, x: 250));
-    await tester.pump();
-    await g.up();
-    await tester.pumpAndSettle();
-    expect(fired, ['Add a thought']);
+      // The menu is wider than its segment and kept inside the bar, so its
+      // rows reach well left of the segment itself.
+      await g.moveTo(rowCentre(0, x: 250));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Add a thought']);
+    },
+  );
+
+  group('along the top', () {
+    testWidgets('the menu grows down, nearest row first', (tester) async {
+      await pump(tester, edge: DockEdge.top);
+      final g = await tester.startGesture(const Offset(60, 24));
+      await tester.pump();
+      // Under a bottom bar Work is the row nearest the bar, and it still is.
+      await g.moveTo(Offset(60, 48 + Dock.rowHeight * 0.5));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Work']);
+    });
+  });
+
+  group('down the side', () {
+    // 800 tall: the ＋ is 56 at the foot, the three places share 744.
+    testWidgets('the menu opens to the right, level with its segment', (
+      tester,
+    ) async {
+      await pump(tester, edge: DockEdge.left);
+      final g = await tester.startGesture(const Offset(24, 100));
+      await tester.pump();
+      await g.moveTo(Offset(150, Dock.rowHeight * 0.5));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Home']);
+    });
+
+    testWidgets('sliding down the bar switches menus, and one at the foot '
+        'stays on screen', (tester) async {
+      await pump(tester, edge: DockEdge.left);
+      final g = await tester.startGesture(const Offset(24, 100));
+      await tester.pump();
+      await g.moveTo(const Offset(24, 780));
+      await tester.pump();
+      expect(find.text('Add a thought'), findsOneWidget);
+      // Two rows, moved up to end at the screen's foot.
+      await g.moveTo(Offset(150, 800 - Dock.rowHeight * 0.5));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Add a thought']);
+    });
+
+    testWidgets('a label stands up', (tester) async {
+      await pump(tester, edge: DockEdge.left);
+      final label = find.ancestor(
+        of: find.text('Work').first,
+        matching: find.byType(RotatedBox),
+      );
+      expect(tester.widget<RotatedBox>(label.first).quarterTurns, 1);
+    });
   });
 }

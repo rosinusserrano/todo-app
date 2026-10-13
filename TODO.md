@@ -98,10 +98,24 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       title stands up in a tall narrow block. Merge to `main` once tried.
       Needs `sudo systemctl restart todo-sync-dev` for the dev server to speak
       protocol 4.
+- [ ] **58.11** Round 4, on the dev site with 58.10: the dock at every size
+      (bottom when narrow; top, side or bottom past `Layout.hasRail`, picked
+      in Settings as `AppState.wideDock`), replacing the workspace bar, the
+      rail, the view bar and the title bar's calendar / list / settings;
+      calendar events carried to a new time or day (`EventBlock.movable`,
+      `AppState.moveEvent`; mouse drags at once, touch holds first); and
+      Ctrl+Alt+H opening the capture pane where the footer is not drawn.
+      Merge to `main` with 58.10 once tried.
+- [ ] **58.12** Once Marco has settled on the dock's wide placement: delete
+      `ui/workspace_bar.dart`'s bar, `ui/view_bar.dart` and
+      `ui/workspace_rail.dart` (no longer drawn by the shell; kept only so the
+      choice could be reversed cheaply) and their tests, and
+      `AppState.railCollapsed`. `WorkspaceView` lives in workspace_bar.dart
+      and has to move first.
 - [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
       forms, the task action bar.
-- [ ] **58.6** Decide what the desktop and the narrow window get (the dock is
-      touch-only so far).
+- [x] **58.6** Decide what the desktop and the narrow window get: the dock,
+      everywhere (58.11).
 - [x] **58.7** First round merged to `main` (changelog under 0.29.0) and the
       web app published.
 

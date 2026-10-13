@@ -281,6 +281,9 @@ class CalendarView extends StatelessWidget {
       onEventMenu: onEventMenu,
       onCreate: onCreate,
       onPlanTask: onPlanTask,
+      // Carrying a block somewhere else. Pages drawn beside this one for the
+      // swipe are not touchable, so only the page on screen ever moves one.
+      onMoveEvent: (e, from, to) => state.moveEvent(e, from: from, to: to),
       // What the drag is about to become. In block mode the editor never opens,
       // so the draft is the only chance to see what is being saved.
       blockTitle: block == null ? null : state.calendarName(block),

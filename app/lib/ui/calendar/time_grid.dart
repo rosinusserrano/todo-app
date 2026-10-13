@@ -25,12 +25,16 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart'
     show
+        DelayedMultiDragGestureRecognizer,
         GestureBinding,
+        GestureMultiDragStartCallback,
+        ImmediateMultiDragGestureRecognizer,
+        MultiDragGestureRecognizer,
         PointerDeviceKind,
         PointerScrollEvent,
         PointerSignalEvent;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard;
+import 'package:flutter/services.dart' show HapticFeedback, HardwareKeyboard;
 
 import '../../sync/models.dart';
 import '../../theme.dart';
@@ -104,6 +108,7 @@ class TimeGridView extends StatefulWidget {
     this.hourHeight = kHourHeight,
     this.onZoom,
     this.sharedScroll,
+    this.onMoveEvent,
   });
 
   /// The columns, left to right, each at local midnight.
@@ -173,6 +178,15 @@ class TimeGridView extends StatefulWidget {
   /// scrolls. The swipe hands one to the page and both its neighbours, which
   /// is what draws next week at the hour you were looking at in this one.
   final ValueNotifier<double>? sharedScroll;
+
+  /// A block was carried somewhere else: the piece of it that started at
+  /// [from] was let go at [to] (see [AppState.moveEvent]). Null leaves every
+  /// block where it is. A feed's events are never offered, whatever this is.
+  ///
+  /// Picked up with a plain drag under a mouse and a long press under a
+  /// finger - see [EventBlock.movable] for why the two differ.
+  final void Function(CalendarEvent event, DateTime from, DateTime to)?
+  onMoveEvent;
 
   @override
   State<TimeGridView> createState() => _TimeGridViewState();
@@ -553,6 +567,70 @@ class _TimeGridViewState extends State<TimeGridView> {
     adjust(index, start, start.add(length));
   }
 
+  /// Where a block being carried would land, drawn as an outline under the
+  /// ghost: the ghost follows the hand, this says which quarter hour and
+  /// which day letting go will write.
+  ({
+    int dayIndex,
+    int fromMinutes,
+    int toMinutes,
+    DateTime start,
+    DateTime end,
+    CalendarEvent event,
+  })?
+  _movePreview;
+
+  /// The quarter hour a carried piece would start at if let go with its
+  /// top-left corner at [local]. The day is read under the piece's middle
+  /// rather than its left edge: a block in the right-hand lane of a crowded
+  /// column already has its edge halfway across, and the eye judges "which
+  /// day" by the body of the thing, not its corner.
+  DateTime? _landing(EventDrag drag, Offset local) {
+    final slot = _pointToSlot(Offset(local.dx + drag.size.width / 2, local.dy));
+    if (slot == null) return null;
+    return widget.days[slot.dayIndex].add(Duration(minutes: slot.fromMinutes));
+  }
+
+  void _hoverMove(EventDrag drag, Offset local) {
+    final to = _landing(drag, local);
+    if (to == null) return;
+    final day = DateTime(to.year, to.month, to.day);
+    final dayIndex = widget.days.indexWhere((d) => _isSameDay(d, day));
+    if (dayIndex < 0) return;
+    final from = to.difference(day).inMinutes;
+    final length = drag.pieceEnd.difference(drag.pieceStart).inMinutes;
+    final start = shiftWallClock(drag.event.start, drag.pieceStart, to);
+    final preview = (
+      dayIndex: dayIndex,
+      fromMinutes: from,
+      toMinutes: (from + length).clamp(from + kSnapMinutes, 24 * 60),
+      start: start,
+      end: start.add(drag.event.end.difference(drag.event.start)),
+      event: drag.event,
+    );
+    if (preview != _movePreview) setState(() => _movePreview = preview);
+  }
+
+  void _endMove() {
+    if (_movePreview != null) setState(() => _movePreview = null);
+  }
+
+  /// A carried block was let go over the grid. A long press that never went
+  /// anywhere is the actions menu - on touch that is what the press was for
+  /// before blocks could be moved, and it still is when the finger stays put.
+  void _dropEvent(EventDrag drag, Offset local) {
+    _edgeStop();
+    _endMove();
+    if (!drag.moved) {
+      widget.onEventMenu(drag.event, drag.pressedAt);
+      return;
+    }
+    final to = _landing(drag, local);
+    final move = widget.onMoveEvent;
+    if (to == null || move == null || to == drag.pieceStart) return;
+    move(drag.event, drag.pieceStart, to);
+  }
+
   void _commit() {
     final draft = _draft;
     setState(() => _draft = null);
@@ -685,7 +763,14 @@ class _TimeGridViewState extends State<TimeGridView> {
                             : _tapPlace,
                         onDropPending: _dropPending,
                         onEdge: widget.onStep == null ? null : _edgeStep,
-                        onEdgeEnd: _edgeStop,
+                        onEdgeEnd: () {
+                          _edgeStop();
+                          _endMove();
+                        },
+                        canMove: widget.onMoveEvent != null,
+                        onHoverEvent: _hoverMove,
+                        onDropEvent: _dropEvent,
+                        movePreview: _movePreview,
                         onResizePending: (i, endY) => _adjustPending(
                           i,
                           newEndMinutes: (endY / widget.hourHeight * 60)
@@ -747,6 +832,10 @@ class _GridBody extends StatelessWidget {
     required this.onDropPending,
     required this.onEdge,
     required this.onEdgeEnd,
+    required this.canMove,
+    required this.onHoverEvent,
+    required this.onDropEvent,
+    required this.movePreview,
     required this.onResizePending,
     required this.onRemovePending,
     required this.gutter,
@@ -795,6 +884,23 @@ class _GridBody extends StatelessWidget {
   /// The drag left the grid without being dropped on it.
   final VoidCallback? onEdgeEnd;
 
+  /// Whether blocks can be picked up at all, and what happens while one is
+  /// carried over the grid and when it is let go.
+  final bool canMove;
+  final void Function(EventDrag drag, Offset local) onHoverEvent;
+  final void Function(EventDrag drag, Offset local) onDropEvent;
+
+  /// Where the block being carried would land, or null.
+  final ({
+    int dayIndex,
+    int fromMinutes,
+    int toMinutes,
+    DateTime start,
+    DateTime end,
+    CalendarEvent event,
+  })?
+  movePreview;
+
   final void Function(int index, double endY) onResizePending;
   final void Function(int index)? onRemovePending;
 
@@ -816,16 +922,23 @@ class _GridBody extends StatelessWidget {
         // first child that takes the pointer, so a drop target below the event
         // blobs would never be found over one. An ancestor is always on the hit
         // path.
-        return DragTarget<int>(
-          onWillAcceptWithDetails: (_) => true,
+        return DragTarget<Object>(
+          // A pending block's index, or a real block being moved. A task from
+          // the list beside the grid is the blocks' own business
+          // (TaskDropTarget), and falls through to nothing here.
+          onWillAcceptWithDetails: (d) => d.data is int || d.data is EventDrag,
           // Off the grid entirely - dropped on something else, or cancelled.
           // Stepping must not carry on underneath.
           onLeave: (_) => onEdgeEnd?.call(),
           onMove: (d) {
-            final edge = onEdge;
-            if (edge == null) return;
             final box = context.findRenderObject() as RenderBox?;
             if (box == null) return;
+            final data = d.data;
+            if (data is EventDrag) {
+              onHoverEvent(data, box.globalToLocal(d.offset));
+            }
+            final edge = onEdge;
+            if (edge == null) return;
             final x = box.globalToLocal(d.offset).dx;
             // Measured from the *gutter*, not from zero: the hour labels are
             // not part of any day, and a block held over them is being aimed at
@@ -841,7 +954,12 @@ class _GridBody extends StatelessWidget {
           onAcceptWithDetails: (d) {
             final box = context.findRenderObject() as RenderBox?;
             if (box == null) return;
-            onDropPending(d.data, box.globalToLocal(d.offset));
+            final data = d.data;
+            if (data is EventDrag) {
+              onDropEvent(data, box.globalToLocal(d.offset));
+            } else if (data is int) {
+              onDropPending(data, box.globalToLocal(d.offset));
+            }
           },
           builder: (context, _, _) => _stack(colWidth, today),
         );
@@ -951,6 +1069,26 @@ class _GridBody extends StatelessWidget {
             );
           }(),
 
+        if (movePreview case final m?)
+          Positioned(
+            left: gutter + m.dayIndex * colWidth + 1,
+            width: colWidth - 2,
+            top: m.fromMinutes / 60 * hourHeight,
+            height: ((m.toMinutes - m.fromMinutes) / 60 * hourHeight).clamp(
+              14.0,
+              double.infinity,
+            ),
+            child: IgnorePointer(
+              child: _DraftBlock(
+                from: m.start,
+                to: m.end,
+                title: m.event.title,
+                color: colorFor(m.event),
+                compact: compact,
+              ),
+            ),
+          ),
+
         if (draft != null)
           Positioned(
             left: gutter + draft!.dayIndex * colWidth + 1,
@@ -995,6 +1133,10 @@ class _GridBody extends StatelessWidget {
               .clamp(0, 24 * 60);
           final slotWidth = (width - 2) / p.columns;
           return Positioned(
+            // Keyed, so that when the week steps under a block being carried
+            // its element is not handed to whichever event now sits at the
+            // same index - the drag's payload belongs to the block's state.
+            key: ValueKey('${p.event.instanceKey}/${day.toIso8601String()}'),
             left: left + 1 + p.column * slotWidth,
             width: slotWidth,
             top: startMin / 60 * hourHeight,
@@ -1022,6 +1164,9 @@ class _GridBody extends StatelessWidget {
               // that happen to touch the edges of their columns.
               continuesBefore: p.event.start.isBefore(day),
               continuesAfter: p.event.end.isAfter(next),
+              movable: canMove && !p.event.fromFeed,
+              pieceStart: p.event.start.isBefore(day) ? day : p.event.start,
+              pieceEnd: p.event.end.isAfter(next) ? next : p.event.end,
             ),
           );
         }(),
@@ -1126,12 +1271,31 @@ class EventBlock extends StatelessWidget {
     this.compact = false,
     this.continuesBefore = false,
     this.continuesAfter = false,
+    this.movable = false,
+    this.pieceStart,
+    this.pieceEnd,
   });
 
   final CalendarEvent event;
   final Color color;
   final bool hasAttachment;
   final VoidCallback onTap;
+
+  /// The block can be picked up and dropped somewhere else on the grid.
+  ///
+  /// How depends on the pointer, not on the layout (a browser on a desktop
+  /// lays out as touch and still has a mouse): a **mouse** drags it straight
+  /// away, because a mouse drag on the grid means nothing else - the grid
+  /// does not scroll by it and creating starts on empty space - while a
+  /// **finger** has to hold it first, since a one-finger drag over a block is
+  /// how the day scrolls. A long press that never moves is still the actions
+  /// menu, which is what it was before blocks could be carried.
+  final bool movable;
+
+  /// What part of the event this block draws - all of it, unless midnight
+  /// cut it - which is what a move measures from.
+  final DateTime? pieceStart;
+  final DateTime? pieceEnd;
 
   /// Right-click or long-press, at the point it happened. Optional so a block
   /// can be drawn somewhere that has no actions to offer.
@@ -1187,9 +1351,26 @@ class EventBlock extends StatelessWidget {
       ),
     );
 
+    final target = TaskDropTarget(
+      onDrop: onDropTask,
+      color: color,
+      child: blob,
+    );
     return EventMenuArea(
       onMenu: onMenu,
-      child: TaskDropTarget(onDrop: onDropTask, color: color, child: blob),
+      // A finger's long press lifts a movable block instead; the menu is
+      // what lifting it and letting go in place opens (see _MovableBlock).
+      longPress: !movable,
+      child: movable
+          ? _MovableBlock(
+              event: event,
+              pieceStart: pieceStart ?? event.start,
+              pieceEnd: pieceEnd ?? event.end,
+              ghost: blob,
+              onMenu: onMenu,
+              child: target,
+            )
+          : target,
     );
   }
 
@@ -1348,10 +1529,19 @@ class RaisedFace extends StatelessWidget {
 /// arena, because a long press claims the pointer at its threshold while a tap
 /// can only win on pointer-up.
 class EventMenuArea extends StatelessWidget {
-  const EventMenuArea({super.key, required this.onMenu, required this.child});
+  const EventMenuArea({
+    super.key,
+    required this.onMenu,
+    required this.child,
+    this.longPress = true,
+  });
 
   final void Function(Offset globalPosition)? onMenu;
   final Widget child;
+
+  /// Whether a long press opens the menu too. Off on a block that can be
+  /// carried, where the long press is what picks it up.
+  final bool longPress;
 
   @override
   Widget build(BuildContext context) {
@@ -1362,9 +1552,192 @@ class EventMenuArea extends StatelessWidget {
       // than the coloured blob inside it.
       behavior: HitTestBehavior.deferToChild,
       onSecondaryTapUp: (d) => menu(d.globalPosition),
-      onLongPressStart: (d) => menu(d.globalPosition),
+      onLongPressStart: longPress ? (d) => menu(d.globalPosition) : null,
       child: child,
     );
+  }
+}
+
+/// What a block being carried hands the grid: which event, and which piece of
+/// it - an overnight event is drawn once per column it touches, and the
+/// piece picked up is what lands where it is let go.
+///
+/// Mutable and owned by the block's State, because [Draggable] reads its
+/// payload when the drag *starts*, from the last build, while where the press
+/// landed and whether the pointer has gone anywhere are only known after.
+class EventDrag {
+  EventDrag({
+    required this.event,
+    required this.pieceStart,
+    required this.pieceEnd,
+  });
+
+  CalendarEvent event;
+  DateTime pieceStart;
+  DateTime pieceEnd;
+
+  /// The block's size on the grid, which is also the ghost's.
+  Size size = Size.zero;
+
+  /// Where the press went down, in global coordinates - where the menu opens
+  /// if the press turns out to have been one.
+  Offset pressedAt = Offset.zero;
+
+  /// Whether the pointer has travelled since the block was lifted.
+  bool moved = false;
+}
+
+/// A block that can be picked up: a drag under a mouse, a long press under a
+/// finger. See [EventBlock.movable].
+class _MovableBlock extends StatefulWidget {
+  const _MovableBlock({
+    required this.event,
+    required this.pieceStart,
+    required this.pieceEnd,
+    required this.ghost,
+    required this.onMenu,
+    required this.child,
+  });
+
+  final CalendarEvent event;
+  final DateTime pieceStart;
+  final DateTime pieceEnd;
+
+  /// What follows the pointer: the block as drawn, without its drop target.
+  final Widget ghost;
+  final void Function(Offset globalPosition)? onMenu;
+  final Widget child;
+
+  @override
+  State<_MovableBlock> createState() => _MovableBlockState();
+}
+
+class _MovableBlockState extends State<_MovableBlock> {
+  late final _drag = EventDrag(
+    event: widget.event,
+    pieceStart: widget.pieceStart,
+    pieceEnd: widget.pieceEnd,
+  );
+
+  /// How far a lifted block has to travel before letting go means "here"
+  /// rather than "show me the menu". Less than a touch slop: the finger is
+  /// already committed to this block, and a small nudge is a real move.
+  static const _moveSlop = 6.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        _drag
+          ..event = widget.event
+          ..pieceStart = widget.pieceStart
+          ..pieceEnd = widget.pieceEnd
+          ..size = box.biggest;
+
+        // Feedback is built in the overlay, outside the Positioned that sized
+        // the block, so it gets the size explicitly - and a Material, which
+        // the overlay does not provide.
+        final ghost = Material(
+          type: MaterialType.transparency,
+          child: SizedBox.fromSize(
+            size: box.biggest,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              // See-through enough for the landing outline under it, and
+              // the times it prints, to show.
+              child: Opacity(opacity: 0.8, child: widget.ghost),
+            ),
+          ),
+        );
+        final left = Opacity(opacity: 0.3, child: widget.child);
+
+        Widget draggable(Widget child, {required bool touch}) =>
+            _DeviceDraggable(
+              touch: touch,
+              data: _drag,
+              feedback: ghost,
+              childWhenDragging: left,
+              // A mouse drag only starts once the pointer has moved, so it
+              // has moved by definition.
+              onDragStarted: touch ? null : () => _drag.moved = true,
+              onDragUpdate: (d) {
+                if (!_drag.moved &&
+                    (d.globalPosition - _drag.pressedAt).distance > _moveSlop) {
+                  _drag.moved = true;
+                }
+              },
+              // Let go off the grid. Still the menu if it never went anywhere.
+              onDraggableCanceled: (_, _) {
+                if (!_drag.moved) widget.onMenu?.call(_drag.pressedAt);
+              },
+              child: child,
+            );
+
+        return Listener(
+          onPointerDown: (e) {
+            _drag
+              ..pressedAt = e.position
+              ..moved = false;
+          },
+          child: draggable(draggable(widget.child, touch: true), touch: false),
+        );
+      },
+    );
+  }
+}
+
+/// A [Draggable] that answers to one kind of pointer: immediately to a mouse,
+/// or after a long press to anything else. Two of them nested are what let one
+/// block be dragged straight away with a mouse and held first with a finger,
+/// whichever layout it is in.
+class _DeviceDraggable extends Draggable<EventDrag> {
+  const _DeviceDraggable({
+    required this.touch,
+    required super.child,
+    required super.feedback,
+    super.data,
+    super.childWhenDragging,
+    super.onDragStarted,
+    super.onDragUpdate,
+    super.onDraggableCanceled,
+  });
+
+  final bool touch;
+
+  @override
+  MultiDragGestureRecognizer createRecognizer(
+    GestureMultiDragStartCallback onStart,
+  ) {
+    if (!touch) {
+      return ImmediateMultiDragGestureRecognizer(
+        supportedDevices: const {PointerDeviceKind.mouse},
+        allowedButtonsFilter: allowedButtonsFilter,
+      )..onStart = onStart;
+    }
+    return DelayedMultiDragGestureRecognizer(
+        supportedDevices: const {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.invertedStylus,
+          PointerDeviceKind.unknown,
+        },
+        allowedButtonsFilter: allowedButtonsFilter,
+      )
+      ..onStart = (position) {
+        final drag = onStart(position);
+        // The lift is felt, the way a held block is everywhere else.
+        if (drag != null) HapticFeedback.mediumImpact();
+        return drag;
+      };
   }
 }
 

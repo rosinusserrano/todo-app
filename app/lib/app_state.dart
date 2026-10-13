@@ -25,6 +25,7 @@ import 'sync/models.dart';
 // geometry, and a second copy of the bounds would drift from the ones the
 // pinch clamps to.
 import 'ui/calendar/time_grid.dart' show kHourHeight, kHourHeightMin, kHourHeightMax;
+import 'ui/dock.dart' show DockEdge;
 import 'theme.dart';
 
 const _kLastWorkspace = 'ui:last-workspace';
@@ -35,6 +36,7 @@ const _kCalendarZoom = 'ui:calendar-hour-height';
 const _kCalendarHidden = 'ui:calendar-hidden';
 const _kCalendarBlock = 'ui:calendar-block';
 const _kRailCollapsed = 'ui:rail-collapsed';
+const _kWideDock = 'ui:wide-dock';
 const _kSplitFraction = 'ui:split-fraction';
 const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
 const _kTasksPaneCollapsed = 'ui:tasks-pane-collapsed';
@@ -1201,6 +1203,12 @@ class AppState extends ChangeNotifier {
   /// The rail is drawn as a strip of dots and icons instead of names.
   bool railCollapsed = false;
 
+  /// Where the dock goes once the window is wide enough not to need it at the
+  /// bottom ([Layout.hasRail]). A narrow window always has it at the bottom,
+  /// where a thumb is; past that the two placements are a matter of taste,
+  /// and Marco asked to be able to try both.
+  DockEdge wideDock = DockEdge.top;
+
   /// The task list's share of the width when a view opens beside it, or null
   /// for the shell's default. A fraction rather than pixels so a resized window
   /// keeps the proportion that was chosen.
@@ -1254,6 +1262,7 @@ class AppState extends ChangeNotifier {
       );
     }
     railCollapsed = (await _store.setting(_kRailCollapsed)) == '1';
+    wideDock = DockEdge.parse(await _store.setting(_kWideDock)) ?? DockEdge.top;
     tasksPaneCollapsed = (await _store.setting(_kTasksPaneCollapsed)) == '1';
     splitFraction = double.tryParse(await _store.setting(_kSplitFraction) ?? '');
     calendarSplitFraction =
@@ -1264,6 +1273,13 @@ class AppState extends ChangeNotifier {
     railCollapsed = collapsed;
     notifyListeners();
     await _store.setSetting(_kRailCollapsed, collapsed ? '1' : '0');
+  }
+
+  Future<void> setWideDock(DockEdge edge) async {
+    if (edge == wideDock) return;
+    wideDock = edge;
+    notifyListeners();
+    await _store.setSetting(_kWideDock, edge.name);
   }
 
   Future<void> setTasksPaneCollapsed(bool collapsed) async {
@@ -2118,6 +2134,22 @@ class AppState extends ChangeNotifier {
     await _rescheduleNotifications();
     _mutated();
     return row;
+  }
+
+  /// A block was dragged on the grid: the piece that started at [from] was
+  /// let go at [to]. Moves the event - its series, for an occurrence - by
+  /// that distance and keeps its length. A feed's event is the feed's to
+  /// move, so it is left alone (the grid does not offer it either).
+  Future<void> moveEvent(
+    CalendarEvent e, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (e.fromFeed || from == to) return;
+    await _store.putEvent(e.shiftedBy(from, to, stamp: nowStamp()));
+    await refreshEvents();
+    await _rescheduleNotifications();
+    _mutated();
   }
 
   /// Add events read out of an .ics file to [calendarUuid].

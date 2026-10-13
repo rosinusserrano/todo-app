@@ -6,10 +6,10 @@ Newest changes are noted in the changelog at the bottom.
 ## Tasks
 
 - **Add a task** — press **Add a task** at the top of the list (or the **＋**
-  on the workspace bar, **Add task** on the rail, or **N** on the keyboard),
+  on the dock, or **N** on the keyboard),
   type, and press Enter. The line at the top of the list is there on every
   screen size, because the way to do the commonest thing in the app should be
-  where the task will appear, not across the window in the rail. The field stays open
+  where the task will appear, not across the window in the dock. The field stays open
   for the next one; Enter on an empty field, Esc, or clicking elsewhere puts it
   away. It used to be a text field permanently above the list, which cost a
   phone a row of height for something used a few seconds an hour. A field with
@@ -180,7 +180,7 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   on its title row, lit in the shelf's colour when a review is due. It opens the
   one-todo-at-a-time review directly; there is no need to expand the shelf
   first.
-- **Open them** — "Parked" in the ▾ views menu on the workspace bar swaps the
+- **Open them** — "Parked" in the dock's second part (where you are) swaps the
   content area for the parked view, the same way History and Thoughts do. Click
   the "← Parked" header, press Esc, or pick "Parked" again to go back.
 - **Park a task** — the 📥 in a task's action bar opens a picker of this
@@ -229,7 +229,7 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   becoming a landfill. Until the first review the clock runs from when the group
   was made, so a new group is never instantly overdue.
 - **When a review comes due** — the group turns the alarm colour and shows
-  "review due", and the ▾ views menu on the workspace bar gains a coloured dot,
+  "review due", and the dock's second part gains a red dot,
   which is the only sign visible while the panel is closed. Opening the panel
   expands every overdue group automatically.
 - **Reviewing is a funnel, not a button.** "Review" on a shelf's header takes over
@@ -525,6 +525,15 @@ Three tiers, none of which need an account, an API key, or a licence:
     to scroll the day, which is the only way to reach the rest of it.
   - Creating only happens on **empty** grid. A click or press on an existing
     event opens that event and nothing else.
+- **Move an event by carrying it.** With a mouse, **drag** a block anywhere -
+  another hour, another day; on a phone, **press and hold** it until it lifts
+  (it ticks), then drag. An outline under it shows the quarter hour and day it
+  will land on, with the new times; let go and it is moved, the same length as
+  before. Hold it against the left or right edge to carry it into the next or
+  previous week. A repeating event moves as a whole series, by the same
+  distance; one from a subscribed calendar stays where its feed puts it. On a
+  phone, a held block let go without moving still opens its menu, which is
+  what a long press on it always did.
 - **The event form and the details card are the app's own panel**, not a
   Material dialog: full width against the bottom edge on a phone, a centred
   card on a desktop, in the colour of the calendar they belong to. On a phone
@@ -538,7 +547,8 @@ Three tiers, none of which need an account, an API key, or a licence:
   open the edit form outright, which answered the rarer of the two reasons for
   clicking and put a form full of live fields one keystroke away from changing
   something nobody meant to touch. **Right-click** (or **long-press** on a
-  phone) skips the card and offers the same actions directly. Both work on the
+  phone, and let go without moving) skips the card and offers the same actions
+  directly. Both work on the
   hour grid, on the multi-day band and in the agenda.
 - **Go to the workspace a block belongs to.** When an entry is on a
   workspace's own calendar, the details card and the right-click menu offer
@@ -639,7 +649,7 @@ Three tiers, none of which need an account, an API key, or a licence:
   including down to silence.
 - **On a big window the calendar opens *beside* the list, and you can drag onto
   it.** Past about 810px wide the calendar stops replacing the window: the task
-  list keeps the left-hand column (with its workspace bar and its add field) and
+  list keeps the left-hand column (under the workspace's name, with its add field) and
   the calendar takes the rest. **Drag a task onto a block** to plan it into that
   block — the block lights up as you come over it, and letting go is the same
   thing ticking it in the event editor does, reached from where you are actually
@@ -794,8 +804,7 @@ window while it is open.
 Per workspace, beside Notes and Parked: lists where you decide the **fields**
 first and then add **entries** - recipes (name, link), movies (title, year,
 seen), books, anything kept with the same few details each time. Reached from
-the phone's bottom bar (where you are → *Collections*), the ▾ views menu, or
-the sidebar.
+the dock (where you are → *Collections*).
 
 - **Four kinds of field**: **text**, **link**, **number** and **checkbox**. A
   link field gets the URL keyboard, a number field the number keyboard (a
@@ -825,7 +834,7 @@ the sidebar.
 
 ## History
 
-- **"Done recently" view** — "History" in the ▾ views menu on the workspace bar
+- **"Done recently" view** — "History" in the dock's second part (where you are)
   shows completed tasks, newest first, each with the date/time it was checked off
   (up to 100). Click the "← Done recently" header or press Esc to go back.
 - Completed tasks are preserved across restarts.
@@ -833,8 +842,8 @@ the sidebar.
 ## Journal / Notes
 
 A quiet place to write, per workspace — plaintext by default, with **optional**
-password encryption. Reached from the ▾ **views menu on the workspace bar**
-(not the title bar): "Notes". Two things shape it: it is **quiet** (so a glance
+password encryption. Reached from the dock's second part (where you are):
+"Notes". Two things shape it: it is **quiet** (so a glance
 at the screen gives nothing away) and its lock is **opt-in**.
 
 - **Deliberately low-key** — a plain "Notes" pane in the same muted greys as the
@@ -884,8 +893,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   "Jul 20, 14:32" stamp. Editing changes the words but **not the timestamp** —
   the log records when a thing was written, not when it was later edited. Saving
   an entry emptied of both title and body deletes it.
-- **On a phone an open note takes the whole screen** — the workspace bar, the
-  view bar and the footer step aside for it, and the note's own back arrow is
+- **On a phone an open note takes the whole screen** — the dock and the footer
+  step aside for it, and the note's own back arrow is
   the way out. It used to *look* like the note refusing to open: the chrome
   disappearing rearranged the widget tree around the pane, which threw away the
   pane's own idea of which rung it was on, and the note snapped back to the list
@@ -964,14 +973,24 @@ at the screen gives nothing away) and its lock is **opt-in**.
   footer bar and the phone's bottom bar run the same escalation off the same
   numbers — it is one signal, drawn wherever the layout put the control.
 
-## Getting around on a phone
+## Getting around
 
-- **One bar along the bottom, in four parts**, which touch: the **workspace**
+- **One bar, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
   Collections, Parked or History), **More** - everything that belongs to no workspace:
   the calendar, the shopping list, side thoughts and settings - and a narrow
   **＋** at the end for writing something down: *Add a task* or *Add a
   thought*.
+- **Where it sits.** Along the bottom wherever the window is narrow - a phone,
+  the desktop widget at its own size. In a wide window (~560px and up) it goes
+  **across the top** or **down the left side**: *Settings → Dock in a wide
+  window* picks Top, Side or Bottom, remembered on this device. Over a top bar
+  the menus drop down, with the row nearest the bar the same one a bottom bar
+  puts nearest; down the side they open to the right, and the labels stand up,
+  reading top to bottom.
+- **With a mouse** a click opens a part's menu and a second click picks; the
+  row under the pointer lights. Pressing and sliding works with a mouse as it
+  does with a finger.
 - **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
   finger to a row - it lights, and the phone ticks - and let go to go there.
   Let go anywhere off the menu and nothing happens. Sliding along the bar
@@ -983,8 +1002,9 @@ at the screen gives nothing away) and its lock is **opt-in**.
   picks. Tap the part again, or anywhere above the menu, to close it.
 - The pile of side thoughts shows on **More**: its count, and the same tint and
   pulse as it grows that the old bar had. A red dot there means sync needs you.
-- It replaces the workspace pill at the top, the old four-icon bar, and the
-  calendar, list and settings buttons on the title bar. It stays put over the
+- It replaces the workspace pill at the top, the old four-icon bar, the
+  desktop's workspace rail, and the calendar, list and settings buttons on the
+  title bar. It stays put over the
   calendar and the list, so leaving either is picking where to go.
 - **The bar reaches the bottom edge.** Under the iPhone's home indicator the
   four parts carry on in their own colours, rather than stopping above a band
@@ -1032,7 +1052,9 @@ at the screen gives nothing away) and its lock is **opt-in**.
   since the add field sits behind the focus overlay; **Ctrl+Alt+H** no longer
   does, because focus mode has its own thought field. If another application
   already owns a combination, the footer says so rather than leaving a dead
-  shortcut.
+  shortcut. Where there is no footer on screen - the calendar with the whole
+  window, the shopping list - **Ctrl+Alt+H** opens the thought pane over it,
+  and closing the pane lands back where you were. It used to do nothing there.
 - **Esc** unwinds one layer at a time — the sound sheet, then the focus-mode
   thought field, then focus mode, then the parked-thoughts panel.
   **Ctrl+Enter** in any capture field
@@ -1093,23 +1115,15 @@ shape instead), and **extra width buys more at once, not bigger** — nothing is
 simply stretched.
 
 - **340px and up — the widget as designed.** Nothing below is missing here; the
-  workspace list and the views sit behind the two ▾ menus, and the calendar
+  workspace list and the views sit behind the dock along the bottom (see
+  *Getting around*), and the calendar
   shows the compact week grid and the single-column year described above.
 - **~300px — the week grid gives way to the agenda**, below which seven columns
   stop being columns. Widen it and the grid comes straight back.
-- **~560px and 400px tall — the workspace bar unrolls into a side rail.** The
-  same controls, no longer behind a press: every workspace listed down the left,
-  and Tasks / Notes / Parked / History as permanent entries, with the count of
-  pending side thoughts and the parked-review dot where you can see them.
-  Clicking a workspace goes to it — the one you are on included, which lands on
-  its list. Editing is the **✎** that appears beside a name on hover. Narrow
-  the window and the bar comes back.
-- **The rail folds into a strip.** The « beside *Workspaces* collapses it to a
-  thin column: a coloured dot per workspace (the current one ringed) and an icon
-  per view. Hovering a dot expands it into a tile with the workspace's name and
-  a ✎; the view icons are named in tooltips, with the parked-review dot and the
-  thoughts marker still on them. » brings the full rail back. The choice is
-  remembered on this device.
+- **~560px and 400px tall — the dock moves off the bottom**, across the top
+  or down the left side, whichever Settings says. A wide window is aimed at
+  with a mouse, not reached by a thumb. (This used to be where the workspace
+  bar unrolled into a rail; the dock replaced both.)
 - **~810px — the calendar stops covering the tasks.** It opens beside the list
   rather than taking the window, which is also the only arrangement in which a
   task can be dragged onto a block (both ends of that gesture have to be on
@@ -1131,7 +1145,7 @@ simply stretched.
   panels and for the calendar, and the fold as one preference for both. Folding
   never resets the pane beside it — a note being edited stays open.
 - **The task column stops at 620px.** Beyond that the extra room goes to the
-  rail and the second pane: a tick box 900 pixels from the end of its own line
+  second pane: a tick box 900 pixels from the end of its own line
   is a worse checklist, not a bigger one. The focus tile is capped the same way
   and stays centred — a task title stretched across a wide window is a line you
   have to sweep your head along.
@@ -1347,7 +1361,7 @@ reminders are both there now**, queued for 0.18.0.
 - **0.29.0** — *(in progress)*
   - **The phone's bottom bar is new**: workspace, where, more and ＋ (add a
     task or a thought); press, slide up to where you want to go, let go. Slide
-    right on a workspace to edit it. See *Getting around on a phone*.
+    right on a workspace to edit it. See *Getting around*.
   - **No more tiles**: tasks, notes and thoughts are separated by short bars
     instead of each sitting in its own box.
   - **A second design pass**: every view opens under a large title with its
@@ -1357,6 +1371,13 @@ reminders are both there now**, queued for 0.18.0.
     under it; History lost its strike-through; the bottom bar runs down under
     the iPhone's home indicator; labels on a coloured block are a deep shade
     of that colour instead of black; no more frame around the app on a phone.
+  - **The dock on every screen, and events that move**: the bottom bar is the
+    navigation on the desktop too - along the bottom of the widget, across the
+    top or down the side of a wide window (Settings picks); the workspace
+    bar, the rail and the title bar's calendar / list / settings buttons are
+    gone. Calendar events can be dragged to another time or day (a mouse drags
+    straight away, a finger holds first). Ctrl+Alt+H works on the calendar
+    and the shopping list: it opens the thought pane over them.
   - **Calendar and list touches**: the next and previous week show beside the
     one you are on as you swipe, so a short drag is a glance; pressing to
     create starts in the quarter hour you pressed, not the nearest one; events

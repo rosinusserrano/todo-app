@@ -984,13 +984,17 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **Where it sits.** Along the bottom wherever the window is narrow - a phone,
   the desktop widget at its own size. In a wide window (~560px and up) it goes
   **across the top** or **down the left side**: *Settings → Dock in a wide
-  window* picks Top, Side or Bottom, remembered on this device. Over a top bar
-  the menus drop down, with the row nearest the bar the same one a bottom bar
+  window* picks Top, Side or Bottom, remembered on this device. Along the top
+  it sits in the title bar itself, beside the app's name, rather than in a
+  second bar under it. Over a top bar the menus drop down, with the row nearest the bar the same one a bottom bar
   puts nearest; down the side they open to the right, and the labels stand up,
   reading top to bottom.
-- **With a mouse** a click opens a part's menu and a second click picks; the
-  row under the pointer lights. Pressing and sliding works with a mouse as it
-  does with a finger.
+- **With a mouse, rest on a part** and its menu opens; move along the bar and
+  the next one opens at once; move away from both the part and its menu and
+  it closes. Passing over the bar on the way somewhere else opens nothing.
+  Click a row to go there - the row under the pointer lights. Clicking the
+  part itself keeps its menu open until you pick or click elsewhere, and
+  pressing and sliding works with a mouse as it does with a finger.
 - **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
   finger to a row - it lights, and the phone ticks - and let go to go there.
   Let go anywhere off the menu and nothing happens. Sliding along the bar
@@ -1373,7 +1377,8 @@ reminders are both there now**, queued for 0.18.0.
     of that colour instead of black; no more frame around the app on a phone.
   - **The dock on every screen, and events that move**: the bottom bar is the
     navigation on the desktop too - along the bottom of the widget, across the
-    top or down the side of a wide window (Settings picks); the workspace
+    top (in the title bar, beside the name) or down the side of a wide window
+    (Settings picks), and with a mouse its menus open on hover; the workspace
     bar, the rail and the title bar's calendar / list / settings buttons are
     gone. Calendar events can be dragged to another time or day (a mouse drags
     straight away, a finger holds first). Ctrl+Alt+H works on the calendar

@@ -359,8 +359,13 @@ narrow and, past `Layout.hasRail`, along the edge `AppState.wideDock` names
 `_dockEdge` decides it. A top bar lists each menu the other way up (`_drawn`),
 so the row nearest the bar is the same one a bottom bar puts nearest; a side
 bar stands its labels up and places its menus with `_SideMenuLayout`, level
-with the segment and pushed up to stay on screen. The things about it that are
-load-bearing:
+with the segment and pushed up to stay on screen. A top dock is not in `_body`
+at all: it is `TitleBar.dock`, beside the name, at the title bar's height. With
+a mouse a segment opens its menu on hover (`_enterSegment` after
+`_hoverOpenDelay`, so crossing the bar opens nothing; `_viaHover`, no scrim)
+and closes when the mouse has left both segment and menu; the timer re-reads
+`_overSegment` / `_overMenu` rather than trusting enter/exit order. The things
+about it that are load-bearing:
 
 - **One pointer, one `Listener` per segment, no recognisers.** Pointer events
   go to whatever was hit at the press for the pointer's whole life, so the
@@ -1386,8 +1391,11 @@ settings.
 Configured in `main()` via `window_manager` + `flutter_acrylic`: 340×480,
 frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
 
-- `TitleBar` is the drag handle, via `DragToMoveArea`. It must **not** wrap the
-  buttons themselves or it swallows their clicks.
+- `TitleBar` is the drag handle, via a `DragToMoveArea` **behind** its row,
+  not around it. Around it, its pan recogniser is an ancestor of the buttons
+  and of a top dock, and a press-and-slide on a dock segment would move the
+  window. Behind, it gets only what nothing in the row took - which is why the
+  "Todo" label is an `IgnorePointer`.
 - **Always-on-top is re-asserted, not set.** `WS_EX_TOPMOST` is not ours alone
   to hold — another application going full screen makes Windows strip it from
   every other window, and nothing restores it when that application exits, so a

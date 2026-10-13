@@ -1658,6 +1658,19 @@ class _WidgetShellState extends State<WidgetShell>
             listOpen: s.showList,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
+            // Along the top the dock is in this bar, beside the name, rather
+            // than a second bar under it. It fades with the body in focus
+            // mode, which this bar otherwise stays visible through.
+            dock: _dockShows && _dockEdge == DockEdge.top
+                ? AnimatedOpacity(
+                    opacity: _focusVisible ? 0 : 1,
+                    duration: T.heroDur,
+                    child: IgnorePointer(
+                      ignoring: _focusVisible,
+                      child: _dock(ws, DockEdge.top),
+                    ),
+                  )
+                : null,
           ),
         ),
 
@@ -1999,8 +2012,8 @@ class _WidgetShellState extends State<WidgetShell>
     final edge = _dockShows ? _dockEdge : null;
     return Column(
       children: [
+        // A top dock is drawn in the title bar (see `TitleBar.dock`).
         const SizedBox(height: TitleBar.height),
-        if (edge == DockEdge.top) _dock(ws, edge!),
         Expanded(
           key: const ValueKey('body'),
           child: Row(
@@ -2208,10 +2221,11 @@ class _WidgetShellState extends State<WidgetShell>
     return Dock(
       edge: edge,
       // Slimmer away from the bottom: up there and down the side it is aimed
-      // at, not landed on by a thumb.
+      // at, not landed on by a thumb. Along the top it is the title bar's own
+      // height, since it sits in that bar.
       thickness: switch (edge) {
         DockEdge.bottom => 52,
-        DockEdge.top => 44,
+        DockEdge.top => TitleBar.height,
         DockEdge.left => 48,
       },
       underhang: edge == DockEdge.bottom ? _bottomInset : 0,

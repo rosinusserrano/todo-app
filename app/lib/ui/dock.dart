@@ -28,6 +28,14 @@
 // one menu is open. A finger that landed on the wrong segment does not have to
 // lift.
 //
+// **A mouse only has to rest on a segment.** Its menu opens after a beat
+// (`_hoverOpenDelay`, so a pointer crossing the bar on its way to the list
+// does not flash menus open), moving along the bar switches at once, and
+// leaving both the segment and its menu closes it after a shorter beat - long
+// enough to cut a corner on the way in. A hovered menu draws no scrim: it is
+// a menu bar's menu, not a modal. Clicking the segment pins it the way a tap
+// does, and the press-and-slide still works with the button held.
+//
 // Why a Listener and not gesture recognisers: the whole thing is one pointer's
 // life, from the press on a segment to the release over a row that did not
 // exist when it started. Pointer events go to whatever was hit at the press for
@@ -47,6 +55,7 @@
 // sits between the screen and this widget, and a pointer's global position is
 // in screen pixels while the overlay lays out in layout units.
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show kTouchSlop;
@@ -228,6 +237,21 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   /// lifting without moving closes it.
   bool _tapCloses = false;
 
+  /// Opened by a mouse resting on its segment, and closed by it leaving.
+  bool _viaHover = false;
+
+  /// Where the mouse is: the segment it is over, and whether it is in the
+  /// menu. Read when a timer fires rather than trusted from the order the
+  /// enter and exit callbacks arrive in.
+  int? _overSegment;
+  bool _overMenu = false;
+
+  /// A pending hover open or hover close - one at a time.
+  Timer? _hoverTimer;
+
+  static const _hoverOpenDelay = Duration(milliseconds: 150);
+  static const _hoverCloseDelay = Duration(milliseconds: 300);
+
   bool get _vertical => widget.edge == DockEdge.left;
 
   /// A menu's rows as drawn. Over a top bar they run the other way up, so the
@@ -267,6 +291,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _hoverTimer?.cancel();
     _pulse.dispose();
     _scroll.dispose();
     super.dispose();
@@ -274,10 +299,11 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
 
   // ------------------------------------------------------------ the gesture
 
-  void _openMenu(int segment, {required bool sticky}) {
+  void _openMenu(int segment, {required bool sticky, bool hover = false}) {
     setState(() {
       _open = segment;
       _sticky = sticky;
+      _viaHover = hover;
       _hover = null;
       _hoverSecondary = false;
     });
@@ -285,10 +311,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   }
 
   void close() {
+    _hoverTimer?.cancel();
     if (_open == null) return;
     setState(() {
       _open = null;
       _sticky = false;
+      _viaHover = false;
+      _overMenu = false;
       _hover = null;
       _hoverSecondary = false;
       _pointer = null;
@@ -298,10 +327,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
 
   void _down(int segment, PointerDownEvent e) {
     if (_pointer != null) return;
+    _hoverTimer?.cancel();
     _pointer = e.pointer;
     _downAt = e.position;
     _moved = false;
-    _tapCloses = _open == segment && _sticky;
+    // A click on a menu the mouse opened pins it, rather than closing what
+    // the person evidently wanted open.
+    _tapCloses = _open == segment && _sticky && !_viaHover;
     if (_open != segment) HapticFeedback.selectionClick();
     _openMenu(segment, sticky: false);
   }
@@ -375,6 +407,44 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (!_sticky) close();
   }
 
+  // ------------------------------------------------------------ the mouse
+
+  void _enterSegment(int segment) {
+    _overSegment = segment;
+    _hoverTimer?.cancel();
+    // A held button is steering a press; `_move` switches menus for it.
+    if (_pointer != null || _open == segment) return;
+    if (_open != null) {
+      _openMenu(segment, sticky: true, hover: true);
+      return;
+    }
+    _hoverTimer = Timer(_hoverOpenDelay, () {
+      if (mounted && _overSegment == segment && _pointer == null) {
+        _openMenu(segment, sticky: true, hover: true);
+      }
+    });
+  }
+
+  void _leaveSegment(int segment) {
+    if (_overSegment == segment) _overSegment = null;
+    _hoverTimer?.cancel();
+    _closeAfterHover();
+  }
+
+  void _closeAfterHover() {
+    if (!_viaHover) return;
+    _hoverTimer?.cancel();
+    _hoverTimer = Timer(_hoverCloseDelay, () {
+      if (mounted &&
+          _viaHover &&
+          _overSegment == null &&
+          !_overMenu &&
+          _pointer == null) {
+        close();
+      }
+    });
+  }
+
   void _fire(DockItem item, bool secondary) {
     if (secondary && item.onSecondary != null) {
       item.onSecondary!();
@@ -424,13 +494,20 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                     for (var i = 0; i < widget.segments.length; i++)
                       _sized(
                         widget.segments[i],
-                        Listener(
-                          behavior: HitTestBehavior.opaque,
-                          onPointerDown: (e) => _down(i, e),
-                          onPointerMove: _move,
-                          onPointerUp: _up,
-                          onPointerCancel: _cancel,
-                          child: _segment(widget.segments[i], open: _open == i),
+                        MouseRegion(
+                          onEnter: (_) => _enterSegment(i),
+                          onExit: (_) => _leaveSegment(i),
+                          child: Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: (e) => _down(i, e),
+                            onPointerMove: _move,
+                            onPointerUp: _up,
+                            onPointerCancel: _cancel,
+                            child: _segment(
+                              widget.segments[i],
+                              open: _open == i,
+                            ),
+                          ),
                         ),
                       ),
                   ],
@@ -685,6 +762,19 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       child: child,
     );
 
+    // The mouse inside the menu keeps a hovered one open.
+    Widget tracked(Widget child) => MouseRegion(
+      onEnter: (_) {
+        _overMenu = true;
+        _hoverTimer?.cancel();
+      },
+      onExit: (_) {
+        _overMenu = false;
+        _closeAfterHover();
+      },
+      child: child,
+    );
+
     final Widget placed;
     if (_vertical) {
       // Beside its segment, starting level with it and moved up as far as it
@@ -702,7 +792,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
             width: width,
             bounds: Rect.fromLTRB(0, bar.top, screen.width, bar.bottom),
           ),
-          child: grow(scrolling(bar.height - 2 * T.s3)),
+          child: tracked(grow(scrolling(bar.height - 2 * T.s3))),
         ),
       );
     } else {
@@ -719,27 +809,31 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         width: width,
         bottom: top ? null : screen.height - bar.top,
         top: top ? bar.bottom : null,
-        child: grow(
-          scrolling(top ? screen.height - bar.bottom - 24 : bar.top - 24),
+        child: tracked(
+          grow(scrolling(top ? screen.height - bar.bottom - 24 : bar.top - 24)),
         ),
       );
     }
 
     return Stack(
       children: [
-        Positioned.fromRect(
-          rect: scrim,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (_) => close(),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 140),
-              builder: (_, t, _) =>
-                  ColoredBox(color: Colors.black.withValues(alpha: 0.38 * t)),
+        // None under a hovered menu: it closes when the mouse leaves, and a
+        // dimmed window that comes and goes as the pointer passes would be
+        // the whole screen flickering.
+        if (!_viaHover)
+          Positioned.fromRect(
+            rect: scrim,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => close(),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 140),
+                builder: (_, t, _) =>
+                    ColoredBox(color: Colors.black.withValues(alpha: 0.38 * t)),
+              ),
             ),
           ),
-        ),
         placed,
       ],
     );

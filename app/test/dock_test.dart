@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_widget/ui/dock.dart';
@@ -245,6 +246,85 @@ void main() {
         matching: find.byType(RotatedBox),
       );
       expect(tester.widget<RotatedBox>(label.first).quarterTurns, 1);
+    });
+  });
+  group('with a mouse', () {
+    Future<TestGesture> mouse(WidgetTester tester) async {
+      final g = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await g.addPointer(location: const Offset(200, 100));
+      addTearDown(g.removePointer);
+      return g;
+    }
+
+    testWidgets('resting on a segment opens its menu, leaving closes it', (
+      tester,
+    ) async {
+      await pump(tester);
+      final g = await mouse(tester);
+      await g.moveTo(const Offset(60, barY));
+      await tester.pump();
+      expect(find.text('Home'), findsNothing, reason: 'not on the way past');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('Home'), findsOneWidget);
+
+      // Into the menu: it stays, and a click there chooses.
+      await g.moveTo(rowCentre(0));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Home'), findsOneWidget);
+
+      // Away from both: it goes.
+      await g.moveTo(const Offset(300, 100));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('Home'), findsNothing);
+      expect(fired, isEmpty);
+    });
+
+    testWidgets('crossing the bar quickly opens nothing', (tester) async {
+      await pump(tester);
+      final g = await mouse(tester);
+      await g.moveTo(const Offset(60, barY));
+      await tester.pump(const Duration(milliseconds: 50));
+      await g.moveTo(const Offset(60, 100));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Home'), findsNothing);
+    });
+
+    testWidgets('moving along the bar switches at once, and a click on a '
+        'row chooses it', (tester) async {
+      await pump(tester);
+      final g = await mouse(tester);
+      await g.moveTo(const Offset(60, barY));
+      await tester.pump(const Duration(milliseconds: 200));
+      await g.moveTo(const Offset(290, barY));
+      await tester.pump();
+      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text('Home'), findsNothing);
+
+      await g.moveTo(rowCentre(0, x: 300));
+      await tester.pumpAndSettle();
+      await g.down(rowCentre(0, x: 300));
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Calendar']);
+      expect(find.text('Calendar'), findsNothing);
+    });
+
+    testWidgets('a click on a hovered segment pins its menu', (tester) async {
+      await pump(tester);
+      final g = await mouse(tester);
+      await g.moveTo(const Offset(60, barY));
+      await tester.pump(const Duration(milliseconds: 200));
+      await g.down(const Offset(60, barY));
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(find.text('Home'), findsOneWidget, reason: 'not closed');
+
+      await g.moveTo(const Offset(300, 100));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('Home'), findsOneWidget, reason: 'pinned');
     });
   });
 }

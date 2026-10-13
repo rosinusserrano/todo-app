@@ -105,6 +105,8 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       calendar events carried to a new time or day (`EventBlock.movable`,
       `AppState.moveEvent`; mouse drags at once, touch holds first); and
       Ctrl+Alt+H opening the capture pane where the footer is not drawn.
+      Then: dock menus open on mouse hover, and a top dock sits in the title
+      bar beside the name.
       Merge to `main` with 58.10 once tried.
 - [ ] **58.12** Once Marco has settled on the dock's wide placement: delete
       `ui/workspace_bar.dart`'s bar, `ui/view_bar.dart` and

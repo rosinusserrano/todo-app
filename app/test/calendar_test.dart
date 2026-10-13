@@ -17,7 +17,7 @@ import 'package:todo_widget/app_state.dart';
 import 'package:todo_widget/sync/local_store.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/theme.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kLongPressTimeout;
 
 import 'package:todo_widget/ui/calendar/time_grid.dart'
     show
@@ -982,6 +982,118 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(created, isEmpty);
+    });
+  });
+
+  group('pressing to create', () {
+    final day = DateTime(2026, 7, 30);
+
+    // Aiming is at a box, not a line: a finger put down a few minutes into
+    // 10:00-10:15 means that quarter, and rounding to the nearest line used
+    // to start the block at 10:15.
+    testWidgets('the quarter the finger lands in is the start, and the one '
+        'it lets go in is included', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final created = <(DateTime, DateTime)>[];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: [day],
+            events: const [],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => false,
+            taskCountFor: (_) => 0,
+            onOpenEvent: (_) {},
+            onEventMenu: (_, _) {},
+            onCreate: (start, end) => created.add((start, end)),
+          ),
+        ),
+      ));
+
+      final top = tester.getTopLeft(find.byType(SingleChildScrollView));
+      final scrolled = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .pixels;
+      Offset at(int minutes) => Offset(
+            200,
+            top.dy + minutes / 60 * kHourHeight - scrolled,
+          );
+
+      // Down at 10:11, up at 11:52: 10:00 to 12:00.
+      var g = await tester.startGesture(at(10 * 60 + 11));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await g.moveTo(at(11 * 60 + 52));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(created.single, (
+        day.add(const Duration(hours: 10)),
+        day.add(const Duration(hours: 12)),
+      ));
+
+      // Dragged upwards, the pressed quarter is still inside: 9:00 to 10:15.
+      created.clear();
+      g = await tester.startGesture(at(10 * 60 + 11));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await g.moveTo(at(9 * 60 + 4));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(created.single, (
+        day.add(const Duration(hours: 9)),
+        day.add(const Duration(hours: 10, minutes: 15)),
+      ));
+    });
+  });
+
+  group('an event block', () {
+    final day = DateTime(2026, 7, 30);
+
+    Future<void> block(WidgetTester tester, String title, Size size) =>
+        tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox.fromSize(
+                size: size,
+                child: EventBlock(
+                  event: event('e1', day, day.add(const Duration(hours: 2)),
+                      title: title),
+                  color: const Color(0xFFE8A0A0),
+                  hasAttachment: false,
+                  onTap: () {},
+                  compact: true,
+                ),
+              ),
+            ),
+          ),
+        ));
+
+    // A phone's week column is ~40px wide: a long title lying down is three
+    // letters and an ellipsis, standing up it is most of itself.
+    testWidgets('a long title in a tall narrow block stands up',
+        (tester) async {
+      await block(tester, 'Dentist appointment', const Size(40, 120));
+      expect(find.byType(RotatedBox), findsOneWidget);
+    });
+
+    testWidgets('a title that fits across stays across', (tester) async {
+      await block(tester, 'Gym', const Size(40, 120));
+      expect(find.byType(RotatedBox), findsNothing);
+    });
+
+    testWidgets('a short block keeps the title across', (tester) async {
+      await block(tester, 'Dentist appointment', const Size(40, 30));
+      expect(find.byType(RotatedBox), findsNothing);
+    });
+
+    testWidgets('the face is the calendar colour, the ink its deep shade',
+        (tester) async {
+      await block(tester, 'Gym', const Size(80, 60));
+      final text = tester.widget<Text>(find.text('Gym'));
+      expect(text.style!.color, T.inkOn(const Color(0xFFE8A0A0)));
     });
   });
 

@@ -91,8 +91,17 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     _edits.clear();
   }
 
+  /// Enter adds and stays: the caret is still in the field for the next item,
+  /// and the list stays in Edit until Done is pressed. A new list used to be
+  /// in Edit only *because* it was empty (see [_editing]), so the first item
+  /// dropped it into Use and every item after that cost a press on Edit.
+  /// Pinning the choice on the first add is what keeps it.
   Future<void> _submitAdd() async {
     final text = _add.text;
+    if (text.trim().isEmpty) return;
+    // Before the write, not after: the write notifies, and one frame of
+    // Use would unmount this field and take the keyboard with it.
+    if (_editingChoice == null) _setEditing(true);
     _add.clear();
     _addFocus.requestFocus();
     await s.addListItem(text);
@@ -304,8 +313,11 @@ class _ShoppingListViewState extends State<ShoppingListView> {
         isDense: !layout.touch,
         border: InputBorder.none,
       ),
-      // Enter adds and keeps the caret, as the task add field does.
-      onSubmitted: (_) => _submitAdd(),
+      // Enter adds and keeps the caret, as the task add field does. On
+      // editing-complete rather than submitted: the default for a "done"
+      // key is to drop focus first, which on a phone folds the keyboard away
+      // and back between every item.
+      onEditingComplete: _submitAdd,
     ),
   );
 }

@@ -652,6 +652,18 @@ time on one. The rules that are not obvious from the schema:
   grid's `Stack`, not around them — an ancestor is handed the pointer even when
   a child took it, so creating used to run on top of opening and a click on an
   event wrote a stray 15-minute block behind the editor.
+  **Pressing picks a quarter, it does not round to a line**: `_pointToSlot(
+  floor: true)` for the start and the tap-to-place, and the draft is the run of
+  slots from the pressed one to the one under the finger with both included
+  (`_anchorSlot`). Rounding started every block a quarter late for anyone who
+  pressed a few minutes below the hour line. A dropped pending block still
+  rounds: there the point is the ghost's top edge, which *is* a line.
+- **An event is a `RaisedFace`**: one solid face in the calendar's colour on a
+  `T.edgeOf` edge showing right and bottom, inside the block's own box so the
+  grid maths never hears about it; text is `T.inkOn`. The grid, the all-day
+  band and the agenda share it. `EventBlock` measures the title and **stands
+  it up** (`RotatedBox`, reading downwards) when it does not fit across and
+  the block is at least 1.5x as tall as it is wide.
 - **Time-block mode is one nullable uuid**, `AppState.timeBlockCalendarUuid`,
   and it is resolved through `visibleCalendars` rather than `calendars` — the
   target can go away underneath the setting (unticked, scope narrowed, workspace
@@ -699,6 +711,16 @@ time on one. The rules that are not obvious from the schema:
   gestures are a vertical scroll and a *long-press*-then-drag to create —
   creating is split by input device precisely so a one-finger drag can still
   scroll, which leaves a plain horizontal fling belonging to nobody.
+  **The neighbours are drawn under the finger** (`TimeSwipe.builder(delta,
+  scroll)`), which is why `refreshEvents` loads `calendarLoadRange` - one step
+  either side of `calendarRange` - and why **`AppState.events` is not "what is
+  on screen"**: every view filters to its own days (the band's `_spanning`
+  had to learn to; it used to trust the list). The middle page stays one
+  element across a turn, keyed and in a Stack whose shape never changes, so
+  the grid keeps its scroll; the neighbours open at the same offset through a
+  shared `ValueNotifier` (`TimeGridView.sharedScroll`), and `page` changing is
+  what zeroes the slide in the frame the step lands - so the neighbour that
+  slid in and the middle page that replaces it are pixel-identical.
 - **Quick add holds blocks before writing them** (`AppState.pendingBlocks`).
   Tapping the grid with the bolt on places an adjustable hour; nothing reaches
   the database until the mode ends. They are deliberately not stored and not

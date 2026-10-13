@@ -1825,6 +1825,26 @@ class AppState extends ChangeNotifier {
     };
   }
 
+  /// What [refreshEvents] loads: the visible window and, in the day and week
+  /// views, one step either side of it. The swipe draws the neighbouring page
+  /// under the finger (see time_swipe.dart), and a glimpse of next week that
+  /// arrived empty and then filled would be worse than none. Every view
+  /// filters to its own days, so the extra events are simply not drawn until
+  /// they are on a page. Built from the parts, not with [Duration], so a step
+  /// across a clock change is still a whole day.
+  (DateTime, DateTime) get calendarLoadRange {
+    final (from, to) = calendarRange;
+    final pad = switch (calendarMode) {
+      CalendarViewMode.day => 1,
+      CalendarViewMode.week => 7,
+      CalendarViewMode.year => 0,
+    };
+    return (
+      DateTime(from.year, from.month, from.day - pad),
+      DateTime(to.year, to.month, to.day + pad),
+    );
+  }
+
   /// Monday. Fixed rather than locale-driven: the grid is drawn for one person,
   /// and a week that starts on a different day depending on the phone's region
   /// would make the same calendar read differently on two of their devices.
@@ -1899,7 +1919,7 @@ class AppState extends ChangeNotifier {
 
   /// Reload the events for the visible window.
   Future<void> refreshEvents() async {
-    final (from, to) = calendarRange;
+    final (from, to) = calendarLoadRange;
     final all = await _store.eventsBetween(from, to);
     final visible = {for (final c in visibleCalendars) c.uuid};
     events = [

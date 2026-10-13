@@ -506,10 +506,21 @@ Three tiers, none of which need an account, an API key, or a licence:
   window mixed 16% into one of those colours was working against it. Which
   workspace you are in is still on the bar, in the coloured pill that says its
   name.
+- **Blocks are solid, and stand up off the grid.** Each event is one block of
+  its calendar's colour sitting on a darker edge along its right and bottom,
+  with its text in a deep shade of that colour, like everything else on a
+  coloured fill. It used to be a pale tint with a saturated stripe down the
+  left. **A long title stands up**: when it does not fit across a narrow block
+  and the block is tall enough to say more of it sideways, it runs down the
+  left edge, top to bottom — "Dentist appointment" in a phone's week column was
+  "Den…" lying down. The all-day band and the list view use the same blocks.
 - **Drag to create.** Drag down a column from the start time to the end time and
   the event form opens with the times already filled in, so the only thing left
   to type is the title. Drags snap to 15 minutes, and dragging upwards works —
-  it is normalised rather than rejected.
+  it is normalised rather than rejected. **The quarter hour you press in is
+  where it starts, and the one you let go in is included**: down a few minutes
+  past 10, up a few minutes before 12, and it is 10:00–12:00. It used to round
+  to the nearest line, so a finger landing at 10:08 started the block at 10:15.
   - On a **phone** it is press-and-hold, then drag: a plain one-finger drag has
     to scroll the day, which is the only way to reach the rest of it.
   - Creating only happens on **empty** grid. A click or press on an existing
@@ -640,10 +651,12 @@ Three tiers, none of which need an account, an API key, or a licence:
   the week view, day in the day view, year in the year view. The swipe used to
   change D/W/Y, which is the setting you touch once a session; where you are in
   time is the question you ask twenty times, and it meant reaching for the ‹ ›
-  at the top of the screen each time. **The page follows your finger** and
-  slides off as the next one slides in; a quick flick or a drag past about a
-  third of the width turns it, anything less springs back. The day stays
-  scrolled to the hour you were looking at.
+  at the top of the screen each time. **The page follows your finger, and the
+  next week (or day) is already there beside it**: drag a little to glance at
+  what is coming and let go to spring back, or flick / drag past about a third
+  of the width to go there. Both neighbours are loaded with the page you are
+  on, so the glimpse is never empty, and they are drawn at the hour you are
+  scrolled to. The year view slides without a neighbour.
 - **On a phone the header is one line**: ‹ the date ›, a chip showing the view
   (D, W or Y — tap it for the next), and ⋯. **Tap the date to go back to
   today.** ⋯ holds Today, **quick add** (the ⋯ lights up while it is on), and
@@ -763,7 +776,9 @@ window while it is open.
   Nothing there edits or deletes. *Edit* has an add field at the top (Enter
   adds and keeps the caret), retitling in place, ✕ to delete, a handle to
   reorder, and the list's name. The big **Edit / Done** button switches; Done
-  saves. An empty list opens in Edit.
+  saves. An empty list opens in Edit, and **stays there while you type the
+  list**: Enter, next item, Enter, until Done. It used to drop into Use the
+  moment the first item was in.
 - **Ticked items slide down** into a greyed *Ticked* section below what is
   left, newest first. Tap one to untick it and it slides back to its place.
 - **Finished** archives the list as it is, and the next list starts empty. It
@@ -1342,6 +1357,11 @@ reminders are both there now**, queued for 0.18.0.
     under it; History lost its strike-through; the bottom bar runs down under
     the iPhone's home indicator; labels on a coloured block are a deep shade
     of that colour instead of black; no more frame around the app on a phone.
+  - **Calendar and list touches**: the next and previous week show beside the
+    one you are on as you swipe, so a short drag is a glance; pressing to
+    create starts in the quarter hour you pressed, not the nearest one; events
+    are solid blocks with a darker edge, and a long title stands up in a tall
+    narrow block; a new shopping list stays in Edit while you type it.
   - **Collections**: per-workspace lists with fields you define first - text,
     link, number, checkbox - for recipes, movies and the like. Adding an entry
     is typed straight through: Enter moves to the next field and, on the last,

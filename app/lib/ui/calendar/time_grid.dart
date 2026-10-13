@@ -103,6 +103,7 @@ class TimeGridView extends StatefulWidget {
     this.onStep,
     this.hourHeight = kHourHeight,
     this.onZoom,
+    this.sharedScroll,
   });
 
   /// The columns, left to right, each at local midnight.
@@ -168,6 +169,11 @@ class TimeGridView extends StatefulWidget {
   /// the grid fixed.
   final void Function(double height)? onZoom;
 
+  /// The vertical offset this grid opens at and reports back to as it
+  /// scrolls. The swipe hands one to the page and both its neighbours, which
+  /// is what draws next week at the hour you were looking at in this one.
+  final ValueNotifier<double>? sharedScroll;
+
   @override
   State<TimeGridView> createState() => _TimeGridViewState();
 }
@@ -175,7 +181,20 @@ class TimeGridView extends StatefulWidget {
 class _TimeGridViewState extends State<TimeGridView> {
   // Opens on the working day rather than at midnight, which is eight hours of
   // empty grid nobody wants to scroll past.
-  final _scroll = ScrollController(initialScrollOffset: 7 * kHourHeight);
+  late final _scroll = ScrollController(
+    initialScrollOffset: widget.sharedScroll?.value ?? 7 * kHourHeight,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_shareScroll);
+  }
+
+  void _shareScroll() {
+    final shared = widget.sharedScroll;
+    if (shared != null && _scroll.hasClients) shared.value = _scroll.offset;
+  }
 
   _Draft? _draft;
 
@@ -238,31 +257,52 @@ class _TimeGridViewState extends State<TimeGridView> {
   }
 
   /// Which column and minute a point in the grid falls on.
-  _Draft? _pointToSlot(Offset local, {int? anchorMinutes, int? anchorDay}) {
+  ///
+  /// [floor] answers "which quarter hour is the finger *in*" rather than
+  /// "which line is it nearest". Pressing is aiming at a box: a finger put
+  /// down at 10:08 means the 10:00-10:15 slot, and rounding turned that into
+  /// 10:15 often enough that every block started a quarter late. A dropped
+  /// block keeps rounding, because there the point is the ghost's top edge,
+  /// which is a line.
+  _Draft? _pointToSlot(Offset local, {int? anchorDay, bool floor = false}) {
     final colWidth = _columnWidth;
     if (colWidth <= 0) return null;
 
-    final day = anchorDay ??
-        ((local.dx - _gutter) / colWidth).floor().clamp(0, widget.days.length - 1);
+    final day =
+        anchorDay ??
+        ((local.dx - _gutter) / colWidth).floor().clamp(
+          0,
+          widget.days.length - 1,
+        );
 
     final raw = (local.dy / widget.hourHeight) * 60;
-    final snapped = (raw / kSnapMinutes).round() * kSnapMinutes;
-    final minutes = snapped.clamp(0, 24 * 60);
+    final minutes = floor
+        ? ((raw / kSnapMinutes).floor() * kSnapMinutes).clamp(
+            0,
+            24 * 60 - kSnapMinutes,
+          )
+        : ((raw / kSnapMinutes).round() * kSnapMinutes).clamp(0, 24 * 60);
 
-    if (anchorMinutes == null) {
-      return _Draft(dayIndex: day, fromMinutes: minutes, toMinutes: minutes);
-    }
-    return _Draft(
-      dayIndex: day,
-      fromMinutes: anchorMinutes,
-      toMinutes: minutes,
-    );
+    return _Draft(dayIndex: day, fromMinutes: minutes, toMinutes: minutes);
   }
 
+  /// The quarter hour the create-drag was started in. The draft is the run of
+  /// slots from this one to the one under the finger, **both included**, so
+  /// pressing in 10:00-10:15 and letting go in 11:45-12:00 is 10:00-12:00
+  /// whichever way the finger went.
+  int _anchorSlot = 0;
+
   void _begin(Offset local) {
-    final slot = _pointToSlot(local);
+    final slot = _pointToSlot(local, floor: true);
     if (slot == null) return;
-    setState(() => _draft = slot);
+    _anchorSlot = slot.fromMinutes;
+    setState(
+      () => _draft = _Draft(
+        dayIndex: slot.dayIndex,
+        fromMinutes: _anchorSlot,
+        toMinutes: _anchorSlot + kSnapMinutes,
+      ),
+    );
   }
 
   void _extend(Offset local) {
@@ -270,13 +310,26 @@ class _TimeGridViewState extends State<TimeGridView> {
     if (start == null) return;
     final slot = _pointToSlot(
       local,
-      anchorMinutes: start.fromMinutes,
       // Locked to the column the drag started in: a diagonal drag across a week
       // grid otherwise silently retargets the event to another day.
       anchorDay: start.dayIndex,
+      floor: true,
     );
     if (slot == null) return;
-    setState(() => _draft = slot);
+    final at = slot.fromMinutes;
+    setState(
+      () => _draft = at >= _anchorSlot
+          ? _Draft(
+              dayIndex: start.dayIndex,
+              fromMinutes: _anchorSlot,
+              toMinutes: at + kSnapMinutes,
+            )
+          : _Draft(
+              dayIndex: start.dayIndex,
+              fromMinutes: at,
+              toMinutes: _anchorSlot + kSnapMinutes,
+            ),
+    );
   }
 
   /// A tap on empty grid while quick-add is on: lay down an hour here.
@@ -287,7 +340,7 @@ class _TimeGridViewState extends State<TimeGridView> {
   void _tapPlace(Offset local) {
     final place = widget.onPlacePending;
     if (place == null) return;
-    final slot = _pointToSlot(local);
+    final slot = _pointToSlot(local, floor: true);
     if (slot == null) return;
 
     final day = widget.days[slot.dayIndex];
@@ -335,9 +388,8 @@ class _TimeGridViewState extends State<TimeGridView> {
       final at = _placePending(block);
       if (at == null) return;
       final day = widget.days[at.dayIndex];
-      final snapped =
-          ((newEndMinutes / kSnapMinutes).round() * kSnapMinutes)
-              .clamp(at.fromMinutes + kSnapMinutes, 24 * 60);
+      final snapped = ((newEndMinutes / kSnapMinutes).round() * kSnapMinutes)
+          .clamp(at.fromMinutes + kSnapMinutes, 24 * 60);
       adjust(index, block.start, day.add(Duration(minutes: snapped)));
     }
   }
@@ -410,8 +462,10 @@ class _TimeGridViewState extends State<TimeGridView> {
     if (zoom == null) return;
 
     final step = e.scrollDelta.dy > 0 ? 1 / kWheelZoomStep : kWheelZoomStep;
-    final height =
-        (widget.hourHeight * step).clamp(kHourHeightMin, kHourHeightMax);
+    final height = (widget.hourHeight * step).clamp(
+      kHourHeightMin,
+      kHourHeightMax,
+    );
     if ((height - widget.hourHeight).abs() < 0.5) return;
 
     // The pointer is over the *content*, which already includes the scroll
@@ -443,8 +497,7 @@ class _TimeGridViewState extends State<TimeGridView> {
     // of the screen would send whatever you were looking at off the top.
     final centre = (points[0].dy + points[1].dy) / 2;
     _pinchAnchorY = centre;
-    _pinchAnchorMinutes =
-        (_scroll.offset + centre) / widget.hourHeight * 60;
+    _pinchAnchorMinutes = (_scroll.offset + centre) / widget.hourHeight * 60;
   }
 
   void _pinchUpdate() {
@@ -456,8 +509,10 @@ class _TimeGridViewState extends State<TimeGridView> {
 
     final points = _pointers.values.toList();
     final now = (points[0] - points[1]).distance;
-    final height =
-        (_pinchHeight * (now / from)).clamp(kHourHeightMin, kHourHeightMax);
+    final height = (_pinchHeight * (now / from)).clamp(
+      kHourHeightMin,
+      kHourHeightMax,
+    );
     if ((height - widget.hourHeight).abs() < 0.5) return;
 
     zoom(height);
@@ -468,9 +523,7 @@ class _TimeGridViewState extends State<TimeGridView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
       final target = _pinchAnchorMinutes / 60 * height - _pinchAnchorY;
-      _scroll.jumpTo(
-        target.clamp(0.0, _scroll.position.maxScrollExtent),
-      );
+      _scroll.jumpTo(target.clamp(0.0, _scroll.position.maxScrollExtent));
     });
   }
 
@@ -494,8 +547,9 @@ class _TimeGridViewState extends State<TimeGridView> {
 
     final block = widget.pending[index];
     final length = block.end.difference(block.start);
-    final start =
-        widget.days[slot.dayIndex].add(Duration(minutes: slot.lowMinutes));
+    final start = widget.days[slot.dayIndex].add(
+      Duration(minutes: slot.lowMinutes),
+    );
     adjust(index, start, start.add(length));
   }
 
@@ -525,7 +579,9 @@ class _TimeGridViewState extends State<TimeGridView> {
   /// day and four at the head of the next. The agenda has always listed those
   /// days this way, on the same overlap test.
   List<List<CalendarEvent>> get _timedByDay {
-    final out = [for (var i = 0; i < widget.days.length; i++) <CalendarEvent>[]];
+    final out = [
+      for (var i = 0; i < widget.days.length; i++) <CalendarEvent>[],
+    ];
     for (final e in widget.events) {
       // A whole day belongs in the band even when it is only one day: drawn in
       // the column it would be a block from midnight to midnight, which is
@@ -545,8 +601,21 @@ class _TimeGridViewState extends State<TimeGridView> {
 
   /// Events with a whole day inside them, and whole days, which are drawn in
   /// the band on top.
-  List<CalendarEvent> get _spanning =>
-      [for (final e in widget.events) if (e.allDay || e.spansWholeDay) e];
+  ///
+  /// Filtered to these days: the list handed in covers the neighbouring
+  /// pages as well (see [AppState.calendarLoadRange]), and the band would
+  /// otherwise clamp next week's holiday into Sunday.
+  List<CalendarEvent> get _spanning {
+    final from = widget.days.first;
+    final to = _nextDay(widget.days.last);
+    return [
+      for (final e in widget.events)
+        if ((e.allDay || e.spansWholeDay) &&
+            e.start.isBefore(to) &&
+            e.end.isAfter(from))
+          e,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -582,52 +651,54 @@ class _TimeGridViewState extends State<TimeGridView> {
                 onPointerUp: (e) => _pointerUp(e.pointer),
                 onPointerCancel: (e) => _pointerUp(e.pointer),
                 child: SingleChildScrollView(
-                controller: _scroll,
-                // **Inside** the scroll view, and that is the whole trick.
-                // Flutter resolves a scroll signal by handing it to whichever
-                // handler registers first, and dispatch runs deepest-first - so
-                // a Listener wrapped around the scroll view would always lose
-                // the wheel to it and the day would zoom *and* scroll. From in
-                // here we get asked first, and taking the event is what keeps
-                // it away from the scrollable.
-                child: Listener(
-                  onPointerSignal: _pointerSignal,
-                  child: SizedBox(
-                  height: 24 * widget.hourHeight,
-                  child: _GridBody(
-                    days: widget.days,
-                    timedByDay: _timedByDay,
-                    draft: _draft,
-                    colorFor: widget.colorFor,
-                    hasAttachment: widget.hasAttachment,
-                    taskCountFor: widget.taskCountFor,
-                    onOpenEvent: widget.onOpenEvent,
-                    onEventMenu: widget.onEventMenu,
-                    onPlanTask: widget.onPlanTask,
-                    onDragBegin: _begin,
-                    onDragExtend: _extend,
-                    onDragCommit: _commit,
-                    blockTitle: widget.blockTitle,
-                    blockColor: widget.blockColor,
-                    pending: widget.pending,
-                    placePending: _placePending,
-                    onTapPlace: widget.onPlacePending == null ? null : _tapPlace,
-                    onDropPending: _dropPending,
-                    onEdge: widget.onStep == null ? null : _edgeStep,
-                    onEdgeEnd: _edgeStop,
-                    onResizePending: (i, endY) =>
-                        _adjustPending(
-                            i,
-                            newEndMinutes:
-                                (endY / widget.hourHeight * 60).round()),
-                    onRemovePending: widget.onRemovePending,
-                    gutter: _gutter,
-                    hourHeight: widget.hourHeight,
-                    compact: _compact,
+                  controller: _scroll,
+                  // **Inside** the scroll view, and that is the whole trick.
+                  // Flutter resolves a scroll signal by handing it to whichever
+                  // handler registers first, and dispatch runs deepest-first - so
+                  // a Listener wrapped around the scroll view would always lose
+                  // the wheel to it and the day would zoom *and* scroll. From in
+                  // here we get asked first, and taking the event is what keeps
+                  // it away from the scrollable.
+                  child: Listener(
+                    onPointerSignal: _pointerSignal,
+                    child: SizedBox(
+                      height: 24 * widget.hourHeight,
+                      child: _GridBody(
+                        days: widget.days,
+                        timedByDay: _timedByDay,
+                        draft: _draft,
+                        colorFor: widget.colorFor,
+                        hasAttachment: widget.hasAttachment,
+                        taskCountFor: widget.taskCountFor,
+                        onOpenEvent: widget.onOpenEvent,
+                        onEventMenu: widget.onEventMenu,
+                        onPlanTask: widget.onPlanTask,
+                        onDragBegin: _begin,
+                        onDragExtend: _extend,
+                        onDragCommit: _commit,
+                        blockTitle: widget.blockTitle,
+                        blockColor: widget.blockColor,
+                        pending: widget.pending,
+                        placePending: _placePending,
+                        onTapPlace: widget.onPlacePending == null
+                            ? null
+                            : _tapPlace,
+                        onDropPending: _dropPending,
+                        onEdge: widget.onStep == null ? null : _edgeStep,
+                        onEdgeEnd: _edgeStop,
+                        onResizePending: (i, endY) => _adjustPending(
+                          i,
+                          newEndMinutes: (endY / widget.hourHeight * 60)
+                              .round(),
+                        ),
+                        onRemovePending: widget.onRemovePending,
+                        gutter: _gutter,
+                        hourHeight: widget.hourHeight,
+                        compact: _compact,
+                      ),
+                    ),
                   ),
                 ),
-                ),
-              ),
               ),
             ),
           ],
@@ -706,7 +777,9 @@ class _GridBody extends StatelessWidget {
 
   /// Where one of them falls on this grid, or null when it is not on screen.
   final ({int dayIndex, int fromMinutes, int toMinutes})? Function(
-      ({DateTime start, DateTime end})) placePending;
+    ({DateTime start, DateTime end}),
+  )
+  placePending;
 
   /// Null unless quick-add is on and a tap should place a block.
   final void Function(Offset local)? onTapPlace;
@@ -757,11 +830,13 @@ class _GridBody extends StatelessWidget {
             // Measured from the *gutter*, not from zero: the hour labels are
             // not part of any day, and a block held over them is being aimed at
             // Monday rather than at last week.
-            edge(x < gutter + kEdgeZone
-                ? -1
-                : x > constraints.maxWidth - kEdgeZone
-                    ? 1
-                    : 0);
+            edge(
+              x < gutter + kEdgeZone
+                  ? -1
+                  : x > constraints.maxWidth - kEdgeZone
+                  ? 1
+                  : 0,
+            );
           },
           onAcceptWithDetails: (d) {
             final box = context.findRenderObject() as RenderBox?;
@@ -776,124 +851,126 @@ class _GridBody extends StatelessWidget {
 
   Widget _stack(double colWidth, DateTime today) {
     return Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _GridPainter(
-                  columns: days.length,
-                  gutter: gutter,
-                  hourHeight: hourHeight,
-                ),
-              ),
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _GridPainter(
+              columns: days.length,
+              gutter: gutter,
+              hourHeight: hourHeight,
             ),
-            Positioned.fill(
-                child: _HourLabels(gutter: gutter, hourHeight: hourHeight)),
+          ),
+        ),
+        Positioned.fill(
+          child: _HourLabels(gutter: gutter, hourHeight: hourHeight),
+        ),
 
-            // The now line, only on the column that is actually today.
-            for (var i = 0; i < days.length; i++)
-              if (_isSameDay(days[i], today))
-                Positioned(
-                  left: gutter + i * colWidth,
-                  width: colWidth,
-                  top: (today.hour * 60 + today.minute) / 60 * hourHeight,
-                  height: 2,
-                  child: const _NowLine(),
-                ),
-
-            // Creating sits *below* the event blocks in the stack, which is
-            // what stops a click on an event from also starting a draft: a
-            // Stack hit-tests top-down and stops at the first child that takes
-            // the pointer, where an ancestor listener would have been handed
-            // the down as well and created a block behind the editor.
-            Positioned.fill(
-              child: Listener(
-                behavior: HitTestBehavior.opaque,
-                // Mouse only. Touch drags belong to the scroll view, which is
-                // why the long-press path below exists for them.
-                onPointerDown: (e) {
-                  if (e.kind != PointerDeviceKind.mouse) return;
-                  onDragBegin(e.localPosition);
-                },
-                onPointerMove: (e) {
-                  if (e.kind != PointerDeviceKind.mouse) return;
-                  onDragExtend(e.localPosition);
-                },
-                onPointerUp: (e) {
-                  if (e.kind != PointerDeviceKind.mouse) return;
-                  onDragCommit();
-                },
-                child: GestureDetector(
-                  // A plain tap only means something in quick-add mode; the
-                  // rest of the time the grid's empty space is not a control.
-                  onTapUp: onTapPlace == null
-                      ? null
-                      : (d) => onTapPlace!(d.localPosition),
-                  onLongPressStart: (d) => onDragBegin(d.localPosition),
-                  onLongPressMoveUpdate: (d) => onDragExtend(d.localPosition),
-                  onLongPressEnd: (_) => onDragCommit(),
-                ),
-              ),
+        // The now line, only on the column that is actually today.
+        for (var i = 0; i < days.length; i++)
+          if (_isSameDay(days[i], today))
+            Positioned(
+              left: gutter + i * colWidth,
+              width: colWidth,
+              top: (today.hour * 60 + today.minute) / 60 * hourHeight,
+              height: 2,
+              child: const _NowLine(),
             ),
 
-            for (var i = 0; i < days.length; i++)
-              ..._positionedEvents(
-                events: timedByDay[i],
-                day: days[i],
-                left: gutter + i * colWidth,
-                width: colWidth,
-              ),
+        // Creating sits *below* the event blocks in the stack, which is
+        // what stops a click on an event from also starting a draft: a
+        // Stack hit-tests top-down and stops at the first child that takes
+        // the pointer, where an ancestor listener would have been handed
+        // the down as well and created a block behind the editor.
+        Positioned.fill(
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            // Mouse only. Touch drags belong to the scroll view, which is
+            // why the long-press path below exists for them.
+            onPointerDown: (e) {
+              if (e.kind != PointerDeviceKind.mouse) return;
+              onDragBegin(e.localPosition);
+            },
+            onPointerMove: (e) {
+              if (e.kind != PointerDeviceKind.mouse) return;
+              onDragExtend(e.localPosition);
+            },
+            onPointerUp: (e) {
+              if (e.kind != PointerDeviceKind.mouse) return;
+              onDragCommit();
+            },
+            child: GestureDetector(
+              // A plain tap only means something in quick-add mode; the
+              // rest of the time the grid's empty space is not a control.
+              onTapUp: onTapPlace == null
+                  ? null
+                  : (d) => onTapPlace!(d.localPosition),
+              onLongPressStart: (d) => onDragBegin(d.localPosition),
+              onLongPressMoveUpdate: (d) => onDragExtend(d.localPosition),
+              onLongPressEnd: (_) => onDragCommit(),
+            ),
+          ),
+        ),
 
-            // Above the events, because they are the thing being worked on,
-            // and below the live drag draft so a drag started on top of one
-            // still previews over it.
-            for (var i = 0; i < pending.length; i++)
-              () {
-                final at = placePending(pending[i]);
-                if (at == null) return const SizedBox.shrink();
-                final width = colWidth - 2;
-                final height =
-                    ((at.toMinutes - at.fromMinutes) / 60 * hourHeight)
-                        .clamp(14.0, double.infinity);
-                return Positioned(
-                  left: gutter + at.dayIndex * colWidth + 1,
-                  width: width,
-                  top: at.fromMinutes / 60 * hourHeight,
-                  height: height,
-                  child: _PendingBlock(
-                    index: i,
-                    from: pending[i].start,
-                    to: pending[i].end,
-                    title: blockTitle,
-                    color: blockColor,
-                    compact: compact,
-                    size: Size(width, height),
-                    onRemove: onRemovePending == null
-                        ? null
-                        : () => onRemovePending!(i),
-                    endY: at.toMinutes / 60 * hourHeight,
-                    onResize: (endY) => onResizePending(i, endY),
-                  ),
-                );
-              }(),
+        for (var i = 0; i < days.length; i++)
+          ..._positionedEvents(
+            events: timedByDay[i],
+            day: days[i],
+            left: gutter + i * colWidth,
+            width: colWidth,
+          ),
 
-            if (draft != null)
-              Positioned(
-                left: gutter + draft!.dayIndex * colWidth + 1,
-                width: colWidth - 2,
-                top: draft!.lowMinutes / 60 * hourHeight,
-                height: ((draft!.highMinutes - draft!.lowMinutes) / 60 * hourHeight)
-                    .clamp(6.0, double.infinity),
-                child: _DraftBlock(
-                  from: days[draft!.dayIndex]
-                      .add(Duration(minutes: draft!.lowMinutes)),
-                  to: days[draft!.dayIndex]
-                      .add(Duration(minutes: draft!.highMinutes)),
-                  title: blockTitle,
-                  color: blockColor,
-                  compact: compact,
-                ),
+        // Above the events, because they are the thing being worked on,
+        // and below the live drag draft so a drag started on top of one
+        // still previews over it.
+        for (var i = 0; i < pending.length; i++)
+          () {
+            final at = placePending(pending[i]);
+            if (at == null) return const SizedBox.shrink();
+            final width = colWidth - 2;
+            final height = ((at.toMinutes - at.fromMinutes) / 60 * hourHeight)
+                .clamp(14.0, double.infinity);
+            return Positioned(
+              left: gutter + at.dayIndex * colWidth + 1,
+              width: width,
+              top: at.fromMinutes / 60 * hourHeight,
+              height: height,
+              child: _PendingBlock(
+                index: i,
+                from: pending[i].start,
+                to: pending[i].end,
+                title: blockTitle,
+                color: blockColor,
+                compact: compact,
+                size: Size(width, height),
+                onRemove: onRemovePending == null
+                    ? null
+                    : () => onRemovePending!(i),
+                endY: at.toMinutes / 60 * hourHeight,
+                onResize: (endY) => onResizePending(i, endY),
               ),
-          ],
+            );
+          }(),
+
+        if (draft != null)
+          Positioned(
+            left: gutter + draft!.dayIndex * colWidth + 1,
+            width: colWidth - 2,
+            top: draft!.lowMinutes / 60 * hourHeight,
+            height: ((draft!.highMinutes - draft!.lowMinutes) / 60 * hourHeight)
+                .clamp(6.0, double.infinity),
+            child: _DraftBlock(
+              from: days[draft!.dayIndex].add(
+                Duration(minutes: draft!.lowMinutes),
+              ),
+              to: days[draft!.dayIndex].add(
+                Duration(minutes: draft!.highMinutes),
+              ),
+              title: blockTitle,
+              color: blockColor,
+              compact: compact,
+            ),
+          ),
+      ],
     );
   }
 
@@ -908,8 +985,14 @@ class _GridBody extends StatelessWidget {
     return [
       for (final p in placed)
         () {
-          final startMin = p.event.start.difference(day).inMinutes.clamp(0, 24 * 60);
-          final endMin = p.event.end.difference(day).inMinutes.clamp(0, 24 * 60);
+          final startMin = p.event.start
+              .difference(day)
+              .inMinutes
+              .clamp(0, 24 * 60);
+          final endMin = p.event.end
+              .difference(day)
+              .inMinutes
+              .clamp(0, 24 * 60);
           final slotWidth = (width - 2) / p.columns;
           return Positioned(
             left: left + 1 + p.column * slotWidth,
@@ -917,8 +1000,10 @@ class _GridBody extends StatelessWidget {
             top: startMin / 60 * hourHeight,
             // Floor of ~14px: a 15-minute event still has to be legible and,
             // more to the point, tappable.
-            height: (((endMin - startMin) / 60) * hourHeight)
-                .clamp(14.0, 24 * hourHeight),
+            height: (((endMin - startMin) / 60) * hourHeight).clamp(
+              14.0,
+              24 * hourHeight,
+            ),
             child: EventBlock(
               event: p.event,
               color: colorFor(p.event),
@@ -976,7 +1061,8 @@ class PlacedEvent {
 List<PlacedEvent> packOverlaps(List<CalendarEvent> events) {
   if (events.isEmpty) return const [];
 
-  final sorted = [...events]..sort((a, b) {
+  final sorted = [...events]
+    ..sort((a, b) {
       final c = a.start.compareTo(b.start);
       return c != 0 ? c : b.end.compareTo(a.end);
     });
@@ -1017,7 +1103,9 @@ List<PlacedEvent> packOverlaps(List<CalendarEvent> events) {
     }
 
     cluster.add(e);
-    clusterEnd = clusterEnd == null || e.end.isAfter(clusterEnd!) ? e.end : clusterEnd;
+    clusterEnd = clusterEnd == null || e.end.isAfter(clusterEnd!)
+        ? e.end
+        : clusterEnd;
     out.add(PlacedEvent(event: e, column: lane, columns: 1));
   }
   flush();
@@ -1077,75 +1165,24 @@ class EventBlock extends StatelessWidget {
       top: Radius.circular(continuesBefore ? 0 : 4),
       bottom: Radius.circular(continuesAfter ? 0 : 4),
     );
+    final depth = compact ? 1.5 : 2.0;
 
     final blob = Padding(
       padding: const EdgeInsets.only(right: 1, bottom: 1),
-      child: Material(
-        color: Color.lerp(T.bgSolid, color, 0.34),
-        borderRadius: radius,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: radius,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              // The calendar's colour, stated once down the leading edge. A
-              // fully saturated fill at this size drowns the text.
-              border: Border(
-                  left: BorderSide(color: color, width: compact ? 2 : 2.5)),
-            ),
-            padding: EdgeInsets.symmetric(
-                horizontal: compact ? 2.5 : 4, vertical: compact ? 1 : 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        event.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: compact ? 9.5 : 10.5,
-                          height: 1.15,
-                          fontWeight: T.wMedium,
-                          color: T.text,
-                        ),
-                      ),
-                    ),
-                    if (!compact && taskCount > 0) ...[
-                      const Icon(Icons.check_circle_outline,
-                          size: 9, color: T.muted),
-                      Text(
-                        '$taskCount',
-                        style: const TextStyle(fontSize: T.fsGrid, color: T.muted),
-                      ),
-                    ],
-                    if (!compact && hasAttachment)
-                      const Icon(Icons.attach_file, size: 9, color: T.muted),
-                    if (!compact && event.repeats)
-                      const Icon(Icons.repeat_rounded,
-                          size: 9, color: T.muted),
-                  ],
-                ),
-                if (!compact && event.description.isNotEmpty)
-                  Flexible(
-                    child: Text(
-                      event.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: T.fsGrid,
-                        height: 1.15,
-                        color: T.muted,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+      child: RaisedFace(
+        color: color,
+        radius: radius,
+        depth: depth,
+        // A block cut by midnight carries on into the next column, so its
+        // bottom is not an edge it stands on.
+        edgeBottom: !continuesAfter,
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 2.5 : 4,
+            vertical: compact ? 1 : 2,
           ),
+          child: LayoutBuilder(builder: (context, box) => _body(context, box)),
         ),
       ),
     );
@@ -1155,6 +1192,152 @@ class EventBlock extends StatelessWidget {
       child: TaskDropTarget(onDrop: onDropTask, color: color, child: blob),
     );
   }
+
+  /// The title along the top, or - when it does not fit across and the block
+  /// is tall enough to say more of it standing up - turned a quarter and run
+  /// down the left edge. A phone's week column is ~40px wide and a two-hour
+  /// block in it is ~90px tall, so "Dentist appointment" was "Den…" lying
+  /// down and nearly all of it standing up.
+  Widget _body(BuildContext context, BoxConstraints box) {
+    final ink = T.inkOn(color);
+    final soft = ink.withValues(alpha: 0.72);
+    final titleStyle = TextStyle(
+      fontSize: compact ? 9.5 : 10.5,
+      height: 1.15,
+      fontWeight: T.wMedium,
+      color: ink,
+    );
+    final marks = <Widget>[
+      if (!compact && taskCount > 0) ...[
+        Icon(Icons.check_circle_outline, size: 9, color: soft),
+        Text(
+          '$taskCount',
+          style: TextStyle(fontSize: T.fsGrid, color: soft),
+        ),
+      ],
+      if (!compact && hasAttachment)
+        Icon(Icons.attach_file, size: 9, color: soft),
+      if (!compact && event.repeats)
+        Icon(Icons.repeat_rounded, size: 9, color: soft),
+    ];
+    final description = !compact && event.description.isNotEmpty
+        ? Text(
+            event.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: T.fsGrid, height: 1.15, color: soft),
+          )
+        : null;
+
+    final title = TextPainter(
+      text: TextSpan(text: event.title, style: titleStyle),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final titleWidth = title.width;
+    final lineHeight = title.height;
+    title.dispose();
+
+    // Roughly what the marks take beside the title; it only has to be right
+    // enough to tell "fits" from "does not".
+    final across = box.maxWidth - (marks.isEmpty ? 0 : 12.0 * marks.length);
+    final standUp =
+        titleWidth > across &&
+        lineHeight <= box.maxWidth &&
+        box.maxHeight >= box.maxWidth * 1.5;
+
+    final titleText = Text(
+      event.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: titleStyle,
+    );
+
+    if (standUp) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Reads top to bottom, so it starts where the event does.
+          RotatedBox(
+            quarterTurns: 1,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: box.maxHeight),
+              child: titleText,
+            ),
+          ),
+          if (marks.isNotEmpty || description != null) ...[
+            const SizedBox(width: 3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (marks.isNotEmpty) Row(children: marks),
+                  if (description != null) Flexible(child: description),
+                ],
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(child: titleText),
+            ...marks,
+          ],
+        ),
+        if (description != null) Flexible(child: description),
+      ],
+    );
+  }
+}
+
+/// The body of anything that stands for an event: one solid face in the
+/// calendar's colour, sitting on a darker edge that shows along the right and
+/// the bottom. It replaced a tint with a saturated stripe down the left - two
+/// colours for one thing, and the stripe was the only part that said which
+/// calendar. Text on it is [T.inkOn], like every other solid block.
+class RaisedFace extends StatelessWidget {
+  const RaisedFace({
+    super.key,
+    required this.color,
+    required this.onTap,
+    required this.child,
+    this.radius = const BorderRadius.all(Radius.circular(4)),
+    this.depth = 2,
+    this.edgeBottom = true,
+  });
+
+  final Color color;
+  final VoidCallback onTap;
+  final Widget child;
+  final BorderRadius radius;
+
+  /// How far the edge shows. Inside the block's own box, so a raised block
+  /// takes exactly the room a flat one did and the grid maths never hears
+  /// about it.
+  final double depth;
+  final bool edgeBottom;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(color: T.edgeOf(color), borderRadius: radius),
+    child: Padding(
+      padding: EdgeInsets.only(right: depth, bottom: edgeBottom ? depth : 0),
+      child: Material(
+        color: color,
+        borderRadius: radius,
+        child: InkWell(onTap: onTap, borderRadius: radius, child: child),
+      ),
+    ),
+  );
 }
 
 /// Right-click (desktop) and long-press (touch) on an event, both reported with
@@ -1324,91 +1507,91 @@ class _PendingBlockState extends State<_PendingBlock> {
   /// them.
   Widget _blockBody(Color tint, {required bool dragging}) {
     return Container(
-        decoration: BoxDecoration(
-          color: tint.withValues(alpha: 0.16),
-          border: Border.all(color: tint.withValues(alpha: 0.85), width: 1.5),
-          borderRadius: BorderRadius.circular(T.radius),
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!widget.compact && widget.title != null)
-                    Text(
-                      widget.title!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: T.fsGrid,
-                        fontWeight: T.wMedium,
-                        color: tint,
-                      ),
-                    ),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.16),
+        border: Border.all(color: tint.withValues(alpha: 0.85), width: 1.5),
+        borderRadius: BorderRadius.circular(T.radius),
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!widget.compact && widget.title != null)
                   Text(
-                    widget.compact
-                        ? '${hhmm(widget.from)}\n${hhmm(widget.to)}'
-                        : '${hhmm(widget.from)} – ${hhmm(widget.to)}',
+                    widget.title!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: T.fsGrid,
-                      height: 1.15,
-                      color: tint.withValues(alpha: 0.9),
+                      fontWeight: T.wMedium,
+                      color: tint,
                     ),
                   ),
-                ],
+                Text(
+                  widget.compact
+                      ? '${hhmm(widget.from)}\n${hhmm(widget.to)}'
+                      : '${hhmm(widget.from)} – ${hhmm(widget.to)}',
+                  style: TextStyle(
+                    fontSize: T.fsGrid,
+                    height: 1.15,
+                    color: tint.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // The mark that says this one is not real yet, and the way to take
+          // it back. Top-right, out of the way of the times.
+          if (widget.onRemove != null)
+            Positioned(
+              top: 1,
+              right: 1,
+              child: Icon(
+                Icons.close_rounded,
+                size: 11,
+                color: tint.withValues(alpha: 0.8),
               ),
             ),
 
-            // The mark that says this one is not real yet, and the way to take
-            // it back. Top-right, out of the way of the times.
-            if (widget.onRemove != null)
-              Positioned(
-                top: 1,
-                right: 1,
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 11,
-                  color: tint.withValues(alpha: 0.8),
-                ),
-              ),
-
-            // Not on the ghost or on the hole it left: a live resize handle
-            // on something already being carried is two gestures on one
-            // fingertip.
-            if (!dragging)
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragStart: (_) {
-                    _resizeFrom = widget.endY;
-                    _resizeDy = 0;
-                  },
-                  onVerticalDragUpdate: (d) {
-                    _resizeDy += d.delta.dy;
-                    widget.onResize(_resizeFrom + _resizeDy);
-                  },
-                  child: SizedBox(
-                    height: _PendingBlock._gripHeight,
-                    width: double.infinity,
-                    child: Center(
-                      child: Container(
-                        width: 18,
-                        height: 2.5,
-                        decoration: BoxDecoration(
-                          color: tint.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+          // Not on the ghost or on the hole it left: a live resize handle
+          // on something already being carried is two gestures on one
+          // fingertip.
+          if (!dragging)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (_) {
+                  _resizeFrom = widget.endY;
+                  _resizeDy = 0;
+                },
+                onVerticalDragUpdate: (d) {
+                  _resizeDy += d.delta.dy;
+                  widget.onResize(_resizeFrom + _resizeDy);
+                },
+                child: SizedBox(
+                  height: _PendingBlock._gripHeight,
+                  width: double.infinity,
+                  child: Center(
+                    child: Container(
+                      width: 18,
+                      height: 2.5,
+                      decoration: BoxDecoration(
+                        color: tint.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -1454,7 +1637,10 @@ class _DraftBlock extends StatelessWidget {
             maxLines: compact && constraints.maxHeight >= 22 ? 2 : 1,
             overflow: TextOverflow.clip,
             style: TextStyle(
-                fontSize: compact ? 8.5 : 9.5, height: 1.15, color: T.text),
+              fontSize: compact ? 8.5 : 9.5,
+              height: 1.15,
+              color: T.text,
+            ),
           );
           if (title == null || constraints.maxHeight < (compact ? 40 : 26)) {
             return times;
@@ -1600,23 +1786,25 @@ class _DayHeaderRow extends StatelessWidget {
           SizedBox(width: gutter),
           for (final d in days)
             Expanded(
-              child: Builder(builder: (context) {
-                final isToday = _isSameDay(d, today);
-                final name = _names[d.weekday - 1];
-                return Center(
-                  child: Text(
-                    // Initials in a narrow column, as every phone calendar
-                    // does: two of them repeat, but their position says which.
-                    compact ? '${name[0]} ${d.day}' : '$name ${d.day}',
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: compact ? 9.5 : 10.5,
-                      color: isToday ? T.accent : T.muted,
-                      fontWeight: isToday ? T.wMedium : FontWeight.w500,
+              child: Builder(
+                builder: (context) {
+                  final isToday = _isSameDay(d, today);
+                  final name = _names[d.weekday - 1];
+                  return Center(
+                    child: Text(
+                      // Initials in a narrow column, as every phone calendar
+                      // does: two of them repeat, but their position says which.
+                      compact ? '${name[0]} ${d.day}' : '$name ${d.day}',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: compact ? 9.5 : 10.5,
+                        color: isToday ? T.accent : T.muted,
+                        fontWeight: isToday ? T.wMedium : FontWeight.w500,
+                      ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                },
+              ),
             ),
         ],
       ),
@@ -1669,14 +1857,21 @@ class _SpanBand extends StatelessWidget {
                   final e = events[i];
                   // Clipped to the window: an event that began last month still
                   // has to start at the left edge rather than off-screen.
-                  final from = e.start.isBefore(days.first) ? days.first : e.start;
+                  final from = e.start.isBefore(days.first)
+                      ? days.first
+                      : e.start;
                   final to = e.end.isAfter(last) ? last : e.end;
 
-                  final startCol = from.difference(days.first).inMinutes / (24 * 60);
-                  final endCol = to.difference(days.first).inMinutes / (24 * 60);
+                  final startCol =
+                      from.difference(days.first).inMinutes / (24 * 60);
+                  final endCol =
+                      to.difference(days.first).inMinutes / (24 * 60);
 
                   final left = gutter + startCol * colWidth;
-                  final width = ((endCol - startCol) * colWidth).clamp(18.0, double.infinity);
+                  final width = ((endCol - startCol) * colWidth).clamp(
+                    18.0,
+                    double.infinity,
+                  );
 
                   return Positioned(
                     left: left + 1,
@@ -1724,51 +1919,48 @@ class _SpanBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EventMenuArea(
-      onMenu: onMenu,
-      child: _bar(),
-    );
+    return EventMenuArea(onMenu: onMenu, child: _bar());
   }
 
   Widget _bar() {
-    return Material(
-      color: Color.lerp(T.bgSolid, color, 0.42),
-      borderRadius: BorderRadius.circular(3),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(3),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 5),
-          child: Row(
-            children: [
-              // A whole day has no times worth printing: "00:00" at each end of
-              // a bar that is already the width of the day says nothing.
-              if (showStart && !event.allDay)
-                Text(
-                  hhmm(event.start),
-                  style: const TextStyle(fontSize: T.fsGrid, color: T.muted),
-                ),
-              if (showStart && !event.allDay) const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  event.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: T.fsGrid,
-                    fontWeight: T.wMedium,
-                    color: T.text,
-                  ),
+    final ink = T.inkOn(color);
+    final soft = ink.withValues(alpha: 0.72);
+    return RaisedFace(
+      color: color,
+      radius: BorderRadius.circular(3),
+      depth: 1.5,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: Row(
+          children: [
+            // A whole day has no times worth printing: "00:00" at each end of
+            // a bar that is already the width of the day says nothing.
+            if (showStart && !event.allDay)
+              Text(
+                hhmm(event.start),
+                style: TextStyle(fontSize: T.fsGrid, color: soft),
+              ),
+            if (showStart && !event.allDay) const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                event.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: T.fsGrid,
+                  fontWeight: T.wMedium,
+                  color: ink,
                 ),
               ),
-              if (showEnd && !event.allDay) const SizedBox(width: 5),
-              if (showEnd && !event.allDay)
-                Text(
-                  hhmm(event.end),
-                  style: const TextStyle(fontSize: T.fsGrid, color: T.muted),
-                ),
-            ],
-          ),
+            ),
+            if (showEnd && !event.allDay) const SizedBox(width: 5),
+            if (showEnd && !event.allDay)
+              Text(
+                hhmm(event.end),
+                style: TextStyle(fontSize: T.fsGrid, color: soft),
+              ),
+          ],
         ),
       ),
     );

@@ -89,6 +89,15 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       "current" bar no longer shifts its row, no window frame on touch, the
       list's add field unboxed.
 - [x] **58.9** Marco tried 58.8 on the dev site; merged to `main` 2026-10-13.
+- [ ] **58.10** Round 3, on the dev site for Marco to try: the shopping list
+      stays in Edit while a new list is typed; the calendar swipe draws the
+      neighbouring week/day (`calendarLoadRange` loads one step either side,
+      `TimeSwipe.builder`, a shared scroll offset); press-to-create takes the
+      quarter hour pressed (floor, slots both ends included); events are solid
+      `RaisedFace` blocks on a `T.edgeOf` edge with `T.inkOn` text, and a long
+      title stands up in a tall narrow block. Merge to `main` once tried.
+      Needs `sudo systemctl restart todo-sync-dev` for the dev server to speak
+      protocol 4.
 - [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
       forms, the task action bar.
 - [ ] **58.6** Decide what the desktop and the narrow window get (the dock is

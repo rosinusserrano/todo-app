@@ -67,6 +67,35 @@ void main() {
     expect(s.currentList!.name, AppState.defaultListName);
   });
 
+  testWidgets('Enter keeps adding: a new list stays in Edit until Done', (
+    tester,
+  ) async {
+    final s = await fresh(tester);
+    await show(tester, s);
+    final addField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.hintText == 'Add an item',
+    );
+
+    for (final item in ['Milk', 'Eggs', 'Bread']) {
+      await tester.enterText(addField, item);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settle(tester);
+      // Still the field, still focused: the next item goes straight in.
+      expect(addField, findsOneWidget, reason: 'after $item');
+      expect(
+        tester.widget<TextField>(addField).focusNode!.hasFocus,
+        isTrue,
+        reason: 'after $item',
+      );
+    }
+    expect([for (final i in s.listItems) i.text], ['Milk', 'Eggs', 'Bread']);
+
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(addField, findsNothing, reason: 'Done is what settles it');
+    expect(find.text('Edit'), findsOneWidget);
+  });
+
   testWidgets('a list with items opens in Use, where a tap ticks and the row '
       'slides below the rest', (tester) async {
     final s = await fresh(tester, ['Milk', 'Bread', 'Eggs']);

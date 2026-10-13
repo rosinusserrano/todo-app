@@ -344,6 +344,20 @@ class T {
         .toColor();
   }
 
+  /// The side of a raised block: the same hue, darker. Laid along the right
+  /// and bottom edges of a calendar event, it is the whole of the 3D - no
+  /// blur, no light source, just a face sitting on its own edge, which reads
+  /// as "this pops out" at 14px tall where a soft shadow reads as dirt.
+  static Color edgeOf(Color fill) {
+    // Desaturated as well as darkened: a vivid fill darkened alone gives a
+    // neon edge that reads as an outline, not as the block's side.
+    final hsl = HSLColor.fromColor(fill);
+    return hsl
+        .withSaturation(hsl.saturation * 0.6)
+        .withLightness(hsl.lightness * 0.55)
+        .toColor();
+  }
+
   /// Hue-rotate 180 degrees from the workspace colour, but force high
   /// saturation and mid lightness. A pale or desaturated workspace colour would
   /// otherwise produce a complement too washed out to read as an alarm, which

@@ -89,10 +89,35 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       "current" bar no longer shifts its row, no window frame on touch, the
       list's add field unboxed.
 - [x] **58.9** Marco tried 58.8 on the dev site; merged to `main` 2026-10-13.
+- [ ] **58.10** Round 3, on the dev site for Marco to try: the shopping list
+      stays in Edit while a new list is typed; the calendar swipe draws the
+      neighbouring week/day (`calendarLoadRange` loads one step either side,
+      `TimeSwipe.builder`, a shared scroll offset); press-to-create takes the
+      quarter hour pressed (floor, slots both ends included); events are solid
+      `RaisedFace` blocks on a `T.edgeOf` edge with `T.inkOn` text, and a long
+      title stands up in a tall narrow block. Merge to `main` once tried.
+      Needs `sudo systemctl restart todo-sync-dev` for the dev server to speak
+      protocol 4.
+- [ ] **58.11** Round 4, on the dev site with 58.10: the dock at every size
+      (bottom when narrow; top, side or bottom past `Layout.hasRail`, picked
+      in Settings as `AppState.wideDock`), replacing the workspace bar, the
+      rail, the view bar and the title bar's calendar / list / settings;
+      calendar events carried to a new time or day (`EventBlock.movable`,
+      `AppState.moveEvent`; mouse drags at once, touch holds first); and
+      Ctrl+Alt+H opening the capture pane where the footer is not drawn.
+      Then: dock menus open on mouse hover, and a top dock sits in the title
+      bar beside the name.
+      Merge to `main` with 58.10 once tried.
+- [ ] **58.12** Once Marco has settled on the dock's wide placement: delete
+      `ui/workspace_bar.dart`'s bar, `ui/view_bar.dart` and
+      `ui/workspace_rail.dart` (no longer drawn by the shell; kept only so the
+      choice could be reversed cheaply) and their tests, and
+      `AppState.railCollapsed`. `WorkspaceView` lives in workspace_bar.dart
+      and has to move first.
 - [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
       forms, the task action bar.
-- [ ] **58.6** Decide what the desktop and the narrow window get (the dock is
-      touch-only so far).
+- [x] **58.6** Decide what the desktop and the narrow window get: the dock,
+      everywhere (58.11).
 - [x] **58.7** First round merged to `main` (changelog under 0.29.0) and the
       web app published.
 

@@ -42,6 +42,7 @@ class TitleBar extends StatelessWidget {
     required this.listOpen,
     required this.syncColor,
     required this.syncTooltip,
+    this.dock,
   });
 
   static const height = 40.0;
@@ -97,14 +98,23 @@ class TitleBar extends StatelessWidget {
   final VoidCallback? onToggleList;
   final bool listOpen;
 
+  /// The dock, when it runs along the top: in this bar, beside the name,
+  /// rather than in a second bar under it. Exactly [height] tall.
+  final Widget? dock;
+
+  /// The widest the dock is drawn up here. Past it the rest of the bar stays
+  /// empty, which on a desktop is the part you move the window by.
+  static const dockMaxWidth = 760.0;
+
   @override
   Widget build(BuildContext context) {
-    final bar = SizedBox(
-      height: height,
-      child: Row(
-        children: [
-          const SizedBox(width: T.s3),
-          const Text(
+    final row = Row(
+      children: [
+        const SizedBox(width: T.s3),
+        // Not hit-testable, so a press on the name falls through to the
+        // drag area behind it.
+        const IgnorePointer(
+          child: Text(
             'Todo',
             style: TextStyle(
               fontSize: T.fsBody,
@@ -112,73 +122,96 @@ class TitleBar extends StatelessWidget {
               letterSpacing: 0.2,
             ),
           ),
-          const Spacer(),
-          if (onToggleList != null)
-            _Btn(
-              tooltip: listOpen ? 'Back to tasks' : 'Shopping list',
-              icon: listOpen
-                  ? Icons.shopping_basket
-                  : Icons.shopping_basket_outlined,
-              tint: listOpen ? accent : null,
-              onPressed: onToggleList!,
+        ),
+        if (dock case final dock?) ...[
+          const SizedBox(width: T.s3),
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: dockMaxWidth),
+              child: dock,
             ),
-          if (onToggleCalendar != null)
-            _Btn(
-              tooltip: calendarOpen ? 'Back to tasks' : 'Calendar',
-              icon: calendarOpen
-                  ? Icons.calendar_month
-                  : Icons.calendar_month_outlined,
-              tint: calendarOpen ? accent : null,
-              onPressed: onToggleCalendar!,
+          ),
+        ],
+        const Spacer(),
+        if (onToggleList != null)
+          _Btn(
+            tooltip: listOpen ? 'Back to tasks' : 'Shopping list',
+            icon: listOpen
+                ? Icons.shopping_basket
+                : Icons.shopping_basket_outlined,
+            tint: listOpen ? accent : null,
+            onPressed: onToggleList!,
+          ),
+        if (onToggleCalendar != null)
+          _Btn(
+            tooltip: calendarOpen ? 'Back to tasks' : 'Calendar',
+            icon: calendarOpen
+                ? Icons.calendar_month
+                : Icons.calendar_month_outlined,
+            tint: calendarOpen ? accent : null,
+            onPressed: onToggleCalendar!,
+          ),
+        if (onOpenSettings != null)
+          _Btn(
+            tooltip: syncTooltip,
+            icon: Icons.settings_outlined,
+            tint: syncColor,
+            onPressed: onOpenSettings!,
+          ),
+        if (soundPlaying)
+          _TransportButton(
+            paused: soundPaused,
+            accent: accent,
+            onPressed: onTogglePause,
+            volume: volume,
+            onVolumeChanged: onVolumeChanged,
+          ),
+        if (onToggleSound case final onToggleSound?)
+          _Btn(
+            tooltip: 'Concentration sound',
+            icon: soundPlaying && !soundPaused
+                ? Icons.headphones
+                : Icons.headphones_outlined,
+            tint: soundPlaying ? accent : null,
+            onPressed: onToggleSound,
+          ),
+        if (isDesktop) ...[
+          _Btn(
+            tooltip: pinned ? 'Unpin' : 'Always on top',
+            icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+            // The workspace colour rather than the fixed theme accent, so
+            // every lit control in this bar reads as one family.
+            tint: pinned ? accent : null,
+            onPressed: onTogglePin,
+          ),
+          _Btn(
+            tooltip: 'Minimize',
+            icon: Icons.remove,
+            onPressed: windowManager.minimize,
+          ),
+          _Btn(tooltip: 'Close', icon: Icons.close, onPressed: onClose),
+        ],
+        const SizedBox(width: 6),
+      ],
+    );
+
+    // The drag area is *behind* the row, not around it. Wrapped around, it is
+    // an ancestor of every button and of the dock, and its pan recogniser
+    // would take a press-and-slide on a dock segment and move the window
+    // instead. Behind, it gets only the presses nothing in the row took: the
+    // name and the empty stretch.
+    return SizedBox(
+      height: height,
+      child: Stack(
+        children: [
+          if (isDesktop)
+            const Positioned.fill(
+              child: DragToMoveArea(child: SizedBox.expand()),
             ),
-          if (onOpenSettings != null)
-            _Btn(
-              tooltip: syncTooltip,
-              icon: Icons.settings_outlined,
-              tint: syncColor,
-              onPressed: onOpenSettings!,
-            ),
-          if (soundPlaying)
-            _TransportButton(
-              paused: soundPaused,
-              accent: accent,
-              onPressed: onTogglePause,
-              volume: volume,
-              onVolumeChanged: onVolumeChanged,
-            ),
-          if (onToggleSound case final onToggleSound?)
-            _Btn(
-              tooltip: 'Concentration sound',
-              icon: soundPlaying && !soundPaused
-                  ? Icons.headphones
-                  : Icons.headphones_outlined,
-              tint: soundPlaying ? accent : null,
-              onPressed: onToggleSound,
-            ),
-          if (isDesktop) ...[
-            _Btn(
-              tooltip: pinned ? 'Unpin' : 'Always on top',
-              icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
-              // The workspace colour rather than the fixed theme accent, so
-              // every lit control in this bar reads as one family.
-              tint: pinned ? accent : null,
-              onPressed: onTogglePin,
-            ),
-            _Btn(
-              tooltip: 'Minimize',
-              icon: Icons.remove,
-              onPressed: windowManager.minimize,
-            ),
-            _Btn(tooltip: 'Close', icon: Icons.close, onPressed: onClose),
-          ],
-          const SizedBox(width: 6),
+          Positioned.fill(child: row),
         ],
       ),
     );
-
-    // DragToMoveArea must not wrap the buttons themselves or it swallows their
-    // clicks - the same trap as putting data-tauri-drag-region on a child.
-    return isDesktop ? DragToMoveArea(child: bar) : bar;
   }
 }
 

@@ -28,17 +28,34 @@
 // one menu is open. A finger that landed on the wrong segment does not have to
 // lift.
 //
+// **A mouse only has to rest on a segment.** Its menu opens after a beat
+// (`_hoverOpenDelay`, so a pointer crossing the bar on its way to the list
+// does not flash menus open), moving along the bar switches at once, and
+// leaving both the segment and its menu closes it after a shorter beat - long
+// enough to cut a corner on the way in. A hovered menu draws no scrim: it is
+// a menu bar's menu, not a modal. Clicking the segment pins it the way a tap
+// does, and the press-and-slide still works with the button held.
+//
 // Why a Listener and not gesture recognisers: the whole thing is one pointer's
 // life, from the press on a segment to the release over a row that did not
 // exist when it started. Pointer events go to whatever was hit at the press for
 // as long as the pointer is down, so the segment's Listener sees every move and
 // can ask the menu's render box where the finger is - no arena, nothing to win.
 //
+// **Three edges.** Along the bottom wherever the window is narrow - a phone, the
+// desktop widget at its own size - and along the top or down the left side
+// once there is room (`DockEdge`, chosen in Settings). The order and the
+// gesture are the same on every edge; what changes is which way the menus
+// grow, and that a menu over a top bar lists its rows the other way up, so
+// the one nearest the bar is still Tasks. Down the side the labels stand up
+// and read top to bottom, like a long title in a narrow calendar block.
+//
 // Geometry goes through RenderBox transforms (`globalToLocal`,
 // `localToGlobal(ancestor:)`), never through raw `position` arithmetic: UiScale
 // sits between the screen and this widget, and a pointer's global position is
 // in screen pixels while the overlay lays out in layout units.
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show kTouchSlop;
@@ -47,6 +64,27 @@ import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'thought_pressure.dart';
+
+/// Which edge of the window the bar runs along.
+enum DockEdge {
+  bottom,
+  top,
+  left;
+
+  /// The name it is stored under, which is also what Settings calls it.
+  String get label => switch (this) {
+    DockEdge.bottom => 'Bottom',
+    DockEdge.top => 'Top',
+    DockEdge.left => 'Side',
+  };
+
+  static DockEdge? parse(String? name) {
+    for (final e in values) {
+      if (e.name == name) return e;
+    }
+    return null;
+  }
+}
 
 /// One row of a segment's menu.
 class DockItem {
@@ -99,7 +137,7 @@ class DockSegment {
     this.dot = false,
     this.pressure = 0,
     this.semanticLabel,
-    this.width,
+    this.extent,
   });
 
   final String label;
@@ -125,21 +163,29 @@ class DockSegment {
 
   final String? semanticLabel;
 
-  /// A fixed width. Null shares what is left equally with the other null
-  /// segments - the three places do; the quick-action ＋ is a fixed square.
-  final double? width;
+  /// A fixed length along the bar - a width across the bottom or the top, a
+  /// height down the side. Null shares what is left equally with the other
+  /// null segments - the three places do; the quick-action ＋ is a fixed
+  /// square.
+  final double? extent;
 }
 
 class Dock extends StatefulWidget {
   const Dock({
     super.key,
     required this.segments,
-    this.height = 48,
+    this.thickness = 48,
     this.underhang = 0,
+    this.edge = DockEdge.bottom,
   });
 
   final List<DockSegment> segments;
-  final double height;
+
+  /// Across the bar: its height along the bottom or the top, its width down
+  /// the side.
+  final double thickness;
+
+  final DockEdge edge;
 
   /// How far below its own box the bar's colours carry on: the home
   /// indicator's strip on a phone, which the shell's SafeArea keeps content
@@ -191,6 +237,31 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   /// lifting without moving closes it.
   bool _tapCloses = false;
 
+  /// Opened by a mouse resting on its segment, and closed by it leaving.
+  bool _viaHover = false;
+
+  /// Where the mouse is: the segment it is over, and whether it is in the
+  /// menu. Read when a timer fires rather than trusted from the order the
+  /// enter and exit callbacks arrive in.
+  int? _overSegment;
+  bool _overMenu = false;
+
+  /// A pending hover open or hover close - one at a time.
+  Timer? _hoverTimer;
+
+  static const _hoverOpenDelay = Duration(milliseconds: 150);
+  static const _hoverCloseDelay = Duration(milliseconds: 300);
+
+  bool get _vertical => widget.edge == DockEdge.left;
+
+  /// A menu's rows as drawn. Over a top bar they run the other way up, so the
+  /// row nearest the bar - the one a slide reaches first - is the same one it
+  /// is under a bottom bar.
+  List<DockItem> _drawn(int segment) {
+    final items = widget.segments[segment].items;
+    return widget.edge == DockEdge.top ? items.reversed.toList() : items;
+  }
+
   int get _pressure =>
       widget.segments.fold(0, (m, s) => math.max(m, s.pressure));
 
@@ -213,10 +284,14 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
             (_hover ?? 0) >= widget.segments[open].items.length)) {
       _hover = null;
     }
+    // A menu open across a change of edge would be drawn growing out of a
+    // bar that is no longer where it was.
+    if (oldWidget.edge != widget.edge) close();
   }
 
   @override
   void dispose() {
+    _hoverTimer?.cancel();
     _pulse.dispose();
     _scroll.dispose();
     super.dispose();
@@ -224,10 +299,11 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
 
   // ------------------------------------------------------------ the gesture
 
-  void _openMenu(int segment, {required bool sticky}) {
+  void _openMenu(int segment, {required bool sticky, bool hover = false}) {
     setState(() {
       _open = segment;
       _sticky = sticky;
+      _viaHover = hover;
       _hover = null;
       _hoverSecondary = false;
     });
@@ -235,10 +311,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   }
 
   void close() {
+    _hoverTimer?.cancel();
     if (_open == null) return;
     setState(() {
       _open = null;
       _sticky = false;
+      _viaHover = false;
+      _overMenu = false;
       _hover = null;
       _hoverSecondary = false;
       _pointer = null;
@@ -248,10 +327,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
 
   void _down(int segment, PointerDownEvent e) {
     if (_pointer != null) return;
+    _hoverTimer?.cancel();
     _pointer = e.pointer;
     _downAt = e.position;
     _moved = false;
-    _tapCloses = _open == segment && _sticky;
+    // A click on a menu the mouse opened pins it, rather than closing what
+    // the person evidently wanted open.
+    _tapCloses = _open == segment && _sticky && !_viaHover;
     if (_open != segment) HapticFeedback.selectionClick();
     _openMenu(segment, sticky: false);
   }
@@ -269,10 +351,11 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (dock != null && dock.hasSize) {
       final local = dock.globalToLocal(e.position);
       if ((Offset.zero & dock.size).contains(local)) {
-        final spans = _spans(dock.size.width);
+        final spans = _spans(_vertical ? dock.size.height : dock.size.width);
+        final along = _vertical ? local.dy : local.dx;
         var at = spans.length - 1;
         for (var i = 0; i < spans.length; i++) {
-          if (local.dx < spans[i].$1 + spans[i].$2) {
+          if (along < spans[i].$1 + spans[i].$2) {
             at = i;
             break;
           }
@@ -315,13 +398,51 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     final secondary = _hoverSecondary;
     close();
     if (open == null || row == null) return;
-    _fire(widget.segments[open].items[row], secondary);
+    _fire(_drawn(open)[row], secondary);
   }
 
   void _cancel(PointerCancelEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
     if (!_sticky) close();
+  }
+
+  // ------------------------------------------------------------ the mouse
+
+  void _enterSegment(int segment) {
+    _overSegment = segment;
+    _hoverTimer?.cancel();
+    // A held button is steering a press; `_move` switches menus for it.
+    if (_pointer != null || _open == segment) return;
+    if (_open != null) {
+      _openMenu(segment, sticky: true, hover: true);
+      return;
+    }
+    _hoverTimer = Timer(_hoverOpenDelay, () {
+      if (mounted && _overSegment == segment && _pointer == null) {
+        _openMenu(segment, sticky: true, hover: true);
+      }
+    });
+  }
+
+  void _leaveSegment(int segment) {
+    if (_overSegment == segment) _overSegment = null;
+    _hoverTimer?.cancel();
+    _closeAfterHover();
+  }
+
+  void _closeAfterHover() {
+    if (!_viaHover) return;
+    _hoverTimer?.cancel();
+    _hoverTimer = Timer(_hoverCloseDelay, () {
+      if (mounted &&
+          _viaHover &&
+          _overSegment == null &&
+          !_overMenu &&
+          _pointer == null) {
+        close();
+      }
+    });
   }
 
   void _fire(DockItem item, bool secondary) {
@@ -340,7 +461,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (open == null || box == null || !box.hasSize) return (null, false);
     final local = box.globalToLocal(global);
     if (!(Offset.zero & box.size).contains(local)) return (null, false);
-    final items = widget.segments[open].items;
+    final items = _drawn(open);
     final offset = _scroll.hasClients ? _scroll.offset : 0.0;
     final row = ((local.dy + offset) / Dock.rowHeight).floor();
     if (row < 0 || row >= items.length) return (null, false);
@@ -358,36 +479,45 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       controller: _portal,
       overlayChildBuilder: _menu,
       child: SizedBox(
-        height: widget.height,
+        height: _vertical ? null : widget.thickness,
+        width: _vertical ? widget.thickness : null,
         child: AnimatedBuilder(
           animation: _pulse.controller,
           builder: (context, _) => Stack(
             clipBehavior: Clip.none,
             children: [
               Positioned.fill(
-                child: Row(
+                child: Flex(
+                  direction: _vertical ? Axis.vertical : Axis.horizontal,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (var i = 0; i < widget.segments.length; i++)
                       _sized(
                         widget.segments[i],
-                        Listener(
-                          behavior: HitTestBehavior.opaque,
-                          onPointerDown: (e) => _down(i, e),
-                          onPointerMove: _move,
-                          onPointerUp: _up,
-                          onPointerCancel: _cancel,
-                          child: _segment(widget.segments[i], open: _open == i),
+                        MouseRegion(
+                          onEnter: (_) => _enterSegment(i),
+                          onExit: (_) => _leaveSegment(i),
+                          child: Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: (e) => _down(i, e),
+                            onPointerMove: _move,
+                            onPointerUp: _up,
+                            onPointerCancel: _cancel,
+                            child: _segment(
+                              widget.segments[i],
+                              open: _open == i,
+                            ),
+                          ),
                         ),
                       ),
                   ],
                 ),
               ),
-              if (widget.underhang > 0)
+              if (widget.underhang > 0 && widget.edge == DockEdge.bottom)
                 Positioned(
                   left: 0,
                   right: 0,
-                  top: widget.height,
+                  top: widget.thickness,
                   height: widget.underhang,
                   child: IgnorePointer(
                     child: Row(
@@ -415,22 +545,26 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     );
   }
 
-  Widget _sized(DockSegment seg, Widget child) => seg.width == null
+  Widget _sized(DockSegment seg, Widget child) => seg.extent == null
       ? Expanded(child: child)
-      : SizedBox(width: seg.width, child: child);
+      : SizedBox(
+          width: _vertical ? null : seg.extent,
+          height: _vertical ? seg.extent : null,
+          child: child,
+        );
 
-  /// Each segment's left edge and width across a bar [total] wide - the same
-  /// split the Row makes, for the code that has to find a segment from a
+  /// Each segment's start and length along a bar [total] long - the same
+  /// split the Flex makes, for the code that has to find a segment from a
   /// point (the slide along the bar) or a menu's place from a segment.
   List<(double, double)> _spans(double total) {
-    final fixed = widget.segments.fold(0.0, (w, s) => w + (s.width ?? 0));
-    final shared = widget.segments.where((s) => s.width == null).length;
+    final fixed = widget.segments.fold(0.0, (w, s) => w + (s.extent ?? 0));
+    final shared = widget.segments.where((s) => s.extent == null).length;
     final each = shared == 0 ? 0.0 : (total - fixed) / shared;
     var x = 0.0;
     return [
       for (final s in widget.segments)
         () {
-          final w = s.width ?? each;
+          final w = s.extent ?? each;
           final span = (x, w);
           x += w;
           return span;
@@ -472,8 +606,11 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
           children: [
             Positioned.fill(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: T.s2),
-                child: Row(
+                padding: _vertical
+                    ? const EdgeInsets.symmetric(vertical: T.s3)
+                    : const EdgeInsets.symmetric(horizontal: T.s2),
+                child: Flex(
+                  direction: _vertical ? Axis.vertical : Axis.horizontal,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (seg.icon != null) ...[
@@ -482,19 +619,24 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                         size: seg.label.isEmpty ? 22 : 18,
                         color: ink,
                       ),
-                      if (seg.label.isNotEmpty) const SizedBox(width: T.s1 + 2),
+                      if (seg.label.isNotEmpty)
+                        const SizedBox.square(dimension: T.s1 + 2),
                     ],
                     if (seg.label.isNotEmpty)
                       Flexible(
-                        child: Text(
-                          seg.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: T.fsLabel,
-                            fontFamily: T.fontDisplay,
-                            fontWeight: T.wMedium,
-                            color: ink,
+                        child: RotatedBox(
+                          // Standing up down the side, reading top to bottom.
+                          quarterTurns: _vertical ? 1 : 0,
+                          child: Text(
+                            seg.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: T.fsLabel,
+                              fontFamily: T.fontDisplay,
+                              fontWeight: T.wMedium,
+                              color: ink,
+                            ),
                           ),
                         ),
                       ),
@@ -533,8 +675,8 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     );
   }
 
-  /// The open menu, drawn in the overlay: grown up out of its segment, with a
-  /// scrim over everything above the bar.
+  /// The open menu, drawn in the overlay: grown out of its segment, away from
+  /// the edge the bar is on, with a scrim over everything but the bar.
   Widget _menu(BuildContext context) {
     final open = _open;
     final dock = this.context.findRenderObject() as RenderBox?;
@@ -544,91 +686,162 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       return const SizedBox.shrink();
     }
     final origin = dock.localToGlobal(Offset.zero, ancestor: overlay);
-    final dockWidth = dock.size.width;
-    final (segLeft, segWidth) = _spans(dockWidth)[open];
-    final width = math.min(dockWidth, math.max(segWidth, Dock.menuMinWidth));
-    // Over its own segment where it fits, kept inside the bar where it does not:
-    // the first menu grows from the left edge, the last from the right.
-    final left = (segLeft + segWidth / 2 - width / 2).clamp(
-      0.0,
-      dockWidth - width,
+    final bar = origin & dock.size;
+    final screen = overlay.size;
+    final items = _drawn(open);
+    final (segStart, segLength) = _spans(
+      _vertical ? bar.height : bar.width,
+    )[open];
+
+    // Over everything except the bar: a press on another segment has to
+    // reach it.
+    final scrim = switch (widget.edge) {
+      DockEdge.bottom => Rect.fromLTRB(0, 0, screen.width, bar.top),
+      DockEdge.top => Rect.fromLTRB(0, bar.bottom, screen.width, screen.height),
+      DockEdge.left => Rect.fromLTRB(bar.right, 0, screen.width, screen.height),
+    };
+
+    final rows = Column(
+      key: _menuKey,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < items.length; i++)
+          _row(
+            items[i],
+            index: i,
+            hovered: _hover == i,
+            secondary: _hover == i && _hoverSecondary,
+            // A rule between two rows of one colour; rows that differ in
+            // colour are already told apart.
+            rule: i > 0 && items[i - 1].fill == items[i].fill,
+          ),
+      ],
     );
-    final seg = widget.segments[open];
-    final maxHeight = math.max(Dock.rowHeight * 2, origin.dy - 24);
+
+    Widget scrolling(double maxHeight) => ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: math.max(Dock.rowHeight * 2, maxHeight),
+      ),
+      child: SingleChildScrollView(
+        controller: _scroll,
+        // Scrolling is for a tapped-open menu only. A held one is steered by
+        // the finger, and a scroll under it would move the rows away from
+        // where the finger is pointing.
+        physics: _sticky
+            ? const ClampingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        // Over a top bar the list runs the other way up; scrolled, it should
+        // start from the end nearest the bar too.
+        reverse: widget.edge == DockEdge.top,
+        child: rows,
+      ),
+    );
+
+    // Grown out of the bar: up from a bottom one, down from a top one, out
+    // to the right from the side.
+    Widget grow(Widget child) => TweenAnimationBuilder<double>(
+      key: ValueKey((open, widget.edge)),
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 150),
+      curve: T.sheetEase,
+      builder: (_, t, child) => ClipRect(
+        child: Align(
+          alignment: switch (widget.edge) {
+            DockEdge.bottom => Alignment.bottomCenter,
+            DockEdge.top => Alignment.topCenter,
+            DockEdge.left => Alignment.centerLeft,
+          },
+          // 1, not null, down the side: a null factor fills the height it
+          // is offered, and the menu would sit in the middle of the bar.
+          heightFactor: _vertical ? 1 : t,
+          widthFactor: _vertical ? t : null,
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+
+    // The mouse inside the menu keeps a hovered one open.
+    Widget tracked(Widget child) => MouseRegion(
+      onEnter: (_) {
+        _overMenu = true;
+        _hoverTimer?.cancel();
+      },
+      onExit: (_) {
+        _overMenu = false;
+        _closeAfterHover();
+      },
+      child: child,
+    );
+
+    final Widget placed;
+    if (_vertical) {
+      // Beside its segment, starting level with it and moved up as far as it
+      // has to be to stay on screen - the ＋ at the foot of the bar has a
+      // menu taller than itself.
+      final width = math.min(
+        Dock.menuMinWidth,
+        math.max(0.0, screen.width - bar.right),
+      );
+      placed = Positioned.fill(
+        child: CustomSingleChildLayout(
+          delegate: _SideMenuLayout(
+            left: bar.right,
+            top: bar.top + segStart,
+            width: width,
+            bounds: Rect.fromLTRB(0, bar.top, screen.width, bar.bottom),
+          ),
+          child: tracked(grow(scrolling(bar.height - 2 * T.s3))),
+        ),
+      );
+    } else {
+      final width = math.min(bar.width, math.max(segLength, Dock.menuMinWidth));
+      // Over its own segment where it fits, kept inside the bar where it does
+      // not: the first menu grows from the left edge, the last from the right.
+      final left = (segStart + segLength / 2 - width / 2).clamp(
+        0.0,
+        bar.width - width,
+      );
+      final top = widget.edge == DockEdge.top;
+      placed = Positioned(
+        left: bar.left + left,
+        width: width,
+        bottom: top ? null : screen.height - bar.top,
+        top: top ? bar.bottom : null,
+        child: tracked(
+          grow(scrolling(top ? screen.height - bar.bottom - 24 : bar.top - 24)),
+        ),
+      );
+    }
 
     return Stack(
       children: [
-        // Over everything above the bar, not the bar itself: a press on
-        // another segment has to reach it.
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
-          height: origin.dy,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (_) => close(),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 140),
-              builder: (_, t, _) =>
-                  ColoredBox(color: Colors.black.withValues(alpha: 0.38 * t)),
-            ),
-          ),
-        ),
-        Positioned(
-          left: origin.dx + left,
-          width: width,
-          bottom: overlay.size.height - origin.dy,
-          child: TweenAnimationBuilder<double>(
-            key: ValueKey(open),
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 150),
-            curve: T.sheetEase,
-            builder: (_, t, child) => ClipRect(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                heightFactor: t,
-                child: child,
-              ),
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxHeight),
-              child: SingleChildScrollView(
-                controller: _scroll,
-                // Scrolling is for a tapped-open menu only. A held one is
-                // steered by the finger, and a scroll under it would move the
-                // rows away from where the finger is pointing.
-                physics: _sticky
-                    ? const ClampingScrollPhysics()
-                    : const NeverScrollableScrollPhysics(),
-                child: Column(
-                  key: _menuKey,
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < seg.items.length; i++)
-                      _row(
-                        seg.items[i],
-                        hovered: _hover == i,
-                        secondary: _hover == i && _hoverSecondary,
-                        // A rule between two rows of one colour; rows that
-                        // differ in colour are already told apart.
-                        rule:
-                            i > 0 && seg.items[i - 1].fill == seg.items[i].fill,
-                      ),
-                  ],
-                ),
+        // None under a hovered menu: it closes when the mouse leaves, and a
+        // dimmed window that comes and goes as the pointer passes would be
+        // the whole screen flickering.
+        if (!_viaHover)
+          Positioned.fromRect(
+            rect: scrim,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => close(),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 140),
+                builder: (_, t, _) =>
+                    ColoredBox(color: Colors.black.withValues(alpha: 0.38 * t)),
               ),
             ),
           ),
-        ),
+        placed,
       ],
     );
   }
 
   Widget _row(
     DockItem item, {
+    required int index,
     required bool hovered,
     required bool secondary,
     required bool rule,
@@ -645,113 +858,132 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       button: true,
       selected: item.current,
       label: item.label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Taps only matter in a tapped-open menu; a held one is chosen on
-        // release by the segment's Listener, which owns that pointer.
-        onTap: () {
-          close();
-          item.onChoose();
+      // A mouse lights the row it is over, the way a finger sliding over a
+      // held menu does. Only in a clicked-open menu: a held one is steered by
+      // the press, and hover there would fight it.
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onHover: (e) {
+          if (!_sticky) return;
+          final (row, secondary) = _rowAt(e.position);
+          if (row != _hover || secondary != _hoverSecondary) {
+            setState(() {
+              _hover = row;
+              _hoverSecondary = secondary;
+            });
+          }
         },
-        child: SizedBox(
-          height: Dock.rowHeight,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 90),
-                  color: fill,
-                ),
-              ),
-              if (rule)
-                Positioned(
-                  top: 0,
-                  left: T.s4,
-                  right: T.s4,
-                  child: Container(
-                    height: 1,
-                    color: ink.withValues(alpha: 0.12),
+        onExit: (_) {
+          if (_sticky && _hover == index) setState(() => _hover = null);
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // Taps only matter in a tapped-open menu; a held one is chosen on
+          // release by the segment's Listener, which owns that pointer.
+          onTap: () {
+            close();
+            item.onChoose();
+          },
+          child: SizedBox(
+            height: Dock.rowHeight,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 90),
+                    color: fill,
                   ),
                 ),
-              // Where you are now: a short bar laid over the leading edge, not
-              // a box around the row - and not *in* the row either, where it
-              // pushed the current row's label sideways out of line with the
-              // others.
-              Positioned(
-                left: 0,
-                top: (Dock.rowHeight - 20) / 2,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 120),
-                  width: item.current ? 4 : 0,
-                  height: 20,
-                  color: ink,
-                ),
-              ),
-              Positioned.fill(
-                child: Row(
-                  children: [
-                    SizedBox(width: hovered ? T.s4 + 4 : T.s4),
-                    if (item.icon != null) ...[
-                      Icon(item.icon, size: 18, color: ink),
-                      const SizedBox(width: T.s3),
-                    ],
-                    Expanded(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: T.fsMenu,
-                          fontFamily: T.fontDisplay,
-                          fontWeight: item.current || hovered
-                              ? T.wMedium
-                              : T.wNormal,
-                          color: ink,
-                        ),
-                      ),
+                if (rule)
+                  Positioned(
+                    top: 0,
+                    left: T.s4,
+                    right: T.s4,
+                    child: Container(
+                      height: 1,
+                      color: ink.withValues(alpha: 0.12),
                     ),
-                    if (item.count > 0) ...[
-                      const SizedBox(width: T.s2),
-                      Text(
-                        '${item.count}',
-                        style: TextStyle(
-                          fontSize: T.fsLabel,
-                          fontFamily: T.fontDisplay,
-                          color: ink.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                    if (item.dot) ...[
-                      const SizedBox(width: T.s2),
-                      const _Dot(),
-                    ],
-                    if (item.onSecondary != null)
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          close();
-                          item.onSecondary!();
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 90),
-                          width: Dock.secondaryWidth,
-                          height: Dock.rowHeight,
-                          color: secondary ? ink : Colors.transparent,
-                          child: Icon(
-                            item.secondaryIcon,
-                            size: 18,
-                            color: secondary
-                                ? fill
-                                : ink.withValues(alpha: hovered ? 0.9 : 0.4),
+                  ),
+                // Where you are now: a short bar laid over the leading edge, not
+                // a box around the row - and not *in* the row either, where it
+                // pushed the current row's label sideways out of line with the
+                // others.
+                Positioned(
+                  left: 0,
+                  top: (Dock.rowHeight - 20) / 2,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    width: item.current ? 4 : 0,
+                    height: 20,
+                    color: ink,
+                  ),
+                ),
+                Positioned.fill(
+                  child: Row(
+                    children: [
+                      SizedBox(width: hovered ? T.s4 + 4 : T.s4),
+                      if (item.icon != null) ...[
+                        Icon(item.icon, size: 18, color: ink),
+                        const SizedBox(width: T.s3),
+                      ],
+                      Expanded(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: T.fsMenu,
+                            fontFamily: T.fontDisplay,
+                            fontWeight: item.current || hovered
+                                ? T.wMedium
+                                : T.wNormal,
+                            color: ink,
                           ),
                         ),
-                      )
-                    else
-                      const SizedBox(width: T.s4),
-                  ],
+                      ),
+                      if (item.count > 0) ...[
+                        const SizedBox(width: T.s2),
+                        Text(
+                          '${item.count}',
+                          style: TextStyle(
+                            fontSize: T.fsLabel,
+                            fontFamily: T.fontDisplay,
+                            color: ink.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                      if (item.dot) ...[
+                        const SizedBox(width: T.s2),
+                        const _Dot(),
+                      ],
+                      if (item.onSecondary != null)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            close();
+                            item.onSecondary!();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 90),
+                            width: Dock.secondaryWidth,
+                            height: Dock.rowHeight,
+                            color: secondary ? ink : Colors.transparent,
+                            child: Icon(
+                              item.secondaryIcon,
+                              size: 18,
+                              color: secondary
+                                  ? fill
+                                  : ink.withValues(alpha: hovered ? 0.9 : 0.4),
+                            ),
+                          ),
+                        )
+                      else
+                        const SizedBox(width: T.s4),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -770,4 +1002,44 @@ class _Dot extends StatelessWidget {
     height: 6,
     decoration: const BoxDecoration(color: T.danger, shape: BoxShape.circle),
   );
+}
+
+/// Places a side bar's menu beside its segment: level with the segment's top
+/// where it fits, moved up as far as it must to end inside [bounds].
+class _SideMenuLayout extends SingleChildLayoutDelegate {
+  const _SideMenuLayout({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.bounds,
+  });
+
+  final double left;
+  final double top;
+  final double width;
+  final Rect bounds;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints(
+        minWidth: width,
+        maxWidth: width,
+        maxHeight: bounds.height,
+      );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => Offset(
+    left,
+    top.clamp(
+      bounds.top,
+      math.max(bounds.top, bounds.bottom - childSize.height),
+    ),
+  );
+
+  @override
+  bool shouldRelayout(_SideMenuLayout old) =>
+      old.left != left ||
+      old.top != top ||
+      old.width != width ||
+      old.bounds != bounds;
 }

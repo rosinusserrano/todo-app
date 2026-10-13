@@ -70,7 +70,6 @@ import 'ui/thought_sheet.dart';
 import 'ui/update_sheet.dart';
 import 'ui/view_bar.dart';
 import 'ui/workspace_bar.dart';
-import 'ui/workspace_rail.dart';
 import 'web_safe_area.dart';
 
 Future<void> main() async {
@@ -1074,7 +1073,17 @@ class _WidgetShellState extends State<WidgetShell>
       _openThoughtCapture();
       return;
     }
-    _footerKey.currentState?.openAndFocus();
+    // The footer's field is not in the tree everywhere: the full-window
+    // calendar and the shopping list replace the whole body, footer included.
+    // Focusing a field that does not exist was the shortcut silently doing
+    // nothing on the calendar; the capture pane opens over whatever is there,
+    // and closing it lands back on it.
+    final footer = _footerKey.currentState;
+    if (footer == null) {
+      _openThoughtCapture();
+      return;
+    }
+    footer.openAndFocus();
   }
 
   /// The quick action for the task in focus was picked.
@@ -1613,14 +1622,8 @@ class _WidgetShellState extends State<WidgetShell>
             zoom: s.zoom.value,
             onZoom: s.setZoom,
             startup: isDesktop && StartupSetting.supported ? _startup : null,
-            // Where the view bar is the way between views, History is not on
-            // it (Thoughts took its place) and this is where it went.
-            onOpenHistory: _layout.touch && !_layout.hasRail && !_dockLayout
-                ? () {
-                    _closeSettings();
-                    _selectView(WorkspaceView.history);
-                  }
-                : null,
+            dockEdge: s.wideDock,
+            onDockEdge: s.setWideDock,
           ),
         ),
 
@@ -1649,15 +1652,25 @@ class _WidgetShellState extends State<WidgetShell>
             // the calendar's own toolbar already uses for an active control.
             accent: _neutralChrome ? T.accent : ws,
             onClose: () => isDesktop ? windowManager.close() : null,
-            // On a phone the dock holds all three; a second door to each at
-            // the far end of the screen is one too many.
-            onOpenSettings: _dockLayout ? null : _openSettings,
-            onToggleCalendar: _dockLayout ? null : _toggleCalendar,
+            // No settings, calendar or list buttons: the dock holds all three,
+            // at every size, and a second door to each is one too many.
             calendarOpen: s.showCalendar,
-            onToggleList: _dockLayout ? null : _toggleList,
             listOpen: s.showList,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
+            // Along the top the dock is in this bar, beside the name, rather
+            // than a second bar under it. It fades with the body in focus
+            // mode, which this bar otherwise stays visible through.
+            dock: _dockShows && _dockEdge == DockEdge.top
+                ? AnimatedOpacity(
+                    opacity: _focusVisible ? 0 : 1,
+                    duration: T.heroDur,
+                    child: IgnorePointer(
+                      ignoring: _focusVisible,
+                      child: _dock(ws, DockEdge.top),
+                    ),
+                  )
+                : null,
           ),
         ),
 
@@ -1721,11 +1734,6 @@ class _WidgetShellState extends State<WidgetShell>
   void _toggleCollections() {
     if (_clearOverlays()) return;
     s.toggleCollections();
-  }
-
-  void _toggleThoughts() {
-    if (_clearOverlays()) return;
-    s.toggleThoughts();
   }
 
   void _toggleSession() {
@@ -1993,18 +2001,30 @@ class _WidgetShellState extends State<WidgetShell>
     SyncStatus.outdated => T.danger,
   };
 
-  /// Everything under the title bar, with the dock along the bottom on a
-  /// phone.
+  /// Everything under the title bar, with the dock along whichever edge it
+  /// is on.
   ///
-  /// The column is built whether or not the dock is in it, and the body is
-  /// always its first child, so the dock coming and going (a note taking the
-  /// screen) never changes the body's parent - see content_slot.dart for what
-  /// that costs when it does.
+  /// The column and the row inside it are built whether or not the dock is
+  /// in them, and the body is keyed in both, so the dock coming and going (a
+  /// note taking the screen) or changing edge never changes the body's
+  /// parent - see content_slot.dart for what that costs when it does.
   Widget _body(Color ws) {
+    final edge = _dockShows ? _dockEdge : null;
     return Column(
       children: [
-        Expanded(child: _bodyAbove(ws)),
-        if (_dockShows) _dock(ws),
+        // A top dock is drawn in the title bar (see `TitleBar.dock`).
+        const SizedBox(height: TitleBar.height),
+        Expanded(
+          key: const ValueKey('body'),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (edge == DockEdge.left) _dock(ws, edge!),
+              Expanded(key: const ValueKey('content'), child: _bodyAbove(ws)),
+            ],
+          ),
+        ),
+        if (edge == DockEdge.bottom) _dock(ws, edge!),
       ],
     );
   }
@@ -2020,23 +2040,11 @@ class _WidgetShellState extends State<WidgetShell>
     // have to be on screen at once.
     // The shopping list replaces the whole body the same way: it belongs to no
     // workspace, and it is meant to be the only thing on screen.
-    if (s.showList) {
-      return Column(
-        children: [
-          const SizedBox(height: TitleBar.height),
-          Expanded(child: ShoppingListView(state: s)),
-        ],
-      );
-    }
+    if (s.showList) return ShoppingListView(state: s);
 
     if (s.showCalendar) {
       if (_layout.splitsCalendar) return _splitCalendar(ws);
-      return Column(
-        children: [
-          const SizedBox(height: TitleBar.height),
-          Expanded(child: _calendar()),
-        ],
-      );
+      return _calendar();
     }
 
     // Narrow: the workspace bar across the top, with its two ▾ menus. Wide
@@ -2063,65 +2071,18 @@ class _WidgetShellState extends State<WidgetShell>
           )
         : _contentArea(ws);
 
-    final middle = Column(
+    return Column(
       children: [
-        if (!_layout.hasRail && !_dockLayout && !_takesScreen)
-          _workspaceBar(ws),
         if (s.hasLiveSession && !s.showSession && !_takesScreen)
           _sessionBanner(),
         // The content keeps its element through every one of those `if`s
         // resolving differently - see content_slot.dart, which is the whole
         // reason opening a note on a phone no longer closes it again.
         contentSlot(child: content),
-      ],
-    );
-
-    return Column(
-      children: [
-        const SizedBox(height: TitleBar.height),
-        Expanded(
-          child: _layout.hasRail
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    WorkspaceRail(
-                      workspaces: s.workspaces,
-                      currentUuid: s.currentWorkspaceUuid,
-                      accent: ws,
-                      onSelect: (w) => _switchWorkspace(w),
-                      onEdit: (w) => _editWorkspace(w),
-                      onCreate: () => _editWorkspace(null),
-                      onShowTasks: _showTasks,
-                      onOpenNotes: _toggleJournal,
-                      onOpenParked: _toggleParked,
-                      onOpenCollections: _toggleCollections,
-                      onOpenHistory: _toggleHistory,
-                      onOpenThoughts: _toggleThoughts,
-                      thoughtCount: s.thoughtCount,
-                      parkedReviewDue: s.groupsDueForReview.isNotEmpty,
-                      openView: _openView,
-                      onAddTask: _openAdd,
-                      collapsed: s.railCollapsed,
-                      onToggleCollapsed: () =>
-                          s.setRailCollapsed(!s.railCollapsed),
-                    ),
-                    Expanded(child: middle),
-                  ],
-                )
-              : middle,
-        ),
-        // Below the content, above the footer. The footer is about the global
-        // thought pile and stays the bottom-most thing in the window; this bar
-        // is about the workspace above it, so it sits between the two.
-        if (_viewBarShows)
-          ViewBar(
-            accent: ws,
-            openView: _openView,
-            onSelect: _selectView,
-            parkedReviewDue: s.groupsDueForReview.isNotEmpty,
-            thoughtCount: s.thoughtCount,
-            onSwipeUp: _openThoughtCapture,
-          ),
+        // Spanning the whole width: the pile is global, not the business of
+        // the view above it. With the dock carrying the pile's count and the
+        // way in, this draws nothing unless the desktop shortcut opens its
+        // field - see [_footer].
         if (!_takesScreen) _footer(ws),
       ],
     );
@@ -2184,23 +2145,17 @@ class _WidgetShellState extends State<WidgetShell>
 
   void _collapseTask() => setState(() => _expandedTaskUuid = null);
 
-  /// Where the bottom view bar is drawn - which is also where it carries the
-  /// pile's count and pressure (Thoughts is its fourth entry), so the footer's
-  /// meter has nothing left to say. On a phone the bar is the way in too (a
-  /// swipe up writes a thought); a mouse keeps the footer's 💭, since a swipe
-  /// is not something a pointer is ever told to try.
-  ///
-  /// A window wide enough for the rail keeps the footer whole, and a note
-  /// that has taken the screen has no chrome at all.
-  bool get _viewBarShows => _layout.hasViewBar && !_dockLayout && !_takesScreen;
+  /// The dock is the whole navigation at every size - workspace, view, and
+  /// everything global - and replaced the workspace bar, the rail, the view
+  /// bar and the title bar's calendar, list and settings buttons. Only a note
+  /// or a task that has taken a phone's screen hides it.
+  bool get _dockShows => !_takesScreen;
 
-  /// A phone: the dock is the whole navigation - workspace, view, and
-  /// everything global - and replaces the workspace bar, the view bar and the
-  /// title bar's calendar, list and settings buttons. Only on touch for now; a
-  /// pointer keeps what it had.
-  bool get _dockLayout => _layout.touch && !_layout.hasRail;
-
-  bool get _dockShows => _dockLayout && !_takesScreen;
+  /// Along the bottom while the window is narrow - a phone, the desktop
+  /// widget at its own size - where a thumb is and where the eye ends up.
+  /// Past [Layout.hasRail] it goes where Settings says: across the top or
+  /// down the side.
+  DockEdge get _dockEdge => _layout.hasRail ? s.wideDock : DockEdge.bottom;
 
   /// Outside the rail and outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
@@ -2208,14 +2163,14 @@ class _WidgetShellState extends State<WidgetShell>
   Widget _footer(Color ws) => ThoughtFooter(
     key: _footerKey,
     onCapture: _layout.touch ? _openThoughtCapture : null,
-    // Wherever the view bar is drawn it is the whole control - the way in,
-    // the count and the escalation - and this bar has nothing of its own left
-    // to say. It stays in the tree rather than being dropped from it because
-    // the field is still what [openAndFocus] focuses and the refusal is still
-    // what the close guard flashes; it simply takes no height until one of
-    // those happens.
-    showCaptureButton: !(_viewBarShows || _dockShows) || !_layout.touch,
-    showPressure: !(_viewBarShows || _dockShows),
+    // Wherever the dock is drawn it is the whole control - the way in, the
+    // count and the escalation - and this bar has nothing of its own left to
+    // say. It stays in the tree rather than being dropped from it because the
+    // field is still what [openAndFocus] focuses (the desktop shortcut) and
+    // the refusal is still what the close guard flashes; it simply takes no
+    // height until one of those happens.
+    showCaptureButton: !_dockShows,
+    showPressure: !_dockShows,
     thoughts: s.thoughts,
     accent: T.thoughts,
     blockedMessage: _blockedMessage,
@@ -2224,12 +2179,12 @@ class _WidgetShellState extends State<WidgetShell>
     onToggleList: s.toggleThoughts,
   );
 
-  /// The phone's bar: workspace, view, everything else. See ui/dock.dart.
+  /// The bar: workspace, view, everything else. See ui/dock.dart.
   ///
   /// Every row is a *destination*, not a toggle - picking Notes lands on Notes
   /// whatever was showing, and picking the open one again changes nothing -
   /// for the same reason [_selectView] is.
-  Widget _dock(Color ws) {
+  Widget _dock(Color ws, DockEdge edge) {
     final view = _openView;
     final global =
         s.showCalendar || s.showList || view == WorkspaceView.thoughts;
@@ -2264,8 +2219,16 @@ class _WidgetShellState extends State<WidgetShell>
         : (Icons.more_horiz_rounded, 'More');
 
     return Dock(
-      height: 52,
-      underhang: _bottomInset,
+      edge: edge,
+      // Slimmer away from the bottom: up there and down the side it is aimed
+      // at, not landed on by a thumb. Along the top it is the title bar's own
+      // height, since it sits in that bar.
+      thickness: switch (edge) {
+        DockEdge.bottom => 52,
+        DockEdge.top => TitleBar.height,
+        DockEdge.left => 48,
+      },
+      underhang: edge == DockEdge.bottom ? _bottomInset : 0,
       segments: [
         DockSegment(
           label: current?.name ?? 'Workspace',
@@ -2357,7 +2320,7 @@ class _WidgetShellState extends State<WidgetShell>
           icon: Icons.add_rounded,
           label: '',
           semanticLabel: 'Quick add',
-          width: 56,
+          extent: 56,
           fill: Color.lerp(T.bgSolid, T.text, 0.16)!,
           ink: T.text,
           items: [
@@ -2420,24 +2383,6 @@ class _WidgetShellState extends State<WidgetShell>
     await _toggleList();
   }
 
-  Widget _workspaceBar(Color ws) => WorkspaceBar(
-    workspaces: s.workspaces,
-    currentUuid: s.currentWorkspaceUuid,
-    accent: ws,
-    onSelect: (w) => _switchWorkspace(w),
-    onEdit: (w) => _editWorkspace(w),
-    onCreate: () => _editWorkspace(null),
-    onOpenNotes: _toggleJournal,
-    onOpenParked: _toggleParked,
-    onOpenCollections: _toggleCollections,
-    onOpenHistory: _toggleHistory,
-    parkedReviewDue: s.groupsDueForReview.isNotEmpty,
-    // The menu holds three of the four, and lighting its ▾ for a view it
-    // does not contain would point at the wrong control.
-    openView: _openView == WorkspaceView.thoughts ? null : _openView,
-    onAddTask: _openAdd,
-  );
-
   /// The calendar, wherever it is drawn.
   ///
   /// It publishes its **own** [LayoutScope]: beside the list it gets a fraction
@@ -2469,19 +2414,15 @@ class _WidgetShellState extends State<WidgetShell>
 
   /// The calendar and the list, side by side.
   ///
-  /// The workspace bar goes *inside* the left pane rather than across the top,
-  /// which is the honest place for it here: it names the workspace whose list
-  /// that pane is showing, and the calendar beside it can be showing every
-  /// workspace at once. The rail is deliberately not used even when the window
-  /// is wide enough for one - rail plus pane plus a legible grid needs a metre
-  /// of desk, and the bar is the same navigation with the popups on.
+  /// The left pane opens under its workspace's name (the list's own
+  /// [PanelHeader]), which is the honest place for it here: the calendar
+  /// beside it can be showing every workspace at once.
   ///
   /// The footer still spans both, because the pile of side thoughts is neither
   /// half's business.
   Widget _splitCalendar(Color ws) {
     return Column(
       children: [
-        const SizedBox(height: TitleBar.height),
         Expanded(
           // Same boundary as the views' split, with its own remembered
           // position: the grid wants every pixel a notes pane would not. The
@@ -2498,7 +2439,6 @@ class _WidgetShellState extends State<WidgetShell>
                 layout: Layout(constraints.biggest, touch: !isDesktop),
                 child: Column(
                   children: [
-                    _workspaceBar(ws),
                     if (s.hasLiveSession && !s.showSession) _sessionBanner(),
                     Expanded(child: _stackedContent(ws)),
                   ],
@@ -2667,14 +2607,14 @@ class _WidgetShellState extends State<WidgetShell>
         constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),
         child: Column(
           children: [
-            // On a phone the workspace's name is otherwise only in the dock,
-            // at the far end of the screen from the list it names. Every
-            // other view opens under its own title, so the list does too -
-            // in the workspace's colour, which is the one thing that makes
-            // "Work" mean that workspace. Kept while selecting, so the list
-            // below it keeps its place in this Column (and its scroll).
-            if (_dockLayout)
-              PanelHeader(
+            // The workspace's name is otherwise only in the dock, which on
+            // a phone is at the far end of the screen from the list it
+            // names. Every other view opens under its own title, so the list
+            // does too - in the workspace's colour, which is the one thing
+            // that makes "Work" mean that workspace. Kept while selecting, so
+            // the list below it keeps its place in this Column (and its
+            // scroll).
+            PanelHeader(
                 title: s.currentWorkspace?.name ?? 'Tasks',
                 color: ws,
                 count: s.tasks.isEmpty ? null : s.tasks.length,

@@ -28,6 +28,7 @@ import '../theme.dart';
 import 'push_settings.dart';
 import 'sso_sign_in.dart';
 import 'server_users_view.dart';
+import 'dock.dart' show DockEdge;
 import 'title_bar.dart';
 
 class SettingsSheet extends StatefulWidget {
@@ -40,6 +41,8 @@ class SettingsSheet extends StatefulWidget {
     this.onZoom,
     this.startup,
     this.onOpenHistory,
+    this.dockEdge = DockEdge.top,
+    this.onDockEdge,
   });
 
   final SyncService sync;
@@ -59,6 +62,11 @@ class SettingsSheet extends StatefulWidget {
   /// bar's fourth place went to the thought pile and History moved here: it is
   /// looked back at now and then, which is what a settings visit is.
   final VoidCallback? onOpenHistory;
+
+  /// Where the dock goes in a wide window, and how to change it. A narrow
+  /// window keeps it at the bottom whatever this says. Null hides the row.
+  final DockEdge dockEdge;
+  final ValueChanged<DockEdge>? onDockEdge;
 
   @override
   State<SettingsSheet> createState() => _SettingsSheetState();
@@ -480,6 +488,68 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  /// Three touching blocks, one lit - the dock's own shape, so the choice
+  /// looks like the thing it moves.
+  Widget _dockRow(ValueChanged<DockEdge> onDockEdge) {
+    Widget choice(DockEdge edge) {
+      final on = widget.dockEdge == edge;
+      final fill = on
+          ? widget.accent
+          : Color.lerp(T.bgSolid, T.text, 0.08)!;
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: on,
+          child: Material(
+            color: fill,
+            child: InkWell(
+              onTap: () => onDockEdge(edge),
+              child: SizedBox(
+                height: 36,
+                child: Center(
+                  child: Text(
+                    edge.label,
+                    style: TextStyle(
+                      fontSize: T.fsLabel,
+                      fontFamily: T.fontDisplay,
+                      fontWeight: on ? T.wMedium : T.wNormal,
+                      color: on ? T.inkOn(fill) : T.text,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.space_dashboard_outlined, size: 18, color: T.muted),
+            SizedBox(width: T.s2),
+            Expanded(
+              child: Text(
+                'Dock in a wide window',
+                style: TextStyle(fontSize: T.fsBody, color: T.text),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: T.s2),
+        Row(
+          children: [
+            for (final e in const [DockEdge.top, DockEdge.left, DockEdge.bottom])
+              choice(e),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _settingsBody() {
     final sync = widget.sync;
     final config = _authConfig;
@@ -489,7 +559,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
       children: [
         if (widget.onOpenHistory != null) _historyRow(widget.onOpenHistory!),
         if (widget.onZoom != null) _zoomRow(widget.onZoom!),
-        if (widget.onOpenHistory != null || widget.onZoom != null)
+        if (widget.onDockEdge != null) ...[
+          const SizedBox(height: T.s2),
+          _dockRow(widget.onDockEdge!),
+        ],
+        if (widget.onOpenHistory != null ||
+            widget.onZoom != null ||
+            widget.onDockEdge != null)
           const SizedBox(height: T.s3),
         Text(switch (config?.mode) {
           'oidc' =>

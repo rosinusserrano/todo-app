@@ -1578,6 +1578,22 @@ class CalendarEvent implements SyncRow {
   /// occurrence that is the series it came from; for anything else, itself.
   CalendarEvent get stored => series ?? this;
 
+  /// The same event moved by however far [from] to [to] is on the calendar
+  /// and the clock - days, then minutes - rather than by a [Duration]: a
+  /// block dragged from Friday 09:00 to Monday 09:00 across a DST change has
+  /// to land at 09:00, not 08:00. Applied to [stored], so moving one
+  /// occurrence of a series moves the series the same distance; that is what
+  /// the editor already says ("applies to the series").
+  CalendarEvent shiftedBy(DateTime from, DateTime to, {required String stamp}) {
+    final base = stored;
+    final start = shiftWallClock(base.start, from, to);
+    return base.copyWith(
+      startAt: reminderStamp(start),
+      endAt: reminderStamp(start.add(base.end.difference(base.start))),
+      updatedAt: stamp,
+    );
+  }
+
   /// A key that distinguishes two occurrences of one series, which share a
   /// uuid. Occurrence uuids are deliberately *not* derived the way
   /// [Task.nextOccurrence]'s are: derivation exists so that two devices writing
@@ -2332,4 +2348,26 @@ class CollectionEntry implements SyncRow {
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );
+}
+
+/// [t] moved by the calendar distance from [from] to [to]: whole days, then
+/// minutes on the clock. Day counts come from the two dates' midnights and are
+/// rounded, because the day the clocks change is 23 or 25 hours long.
+DateTime shiftWallClock(DateTime t, DateTime from, DateTime to) {
+  final days =
+      (DateTime(to.year, to.month, to.day)
+                  .difference(DateTime(from.year, from.month, from.day))
+                  .inHours /
+              24)
+          .round();
+  final minutes = (to.hour * 60 + to.minute) - (from.hour * 60 + from.minute);
+  return DateTime(
+    t.year,
+    t.month,
+    t.day + days,
+    t.hour,
+    t.minute + minutes,
+    t.second,
+    t.millisecond,
+  );
 }

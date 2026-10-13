@@ -305,6 +305,16 @@ void main() {
       return state;
     }
 
+    /// The events the visible window shows. [AppState.events] also holds the
+    /// neighbouring week, loaded for the swipe to draw.
+    List<CalendarEvent> onScreen(AppState state) {
+      final (from, to) = state.calendarRange;
+      return [
+        for (final e in state.events)
+          if (e.start.isBefore(to) && e.end.isAfter(from)) e,
+      ];
+    }
+
     test('saving a rule keeps one row and shows many blocks', () async {
       final state = await device();
       final cal = state.calendars.first;
@@ -323,9 +333,9 @@ void main() {
       // A week the series does not start in: what is on screen there can only
       // have come from expanding it.
       await state.setCalendarAnchor(DateTime(2026, 8, 19));
-      expect(state.events.length, 1);
-      expect(state.events.single.start, DateTime(2026, 8, 17, 9));
-      expect(state.events.single.isOccurrence, true);
+      expect(onScreen(state).length, 1);
+      expect(onScreen(state).single.start, DateTime(2026, 8, 17, 9));
+      expect(onScreen(state).single.isOccurrence, true);
     });
 
     test('deleting through an occurrence tombstones the series', () async {
@@ -341,7 +351,7 @@ void main() {
       await state.setCalendarAnchor(DateTime(2026, 8, 19));
 
       // The occurrence on screen is the fourth Monday, not the stored row.
-      await state.deleteEvent(state.events.single);
+      await state.deleteEvent(onScreen(state).single);
 
       expect(state.events, isEmpty);
       expect(await state.store.eventsOnCalendar(cal.uuid), isEmpty);

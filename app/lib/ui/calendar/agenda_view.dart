@@ -21,7 +21,7 @@ import '../../sync/models.dart';
 import '../../theme.dart';
 import '../markdown_text.dart';
 import '../task_drag.dart';
-import 'time_grid.dart' show EventMenuArea, hhmm;
+import 'time_grid.dart' show EventMenuArea, RaisedFace, hhmm;
 
 class AgendaView extends StatelessWidget {
   const AgendaView({
@@ -95,7 +95,8 @@ class AgendaView extends StatelessWidget {
       itemBuilder: (context, i) {
         final day = days[i];
         final rows = _on(day);
-        final isToday = day.year == today.year &&
+        final isToday =
+            day.year == today.year &&
             day.month == today.month &&
             day.day == today.day;
 
@@ -252,89 +253,84 @@ class _AgendaRow extends StatelessWidget {
   }
 
   Widget _row() {
+    final ink = T.inkOn(color);
+    final soft = ink.withValues(alpha: 0.72);
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
-      child: Material(
-        color: Color.lerp(T.bgSolid, color, 0.22),
-        borderRadius: BorderRadius.circular(T.radius),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(T.radius),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(T.radius),
-              border: Border(left: BorderSide(color: color, width: 2.5)),
-            ),
-            padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 42,
-                  child: Text(
-                    _when,
-                    style: const TextStyle(
-                      fontSize: T.fsMeta,
-                      height: 1.25,
-                      color: T.muted,
-                    ),
+      child: RaisedFace(
+        color: color,
+        radius: BorderRadius.circular(T.radius),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 42,
+                child: Text(
+                  _when,
+                  style: TextStyle(
+                    fontSize: T.fsMeta,
+                    height: 1.25,
+                    color: soft,
                   ),
                 ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: T.fsMeta,
+                        height: 1.2,
+                        fontWeight: T.wMedium,
+                        color: ink,
+                      ),
+                    ),
+                    if (event.description.isNotEmpty)
                       Text(
-                        event.title,
+                        // Two lines on a list row is a preview, not the
+                        // description - so it gets the same flattening the
+                        // notes line under a task title gets, rather than a
+                        // renderer whose first job would be to lay out a
+                        // heading in 20px.
+                        markdownPlainText(event.description),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: T.fsMeta,
                           height: 1.2,
-                          fontWeight: T.wMedium,
-                          color: T.text,
+                          color: soft,
                         ),
                       ),
-                      if (event.description.isNotEmpty)
-                        Text(
-                          // Two lines on a list row is a preview, not the
-                          // description - so it gets the same flattening the
-                          // notes line under a task title gets, rather than a
-                          // renderer whose first job would be to lay out a
-                          // heading in 20px.
-                          markdownPlainText(event.description),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: T.fsMeta,
-                            height: 1.2,
-                            color: T.muted,
-                          ),
-                        ),
+                  ],
+                ),
+              ),
+              if (taskCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, top: 1),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 10, color: soft),
+                      Text(
+                        '$taskCount',
+                        style: TextStyle(fontSize: T.fsMeta, color: soft),
+                      ),
                     ],
                   ),
                 ),
-                if (taskCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4, top: 1),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.check_circle_outline,
-                            size: 10, color: T.muted),
-                        Text('$taskCount',
-                            style:
-                                const TextStyle(fontSize: T.fsMeta, color: T.muted)),
-                      ],
-                    ),
-                  ),
-                if (hasAttachment)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 4, top: 1),
-                    child: Icon(Icons.attach_file, size: 10, color: T.muted),
-                  ),
-              ],
-            ),
+              if (hasAttachment)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, top: 1),
+                  child: Icon(Icons.attach_file, size: 10, color: soft),
+                ),
+            ],
           ),
         ),
       ),

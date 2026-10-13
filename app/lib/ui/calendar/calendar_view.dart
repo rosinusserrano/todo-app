@@ -115,15 +115,21 @@ class CalendarView extends StatelessWidget {
     }
   }
 
-  List<DateTime> get _days {
-    final a = DateTime(
-      state.calendarAnchor.year,
-      state.calendarAnchor.month,
-      state.calendarAnchor.day,
-    );
-    if (state.calendarMode == CalendarViewMode.day) return [a];
+  List<DateTime> get _days => _daysAt(0);
+
+  /// The days of the page [delta] steps from the current one - the swipe's
+  /// neighbours. Built from the parts, so a week across a clock change is
+  /// still seven midnights.
+  List<DateTime> _daysAt(int delta) {
+    final a = state.calendarAnchor;
+    if (state.calendarMode == CalendarViewMode.day) {
+      return [DateTime(a.year, a.month, a.day + delta)];
+    }
     final start = AppState.startOfWeek(a);
-    return [for (var i = 0; i < 7; i++) start.add(Duration(days: i))];
+    return [
+      for (var i = 0; i < 7; i++)
+        DateTime(start.year, start.month, start.day + 7 * delta + i),
+    ];
   }
 
   /// Drill into one day. The year view's tap and the agenda's day header both
@@ -212,7 +218,16 @@ class CalendarView extends StatelessWidget {
           // Unclamped, unlike the mode swipe it replaces: time has no ends.
           // The page follows the finger and slides; see time_swipe.dart.
           child: layout.touch
-              ? TimeSwipe(onStep: state.stepCalendar, child: _grid(layout))
+              ? TimeSwipe(
+                  onStep: state.stepCalendar,
+                  page: (state.calendarMode, _days.first),
+                  builder: (delta, scroll) =>
+                      // The year is a year of events; its neighbours would
+                      // be two more, loaded for a glance. It keeps sliding.
+                      delta != 0 && state.calendarMode == CalendarViewMode.year
+                      ? null
+                      : _grid(layout, delta: delta, scroll: scroll),
+                )
               : _grid(layout),
         ),
       ],
@@ -224,7 +239,11 @@ class CalendarView extends StatelessWidget {
   /// Only the *week* changes shape with the width. A day is one column and fits
   /// anywhere, and the year is a wrap that reflows on its own - so this is one
   /// fallback, not a parallel set of narrow views.
-  Widget _grid(Layout layout) {
+  ///
+  /// [delta] draws a neighbouring page for the swipe: the same view, shifted
+  /// by that many steps, reading the same events (they were loaded for it).
+  Widget _grid(Layout layout, {int delta = 0, ValueNotifier<double>? scroll}) {
+    final days = _daysAt(delta);
     // The year is for finding the week that has something in it; the day view
     // is where you then work. Both of the drill-downs below say that.
     if (state.calendarMode == CalendarViewMode.year) {
@@ -238,7 +257,7 @@ class CalendarView extends StatelessWidget {
 
     if (state.calendarMode == CalendarViewMode.week && !layout.weekGridFits) {
       return AgendaView(
-        days: _days,
+        days: days,
         events: state.events,
         colorFor: state.colorForEvent,
         hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
@@ -253,7 +272,7 @@ class CalendarView extends StatelessWidget {
 
     final block = state.timeBlockCalendar;
     return TimeGridView(
-      days: _days,
+      days: days,
       events: state.events,
       colorFor: state.colorForEvent,
       hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
@@ -262,6 +281,9 @@ class CalendarView extends StatelessWidget {
       onEventMenu: onEventMenu,
       onCreate: onCreate,
       onPlanTask: onPlanTask,
+      // Carrying a block somewhere else. Pages drawn beside this one for the
+      // swipe are not touchable, so only the page on screen ever moves one.
+      onMoveEvent: (e, from, to) => state.moveEvent(e, from: from, to: to),
       // What the drag is about to become. In block mode the editor never opens,
       // so the draft is the only chance to see what is being saved.
       blockTitle: block == null ? null : state.calendarName(block),
@@ -286,6 +308,7 @@ class CalendarView extends StatelessWidget {
       // touchscreen gets both without this having to guess which it will be.
       hourHeight: state.hourHeight,
       onZoom: state.setHourHeight,
+      sharedScroll: scroll,
     );
   }
 }

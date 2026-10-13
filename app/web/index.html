@@ -44,16 +44,27 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script>
-    // The home indicator. Flutter replaces this page's viewport tag with its
-    // own, which has no viewport-fit=cover, and without that iOS reports
-    // env(safe-area-inset-bottom) as zero - so the tag is amended as it
-    // arrives. todoSafeBottom() is read by lib/web_safe_area_web.dart, because
-    // Flutter's web engine reports no safe area of its own.
+    // Flutter replaces this page's viewport tag with its own, and the tag is
+    // amended as it arrives, for two things:
+    //
+    // The home indicator. Flutter's has no viewport-fit=cover, and without
+    // that iOS reports env(safe-area-inset-bottom) as zero. todoSafeBottom()
+    // is read by lib/web_safe_area_web.dart, because Flutter's web engine
+    // reports no safe area of its own.
+    //
+    // The zoom on focus. Flutter's says maximum-scale=5.0, and iOS zooms the
+    // page into any text field whose font is under 16px - which is every
+    // field here, since the hidden input Flutter types into carries the
+    // field's own size. Flutter takes every touch, so the pinch that would
+    // zoom back out never reaches Safari and the page stayed magnified.
+    // maximum-scale=1 stops the zoom; the app has its own (Settings → Zoom).
     (function () {
       function cover(meta) {
-        if (meta.name === 'viewport' && !/viewport-fit/.test(meta.content)) {
-          meta.content += ', viewport-fit=cover';
-        }
+        if (meta.name !== 'viewport') return;
+        var content = meta.content.replace(/,?\s*maximum-scale=[^,]*/, '');
+        if (!/viewport-fit/.test(content)) content += ', viewport-fit=cover';
+        content += ', maximum-scale=1.0';
+        if (meta.content !== content) meta.content = content;
       }
       new MutationObserver(function (changes) {
         changes.forEach(function (c) {

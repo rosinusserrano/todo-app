@@ -1602,7 +1602,10 @@ publishes it. Three rules keep it compiling and starting:
 - **The safe area comes from the page, not the engine.** Flutter's web engine
   reports `viewPadding` as zero everywhere, so a home-screen web app on an
   iPhone laid the view bar over the home indicator and a swipe up on it went
-  home. `web/index.html` adds `viewport-fit=cover` to the viewport tag Flutter
+  home. `web/index.html` adds `viewport-fit=cover` (and swaps Flutter's
+  `maximum-scale=5.0` for `1.0`, or iOS zooms into every text field under
+  16px and the app, owning every touch, can never be pinched back out) to
+  the viewport tag Flutter
   inserts (without it iOS reports the inset as zero too) and exposes
   `todoSafeBottom()`; `web_safe_area.dart` reads it and `_withWebSafeArea` in
   `main.dart` puts it into the `MediaQuery` above `UiScale`, so the shell's

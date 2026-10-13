@@ -1388,6 +1388,9 @@ reminders are both there now**, queued for 0.18.0.
     create starts in the quarter hour you pressed, not the nearest one; events
     are solid blocks with a darker edge, and a long title stands up in a tall
     narrow block; a new shopping list stays in Edit while you type it.
+  - **No more stuck zoom on an iPhone**: tapping into a text field in the web
+    app no longer zooms the page in, which it then could not be pinched back
+    out of.
   - **Collections**: per-workspace lists with fields you define first - text,
     link, number, checkbox - for recipes, movies and the like. Adding an entry
     is typed straight through: Enter moves to the next field and, on the last,

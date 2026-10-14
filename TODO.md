@@ -108,12 +108,23 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       Then: dock menus open on mouse hover, and a top dock sits in the title
       bar beside the name.
       Merge to `main` with 58.10 once tried.
-- [ ] **58.12** Once Marco has settled on the dock's wide placement: delete
-      `ui/workspace_bar.dart`'s bar, `ui/view_bar.dart` and
-      `ui/workspace_rail.dart` (no longer drawn by the shell; kept only so the
-      choice could be reversed cheaply) and their tests, and
-      `AppState.railCollapsed`. `WorkspaceView` lives in workspace_bar.dart
-      and has to move first.
+- [x] **58.12** Marco keeps the Top / Side / Bottom setting (2026-10-14), so
+      the old bars went: `ui/workspace_bar.dart`, `ui/view_bar.dart`,
+      `ui/workspace_rail.dart`, their tests and `AppState.railCollapsed`.
+      `WorkspaceView` + `kViewOrder` are in `ui/workspace_view.dart`, the form
+      in `ui/workspace_form.dart`; `Layout.hasRail` is `isWide`.
+- [x] **58.13** Round 5, the shelf of 2026-10-14, on `redesign` for Marco to
+      try (dev site):
+      - calendar edit mode (✎, Ctrl+E) replaces ⚡ quick add; moving blocks
+        only in it; stretching a block by its top or bottom edge
+        (`_ResizeGrip`, `AppState.resizeEvent`), edge lightens on hover/touch;
+      - the now line above the blocks;
+      - every thought capture opens `ThoughtSheet`, desktop included, Enter
+        saves + closes, Ctrl+Enter saves + another, Shift+Enter newline;
+      - a mouse click on the dock's workspace segment opens the add field;
+      - window presets (Small / Tall / Large, corners + centre) in the title
+        bar, desktop only (`window_spots.dart`).
+      Merge to `main` once tried.
 - [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
       forms, the task action bar.
 - [x] **58.6** Decide what the desktop and the narrow window get: the dock,

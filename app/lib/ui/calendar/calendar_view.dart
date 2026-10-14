@@ -21,9 +21,13 @@
 // remembered; the scope is remembered too, but the two do not interact - see
 // AppState.visibleCalendars.
 //
-// **Time-block mode** puts a strip of calendar chips under the header and turns
-// a drag into a saved block titled after the picked calendar, with no editor in
-// between. It is a *third* thing the chips could have meant - they are not the
+// **Edit mode** (the pencil, Ctrl+E on a desktop; it was the ⚡ "time-block"
+// or "quick add" mode) is where the calendar's blocks are changed by hand:
+// carried to another time, stretched by an end, and laid down fast. Outside
+// it a block only opens and a drag only opens the editor, so a stray drag
+// across the week cannot move a meeting. Inside it a strip of calendar chips
+// sits under the header and a drag becomes a saved block titled after the
+// picked calendar, with no editor in between. It is a *third* thing the chips could have meant - they are not the
 // scope and they are not the filter - which is why they are their own strip
 // rather than another section of the filter menu: the strip only exists while
 // the mode is on, and while it is on it is the answer to "what am I filling in".
@@ -139,28 +143,6 @@ class CalendarView extends StatelessWidget {
     await state.setCalendarMode(CalendarViewMode.day);
   }
 
-  /// Turn time-block mode on, off, or onto a different calendar.
-  ///
-  /// Turning it on has to choose a target, and the same guess the editor makes
-  /// for a fresh drag is the right one: the workspace you are in.
-  Future<void> _toggleBlocking() async {
-    if (state.timeBlocking) {
-      // Turning the bolt off is what *materialises* what was placed - the
-      // whole shape of the mode is "lay it out, look at it, then commit".
-      // The commit itself lives in setTimeBlockCalendar, so that the strip's
-      // own "Off" cannot take a different path than this one.
-      await state.setTimeBlockCalendar(null);
-      return;
-    }
-    final visible = state.visibleCalendars;
-    if (visible.isEmpty) return;
-    final preferred = visible.firstWhere(
-      (c) => c.workspaceUuid == state.currentWorkspaceUuid,
-      orElse: () => visible.first,
-    );
-    await state.setTimeBlockCalendar(preferred.uuid);
-  }
-
   @override
   Widget build(BuildContext context) {
     final layout = Layout.of(context);
@@ -185,7 +167,7 @@ class CalendarView extends StatelessWidget {
           onStep: state.stepCalendar,
           onToday: () => state.setCalendarAnchor(DateTime.now()),
           onToggleHidden: state.toggleCalendarHidden,
-          onToggleBlocking: _toggleBlocking,
+          onToggleBlocking: state.toggleCalendarEditing,
           onNewCalendar: onNewCalendar,
           onEditCalendar: onEditCalendar,
           onImportIcs: onImportIcs,
@@ -281,9 +263,16 @@ class CalendarView extends StatelessWidget {
       onEventMenu: onEventMenu,
       onCreate: onCreate,
       onPlanTask: onPlanTask,
-      // Carrying a block somewhere else. Pages drawn beside this one for the
-      // swipe are not touchable, so only the page on screen ever moves one.
-      onMoveEvent: (e, from, to) => state.moveEvent(e, from: from, to: to),
+      // Carrying a block somewhere else, and stretching one by an end - in
+      // edit mode only. Pages drawn beside this one for the swipe are not
+      // touchable, so only the page on screen ever changes one.
+      onMoveEvent: block == null
+          ? null
+          : (e, from, to) => state.moveEvent(e, from: from, to: to),
+      onResizeEvent: block == null
+          ? null
+          : (e, start, from, to) =>
+                state.resizeEvent(e, start: start, from: from, to: to),
       // What the drag is about to become. In block mode the editor never opens,
       // so the draft is the only chance to see what is being saved.
       blockTitle: block == null ? null : state.calendarName(block),
@@ -343,6 +332,13 @@ class _BlockStrip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 5),
       child: Row(
         children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 2, right: 6),
+            child: Text(
+              'New blocks on',
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+            ),
+          ),
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -362,7 +358,7 @@ class _BlockStrip extends StatelessWidget {
           // The way out is on the strip as well as on the header toggle: the
           // strip is what says the mode is on, so it is where you look to end it.
           Tooltip(
-            message: 'Leave time-block mode',
+            message: 'Done editing',
             child: InkWell(
               onTap: onOff,
               borderRadius: BorderRadius.circular(T.radius),
@@ -569,6 +565,14 @@ class _Header extends StatelessWidget {
               iconSize: layout.actionIcon,
             ),
             const SizedBox(width: T.s1),
+            _IconBtn(
+              icon: blocking ? Icons.edit : Icons.edit_outlined,
+              tooltip: blocking ? 'Done editing' : 'Edit blocks',
+              active: blocking,
+              onTap: onToggleBlocking,
+              size: layout.tapTarget,
+              iconSize: layout.actionIcon,
+            ),
             _ModeCycle(mode: mode, onMode: onMode, size: layout.tapTarget),
             _FilterMenu(
               scope: scope,
@@ -585,9 +589,7 @@ class _Header extends StatelessWidget {
               subscribed: subscribed,
               size: layout.tapTarget,
               iconSize: layout.actionIcon,
-              blocking: blocking,
               onToday: onToday,
-              onToggleBlocking: onToggleBlocking,
             ),
           ],
         ),
@@ -652,10 +654,10 @@ class _Header extends StatelessWidget {
             ),
           const Spacer(),
           _IconBtn(
-            icon: Icons.bolt,
+            icon: blocking ? Icons.edit : Icons.edit_outlined,
             tooltip: blocking
-                ? 'Time-block mode on – drag to fill the week'
-                : 'Time-block mode: drag blocks straight onto a calendar',
+                ? 'Done editing (Ctrl+E)'
+                : 'Edit blocks: move, stretch, add fast (Ctrl+E)',
             active: blocking,
             onTap: onToggleBlocking,
           ),
@@ -859,16 +861,12 @@ class _FilterMenu extends StatelessWidget {
     this.subscribed = const {},
     this.size,
     this.iconSize,
-    this.blocking = false,
     this.onToday,
-    this.onToggleBlocking,
   });
 
-  /// Non-null on touch, where this is the ⋯ and carries Today and quick add
-  /// as well as the filter - see the touch branch of [_Header.build].
+  /// Non-null on touch, where this is the ⋯ and carries Today as well as the
+  /// filter - see the touch branch of [_Header.build].
   final VoidCallback? onToday;
-  final VoidCallback? onToggleBlocking;
-  final bool blocking;
 
   /// Set on touch, where this has to be a real target rather than a 15px glyph.
   final double? size;
@@ -895,14 +893,12 @@ class _FilterMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<Object>(
-      tooltip: onToggleBlocking == null ? 'Calendars' : 'More',
+      tooltip: onToday == null ? 'Calendars' : 'More',
       color: T.bgSolid,
       position: PopupMenuPosition.under,
       onSelected: (value) {
         if (value == 'today') {
           onToday?.call();
-        } else if (value == 'block') {
-          onToggleBlocking?.call();
         } else if (value is CalendarScope) {
           onScope(value);
         } else if (value == 'new') {
@@ -928,34 +924,7 @@ class _FilterMenu extends StatelessWidget {
               ],
             ),
           ),
-        if (onToggleBlocking != null) ...[
-          PopupMenuItem<Object>(
-            value: 'block',
-            height: 40,
-            child: Row(
-              children: [
-                Icon(
-                  Icons.bolt,
-                  size: 15,
-                  color: blocking ? T.accent : T.muted,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    blocking ? 'Quick add is on' : 'Quick add',
-                    style: TextStyle(
-                      fontSize: T.fsLabel,
-                      color: blocking ? T.accent : T.text,
-                    ),
-                  ),
-                ),
-                if (blocking)
-                  const Icon(Icons.check, size: 14, color: T.accent),
-              ],
-            ),
-          ),
-          const PopupMenuDivider(),
-        ],
+        if (onToday != null) const PopupMenuDivider(),
         for (final s in CalendarScope.values)
           PopupMenuItem<Object>(
             value: s,
@@ -1072,9 +1041,9 @@ class _FilterMenu extends StatelessWidget {
               width: size,
               height: size,
               child: Icon(
-                onToggleBlocking == null ? Icons.tune : Icons.more_horiz,
+                onToday == null ? Icons.tune : Icons.more_horiz,
                 size: iconSize ?? 15,
-                color: blocking ? T.accent : T.muted,
+                color: T.muted,
               ),
             ),
     );

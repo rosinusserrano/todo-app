@@ -11,7 +11,6 @@
 //      asserted against contents: the week grid appears exactly when a day
 //      column clears [Layout.minDayColumn], not at a number someone liked.
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,18 +21,15 @@ import 'package:todo_widget/ui/calendar/agenda_view.dart';
 import 'package:todo_widget/ui/calendar/time_grid.dart'
     show kGutter, kGutterCompact;
 import 'package:todo_widget/ui/calendar/year_view.dart';
-import 'package:todo_widget/ui/workspace_bar.dart' show WorkspaceView;
-import 'package:todo_widget/ui/workspace_rail.dart';
 
 void main() {
   /// The window this app was designed against.
   const design = Layout(Size(T.designWidth, 480));
 
   group('the design window keeps the layout it was drawn for', () {
-    test('no rail, no split - the bar and its menus, exactly as before', () {
-      expect(design.hasRail, isFalse);
+    test('not wide, no split - the dock along the bottom', () {
+      expect(design.isWide, isFalse);
       expect(design.splitsContent, isFalse);
-      expect(design.contentWidth, T.designWidth);
     });
 
     test('the calendar still works: a real week grid, single-column year', () {
@@ -48,8 +44,10 @@ void main() {
       // the window frame takes two of those: this is the case the compact
       // geometry exists for, and it has to be the grid, not the list.
       expect(const Layout(Size(338, 737)).weekGridFits, isTrue);
-      expect((338 - kGutterCompact) / 7,
-          greaterThanOrEqualTo(Layout.minDayColumn));
+      expect(
+        (338 - kGutterCompact) / 7,
+        greaterThanOrEqualTo(Layout.minDayColumn),
+      );
     });
 
     test('at the width where seven columns clear the minimum', () {
@@ -75,36 +73,43 @@ void main() {
     test('and never so many that the tiles fall under the legible width', () {
       for (final width in [340.0, 520.0, 760.0, 1000.0, 1600.0]) {
         final columns = Layout(Size(width, 800)).yearColumns;
-        final each = (width - 16 - (columns - 1) * Layout.monthTileGap) / columns;
-        expect(each, greaterThanOrEqualTo(Layout.monthTileMin - 0.01),
-            reason: '$width split into $columns columns of $each');
+        final each =
+            (width - 16 - (columns - 1) * Layout.monthTileGap) / columns;
+        expect(
+          each,
+          greaterThanOrEqualTo(Layout.monthTileMin - 0.01),
+          reason: '$width split into $columns columns of $each',
+        );
       }
     });
 
     test('more room means more columns', () {
       expect(const Layout(Size(340, 800)).yearColumns, 1);
       expect(const Layout(Size(600, 800)).yearColumns, greaterThan(1));
-      expect(const Layout(Size(1200, 800)).yearColumns,
-          greaterThan(const Layout(Size(600, 800)).yearColumns));
+      expect(
+        const Layout(Size(1200, 800)).yearColumns,
+        greaterThan(const Layout(Size(600, 800)).yearColumns),
+      );
     });
   });
 
-  group('the rail and the split pane', () {
-    test('the rail leaves the task column at least its design width', () {
-      const narrowest = Layout(Size(Layout.railMinWidth, 800));
-      expect(narrowest.hasRail, isTrue);
-      expect(narrowest.contentWidth, greaterThanOrEqualTo(T.designWidth));
+  group('a wide window and the split pane', () {
+    test('wide leaves the task column at least its design width beside a '
+        'side dock', () {
+      const narrowest = Layout(Size(Layout.wideMinWidth, 800));
+      expect(narrowest.isWide, isTrue);
+      expect(Layout.wideMinWidth - 48, greaterThanOrEqualTo(T.designWidth));
     });
 
-    test('a wide but short window keeps the bar', () {
+    test('a wide but short window keeps the dock at the bottom', () {
       // Landscape on a phone, or the widget squashed against a taskbar: there
-      // is width for a rail but no height to list anything in it.
-      expect(const Layout(Size(900, 300)).hasRail, isFalse);
+      // is width but no height for a side dock's menus.
+      expect(const Layout(Size(900, 300)).isWide, isFalse);
       expect(const Layout(Size(900, 300)).splitsContent, isFalse);
     });
 
-    test('splitting needs more than the rail does', () {
-      expect(Layout.splitMinWidth, greaterThan(Layout.railMinWidth));
+    test('splitting needs more than wide does', () {
+      expect(Layout.splitMinWidth, greaterThan(Layout.wideMinWidth));
       expect(const Layout(Size(700, 800)).splitsContent, isFalse);
       expect(const Layout(Size(1000, 800)).splitsContent, isTrue);
     });
@@ -162,19 +167,19 @@ void main() {
 
   group('YearView', () {
     Widget host(double width) => MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: width,
-              height: 4000,
-              child: YearView(
-                year: 2026,
-                events: const [],
-                colorFor: (_) => T.accent,
-                onPickDay: (_) {},
-              ),
-            ),
+      home: Scaffold(
+        body: SizedBox(
+          width: width,
+          height: 4000,
+          child: YearView(
+            year: 2026,
+            events: const [],
+            colorFor: (_) => T.accent,
+            onPickDay: (_) {},
           ),
-        );
+        ),
+      ),
+    );
 
     testWidgets('stacks the months in a 340px widget', (tester) async {
       tester.view.physicalSize = const Size(340, 4000);
@@ -226,31 +231,36 @@ void main() {
     final week = [for (var i = 0; i < 7; i++) monday.add(Duration(days: i))];
 
     Future<void> pump(WidgetTester tester, List<CalendarEvent> events) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 340,
-            height: 900,
-            child: AgendaView(
-              days: week,
-              events: events,
-              colorFor: (_) => T.accent,
-              hasAttachment: (_) => false,
-              taskCountFor: (_) => 0,
-              onOpenEvent: (_) {},
-              onEventMenu: (_, _) {},
-              onCreate: (_, _) {},
-              onPickDay: (_) {},
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 340,
+              height: 900,
+              child: AgendaView(
+                days: week,
+                events: events,
+                colorFor: (_) => T.accent,
+                hasAttachment: (_) => false,
+                taskCountFor: (_) => 0,
+                onOpenEvent: (_) {},
+                onEventMenu: (_, _) {},
+                onCreate: (_, _) {},
+                onPickDay: (_) {},
+              ),
             ),
           ),
         ),
-      ));
+      );
     }
 
     testWidgets('shows every day, empty ones included', (tester) async {
       await pump(tester, [
-        event('standup', monday.add(const Duration(hours: 9)),
-            monday.add(const Duration(hours: 10))),
+        event(
+          'standup',
+          monday.add(const Duration(hours: 9)),
+          monday.add(const Duration(hours: 10)),
+        ),
       ]);
 
       // Which days are free is half of what a week view is for, so an empty
@@ -263,8 +273,11 @@ void main() {
 
     testWidgets('an event across midnight lands on both days', (tester) async {
       await pump(tester, [
-        event('long night', monday.add(const Duration(hours: 22)),
-            monday.add(const Duration(hours: 26))),
+        event(
+          'long night',
+          monday.add(const Duration(hours: 22)),
+          monday.add(const Duration(hours: 26)),
+        ),
       ]);
 
       // A list keyed on the start time would drop it from Tuesday, which is
@@ -273,194 +286,47 @@ void main() {
       expect(find.text('til 02:00'), findsOneWidget);
     });
 
-    testWidgets('an event ending at midnight belongs to the day it ran on',
-        (tester) async {
+    testWidgets('an event ending at midnight belongs to the day it ran on', (
+      tester,
+    ) async {
       await pump(tester, [
-        event('evening', monday.add(const Duration(hours: 20)),
-            monday.add(const Duration(hours: 24))),
+        event(
+          'evening',
+          monday.add(const Duration(hours: 20)),
+          monday.add(const Duration(hours: 24)),
+        ),
       ]);
       expect(find.text('evening'), findsOneWidget);
     });
 
-    testWidgets('creating is still reachable with no grid to drag on',
-        (tester) async {
+    testWidgets('creating is still reachable with no grid to drag on', (
+      tester,
+    ) async {
       DateTime? created;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 340,
-            height: 900,
-            child: AgendaView(
-              days: week,
-              events: const [],
-              colorFor: (_) => T.accent,
-              hasAttachment: (_) => false,
-              taskCountFor: (_) => 0,
-              onOpenEvent: (_) {},
-              onEventMenu: (_, _) {},
-              onCreate: (start, _) => created = start,
-              onPickDay: (_) {},
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 340,
+              height: 900,
+              child: AgendaView(
+                days: week,
+                events: const [],
+                colorFor: (_) => T.accent,
+                hasAttachment: (_) => false,
+                taskCountFor: (_) => 0,
+                onOpenEvent: (_) {},
+                onEventMenu: (_, _) {},
+                onCreate: (start, _) => created = start,
+                onPickDay: (_) {},
+              ),
             ),
           ),
         ),
-      ));
+      );
 
       await tester.tap(find.byIcon(Icons.add).first);
       expect(created, monday.add(const Duration(hours: 9)));
-    });
-  });
-
-  group('WorkspaceRail', () {
-    Workspace ws(String uuid, String name) => Workspace(
-          uuid: uuid,
-          name: name,
-          color: '#6c8cff',
-          sortOrder: 0,
-          createdAt: nowStamp(),
-          updatedAt: nowStamp(),
-        );
-
-    Future<void> pump(
-      WidgetTester tester, {
-      WorkspaceView? open,
-      void Function(Workspace)? onSelect,
-      void Function(Workspace)? onEdit,
-      VoidCallback? onShowTasks,
-      bool collapsed = false,
-      VoidCallback? onToggleCollapsed,
-      VoidCallback? onAddTask,
-    }) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Row(children: [
-            WorkspaceRail(
-              workspaces: [ws('w1', 'Home'), ws('w2', 'Work')],
-              currentUuid: 'w1',
-              accent: T.accent,
-              onSelect: onSelect ?? (_) {},
-              onEdit: onEdit ?? (_) {},
-              onCreate: () {},
-              onShowTasks: onShowTasks ?? () {},
-              onOpenNotes: () {},
-              onOpenParked: () {},
-              onOpenCollections: () {},
-              onOpenHistory: () {},
-              onOpenThoughts: () {},
-              thoughtCount: 0,
-              parkedReviewDue: false,
-              openView: open,
-              collapsed: collapsed,
-              onToggleCollapsed: onToggleCollapsed,
-              onAddTask: onAddTask,
-            ),
-          ]),
-        ),
-      ));
-    }
-
-    testWidgets('every workspace and every view is on screen', (tester) async {
-      await pump(tester);
-      // The point of the rail: nothing behind a menu press.
-      expect(find.text('Home'), findsOneWidget);
-      expect(find.text('Work'), findsOneWidget);
-      expect(find.text('Tasks'), findsOneWidget);
-      expect(find.text('Notes'), findsOneWidget);
-      expect(find.text('Parked'), findsOneWidget);
-      expect(find.text('History'), findsOneWidget);
-    });
-
-    testWidgets('a click goes to a workspace, yours included; only ✎ edits',
-        (tester) async {
-      final selected = <String>[];
-      final edited = <String>[];
-      await pump(
-        tester,
-        onSelect: (w) => selected.add(w.name),
-        onEdit: (w) => edited.add(w.name),
-      );
-
-      await tester.tap(find.text('Work'));
-      await tester.tap(find.text('Home'));
-      expect(selected, ['Work', 'Home']);
-      expect(edited, isEmpty, reason: 'the current name is not an edit control');
-
-      // Hovering a row reveals its ✎ - any row, not just the current one.
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: tester.getCenter(find.text('Work')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Edit workspace').at(1));
-      expect(edited, ['Work']);
-      await mouse.removePointer();
-    });
-
-    testWidgets('Tasks is a destination, not just the absence of one',
-        (tester) async {
-      var back = 0;
-      await pump(tester, open: WorkspaceView.history, onShowTasks: () => back++);
-
-      await tester.tap(find.text('Tasks'));
-      expect(back, 1);
-    });
-      testWidgets('collapsed, it is a strip with every destination still on it',
-        (tester) async {
-      final selected = <String>[];
-      var back = 0;
-      await pump(
-        tester,
-        collapsed: true,
-        onSelect: (w) => selected.add(w.name),
-        onShowTasks: () => back++,
-      );
-
-      expect(tester.getSize(find.byType(WorkspaceRail)).width,
-          Layout.railCollapsedWidth);
-      // No names on the strip until a dot is hovered.
-      expect(find.text('Work'), findsNothing);
-      expect(find.bySemanticsLabel('Work'), findsOneWidget);
-      for (final view in ['Tasks', 'Notes', 'Parked', 'History']) {
-        expect(find.byTooltip(view), findsOneWidget, reason: view);
-      }
-
-      await tester.tap(find.bySemanticsLabel('Work'));
-      await tester.tap(find.byTooltip('Tasks'));
-      expect(selected, ['Work']);
-      expect(back, 1);
-    });
-
-    testWidgets('collapsed, a hovered dot expands into its name and a ✎',
-        (tester) async {
-      final edited = <String>[];
-      await pump(tester, collapsed: true, onEdit: (w) => edited.add(w.name));
-
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(
-        location: tester.getCenter(find.bySemanticsLabel('Work')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Work'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Edit workspace'));
-      await tester.pumpAndSettle();
-      expect(edited, ['Work']);
-      await mouse.removePointer();
-    });
-
-    testWidgets('Add task is on both shapes', (tester) async {
-      var added = 0;
-      await pump(tester, onAddTask: () => added++);
-      await tester.tap(find.text('Add task'));
-      await pump(tester, collapsed: true, onAddTask: () => added++);
-      await tester.tap(find.byTooltip('Add task (N)'));
-      expect(added, 2);
-    });
-
-    testWidgets('the toggle is on both shapes', (tester) async {
-      var toggled = 0;
-      await pump(tester, onToggleCollapsed: () => toggled++);
-      await tester.tap(find.byTooltip('Collapse the sidebar'));
-      await pump(tester, collapsed: true, onToggleCollapsed: () => toggled++);
-      await tester.tap(find.byTooltip('Expand the sidebar'));
-      expect(toggled, 2);
     });
   });
 }

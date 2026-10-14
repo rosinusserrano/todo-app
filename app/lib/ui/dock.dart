@@ -58,7 +58,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show kTouchSlop;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -138,6 +138,7 @@ class DockSegment {
     this.pressure = 0,
     this.semanticLabel,
     this.extent,
+    this.onClick,
   });
 
   final String label;
@@ -168,6 +169,13 @@ class DockSegment {
   /// null segments - the three places do; the quick-action ＋ is a fixed
   /// square.
   final double? extent;
+
+  /// What a mouse click on the segment itself does, where that is something
+  /// other than opening its menu - the workspace's goes to the add field.
+  /// With a mouse the menu is already open from the hover, so the click is
+  /// free to mean this; a finger has no hover, and its tap still opens the
+  /// menu.
+  final VoidCallback? onClick;
 }
 
 class Dock extends StatefulWidget {
@@ -230,6 +238,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   bool _hoverSecondary = false;
 
   int? _pointer;
+  PointerDeviceKind _downKind = PointerDeviceKind.touch;
   Offset _downAt = Offset.zero;
   bool _moved = false;
 
@@ -329,6 +338,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (_pointer != null) return;
     _hoverTimer?.cancel();
     _pointer = e.pointer;
+    _downKind = e.kind;
     _downAt = e.position;
     _moved = false;
     // A click on a menu the mouse opened pins it, rather than closing what
@@ -384,6 +394,12 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (e.pointer != _pointer) return;
     _pointer = null;
     if (!_moved) {
+      final click = _open == null ? null : widget.segments[_open!].onClick;
+      if (click != null && _downKind == PointerDeviceKind.mouse) {
+        close();
+        click();
+        return;
+      }
       // A tap: leave the menu up for a second tap, or close it if it was
       // already up.
       if (_tapCloses) {

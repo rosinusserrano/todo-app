@@ -23,7 +23,6 @@ import 'package:todo_widget/ui/panel_header.dart';
 import 'package:todo_widget/ui/task_composer.dart';
 import 'package:todo_widget/ui/task_row.dart';
 import 'package:todo_widget/ui/title_bar.dart';
-import 'package:todo_widget/ui/workspace_bar.dart';
 
 void main() {
   setUpAll(() {
@@ -51,24 +50,26 @@ void main() {
       expect(s.tasks.single.text, 'write the port');
     });
 
-    test('the zoom snaps to a step, stops at the ends and is remembered',
-        () async {
-      final s = await freshState();
-      expect(s.zoom.value, 1.0);
+    test(
+      'the zoom snaps to a step, stops at the ends and is remembered',
+      () async {
+        final s = await freshState();
+        expect(s.zoom.value, 1.0);
 
-      await s.setZoom(1.27);
-      expect(s.zoom.value, 1.3, reason: 'snapped to the nearest step');
+        await s.setZoom(1.27);
+        expect(s.zoom.value, 1.3, reason: 'snapped to the nearest step');
 
-      for (var i = 0; i < 10; i++) {
-        await s.stepZoom(1);
-      }
-      expect(s.zoom.value, T.zoomSteps.last);
+        for (var i = 0; i < 10; i++) {
+          await s.stepZoom(1);
+        }
+        expect(s.zoom.value, T.zoomSteps.last);
 
-      await s.setZoom(1.2);
-      final again = AppState(s.store);
-      await again.load();
-      expect(again.zoom.value, 1.2, reason: 'a device-local setting');
-    });
+        await s.setZoom(1.2);
+        final again = AppState(s.store);
+        await again.load();
+        expect(again.zoom.value, 1.2, reason: 'a device-local setting');
+      },
+    );
 
     test('checking off keeps the task and moves it into history', () async {
       final s = await freshState();
@@ -148,37 +149,44 @@ void main() {
       expect(await s.canProceedPastThoughts(), isTrue);
     });
 
-    test('promoting a thought creates a task and resolves the thought',
-        () async {
-      final s = await freshState();
-      await s.addThought('buy a domain');
-      await s.promoteThought(s.thoughts.single);
+    test(
+      'promoting a thought creates a task and resolves the thought',
+      () async {
+        final s = await freshState();
+        await s.addThought('buy a domain');
+        await s.promoteThought(s.thoughts.single);
 
-      expect(s.tasks.single.text, 'buy a domain');
-      expect(s.thoughts, isEmpty);
-    });
+        expect(s.tasks.single.text, 'buy a domain');
+        expect(s.thoughts, isEmpty);
+      },
+    );
 
-    test('deleting a workspace cascades to its tasks, history included',
-        () async {
-      final s = await freshState();
-      await s.saveWorkspace(name: 'Side project', color: '#7ee3a1');
-      final side = s.currentWorkspaceUuid!;
-      await s.addTask('still open');
-      await s.addTask('already done');
-      await s.completeTask(s.tasks.last);
+    test(
+      'deleting a workspace cascades to its tasks, history included',
+      () async {
+        final s = await freshState();
+        await s.saveWorkspace(name: 'Side project', color: '#7ee3a1');
+        final side = s.currentWorkspaceUuid!;
+        await s.addTask('still open');
+        await s.addTask('already done');
+        await s.completeTask(s.tasks.last);
 
-      await s.deleteWorkspace(side);
+        await s.deleteWorkspace(side);
 
-      expect(s.workspaces.any((w) => w.uuid == side), isFalse);
+        expect(s.workspaces.any((w) => w.uuid == side), isFalse);
 
-      // Both rows must be tombstoned, not dropped, so the deletion reaches
-      // other devices. Completed ones count: leaving them behind would strand
-      // history in a workspace that no longer exists.
-      final rows = await s.store.raw
-          .query('tasks', where: 'workspace_uuid = ?', whereArgs: [side]);
-      expect(rows.length, 2);
-      expect(rows.every((r) => r['deleted_at'] != null), isTrue);
-    });
+        // Both rows must be tombstoned, not dropped, so the deletion reaches
+        // other devices. Completed ones count: leaving them behind would strand
+        // history in a workspace that no longer exists.
+        final rows = await s.store.raw.query(
+          'tasks',
+          where: 'workspace_uuid = ?',
+          whereArgs: [side],
+        );
+        expect(rows.length, 2);
+        expect(rows.every((r) => r['deleted_at'] != null), isTrue);
+      },
+    );
 
     test('deleting the focused workspace drops focus', () async {
       final s = await freshState();
@@ -225,19 +233,21 @@ void main() {
       expect(s.showHistory, isFalse);
     });
 
-    test('the thoughts panel closes itself once the last one is cleared',
-        () async {
-      final s = await freshState();
-      await s.addThought('only one');
-      s.toggleThoughts();
-      expect(s.showThoughts, isTrue);
+    test(
+      'the thoughts panel closes itself once the last one is cleared',
+      () async {
+        final s = await freshState();
+        await s.addThought('only one');
+        s.toggleThoughts();
+        expect(s.showThoughts, isTrue);
 
-      // The count badge is the only way back to the tasks and it is hidden at
-      // zero, so an empty panel would strand the user with no way out.
-      await s.resolveThought(s.thoughts.single);
-      expect(s.thoughts, isEmpty);
-      expect(s.showThoughts, isFalse);
-    });
+        // The count badge is the only way back to the tasks and it is hidden at
+        // zero, so an empty panel would strand the user with no way out.
+        await s.resolveThought(s.thoughts.single);
+        expect(s.thoughts, isEmpty);
+        expect(s.showThoughts, isFalse);
+      },
+    );
 
     test('switching workspace lands on that workspaces own list', () async {
       final s = await freshState();
@@ -296,10 +306,12 @@ void main() {
         MaterialApp(
           home: UiScale(
             scale: 1.0,
-            child: Builder(builder: (context) {
-              seen = MediaQuery.of(context).size;
-              return const SizedBox.shrink();
-            }),
+            child: Builder(
+              builder: (context) {
+                seen = MediaQuery.of(context).size;
+                return const SizedBox.shrink();
+              },
+            ),
           ),
         ),
       );
@@ -307,8 +319,9 @@ void main() {
       expect(find.byType(Transform), findsNothing);
     });
 
-    testWidgets('lays the subtree out smaller than the viewport it fills',
-        (tester) async {
+    testWidgets('lays the subtree out smaller than the viewport it fills', (
+      tester,
+    ) async {
       // The transform draws the child back up to full size, so a subtree that
       // still measured itself against the real viewport would overflow by
       // exactly the scale factor.
@@ -318,10 +331,12 @@ void main() {
         MaterialApp(
           home: UiScale(
             scale: 2.0,
-            child: Builder(builder: (context) {
-              seen = MediaQuery.of(context);
-              return const SizedBox.shrink();
-            }),
+            child: Builder(
+              builder: (context) {
+                seen = MediaQuery.of(context);
+                return const SizedBox.shrink();
+              },
+            ),
           ),
         ),
       );
@@ -345,10 +360,12 @@ void main() {
           child: MaterialApp(
             home: UiScale(
               scale: 2.0,
-              child: Builder(builder: (context) {
-                seen = MediaQuery.of(context).padding;
-                return const SizedBox.shrink();
-              }),
+              child: Builder(
+                builder: (context) {
+                  seen = MediaQuery.of(context).padding;
+                  return const SizedBox.shrink();
+                },
+              ),
             ),
           ),
         ),
@@ -367,23 +384,26 @@ void main() {
         updatedAt: nowStamp(),
       );
 
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: TaskRow(
-            task: task,
-            accent: T.accent,
-            onComplete: () async {},
-            onDelete: () async {},
-            onFocus: () {},
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TaskRow(
+              task: task,
+              accent: T.accent,
+              onComplete: () async {},
+              onDelete: () async {},
+              onFocus: () {},
+            ),
           ),
         ),
-      ));
+      );
 
       expect(find.text('a visible task'), findsOneWidget);
     });
 
-    testWidgets('plays the slide-out before reporting completion',
-        (tester) async {
+    testWidgets('plays the slide-out before reporting completion', (
+      tester,
+    ) async {
       var completed = false;
       final task = Task(
         uuid: 't1',
@@ -393,17 +413,19 @@ void main() {
         updatedAt: nowStamp(),
       );
 
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: TaskRow(
-            task: task,
-            accent: T.accent,
-            onComplete: () async => completed = true,
-            onDelete: () async {},
-            onFocus: () {},
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TaskRow(
+              task: task,
+              accent: T.accent,
+              onComplete: () async => completed = true,
+              onDelete: () async {},
+              onFocus: () {},
+            ),
           ),
         ),
-      ));
+      );
 
       await tester.tap(find.byType(InkWell).first);
       await tester.pump();
@@ -426,31 +448,30 @@ void main() {
       bool isDesktop = false,
       double volume = 0.5,
       ValueChanged<double>? onVolume,
-    }) =>
-        MaterialApp(
-          home: Scaffold(
-            body: TitleBar(
-              isDesktop: isDesktop,
-              pinned: true,
-              onTogglePin: () {},
-              onToggleSound: () {},
-              soundPlaying: playing,
-              soundPaused: paused,
-              onTogglePause: () {},
-              volume: volume,
-              onVolumeChanged: onVolume ?? (_) {},
-              accent: ws,
-              onClose: () {},
-              onOpenSettings: () {},
-              onToggleCalendar: () {},
-              calendarOpen: false,
-              onToggleList: () {},
-              listOpen: false,
-              syncColor: T.muted,
-              syncTooltip: 'Sync off',
-            ),
-          ),
-        );
+    }) => MaterialApp(
+      home: Scaffold(
+        body: TitleBar(
+          isDesktop: isDesktop,
+          pinned: true,
+          onTogglePin: () {},
+          onToggleSound: () {},
+          soundPlaying: playing,
+          soundPaused: paused,
+          onTogglePause: () {},
+          volume: volume,
+          onVolumeChanged: onVolume ?? (_) {},
+          accent: ws,
+          onClose: () {},
+          onOpenSettings: () {},
+          onToggleCalendar: () {},
+          calendarOpen: false,
+          onToggleList: () {},
+          listOpen: false,
+          syncColor: T.muted,
+          syncTooltip: 'Sync off',
+        ),
+      ),
+    );
 
     /// Pumps at the widget's real 340x480, not the 800x600 test default. The
     /// title bar's controls are all in its right-hand end, so how much room the
@@ -467,13 +488,15 @@ void main() {
       tester.view.physicalSize = const Size(340, 480);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(host(
-        playing: playing,
-        paused: paused,
-        isDesktop: isDesktop,
-        volume: volume,
-        onVolume: onVolume,
-      ));
+      await tester.pumpWidget(
+        host(
+          playing: playing,
+          paused: paused,
+          isDesktop: isDesktop,
+          volume: volume,
+          onVolume: onVolume,
+        ),
+      );
     }
 
     /// A mouse that stays attached for the life of the test, so hover enters
@@ -485,11 +508,13 @@ void main() {
       return g;
     }
 
-    testWidgets('the pin lights in the workspace colour, not the theme accent',
-        (tester) async {
-      await pumpBar(tester, isDesktop: true);
-      expect(tester.widget<Icon>(find.byIcon(Icons.push_pin)).color, ws);
-    });
+    testWidgets(
+      'the pin lights in the workspace colour, not the theme accent',
+      (tester) async {
+        await pumpBar(tester, isDesktop: true);
+        expect(tester.widget<Icon>(find.byIcon(Icons.push_pin)).color, ws);
+      },
+    );
 
     testWidgets('no transport button while nothing is loaded', (tester) async {
       await pumpBar(tester, playing: false);
@@ -497,16 +522,18 @@ void main() {
       expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
     });
 
-    testWidgets('a paused source shows resume, and dims the headphones',
-        (tester) async {
+    testWidgets('a paused source shows resume, and dims the headphones', (
+      tester,
+    ) async {
       await pumpBar(tester, paused: true);
       expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
       // Outlined headphones while paused: filled would claim audio is running.
       expect(find.byIcon(Icons.headphones_outlined), findsOneWidget);
     });
 
-    testWidgets('hovering the transport button drops out a volume slider',
-        (tester) async {
+    testWidgets('hovering the transport button drops out a volume slider', (
+      tester,
+    ) async {
       await pumpBar(tester);
       expect(find.byType(Slider), findsNothing);
 
@@ -532,8 +559,9 @@ void main() {
       expect(panel.left, greaterThanOrEqualTo(0.0));
     });
 
-    testWidgets('the panel survives the pointer crossing the gap to it',
-        (tester) async {
+    testWidgets('the panel survives the pointer crossing the gap to it', (
+      tester,
+    ) async {
       await pumpBar(tester);
       final m = await mouse(tester);
       await m.moveTo(tester.getCenter(find.byIcon(Icons.pause_rounded)));
@@ -543,13 +571,19 @@ void main() {
       // spot here would make the slider unreachable by hand.
       await m.moveTo(const Offset(4, 400));
       await tester.pump(const Duration(milliseconds: 60));
-      expect(find.byType(Slider), findsOneWidget,
-          reason: 'must not close inside the grace period');
+      expect(
+        find.byType(Slider),
+        findsOneWidget,
+        reason: 'must not close inside the grace period',
+      );
 
       await m.moveTo(tester.getCenter(find.byType(Slider)));
       await tester.pump(const Duration(milliseconds: 400));
-      expect(find.byType(Slider), findsOneWidget,
-          reason: 'hovering the panel itself holds it open');
+      expect(
+        find.byType(Slider),
+        findsOneWidget,
+        reason: 'hovering the panel itself holds it open',
+      );
 
       // And it does eventually go away once the pointer really leaves.
       await m.moveTo(const Offset(4, 400));
@@ -575,14 +609,17 @@ void main() {
   });
 
   group('getting back to the task list', () {
-    testWidgets('the panel header title is itself the way back',
-        (tester) async {
+    testWidgets('the panel header title is itself the way back', (
+      tester,
+    ) async {
       var back = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: PanelHeader(title: 'Parked', onBack: () => back++),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PanelHeader(title: 'Parked', onBack: () => back++),
+          ),
         ),
-      ));
+      );
 
       // The label is the control - there is no separate button, which is the
       // whole point: no extra row on a 340px window.
@@ -593,146 +630,21 @@ void main() {
       expect(back, 1);
     });
 
-    testWidgets('view actions still sit on the header beside the title',
-        (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: PanelHeader(
-            title: 'Parked',
-            onBack: () {},
-            actions: const [Icon(Icons.add)],
-          ),
-        ),
-      ));
-      expect(find.byIcon(Icons.add), findsOneWidget);
-    });
-
-    testWidgets('the add field is a ＋ on the bar', (tester) async {
-      var opened = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: WorkspaceBar(
-            workspaces: [
-              Workspace(
-                uuid: 'w1',
-                name: 'Tasks',
-                color: '#6c8cff',
-                sortOrder: 0,
-                createdAt: nowStamp(),
-                updatedAt: nowStamp(),
-              ),
-            ],
-            currentUuid: 'w1',
-            accent: T.accent,
-            onSelect: (_) {},
-            onEdit: (_) {},
-            onCreate: () {},
-            onOpenNotes: () {},
-            onOpenParked: () {},
-            onOpenCollections: () {},
-            onOpenHistory: () {},
-            parkedReviewDue: false,
-            openView: null,
-            onAddTask: () => opened++,
-          ),
-        ),
-      ));
-      await tester.tap(find.byTooltip('Add a task (N)'));
-      expect(opened, 1);
-      expect(find.byType(TextField), findsNothing,
-          reason: 'no permanent field on the bar');
-    });
-
-    testWidgets('the pill\'s name opens the switcher, not the edit form',
-        (tester) async {
-      final edited = <String>[];
-      final picked = <String>[];
-      Workspace ws(String id, String name) => Workspace(
-            uuid: id,
-            name: name,
-            color: '#6c8cff',
-            sortOrder: 0,
-            createdAt: nowStamp(),
-            updatedAt: nowStamp(),
-          );
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: WorkspaceBar(
-            workspaces: [ws('w1', 'Meine Apps'), ws('w2', 'Arbeit')],
-            currentUuid: 'w1',
-            accent: T.accent,
-            onSelect: (w) => picked.add(w.name),
-            onEdit: (w) => edited.add(w.name),
-            onCreate: () {},
-            onOpenNotes: () {},
-            onOpenParked: () {},
-            onOpenCollections: () {},
-            onOpenHistory: () {},
-            parkedReviewDue: false,
-            openView: null,
-          ),
-        ),
-      ));
-
-      await tester.tap(find.text('Meine Apps'));
-      await tester.pumpAndSettle();
-      expect(edited, isEmpty);
-      expect(find.text('Arbeit'), findsOneWidget, reason: 'the switcher');
-
-      // Editing is still one entry away - the touch way into the form.
-      await tester.tap(find.text('Edit Meine Apps…'));
-      await tester.pumpAndSettle();
-      expect(edited, ['Meine Apps']);
-      expect(picked, isEmpty);
-    });
-
-    testWidgets('the views menu ticks whichever view is open', (tester) async {
-      Widget bar(WorkspaceView? open) => MaterialApp(
-            home: Scaffold(
-              body: WorkspaceBar(
-                workspaces: [
-                  Workspace(
-                    uuid: 'w1',
-                    name: 'Tasks',
-                    color: '#6c8cff',
-                    sortOrder: 0,
-                    createdAt: nowStamp(),
-                    updatedAt: nowStamp(),
-                  ),
-                ],
-                currentUuid: 'w1',
-                accent: T.accent,
-                onSelect: (_) {},
-                onEdit: (_) {},
-                onCreate: () {},
-                onOpenNotes: () {},
-                onOpenParked: () {},
-                onOpenCollections: () {},
-                onOpenHistory: () {},
-                parkedReviewDue: false,
-                openView: open,
-              ),
+    testWidgets('view actions still sit on the header beside the title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PanelHeader(
+              title: 'Parked',
+              onBack: () {},
+              actions: const [Icon(Icons.add)],
             ),
-          );
-
-      // The workspace pill carries a ▾ of its own, so the bar has two. This
-      // one is the free-standing views menu - the last in the row.
-      final viewsArrow = find.byIcon(Icons.expand_more_rounded).last;
-
-      // Nothing open: the menu offers three plain entries.
-      await tester.pumpWidget(bar(null));
-      await tester.tap(viewsArrow);
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.check_rounded), findsNothing);
-
-      await tester.tapAt(const Offset(5, 400)); // dismiss
-      await tester.pumpAndSettle();
-
-      // Parked open: exactly one tick, so re-picking it to close is findable.
-      await tester.pumpWidget(bar(WorkspaceView.parked));
-      await tester.tap(viewsArrow);
-      await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+          ),
+        ),
+      );
+      expect(find.byIcon(Icons.add), findsOneWidget);
     });
   });
 
@@ -754,27 +666,31 @@ void main() {
       expect(t.isDue(at.add(const Duration(minutes: 1))), isTrue);
     });
 
-    test('survives the round trip through the database as an instant',
-        () async {
-      final s = await freshState();
-      await s.addTask('leave for the train');
-      final at = DateTime.now().add(const Duration(minutes: 90));
-      await s.setReminder(s.tasks.single, at);
+    test(
+      'survives the round trip through the database as an instant',
+      () async {
+        final s = await freshState();
+        await s.addTask('leave for the train');
+        final at = DateTime.now().add(const Duration(minutes: 90));
+        await s.setReminder(s.tasks.single, at);
 
-      await s.refreshTasks();
-      // Stored in UTC, read back as local: the instant is what has to match,
-      // not the wall-clock string.
-      expect(
-        s.tasks.single.remindAtTime!.difference(at).inSeconds.abs(),
-        lessThan(1),
-      );
-    });
+        await s.refreshTasks();
+        // Stored in UTC, read back as local: the instant is what has to match,
+        // not the wall-clock string.
+        expect(
+          s.tasks.single.remindAtTime!.difference(at).inSeconds.abs(),
+          lessThan(1),
+        );
+      },
+    );
 
     test('a completed task stops being due', () async {
       final s = await freshState();
       await s.addTask('already handled');
       await s.setReminder(
-          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 5)));
+        s.tasks.single,
+        DateTime.now().subtract(const Duration(minutes: 5)),
+      );
       final t = s.tasks.single;
       expect(t.isDue(), isTrue);
 
@@ -786,7 +702,9 @@ void main() {
       final s = await freshState();
       await s.addTask('never mind');
       await s.setReminder(
-          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 1)));
+        s.tasks.single,
+        DateTime.now().subtract(const Duration(minutes: 1)),
+      );
       expect(await s.store.dueReminders(), hasLength(1));
 
       await s.setReminder(s.tasks.single, null);
@@ -800,7 +718,9 @@ void main() {
       await s.saveWorkspace(name: 'Work', color: '#7ee3a1');
       await s.addTask('in the other workspace');
       await s.setReminder(
-          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 1)));
+        s.tasks.single,
+        DateTime.now().subtract(const Duration(minutes: 1)),
+      );
 
       await s.selectWorkspace(home);
       expect(s.tasks, isEmpty); // not on screen...
@@ -811,7 +731,9 @@ void main() {
       final s = await freshState();
       await s.addTask('nag me');
       await s.setReminder(
-          s.tasks.single, DateTime.now().subtract(const Duration(minutes: 1)));
+        s.tasks.single,
+        DateTime.now().subtract(const Duration(minutes: 1)),
+      );
 
       final announced = <String>[];
       final service = ReminderService(
@@ -828,7 +750,9 @@ void main() {
       await s.setReminder(s.tasks.single, null);
       await service.tick();
       await s.setReminder(
-          s.tasks.single, DateTime.now().subtract(const Duration(seconds: 1)));
+        s.tasks.single,
+        DateTime.now().subtract(const Duration(seconds: 1)),
+      );
       await service.tick();
       expect(announced, ['nag me', 'nag me']);
 
@@ -847,7 +771,10 @@ void main() {
       for (final p in presets) {
         expect(p.at.isAfter(late), isTrue, reason: '${p.label} is in the past');
       }
-      expect(presets.map((p) => p.label), isNot(contains('This evening (18:00)')));
+      expect(
+        presets.map((p) => p.label),
+        isNot(contains('This evening (18:00)')),
+      );
     });
 
     test('offers this evening while it is still ahead', () {
@@ -857,11 +784,16 @@ void main() {
 
     test('describes an armed reminder in human terms', () {
       final now = DateTime(2026, 7, 21, 10);
-      expect(describeReminder(now.add(const Duration(minutes: 25)), now),
-          'in 26m');
+      expect(
+        describeReminder(now.add(const Duration(minutes: 25)), now),
+        'in 26m',
+      );
       expect(describeReminder(DateTime(2026, 7, 21, 18), now), 'at 18:00');
       expect(describeReminder(DateTime(2026, 7, 22, 9), now), 'tomorrow 09:00');
-      expect(describeReminder(DateTime(2026, 7, 21, 9), now), 'due since 09:00');
+      expect(
+        describeReminder(DateTime(2026, 7, 21, 9), now),
+        'due since 09:00',
+      );
     });
   });
 
@@ -953,27 +885,28 @@ void main() {
       expect(s.tasks.single.hasNotes, isFalse);
     });
 
-    testWidgets('a flagged row says so, and its action reads as the undo',
-        (tester) async {
+    testWidgets('a flagged row says so, and its action reads as the undo', (
+      tester,
+    ) async {
       Widget row(int priority) => MaterialApp(
-            home: Scaffold(
-              body: TaskRow(
-                task: Task(
-                  uuid: 't1',
-                  workspaceUuid: 'ws',
-                  text: 'urgent thing',
-                  priority: priority,
-                  createdAt: nowStamp(),
-                  updatedAt: nowStamp(),
-                ),
-                accent: T.accent,
-                onComplete: () async {},
-                onDelete: () async {},
-                onFocus: () {},
-                onSetPriority: (_) async {},
-              ),
+        home: Scaffold(
+          body: TaskRow(
+            task: Task(
+              uuid: 't1',
+              workspaceUuid: 'ws',
+              text: 'urgent thing',
+              priority: priority,
+              createdAt: nowStamp(),
+              updatedAt: nowStamp(),
             ),
-          );
+            accent: T.accent,
+            onComplete: () async {},
+            onDelete: () async {},
+            onFocus: () {},
+            onSetPriority: (_) async {},
+          ),
+        ),
+      );
 
       await tester.pumpWidget(row(Task.priorityHigh));
       await tester.pumpAndSettle();
@@ -983,10 +916,12 @@ void main() {
       // reminder and focus mode both wanting the same row's colour.
       expect(find.byIcon(Icons.flag_rounded), findsNothing);
       expect(
-        find.byWidgetPredicate((w) =>
-            w is Container &&
-            w.decoration is BoxDecoration &&
-            (w.decoration as BoxDecoration).color == T.danger),
+        find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).color == T.danger,
+        ),
         findsOneWidget,
       );
 

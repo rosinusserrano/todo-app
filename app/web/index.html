@@ -58,11 +58,23 @@
     // field's own size. Flutter takes every touch, so the pinch that would
     // zoom back out never reaches Safari and the page stayed magnified.
     // maximum-scale=1 stops the zoom; the app has its own (Settings → Zoom).
+    //
+    // Cover only from the home screen, though. In a browser tab (Safari and
+    // Firefox are both WebKit on iOS) it runs the page under the browser's
+    // own bottom toolbar, and a tap there brings the toolbar back instead of
+    // reaching the dock. Without it the tab ends above the toolbar, and the
+    // browser keeps clear of the home indicator itself.
     (function () {
+      var standalone =
+        navigator.standalone === true ||
+        (window.matchMedia &&
+          window.matchMedia('(display-mode: standalone)').matches);
       function cover(meta) {
         if (meta.name !== 'viewport') return;
         var content = meta.content.replace(/,?\s*maximum-scale=[^,]*/, '');
-        if (!/viewport-fit/.test(content)) content += ', viewport-fit=cover';
+        if (standalone && !/viewport-fit/.test(content)) {
+          content += ', viewport-fit=cover';
+        }
         content += ', maximum-scale=1.0';
         if (meta.content !== content) meta.content = content;
       }

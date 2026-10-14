@@ -1640,7 +1640,11 @@ publishes it. Three rules keep it compiling and starting:
   inserts (without it iOS reports the inset as zero too) and exposes
   `todoSafeBottom()`; `web_safe_area.dart` reads it and `_withWebSafeArea` in
   `main.dart` puts it into the `MediaQuery` above `UiScale`, so the shell's
-  ordinary `SafeArea` does the rest.
+  ordinary `SafeArea` does the rest. **Cover is for the home-screen app
+  only** (`navigator.standalone` / `display-mode: standalone`): in a browser
+  tab it ran the page under the browser's bottom toolbar, and on iOS a tap
+  there brings the toolbar back instead of reaching the dock - the whole dock
+  was untappable in Firefox. Without it a tab ends above the toolbar.
 - **Notifications are pushed by the server** (`server/push.js`), because a
   browser cannot schedule anything: a page that is closed runs no code. The
   server already holds every task and event row, so it reads what is due once

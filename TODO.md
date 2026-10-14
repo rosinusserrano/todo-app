@@ -113,8 +113,8 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       `ui/workspace_rail.dart`, their tests and `AppState.railCollapsed`.
       `WorkspaceView` + `kViewOrder` are in `ui/workspace_view.dart`, the form
       in `ui/workspace_form.dart`; `Layout.hasRail` is `isWide`.
-- [x] **58.13** Round 5, the shelf of 2026-10-14, on `redesign` for Marco to
-      try (dev site):
+- [x] **58.13** Round 5, the shelf of 2026-10-14, merged to `main` and
+      published 2026-10-14:
       - calendar edit mode (✎, Ctrl+E) replaces ⚡ quick add; moving blocks
         only in it; stretching a block by its top or bottom edge
         (`_ResizeGrip`, `AppState.resizeEvent`), edge lightens on hover/touch;
@@ -124,7 +124,9 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       - a mouse click on the dock's workspace segment opens the add field;
       - window presets (Small / Tall / Large, corners + centre) in the title
         bar, desktop only (`window_spots.dart`).
-      Merge to `main` once tried.
+      Then: `viewport-fit=cover` only for the home-screen web app (in a
+      Firefox tab on iOS the dock sat under the browser's toolbar), and a
+      stretched block's preview drawn solid over the faded original.
 - [ ] **58.5** The rest of the tiles: shopping list items, the sheets and
       forms, the task action bar.
 - [x] **58.6** Decide what the desktop and the narrow window get: the dock,

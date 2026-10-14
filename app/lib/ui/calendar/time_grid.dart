@@ -847,6 +847,7 @@ class _TimeGridViewState extends State<TimeGridView> {
                         onHoverEvent: _hoverMove,
                         onDropEvent: _dropEvent,
                         movePreview: _movePreview,
+                        resizing: _resizing != null,
                         onResizePending: (i, endY) => _adjustPending(
                           i,
                           newEndMinutes: (endY / widget.hourHeight * 60)
@@ -914,6 +915,7 @@ class _GridBody extends StatelessWidget {
     required this.onHoverEvent,
     required this.onDropEvent,
     required this.movePreview,
+    required this.resizing,
     required this.onResizePending,
     required this.onRemovePending,
     required this.gutter,
@@ -990,6 +992,12 @@ class _GridBody extends StatelessWidget {
     CalendarEvent event,
   })?
   movePreview;
+
+  /// [movePreview] is an edge being dragged rather than a block being
+  /// carried. A carried block's ghost follows the hand and the preview is
+  /// only where it lands; a stretched block has no ghost, so the preview is
+  /// the block itself - drawn solid, over the original, which fades.
+  final bool resizing;
 
   final void Function(int index, double endY) onResizePending;
   final void Function(int index)? onRemovePending;
@@ -1178,6 +1186,7 @@ class _GridBody extends StatelessWidget {
                 title: m.event.title,
                 color: colorFor(m.event),
                 compact: compact,
+                solid: resizing,
               ),
             ),
           ),
@@ -1227,6 +1236,16 @@ class _GridBody extends StatelessWidget {
           final slotWidth = (width - 2) / p.columns;
           final pieceStart = p.event.start.isBefore(day) ? day : p.event.start;
           final pieceEnd = p.event.end.isAfter(next) ? next : p.event.end;
+          final m = movePreview;
+          // The piece whose edge is being dragged fades under its preview.
+          // Always an Opacity, never one wrapped on and off: the grip doing
+          // the dragging is inside this subtree, and a change of shape would
+          // rebuild it and drop the gesture.
+          final stretched =
+              resizing &&
+              m != null &&
+              m.event.instanceKey == p.event.instanceKey &&
+              _isSameDay(days[m.dayIndex], day);
           return Positioned(
             // Keyed, so that when the week steps under a block being carried
             // its element is not handed to whichever event now sits at the
@@ -1241,37 +1260,40 @@ class _GridBody extends StatelessWidget {
               14.0,
               24 * hourHeight,
             ),
-            child: EventBlock(
-              event: p.event,
-              color: colorFor(p.event),
-              hasAttachment: hasAttachment(p.event),
-              taskCount: taskCountFor(p.event),
-              onTap: () => onOpenEvent(p.event),
-              onMenu: (at) => onEventMenu(p.event, at),
-              onDropTask: onPlanTask == null
-                  ? null
-                  : (task) => onPlanTask!(p.event, task),
-              // Two events side by side in a phone column are ~22px each, so
-              // the blob's own ornament goes by its slot, not by the day's.
-              compact: compact || slotWidth < kCompactColumn,
-              // Squared off where midnight cut the block, so the two halves of
-              // a night read as one thing continuing rather than as two blocks
-              // that happen to touch the edges of their columns.
-              continuesBefore: p.event.start.isBefore(day),
-              continuesAfter: p.event.end.isAfter(next),
-              movable: canMove && !p.event.fromFeed,
-              pieceStart: pieceStart,
-              pieceEnd: pieceEnd,
-              onResizeUpdate: onResizeUpdate == null || p.event.fromFeed
-                  ? null
-                  : (start, global) => onResizeUpdate!(
-                      p.event,
-                      pieceStart,
-                      pieceEnd,
-                      start,
-                      global,
-                    ),
-              onResizeEnd: onResizeEnd,
+            child: Opacity(
+              opacity: stretched ? 0.3 : 1,
+              child: EventBlock(
+                event: p.event,
+                color: colorFor(p.event),
+                hasAttachment: hasAttachment(p.event),
+                taskCount: taskCountFor(p.event),
+                onTap: () => onOpenEvent(p.event),
+                onMenu: (at) => onEventMenu(p.event, at),
+                onDropTask: onPlanTask == null
+                    ? null
+                    : (task) => onPlanTask!(p.event, task),
+                // Two events side by side in a phone column are ~22px each, so
+                // the blob's own ornament goes by its slot, not by the day's.
+                compact: compact || slotWidth < kCompactColumn,
+                // Squared off where midnight cut the block, so the two halves of
+                // a night read as one thing continuing rather than as two blocks
+                // that happen to touch the edges of their columns.
+                continuesBefore: p.event.start.isBefore(day),
+                continuesAfter: p.event.end.isAfter(next),
+                movable: canMove && !p.event.fromFeed,
+                pieceStart: pieceStart,
+                pieceEnd: pieceEnd,
+                onResizeUpdate: onResizeUpdate == null || p.event.fromFeed
+                    ? null
+                    : (start, global) => onResizeUpdate!(
+                        p.event,
+                        pieceStart,
+                        pieceEnd,
+                        start,
+                        global,
+                      ),
+                onResizeEnd: onResizeEnd,
+              ),
             ),
           );
         }(),
@@ -2225,12 +2247,17 @@ class _DraftBlock extends StatelessWidget {
     this.title,
     this.color,
     this.compact = false,
+    this.solid = false,
   });
 
   final DateTime from;
   final DateTime to;
   final String? title;
   final Color? color;
+
+  /// Filled like a real block, with ink to match, rather than a tinted
+  /// outline: the block being stretched, drawn over the original.
+  final bool solid;
 
   /// A phone-width column: "09:00 – 10:00" is half as wide again as the column
   /// it is in, so the two ends of the span stack instead of being clipped.
@@ -2239,9 +2266,10 @@ class _DraftBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tint = color ?? T.accent;
+    final ink = solid ? T.inkOn(tint) : T.text;
     return Container(
       decoration: BoxDecoration(
-        color: tint.withValues(alpha: 0.28),
+        color: solid ? tint : tint.withValues(alpha: 0.28),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: tint, width: 1),
       ),
@@ -2261,7 +2289,7 @@ class _DraftBlock extends StatelessWidget {
             style: TextStyle(
               fontSize: compact ? 8.5 : 9.5,
               height: 1.15,
-              color: T.text,
+              color: ink,
             ),
           );
           if (title == null || constraints.maxHeight < (compact ? 40 : 26)) {
@@ -2280,7 +2308,7 @@ class _DraftBlock extends StatelessWidget {
                   fontSize: compact ? 9 : 10,
                   height: 1.15,
                   fontWeight: T.wMedium,
-                  color: T.text,
+                  color: ink,
                 ),
               ),
               times,

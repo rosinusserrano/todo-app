@@ -533,7 +533,8 @@ Three tiers, none of which need an account, an API key, or a licence:
 - **Stretch an event by an end.** In edit mode, the top and bottom edges of a
   block are handles: with a mouse the edge lightens as the pointer comes over
   it (and the cursor turns to ↕); on a phone it lightens as you touch it.
-  Drag it up or down and an outline shows the new times; let go and the
+  Drag it up or down and the block is drawn at its new length, with the new
+  times, over the original (which fades while you drag); let go and the
   block starts or ends there, on the nearest quarter hour. An end cannot be
   dragged past the other one. A repeating event stretches as a whole series;
   one from a subscribed calendar has no handles.

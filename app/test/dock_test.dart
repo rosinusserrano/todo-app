@@ -27,6 +27,7 @@ void main() {
       segments: [
         DockSegment(
           label: 'Work',
+          onClick: () => fired.add('click Work'),
           fill: Colors.blue,
           ink: Colors.black,
           items: [item('Home', second: true), item('Work', second: true)],
@@ -311,7 +312,9 @@ void main() {
       expect(find.text('Calendar'), findsNothing);
     });
 
-    testWidgets('a click on a hovered segment pins its menu', (tester) async {
+    testWidgets('a click on a segment with its own action does that', (
+      tester,
+    ) async {
       await pump(tester);
       final g = await mouse(tester);
       await g.moveTo(const Offset(60, barY));
@@ -319,12 +322,34 @@ void main() {
       await g.down(const Offset(60, barY));
       await g.up();
       await tester.pumpAndSettle();
-      expect(find.text('Home'), findsOneWidget, reason: 'not closed');
+      expect(fired, ['click Work']);
+      expect(find.text('Home'), findsNothing, reason: 'the menu closes');
+    });
+
+    testWidgets('a finger on that segment still opens its menu', (
+      tester,
+    ) async {
+      await pump(tester);
+      await tester.tapAt(const Offset(60, barY));
+      await tester.pumpAndSettle();
+      expect(fired, isEmpty);
+      expect(find.text('Home'), findsOneWidget);
+    });
+
+    testWidgets('a click on a hovered segment pins its menu', (tester) async {
+      await pump(tester);
+      final g = await mouse(tester);
+      await g.moveTo(const Offset(200, barY));
+      await tester.pump(const Duration(milliseconds: 200));
+      await g.down(const Offset(200, barY));
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(find.text('Notes'), findsOneWidget, reason: 'not closed');
 
       await g.moveTo(const Offset(300, 100));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      expect(find.text('Home'), findsOneWidget, reason: 'pinned');
+      expect(find.text('Notes'), findsOneWidget, reason: 'pinned');
     });
   });
 }

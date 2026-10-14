@@ -22,6 +22,7 @@
 // 15-minute block behind the editor.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart'
     show
@@ -36,6 +37,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback, HardwareKeyboard;
 
+import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
 import '../task_drag.dart';
@@ -109,6 +111,7 @@ class TimeGridView extends StatefulWidget {
     this.onZoom,
     this.sharedScroll,
     this.onMoveEvent,
+    this.onResizeEvent,
   });
 
   /// The columns, left to right, each at local midnight.
@@ -187,6 +190,18 @@ class TimeGridView extends StatefulWidget {
   /// finger - see [EventBlock.movable] for why the two differ.
   final void Function(CalendarEvent event, DateTime from, DateTime to)?
   onMoveEvent;
+
+  /// One end of a block was dragged: its start when [start], else its end,
+  /// from the instant it was at to [to] (see [AppState.resizeEvent]). Null
+  /// draws no grips. Like [onMoveEvent], only handed in while the calendar
+  /// is being edited, and never offered on a feed's events.
+  final void Function(
+    CalendarEvent event,
+    bool start,
+    DateTime from,
+    DateTime to,
+  )?
+  onResizeEvent;
 
   @override
   State<TimeGridView> createState() => _TimeGridViewState();
@@ -631,6 +646,62 @@ class _TimeGridViewState extends State<TimeGridView> {
     move(drag.event, drag.pieceStart, to);
   }
 
+  /// The box the hours are laid out in, which a grip's pointer is measured
+  /// against: the grid's own box also holds the day headers above it.
+  final _bodyKey = GlobalKey();
+
+  /// The end being dragged, and where it would go.
+  ({CalendarEvent event, bool start, DateTime from, DateTime to})? _resizing;
+
+  /// A grip at one end of a block moved to [global]. Snapped to the nearest
+  /// quarter-hour line, kept inside the piece's own day, and never closer
+  /// than a quarter to the other end.
+  void _resizeUpdate(
+    CalendarEvent event,
+    DateTime pieceStart,
+    DateTime pieceEnd,
+    bool start,
+    Offset global,
+  ) {
+    final box = _bodyKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final day = DateTime(pieceStart.year, pieceStart.month, pieceStart.day);
+    final dayIndex = widget.days.indexWhere((d) => _isSameDay(d, day));
+    if (dayIndex < 0) return;
+    final y = box.globalToLocal(global).dy;
+    final raw = (y / widget.hourHeight * 60 / kSnapMinutes).round();
+    final low = pieceStart.difference(day).inMinutes;
+    final high = pieceEnd.difference(day).inMinutes;
+    final minutes = start
+        ? (raw * kSnapMinutes).clamp(0, high - kSnapMinutes)
+        : (raw * kSnapMinutes).clamp(low + kSnapMinutes, 24 * 60);
+    final at = DateTime(day.year, day.month, day.day, 0, minutes);
+    _resizing = (
+      event: event,
+      start: start,
+      from: start ? pieceStart : pieceEnd,
+      to: at,
+    );
+    final preview = (
+      dayIndex: dayIndex,
+      fromMinutes: start ? minutes : low,
+      toMinutes: start ? high : minutes,
+      start: start ? at : event.start,
+      end: start ? event.end : at,
+      event: event,
+    );
+    if (preview != _movePreview) setState(() => _movePreview = preview);
+  }
+
+  void _resizeEnd(bool commit) {
+    final r = _resizing;
+    _resizing = null;
+    _endMove();
+    final resize = widget.onResizeEvent;
+    if (!commit || r == null || resize == null || r.from == r.to) return;
+    resize(r.event, r.start, r.from, r.to);
+  }
+
   void _commit() {
     final draft = _draft;
     setState(() => _draft = null);
@@ -740,6 +811,7 @@ class _TimeGridViewState extends State<TimeGridView> {
                   child: Listener(
                     onPointerSignal: _pointerSignal,
                     child: SizedBox(
+                      key: _bodyKey,
                       height: 24 * widget.hourHeight,
                       child: _GridBody(
                         days: widget.days,
@@ -768,6 +840,10 @@ class _TimeGridViewState extends State<TimeGridView> {
                           _endMove();
                         },
                         canMove: widget.onMoveEvent != null,
+                        onResizeUpdate: widget.onResizeEvent == null
+                            ? null
+                            : _resizeUpdate,
+                        onResizeEnd: _resizeEnd,
                         onHoverEvent: _hoverMove,
                         onDropEvent: _dropEvent,
                         movePreview: _movePreview,
@@ -833,6 +909,8 @@ class _GridBody extends StatelessWidget {
     required this.onEdge,
     required this.onEdgeEnd,
     required this.canMove,
+    required this.onResizeUpdate,
+    required this.onResizeEnd,
     required this.onHoverEvent,
     required this.onDropEvent,
     required this.movePreview,
@@ -883,6 +961,18 @@ class _GridBody extends StatelessWidget {
 
   /// The drag left the grid without being dropped on it.
   final VoidCallback? onEdgeEnd;
+
+  /// A grip at one end of a block moved, and the drag of it ended. Null
+  /// draws no grips.
+  final void Function(
+    CalendarEvent event,
+    DateTime pieceStart,
+    DateTime pieceEnd,
+    bool start,
+    Offset global,
+  )?
+  onResizeUpdate;
+  final void Function(bool commit) onResizeEnd;
 
   /// Whether blocks can be picked up at all, and what happens while one is
   /// carried over the grid and when it is let go.
@@ -983,17 +1073,6 @@ class _GridBody extends StatelessWidget {
           child: _HourLabels(gutter: gutter, hourHeight: hourHeight),
         ),
 
-        // The now line, only on the column that is actually today.
-        for (var i = 0; i < days.length; i++)
-          if (_isSameDay(days[i], today))
-            Positioned(
-              left: gutter + i * colWidth,
-              width: colWidth,
-              top: (today.hour * 60 + today.minute) / 60 * hourHeight,
-              height: 2,
-              child: const _NowLine(),
-            ),
-
         // Creating sits *below* the event blocks in the stack, which is
         // what stops a click on an event from also starting a draft: a
         // Stack hit-tests top-down and stops at the first child that takes
@@ -1069,6 +1148,20 @@ class _GridBody extends StatelessWidget {
             );
           }(),
 
+        // The now line, only on the column that is actually today. Over the
+        // blocks, not under them: the time is the thing to read off a busy
+        // afternoon, and under a block it was the one line you could not
+        // see. It takes no pointer, so a block under it is still pressed.
+        for (var i = 0; i < days.length; i++)
+          if (_isSameDay(days[i], today))
+            Positioned(
+              left: gutter + i * colWidth,
+              width: colWidth,
+              top: (today.hour * 60 + today.minute) / 60 * hourHeight,
+              height: 2,
+              child: const IgnorePointer(child: _NowLine()),
+            ),
+
         if (movePreview case final m?)
           Positioned(
             left: gutter + m.dayIndex * colWidth + 1,
@@ -1132,6 +1225,8 @@ class _GridBody extends StatelessWidget {
               .inMinutes
               .clamp(0, 24 * 60);
           final slotWidth = (width - 2) / p.columns;
+          final pieceStart = p.event.start.isBefore(day) ? day : p.event.start;
+          final pieceEnd = p.event.end.isAfter(next) ? next : p.event.end;
           return Positioned(
             // Keyed, so that when the week steps under a block being carried
             // its element is not handed to whichever event now sits at the
@@ -1165,8 +1260,18 @@ class _GridBody extends StatelessWidget {
               continuesBefore: p.event.start.isBefore(day),
               continuesAfter: p.event.end.isAfter(next),
               movable: canMove && !p.event.fromFeed,
-              pieceStart: p.event.start.isBefore(day) ? day : p.event.start,
-              pieceEnd: p.event.end.isAfter(next) ? next : p.event.end,
+              pieceStart: pieceStart,
+              pieceEnd: pieceEnd,
+              onResizeUpdate: onResizeUpdate == null || p.event.fromFeed
+                  ? null
+                  : (start, global) => onResizeUpdate!(
+                      p.event,
+                      pieceStart,
+                      pieceEnd,
+                      start,
+                      global,
+                    ),
+              onResizeEnd: onResizeEnd,
             ),
           );
         }(),
@@ -1274,6 +1379,8 @@ class EventBlock extends StatelessWidget {
     this.movable = false,
     this.pieceStart,
     this.pieceEnd,
+    this.onResizeUpdate,
+    this.onResizeEnd,
   });
 
   final CalendarEvent event;
@@ -1296,6 +1403,13 @@ class EventBlock extends StatelessWidget {
   /// cut it - which is what a move measures from.
   final DateTime? pieceStart;
   final DateTime? pieceEnd;
+
+  /// The grip at the top ([start] true) or the bottom was dragged to
+  /// [global], and then let go (commit) or lost. Null draws no grips - see
+  /// [_ResizeGrip]. An end that midnight cut has none: it is not this
+  /// piece's end to move.
+  final void Function(bool start, Offset global)? onResizeUpdate;
+  final void Function(bool commit)? onResizeEnd;
 
   /// Right-click or long-press, at the point it happened. Optional so a block
   /// can be drawn somewhere that has no actions to offer.
@@ -1356,7 +1470,7 @@ class EventBlock extends StatelessWidget {
       color: color,
       child: blob,
     );
-    return EventMenuArea(
+    final block = EventMenuArea(
       onMenu: onMenu,
       // A finger's long press lifts a movable block instead; the menu is
       // what lifting it and letting go in place opens (see _MovableBlock).
@@ -1371,6 +1485,35 @@ class EventBlock extends StatelessWidget {
               child: target,
             )
           : target,
+    );
+    final resize = onResizeUpdate;
+    if (resize == null) return block;
+    // The grips are the block's *siblings*, on top, not wrapped around it: a
+    // press on one must not also reach the block's own drag, which would
+    // pick the whole thing up instead of stretching it.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final touch = Layout.of(context).touch;
+        // A quarter of the block at most, so a short one keeps a middle to
+        // carry it by.
+        final band = math.min(touch ? 12.0 : 7.0, box.maxHeight / 4);
+        Widget grip(bool start) => _ResizeGrip(
+          start: start,
+          height: band,
+          color: color,
+          onTap: onTap,
+          onUpdate: (g) => resize(start, g),
+          onEnd: (commit) => onResizeEnd?.call(commit),
+        );
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            block,
+            if (!continuesBefore) grip(true),
+            if (!continuesAfter) grip(false),
+          ],
+        );
+      },
     );
   }
 
@@ -1524,6 +1667,112 @@ class RaisedFace extends StatelessWidget {
 /// Right-click (desktop) and long-press (touch) on an event, both reported with
 /// the point they happened at so the menu can open there.
 ///
+/// One end of a block while the calendar is being edited: drag it to make
+/// the block start earlier or later, or end earlier or later.
+///
+/// Invisible until it is wanted. Under a mouse the edge lightens as the
+/// pointer comes over it, with the up-down cursor; under a finger it lightens
+/// as it is touched. Either way that is the cue that what is about to be
+/// dragged is the edge and not the block.
+///
+/// A plain vertical drag, not a held one, and that is safe on touch for the
+/// same reason as the pending block's grip: the deepest recogniser in the
+/// arena wins, so the scroll view above never sees a drag that starts here.
+class _ResizeGrip extends StatefulWidget {
+  const _ResizeGrip({
+    required this.start,
+    required this.height,
+    required this.color,
+    required this.onTap,
+    required this.onUpdate,
+    required this.onEnd,
+  });
+
+  final bool start;
+  final double height;
+  final Color color;
+  final VoidCallback onTap;
+  final void Function(Offset global) onUpdate;
+  final void Function(bool commit) onEnd;
+
+  @override
+  State<_ResizeGrip> createState() => _ResizeGripState();
+}
+
+class _ResizeGripState extends State<_ResizeGrip> {
+  bool _hover = false;
+  bool _pressed = false;
+  bool _dragging = false;
+
+  void _set(VoidCallback f) => setState(f);
+
+  @override
+  Widget build(BuildContext context) {
+    final hot = _hover || _pressed || _dragging;
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: widget.start ? 0 : null,
+      bottom: widget.start ? null : 0,
+      height: widget.height,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeUpDown,
+        onEnter: (_) => _set(() => _hover = true),
+        onExit: (_) => _set(() => _hover = false),
+        child: Listener(
+          onPointerDown: (_) => _set(() => _pressed = true),
+          onPointerUp: (_) => _set(() => _pressed = false),
+          onPointerCancel: (_) => _set(() => _pressed = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            onVerticalDragStart: (d) {
+              _set(() => _dragging = true);
+              widget.onUpdate(d.globalPosition);
+            },
+            onVerticalDragUpdate: (d) => widget.onUpdate(d.globalPosition),
+            onVerticalDragEnd: (_) {
+              _set(() => _dragging = false);
+              widget.onEnd(true);
+            },
+            onVerticalDragCancel: () {
+              if (!_dragging) return;
+              _set(() => _dragging = false);
+              widget.onEnd(false);
+            },
+            child: Align(
+              alignment: widget.start
+                  ? Alignment.topCenter
+                  : Alignment.bottomCenter,
+              child: Padding(
+                // The block's face stops 1px short on the right and the
+                // bottom (its raised edge); the strip lies on the face.
+                padding: EdgeInsets.only(
+                  right: 1,
+                  bottom: widget.start ? 0 : 1,
+                ),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 90),
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: hot
+                        ? Color.lerp(widget.color, Colors.white, 0.6)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(widget.start ? 4 : 0),
+                      bottom: Radius.circular(widget.start ? 0 : 4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// An ancestor of the block's own [InkWell] rather than a replacement for it:
 /// the tap keeps its ripple, and a long press still beats it in the gesture
 /// arena, because a long press claims the pointer at its threshold while a tap

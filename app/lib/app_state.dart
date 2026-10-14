@@ -35,7 +35,6 @@ const _kCalendarScope = 'ui:calendar-scope';
 const _kCalendarZoom = 'ui:calendar-hour-height';
 const _kCalendarHidden = 'ui:calendar-hidden';
 const _kCalendarBlock = 'ui:calendar-block';
-const _kRailCollapsed = 'ui:rail-collapsed';
 const _kWideDock = 'ui:wide-dock';
 const _kSplitFraction = 'ui:split-fraction';
 const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
@@ -1200,13 +1199,10 @@ class AppState extends ChangeNotifier {
   // `settings` rows like the calendar's zoom, and for the same reason: a phone
   // and a 4K monitor do not want each other's split, so none of this syncs.
 
-  /// The rail is drawn as a strip of dots and icons instead of names.
-  bool railCollapsed = false;
-
   /// Where the dock goes once the window is wide enough not to need it at the
-  /// bottom ([Layout.hasRail]). A narrow window always has it at the bottom,
+  /// bottom ([Layout.isWide]). A narrow window always has it at the bottom,
   /// where a thumb is; past that the two placements are a matter of taste,
-  /// and Marco asked to be able to try both.
+  /// and Marco chose to keep the choice.
   DockEdge wideDock = DockEdge.top;
 
   /// The task list's share of the width when a view opens beside it, or null
@@ -1261,18 +1257,11 @@ class AppState extends ChangeNotifier {
         (a, b) => (a - stored).abs() <= (b - stored).abs() ? a : b,
       );
     }
-    railCollapsed = (await _store.setting(_kRailCollapsed)) == '1';
     wideDock = DockEdge.parse(await _store.setting(_kWideDock)) ?? DockEdge.top;
     tasksPaneCollapsed = (await _store.setting(_kTasksPaneCollapsed)) == '1';
     splitFraction = double.tryParse(await _store.setting(_kSplitFraction) ?? '');
     calendarSplitFraction =
         double.tryParse(await _store.setting(_kCalendarSplitFraction) ?? '');
-  }
-
-  Future<void> setRailCollapsed(bool collapsed) async {
-    railCollapsed = collapsed;
-    notifyListeners();
-    await _store.setSetting(_kRailCollapsed, collapsed ? '1' : '0');
   }
 
   Future<void> setWideDock(DockEdge edge) async {
@@ -1696,6 +1685,26 @@ class AppState extends ChangeNotifier {
   }
 
   bool get timeBlocking => timeBlockCalendar != null;
+
+  /// Edit mode on or off - the calendar toolbar's pencil and Ctrl+E.
+  ///
+  /// Turning it on has to choose where new blocks go, and the same guess the
+  /// editor makes for a fresh drag is the right one: the workspace you are
+  /// in. Turning it off goes through [setTimeBlockCalendar], which is what
+  /// writes the blocks laid out while it was on.
+  Future<void> toggleCalendarEditing() async {
+    if (timeBlocking) {
+      await setTimeBlockCalendar(null);
+      return;
+    }
+    final visible = visibleCalendars;
+    if (visible.isEmpty) return;
+    final preferred = visible.firstWhere(
+      (c) => c.workspaceUuid == currentWorkspaceUuid,
+      orElse: () => visible.first,
+    );
+    await setTimeBlockCalendar(preferred.uuid);
+  }
 
   // ------------------------------------------------------- pending blocks
 
@@ -2147,6 +2156,23 @@ class AppState extends ChangeNotifier {
   }) async {
     if (e.fromFeed || from == to) return;
     await _store.putEvent(e.shiftedBy(from, to, stamp: nowStamp()));
+    await refreshEvents();
+    await _rescheduleNotifications();
+    _mutated();
+  }
+
+  /// Drag one end of a block: its start ([start]) or its end, from the instant
+  /// it was at to [to]. The series when [e] is an occurrence, like a move.
+  Future<void> resizeEvent(
+    CalendarEvent e, {
+    required bool start,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (e.fromFeed || from == to) return;
+    final resized = e.resizedBy(from, to, start: start, stamp: nowStamp());
+    if (resized == null) return;
+    await _store.putEvent(resized);
     await refreshEvents();
     await _rescheduleNotifications();
     _mutated();

@@ -20,6 +20,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../layout.dart';
 import '../theme.dart';
+import '../window_spots.dart';
 
 class TitleBar extends StatelessWidget {
   const TitleBar({
@@ -43,7 +44,14 @@ class TitleBar extends StatelessWidget {
     required this.syncColor,
     required this.syncTooltip,
     this.dock,
+    this.onWindowSize,
+    this.onWindowSpot,
   });
+
+  /// The window presets (see window_spots.dart). Desktop only; null on
+  /// anything that is not a window of its own.
+  final ValueChanged<WindowSize>? onWindowSize;
+  final ValueChanged<WindowSpot>? onWindowSpot;
 
   static const height = 40.0;
 
@@ -86,10 +94,9 @@ class TitleBar extends StatelessWidget {
   final Color syncColor;
   final String syncTooltip;
 
-  /// The calendar lives here rather than in the workspace bar's views menu,
-  /// even though it has a per-workspace scope: it can show *every* workspace at
-  /// once, it replaces the whole window rather than the content area, and it
-  /// has to stay reachable while a per-workspace view is open.
+  /// Unused since the dock took the calendar, the list and settings (see
+  /// `_dock` in main.dart); kept as parameters so a build without the dock
+  /// could put them back.
   final VoidCallback? onToggleCalendar;
   final bool calendarOpen;
 
@@ -176,6 +183,8 @@ class TitleBar extends StatelessWidget {
             onPressed: onToggleSound,
           ),
         if (isDesktop) ...[
+          if (onWindowSize != null && onWindowSpot != null)
+            _WindowMenu(onSize: onWindowSize!, onSpot: onWindowSpot!),
           _Btn(
             tooltip: pinned ? 'Unpin' : 'Always on top',
             icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
@@ -405,6 +414,90 @@ class _VolumePanelState extends State<_VolumePanel> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The window presets: three sizes over five spots. One button, because both
+/// are the same errand - "put the window somewhere useful" - and the title
+/// bar of a 340px window has no room for eight.
+class _WindowMenu extends StatelessWidget {
+  const _WindowMenu({required this.onSize, required this.onSpot});
+
+  final ValueChanged<WindowSize> onSize;
+  final ValueChanged<WindowSpot> onSpot;
+
+  static const _spotIcons = {
+    WindowSpot.topLeft: Icons.north_west_rounded,
+    WindowSpot.topRight: Icons.north_east_rounded,
+    WindowSpot.center: Icons.filter_center_focus_rounded,
+    WindowSpot.bottomLeft: Icons.south_west_rounded,
+    WindowSpot.bottomRight: Icons.south_east_rounded,
+  };
+
+  static const _sizeIcons = {
+    WindowSize.small: Icons.crop_portrait_rounded,
+    WindowSize.tall: Icons.view_agenda_outlined,
+    WindowSize.large: Icons.crop_landscape_rounded,
+  };
+
+  PopupMenuItem<Object> _item(Object value, IconData icon, String label) =>
+      PopupMenuItem<Object>(
+        value: value,
+        height: 36,
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: T.muted),
+            const SizedBox(width: T.s2),
+            Text(label, style: const TextStyle(fontSize: T.fsLabel)),
+          ],
+        ),
+      );
+
+  PopupMenuItem<Object> _heading(String label) => PopupMenuItem<Object>(
+    enabled: false,
+    height: 28,
+    child: Text(
+      label,
+      style: const TextStyle(
+        fontSize: T.fsMeta,
+        fontFamily: T.fontDisplay,
+        fontWeight: T.wMedium,
+        color: T.muted,
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = Layout.of(context);
+    final side = math.min(layout.tapTarget, TitleBar.height);
+    return PopupMenuButton<Object>(
+      tooltip: 'Window size and place',
+      color: T.bgSolid,
+      position: PopupMenuPosition.under,
+      padding: EdgeInsets.zero,
+      onSelected: (v) => switch (v) {
+        final WindowSize s => onSize(s),
+        final WindowSpot s => onSpot(s),
+        _ => null,
+      },
+      itemBuilder: (_) => [
+        _heading('Size'),
+        for (final s in WindowSize.values) _item(s, _sizeIcons[s]!, s.label),
+        const PopupMenuDivider(),
+        _heading('Place'),
+        for (final s in WindowSpot.values) _item(s, _spotIcons[s]!, s.label),
+      ],
+      child: SizedBox(
+        width: side,
+        height: side,
+        child: Icon(
+          Icons.picture_in_picture_alt_outlined,
+          size: layout.actionIcon,
+          color: T.muted,
         ),
       ),
     );

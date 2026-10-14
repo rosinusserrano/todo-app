@@ -11,11 +11,11 @@
 //
 //   1. **Nothing is ever unreachable.** A feature may change shape when it does
 //      not fit - the week grid becomes an agenda, the year stacks into one
-//      column, the workspace bar unrolls into a rail - but no size takes a
+//      column, the dock leaves the bottom edge - but no size takes a
 //      feature away. That is what separates this from a mobile/desktop fork.
 //   2. **The design width is the floor, not the target.** Every padding and
 //      font size in this app was picked against [T.designWidth]; extra room is
-//      spent on *more at once* (a rail, a second pane) rather than on stretching
+//      spent on *more at once* (a second pane) rather than on stretching
 //      what is already there, which is why the task column has a cap.
 //
 // The numbers are minimum *contents*, worked backwards from what the thing
@@ -82,35 +82,22 @@ class Layout {
   /// button around a 14px icon reads as a mis-click waiting to happen.
   double get actionIcon => touch ? 20.0 : 15.0;
 
-  // ------------------------------------------------------------------- rail
+  // ------------------------------------------------------------------- wide
 
-  /// The workspace bar, unrolled down the left edge.
-  static const railWidth = 190.0;
-
-  /// The rail folded down to a strip of dots and icons.
-  static const railCollapsedWidth = 44.0;
-
-  /// Below this the bar's popup menus are the only way the workspace list and
-  /// the views fit at all; above it there is room to have them permanently on
-  /// screen, which is a menu press saved on every switch.
+  /// Past this the dock may leave the bottom edge for the top or the side
+  /// (Settings, `AppState.wideDock`), and a task or a note opens beside the
+  /// list rather than over it on touch. Worked back from what a side dock
+  /// costs: the task column still gets its design width beside it.
   ///
-  /// [railWidth] + [taskColumnMax] would be 810; the rail is worth having well
-  /// before that, so this is set at the point where the task column still gets
-  /// its design width with the rail taken out: 190 + 340 + slack.
-  static const railMinWidth = 560.0;
+  /// (It used to be where the workspace bar unrolled into a 190px rail; the
+  /// dock replaced both, and the threshold stayed.)
+  static const wideMinWidth = 560.0;
 
-  /// The rail lists workspaces *and* views. In a short window that list would
-  /// scroll, which is worse than the menu it replaced.
-  static const railMinHeight = 400.0;
+  /// A wide but short window - a phone on its side, the widget squashed
+  /// against a taskbar - has no height for a side dock's menus.
+  static const wideMinHeight = 400.0;
 
-  bool get hasRail => width >= railMinWidth && height >= railMinHeight;
-
-  /// The views as a bar along the bottom edge - wherever there is no rail,
-  /// pointer or finger alike. It started as a touch-only control, on the
-  /// grounds that a mouse pays for the ▾ menu easily; but a menu hides which
-  /// views exist behind a press on a mouse too, and the narrow window is the
-  /// widget's everyday size.
-  bool get hasViewBar => !hasRail;
+  bool get isWide => width >= wideMinWidth && height >= wideMinHeight;
 
   // ------------------------------------------------------------ content area
 
@@ -124,11 +111,7 @@ class Layout {
   /// worth splitting off - a 200px History column would be neither.
   static const splitMinWidth = 900.0;
 
-  bool get splitsContent =>
-      width >= splitMinWidth && height >= railMinHeight;
-
-  /// Width available to the content column, rail already taken out.
-  double get contentWidth => hasRail ? width - railWidth : width;
+  bool get splitsContent => width >= splitMinWidth && height >= wideMinHeight;
 
   // --------------------------------------------------------------- calendar
 
@@ -170,11 +153,11 @@ class Layout {
   /// is therefore worth more to the calendar.
   static const calendarTaskPaneWidth = T.designWidth;
 
-  /// Height as well as width, for the same reason the rail is gated on it: a
+  /// Height as well as width, for the same reason [isWide] is gated on it: a
   /// short window makes both halves scroll, and two scrolling halves are worse
   /// than the one full-window view they replaced.
   bool get splitsCalendar =>
-      width >= calendarSplitMinWidth && height >= railMinHeight;
+      width >= calendarSplitMinWidth && height >= wideMinHeight;
 
   /// A month tile wants this much to keep two-digit day numbers legible, and
   /// the 8px the year view puts between tiles.
@@ -229,6 +212,5 @@ class LayoutScope extends InheritedWidget {
   final Layout layout;
 
   @override
-  bool updateShouldNotify(LayoutScope oldWidget) =>
-      oldWidget.layout != layout;
+  bool updateShouldNotify(LayoutScope oldWidget) => oldWidget.layout != layout;
 }

@@ -6,7 +6,7 @@
 // block is gone - it punished the wrong action, since moving between workspaces
 // is not what lets a thought rot - so the control has to carry the whole
 // signal, and the escalation is tuned harder than it was. The numbers live in
-// thought_pressure.dart, because the phone's [ViewBar] runs the same one.
+// thought_pressure.dart, because the dock runs the same one.
 //
 // The alarm colour is the complement of the active workspace colour, so it
 // always reads against the window tint rather than blending into it.

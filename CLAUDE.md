@@ -311,11 +311,13 @@ before the shell closes the pane. Two things there are load-bearing:
   is not on the focus path and Esc falls straight through to the shell, skipping
   the list rung. `test/journal_panel_test.dart` pins that rung.
 
-**The workspace bar, the rail and the view bar are no longer drawn** - the
-dock (below) replaced all three at every size, and they stay in the tree of
-files only until the dock's wide placement is settled (TODO 58.12). What
-outlived them: `kBarViews` is still the order **`_swipeView` in `main.dart`**
-walks on touch, and the swipe is still safe to claim because the only other
+**The workspace bar, the rail and the view bar are gone** - the dock (below)
+replaced all three at every size, and the files were deleted once the wide
+placement was settled as "keep the setting". What outlived them lives in
+`ui/workspace_view.dart` (`WorkspaceView`, and `kViewOrder`, the order the
+dock's second segment lists and **`_swipeView` in `main.dart`** walks - one
+list, so the two cannot disagree) and `ui/workspace_form.dart` (the
+create/edit form). The swipe is still safe to claim because the only other
 horizontal gesture in the list is the task `Draggable`, which exists only when
 there is something beside the list to drop onto - a window far wider than any
 phone. `_selectView` is a *destination*, never a toggle: tapping Notes must
@@ -343,18 +345,21 @@ Thoughts is a row of the dock's More, which carries the pile's count and its
 escalation (`ThoughtPulse` in `ui/thought_pressure.dart`, one signal drawn
 wherever the control is), and Add a thought is on its ＋. `ThoughtFooter` has
 two flags, `showCaptureButton` and `showPressure`, both false wherever the dock
-shows, so the bar takes no height at any pile size. It stays in the tree
-because two things still reach for it - `openAndFocus` (the desktop hotkey
-expands its field in place) and the close guard's refusal. Where the footer is
-**not** in the tree - the full-window calendar and the shopping list replace
-the whole body - `_jumpToAddThought` opens `ThoughtSheet` instead; it used to
-focus a field that did not exist, which was Ctrl+Alt+H silently doing nothing
-on the calendar.
+shows, so the bar takes no height at any pile size. It stays in the tree for
+the close guard's refusal. **Every capture path opens `ThoughtSheet`**, on a
+desktop too (`_jumpToAddThought`; focus mode keeps its own field): the hotkey
+used to expand the footer's field in place, except on the full-window
+calendar and the list, which have no footer, so one shortcut opened two
+different things depending on the view. On a keyboard (`enterSaves`, passed
+`!_layout.touch`) Enter saves and closes, Ctrl+Enter saves and stays, and
+Shift+Enter is the newline; the pane's `FocusNode.onKeyEvent` takes Enter
+before the field does, which is what keeps it from also inserting a line.
+Esc closes it unsaved (the shell's Esc ladder, right after the update sheet).
 
 **The dock is the navigation at every size** (`ui/dock.dart`): the workspace
 bar, the rail, the view bar and the title bar's calendar / list / settings
 buttons are not drawn anywhere. It runs along the bottom while the window is
-narrow and, past `Layout.hasRail`, along the edge `AppState.wideDock` names
+narrow and, past `Layout.isWide`, along the edge `AppState.wideDock` names
 (`DockEdge.top`, `left` or `bottom`, chosen in Settings, device-local) -
 `_dockEdge` decides it. A top bar lists each menu the other way up (`_drawn`),
 so the row nearest the bar is the same one a bottom bar puts nearest; a side
@@ -453,9 +458,9 @@ contain every table a later step touches, which is why `journal_test` carries
 
 ### The add field is opened, not permanent
 
-`_adding` on the shell, set by the ＋ on `WorkspaceBar` / `WorkspaceRail`
-(`onAddTask`), by `N` on desktop, and by every capture path (`_jumpToAddTask`
-calls `_openAdd`). `_addShowing` also holds it open while the controller has
+`_adding` on the shell, set by the dock's ＋ (*Add a task*), a mouse click on
+the dock's workspace segment (`DockSegment.onClick`), `N` on desktop, and
+every capture path (`_jumpToAddTask` calls `_openAdd`). `_addShowing` also holds it open while the controller has
 text, so nothing half-typed is folded away; `_closeAdd` refuses a non-empty
 field. Enter adds and keeps the caret; Enter on nothing, Esc, or a tap outside
 closes it. The `N` handler checks the focused node's ancestry for an
@@ -653,6 +658,19 @@ time on one. The rules that are not obvious from the schema:
     moves its series and a move across a DST change keeps the clock reading.
   - A feed's event is never movable (`fromFeed`): the next refresh would put
     it back without a word.
+- **An end is stretched by a grip that is the block's sibling** (`_ResizeGrip`,
+  edit mode only, via `EventBlock.onResizeUpdate`). The grips sit *on top of*
+  the block in a `Stack` rather than inside it, because the block's own
+  `Draggable` would otherwise also get the press and carry the whole thing.
+  A plain vertical drag, safe on touch for the pending grip's reason (the
+  deepest recogniser wins the arena over the scroll view). The grid turns the
+  pointer into a quarter hour against `_bodyKey` - its own box also holds the
+  day headers - clamps it inside the piece's day and a quarter short of the
+  other end, previews it with the move's outline, and writes through
+  `AppState.resizeEvent` → `CalendarEvent.resizedBy`, which, like a move,
+  applies the wall-clock distance to `stored`. A cut (overnight) end has no
+  grip. **The now line is drawn above the blocks** and ignores the pointer;
+  under them it was the one line you could not see on a busy afternoon.
 - The week has two renderings and the mode has only one meaning: `TimeGridView`
   when `Layout.weekGridFits`, `AgendaView` when it does not. Day always uses the
   grid (one column fits anywhere) and the year reflows on its own, so this is
@@ -689,8 +707,14 @@ time on one. The rules that are not obvious from the schema:
   band and the agenda share it. `EventBlock` measures the title and **stands
   it up** (`RotatedBox`, reading downwards) when it does not fit across and
   the block is at least 1.5x as tall as it is wide.
-- **Time-block mode is one nullable uuid**, `AppState.timeBlockCalendarUuid`,
-  and it is resolved through `visibleCalendars` rather than `calendars` — the
+- **Edit mode is one nullable uuid**, `AppState.timeBlockCalendarUuid` (the
+  names are from when it was "time-block" or "quick add" mode, a ⚡; it is the
+  ✎ now, and Ctrl+E in the shell's key handler, both through
+  `AppState.toggleCalendarEditing`). **Moving and stretching blocks exist only
+  while it is on**: `CalendarView` hands `onMoveEvent` / `onResizeEvent` to the
+  grid only then, so outside it a stray drag cannot move a meeting. The uuid
+  is the calendar new blocks go on,
+  resolved through `visibleCalendars` rather than `calendars` — the
   target can go away underneath the setting (unticked, scope narrowed, workspace
   deleted), and "off" is then what the strip on screen already says. It changes
   only what `_createEvent` in `main.dart` does with a finished drag: save
@@ -720,9 +744,9 @@ time on one. The rules that are not obvious from the schema:
 - **The toolbar is one row on touch, and not the desktop's row.** It was three
   (back/step/Today, the date on its own line, bolt/mode/filter) - 106 units of a
   phone above the weekday strip. Now it is `‹ date ›`, a `_ModeCycle` chip that
-  steps D → W → Y, and the `_FilterMenu` as ⋯, which on touch also carries Today
-  and quick add (`onToday` / `onToggleBlocking` non-null is what turns the
-  filter into the ⋯, and it lights while quick add is on). Tapping the date is
+  steps D → W → Y, the ✎ for edit mode, and the `_FilterMenu` as ⋯, which on
+  touch also carries Today (`onToday` non-null is what turns the filter into
+  the ⋯). Tapping the date is
   Today. There is no back arrow: the title bar's calendar button closes it. The
   date **scales down** (`FittedBox`) rather than ellipsing, which is what went
   wrong the last time it shared a row with controls - "August 2026" showed as
@@ -746,8 +770,8 @@ time on one. The rules that are not obvious from the schema:
   shared `ValueNotifier` (`TimeGridView.sharedScroll`), and `page` changing is
   what zeroes the slide in the frame the step lands - so the neighbour that
   slid in and the middle page that replaces it are pixel-identical.
-- **Quick add holds blocks before writing them** (`AppState.pendingBlocks`).
-  Tapping the grid with the bolt on places an adjustable hour; nothing reaches
+- **Edit mode holds tapped blocks before writing them** (`AppState.pendingBlocks`).
+  Tapping the grid in edit mode places an adjustable hour; nothing reaches
   the database until the mode ends. They are deliberately not stored and not
   synced — an unfinished thought about Tuesday is not something another device
   should receive — which also means they do not survive the app closing, the
@@ -1391,6 +1415,13 @@ settings.
 Configured in `main()` via `window_manager` + `flutter_acrylic`: 340×480,
 frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
 
+- **Window presets** (`window_spots.dart`, the title bar's ⧉): a size and a
+  spot, independent. The maths is pure and tested; `_placeWindow` in
+  `main.dart` asks `screen_retriever` for each display's *visible* area (the
+  work area, minus the taskbar) and picks the one holding the window's
+  middle. A new size keeps the spot the window is already in (`spotOf`), so a
+  widget in the bottom-right grows up and left.
+
 - `TitleBar` is the drag handle, via a `DragToMoveArea` **behind** its row,
   not around it. Around it, its pan recogniser is an ancestor of the buttons
   and of a top dock, and a press-and-slide on a dock segment would move the
@@ -1562,10 +1593,10 @@ Notes for changing it:
 - `_layout` on the shell is assigned *during build* and read by the focus
   flight, which runs from a callback and has no builder context. It is a record
   of what layout just decided, so nothing notifies off it.
-- `hasRail` and the split pane are gated on **height** as well as width. The
-  rail itself is gone, but the getter is still what moves the dock off the
-  bottom edge, and a wide, short window (phone landscape, a widget squashed
-  against the taskbar) keeps it at the bottom.
+- `isWide` (it was `hasRail`) and the split pane are gated on **height** as
+  well as width. It is what moves the dock off the bottom edge, and a wide,
+  short window (phone landscape, a widget squashed against the taskbar) keeps
+  it at the bottom.
 
 ## Gotchas
 

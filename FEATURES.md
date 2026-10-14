@@ -525,9 +525,21 @@ Three tiers, none of which need an account, an API key, or a licence:
     to scroll the day, which is the only way to reach the rest of it.
   - Creating only happens on **empty** grid. A click or press on an existing
     event opens that event and nothing else.
-- **Move an event by carrying it.** With a mouse, **drag** a block anywhere -
-  another hour, another day; on a phone, **press and hold** it until it lifts
-  (it ticks), then drag. An outline under it shows the quarter hour and day it
+- **Edit mode** (the ✎ pencil in the calendar's header; **Ctrl+E** on a
+  desktop) is where blocks are changed by hand: moved, stretched, and laid
+  down fast. Outside it a block only opens and a drag only opens the editor,
+  so a stray drag across the week cannot move a meeting. It replaced the ⚡
+  quick-add mode, and everything that mode did is part of it.
+- **Stretch an event by an end.** In edit mode, the top and bottom edges of a
+  block are handles: with a mouse the edge lightens as the pointer comes over
+  it (and the cursor turns to ↕); on a phone it lightens as you touch it.
+  Drag it up or down and an outline shows the new times; let go and the
+  block starts or ends there, on the nearest quarter hour. An end cannot be
+  dragged past the other one. A repeating event stretches as a whole series;
+  one from a subscribed calendar has no handles.
+- **Move an event by carrying it** (in edit mode). With a mouse, **drag** a
+  block anywhere - another hour, another day; on a phone, **press and hold**
+  it until it lifts (it ticks), then drag. An outline under it shows the quarter hour and day it
   will land on, with the new times; let go and it is moved, the same length as
   before. Hold it against the left or right edge to carry it into the next or
   previous week. A repeating event moves as a whole series, by the same
@@ -554,15 +566,15 @@ Three tiers, none of which need an account, an API key, or a licence:
   workspace's own calendar, the details card and the right-click menu offer
   *Go to workspace*. Beside the task list the calendar stays open and the list
   switches; where the calendar has the whole window it closes onto that list.
-- **Time-block mode** (⚡ in the header) is for laying out a whole week at once.
-  Pick a calendar once from the strip of chips that appears under the header, and
-  from then on every drag saves an event straight away, titled after that
+- **Laying out a whole week at once** is edit mode too. The strip of chips under
+  the header says which calendar new blocks go on ("New blocks on"), and every
+  drag on empty grid saves an event straight away, titled after that
   calendar — no form, no dismissing anything. Planning a week is the same gesture
   twenty times over and nineteen of the titles are the same word, so the editor
   in between is twenty dismissals. The draft under the pointer is drawn in the
   target's colour and carries its name, so you can see what a drag is about to
-  become. Switching target is one tap on another chip; ⚡ again, or the ✕ on the
-  strip, leaves the mode. Anything a block needs beyond a span — a note, a
+  become. Switching target is one tap on another chip; ✎ again, Ctrl+E, or the
+  ✕ on the strip, leaves the mode. Anything a block needs beyond a span — a note, a
   reminder, a different title — is one tap on the block afterwards.
 - **A block can run past midnight.** 22:00 to 04:00 is a night, and it is drawn
   as one: two hours at the foot of one day and four at the head of the next,
@@ -668,12 +680,11 @@ Three tiers, none of which need an account, an API key, or a licence:
   on, so the glimpse is never empty, and they are drawn at the hour you are
   scrolled to. The year view slides without a neighbour.
 - **On a phone the header is one line**: ‹ the date ›, a chip showing the view
-  (D, W or Y — tap it for the next), and ⋯. **Tap the date to go back to
-  today.** ⋯ holds Today, **quick add** (the ⋯ lights up while it is on), and
-  the calendar filter, new calendar and import. The title bar's calendar button
+  (D, W or Y — tap it for the next), the ✎ for edit mode (lit while it is
+  on), and ⋯. **Tap the date to go back to today.** ⋯ holds Today and the
+  calendar filter, new calendar and import. The title bar's calendar button
   closes the calendar. It was three rows; the grid gets that height back.
-- **Drag a placed block anywhere, including onto another day.** With quick add
-  on, a long press lifts a block off the grid — it follows your finger as a
+- **Drag a placed block anywhere, including onto another day.** In edit mode, a long press lifts a block off the grid — it follows your finger as a
   thing being carried — and it lands where you let go, on whatever day is under
   it. Hold it against the left or right edge and the grid moves under it a week
   (or a day, or a year) at a time, which is how a block reaches a day that is
@@ -992,9 +1003,10 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **With a mouse, rest on a part** and its menu opens; move along the bar and
   the next one opens at once; move away from both the part and its menu and
   it closes. Passing over the bar on the way somewhere else opens nothing.
-  Click a row to go there - the row under the pointer lights. Clicking the
-  part itself keeps its menu open until you pick or click elsewhere, and
-  pressing and sliding works with a mouse as it does with a finger.
+  Click a row to go there - the row under the pointer lights. **Clicking the
+  workspace part itself goes to its add-task field**; clicking any other part
+  keeps its menu open until you pick or click elsewhere. Pressing and sliding
+  works with a mouse as it does with a finger.
 - **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
   finger to a row - it lights, and the phone ticks - and let go to go there.
   Let go anywhere off the menu and nothing happens. Sliding along the bar
@@ -1038,6 +1050,14 @@ at the screen gives nothing away) and its lock is **opt-in**.
   ordinary window that still called itself pinned, and it stayed behind
   everything until the app was restarted.
 - **Minimize** (—).
+- **Window presets** (the ⧉ beside the pin) — three sizes and five places, one
+  click each. *Small* is the widget's own 340×480, *Tall* is a column the
+  height of the screen, *Large* is most of it (room for the week beside the
+  list). *Top left*, *Top right*, *Centre*, *Bottom left* and *Bottom right*
+  put the window there at the size it is. A new size keeps the corner the
+  window is in, so a widget parked bottom-right grows up and to the left
+  rather than off the screen. Everything is measured against the screen the
+  window is on, minus the taskbar.
 - **Close guard** (✕ / Alt+F4) — the window *refuses to close* while any task or
   side thought remains, so you're forced to move everything into your real
   planner (or check it off) first. The footer shakes red ("Clear it all first")
@@ -1050,15 +1070,21 @@ at the screen gives nothing away) and its lock is **opt-in**.
   Anything still playing is stopped first, since an open network stream is the
   one part of the wait that can be got out of the way in advance.
 - **Global shortcuts** (desktop) — **Ctrl+Alt+T** jumps straight into the
-  add-task field and **Ctrl+Alt+H** into the side-thought field, from anywhere,
+  add-task field and **Ctrl+Alt+H** opens the thought pane, from anywhere,
   even when the widget is minimised or behind another window. Both raise the
   window and clear the sound sheet first. **Ctrl+Alt+T** also leaves focus mode,
   since the add field sits behind the focus overlay; **Ctrl+Alt+H** no longer
   does, because focus mode has its own thought field. If another application
   already owns a combination, the footer says so rather than leaving a dead
-  shortcut. Where there is no footer on screen - the calendar with the whole
-  window, the shopping list - **Ctrl+Alt+H** opens the thought pane over it,
-  and closing the pane lands back where you were. It used to do nothing there.
+  shortcut.
+- **The thought pane is the same everywhere.** Ctrl+Alt+H and the dock's
+  *Add a thought* open it over whatever is on screen, on a desktop as on a
+  phone; it used to be the small field at the foot of the list on most
+  screens and the pane only on the calendar. With a keyboard, **Enter** saves
+  the thought and closes the pane (back to where you were), **Ctrl+Enter**
+  saves it and clears the pane for the next one, and **Shift+Enter** is a new
+  line. Esc closes it without saving. On a phone the keyboard's return is
+  still a new line, with *Save* and *Save & another* under the thumb.
 - **Esc** unwinds one layer at a time — the sound sheet, then the focus-mode
   thought field, then focus mode, then the parked-thoughts panel.
   **Ctrl+Enter** in any capture field
@@ -1383,6 +1409,17 @@ reminders are both there now**, queued for 0.18.0.
     gone. Calendar events can be dragged to another time or day (a mouse drags
     straight away, a finger holds first). Ctrl+Alt+H works on the calendar
     and the shopping list: it opens the thought pane over them.
+  - **Edit mode, and the rest of the shelf**: the calendar's ⚡ quick add is now
+    an **edit mode** (✎, or Ctrl+E on a desktop) - blocks move and, new,
+    **stretch by their top or bottom edge** only while it is on, so a stray
+    drag cannot move a meeting. The red line for now is drawn over the blocks
+    instead of under them. On a desktop a new thought always opens the thought
+    pane (Enter saves and closes, Ctrl+Enter saves and starts another,
+    Shift+Enter is a new line). A click on the dock's workspace goes to the
+    add field. The title bar has **window presets**: Small, Tall or Large, in
+    any corner or the centre. A sideways swipe on the list walks the same
+    views the dock lists (Tasks, Notes, Collections, Parked, History). The old
+    workspace bar, rail and view bar are gone from the code too.
   - **Calendar and list touches**: the next and previous week show beside the
     one you are on as you swipe, so a short drag is a glance; pressing to
     create starts in the quarter hour you pressed, not the nearest one; events

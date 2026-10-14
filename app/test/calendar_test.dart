@@ -1192,6 +1192,128 @@ void main() {
     });
   });
 
+  group('stretching a block', () {
+    final monday = DateTime(2026, 7, 27);
+    final days = [for (var i = 0; i < 7; i++) monday.add(Duration(days: i))];
+    final wed10 = days[2].add(const Duration(hours: 10));
+
+    late List<(bool, DateTime, DateTime)> resized;
+    late List<(CalendarEvent, DateTime, DateTime)> moved;
+
+    Future<void> pump(WidgetTester tester, CalendarEvent e,
+        {bool editing = true}) async {
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      resized = [];
+      moved = [];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TimeGridView(
+            days: days,
+            events: [e],
+            colorFor: (_) => T.accent,
+            hasAttachment: (_) => false,
+            taskCountFor: (_) => 0,
+            onOpenEvent: (_) {},
+            onEventMenu: (_, _) {},
+            onCreate: (_, _) {},
+            onMoveEvent:
+                editing ? (e, from, to) => moved.add((e, from, to)) : null,
+            onResizeEvent: editing
+                ? (e, start, from, to) => resized.add((start, from, to))
+                : null,
+          ),
+        ),
+      ));
+    }
+
+    Future<void> drag(WidgetTester tester, Offset from, Offset by,
+        {PointerDeviceKind kind = PointerDeviceKind.mouse}) async {
+      final g = await tester.startGesture(from, kind: kind);
+      for (var i = 1; i <= 8; i++) {
+        await g.moveTo(from + by * (i / 8));
+        await tester.pump();
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the bottom edge moves the end, the top edge the start',
+        (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      await pump(tester, e);
+      final box = tester.getRect(find.byType(EventBlock));
+
+      await drag(tester, box.bottomCenter - const Offset(0, 3),
+          const Offset(0, kHourHeight));
+      expect(resized.single, (false, e.end, e.end.add(const Duration(hours: 1))));
+      expect(moved, isEmpty, reason: 'the edge, not the block');
+
+      resized.clear();
+      await drag(tester, box.topCenter + const Offset(0, 3),
+          const Offset(0, -kHourHeight / 2));
+      expect(resized.single,
+          (true, e.start, e.start.subtract(const Duration(minutes: 30))));
+    });
+
+    testWidgets('a finger drags the edge without holding it first',
+        (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      await pump(tester, e);
+      final box = tester.getRect(find.byType(EventBlock));
+      await drag(tester, box.bottomCenter - const Offset(0, 4),
+          const Offset(0, kHourHeight), kind: PointerDeviceKind.touch);
+      expect(resized.single.$3, e.end.add(const Duration(hours: 1)));
+    });
+
+    testWidgets('an end cannot be dragged past the other one', (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      await pump(tester, e);
+      final box = tester.getRect(find.byType(EventBlock));
+      await drag(tester, box.bottomCenter - const Offset(0, 3),
+          const Offset(0, -kHourHeight * 4));
+      expect(resized.single.$3, wed10.add(const Duration(minutes: 15)));
+    });
+
+    testWidgets('outside edit mode the block neither moves nor stretches',
+        (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      await pump(tester, e, editing: false);
+      final box = tester.getRect(find.byType(EventBlock));
+      await drag(tester, box.bottomCenter - const Offset(0, 3),
+          const Offset(0, kHourHeight));
+      await drag(tester, box.center, const Offset(0, kHourHeight));
+      expect(resized, isEmpty);
+      expect(moved, isEmpty);
+    });
+
+    test('stretching an occurrence stretches the series', () async {
+      final s = await device();
+      await s.refreshCalendars();
+      final cal = s.calendars.single.uuid;
+      final first = DateTime(2026, 7, 6, 9);
+      final saved = await s.saveEvent(
+        calendarUuid: cal,
+        title: 'Stand-up',
+        start: first,
+        end: first.add(const Duration(minutes: 30)),
+        recur: 'weekly',
+      );
+      final occurrence =
+          saved!.occurrencesBetween(days.first, days.last).single;
+      await s.resizeEvent(
+        occurrence,
+        start: false,
+        from: occurrence.end,
+        to: occurrence.end.add(const Duration(minutes: 45)),
+      );
+      final row = (await s.store.eventByUuid(saved.uuid))!;
+      expect(row.start, first);
+      expect(row.end, DateTime(2026, 7, 6, 10, 15));
+      await s.store.close();
+    });
+  });
+
   group('an event block', () {
     final day = DateTime(2026, 7, 30);
 

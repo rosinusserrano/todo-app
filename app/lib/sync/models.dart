@@ -1594,6 +1594,29 @@ class CalendarEvent implements SyncRow {
     );
   }
 
+  /// This event with one end moved: the [start] or the end that was at
+  /// [from] now at [to], the other end left where it is. Applied to the
+  /// stored row the way [shiftedBy] is, so stretching Tuesday's occurrence
+  /// stretches the series. Null when it would leave the event less than
+  /// [minLength] long - an end dragged past the other one is not a request.
+  CalendarEvent? resizedBy(
+    DateTime from,
+    DateTime to, {
+    required bool start,
+    required String stamp,
+    Duration minLength = const Duration(minutes: 15),
+  }) {
+    final base = stored;
+    final s = start ? shiftWallClock(base.start, from, to) : base.start;
+    final e = start ? base.end : shiftWallClock(base.end, from, to);
+    if (e.difference(s) < minLength) return null;
+    return base.copyWith(
+      startAt: reminderStamp(s),
+      endAt: reminderStamp(e),
+      updatedAt: stamp,
+    );
+  }
+
   /// A key that distinguishes two occurrences of one series, which share a
   /// uuid. Occurrence uuids are deliberately *not* derived the way
   /// [Task.nextOccurrence]'s are: derivation exists so that two devices writing

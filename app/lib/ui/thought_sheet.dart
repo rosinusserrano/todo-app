@@ -25,6 +25,14 @@
 // pulled out mid-conversation to write one line down - so it is the same widget
 // with three strings in it rather than a second copy that would drift.
 //
+// On a desktop it is the capture surface too (it used to be the footer's
+// field, expanding in place, everywhere but the full-window calendar - two
+// ways of doing one thing depending on what happened to be open). There the
+// keys are the point: Enter saves and closes, Ctrl+Enter saves and clears for
+// the next one, Shift+Enter is a new line ([enterSaves]). A phone keeps Enter
+// as a new line: its keyboard has no Ctrl to chain with, and the buttons are
+// under the thumb anyway.
+//
 // Full height *below the title bar*, that is. It used to start at the top of
 // the window and be drawn under the bar, which is above every sheet in the
 // shell's Stack - so this pane's ✕ landed exactly under the concentration-sound
@@ -34,6 +42,7 @@
 // itself says "Todo" and holds window controls.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'title_bar.dart';
@@ -47,7 +56,12 @@ class ThoughtSheet extends StatefulWidget {
     this.glyph,
     this.title,
     this.hint,
+    this.enterSaves = false,
   });
+
+  /// Enter saves and closes, Ctrl+Enter saves and stays for another, and
+  /// Shift+Enter is the new line. Off on touch, where Enter is a new line.
+  final bool enterSaves;
 
   final Color accent;
 
@@ -73,7 +87,25 @@ class ThoughtSheet extends StatefulWidget {
 
 class _ThoughtSheetState extends State<ThoughtSheet> {
   final _controller = TextEditingController();
-  final _focus = FocusNode();
+  late final _focus = FocusNode(onKeyEvent: _onKey);
+
+  /// Ahead of the field: a key the focused node handles never reaches the
+  /// text input, so Enter here saves rather than also breaking the line.
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (!widget.enterSaves || e is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (e.logicalKey != LogicalKeyboardKey.enter &&
+        e.logicalKey != LogicalKeyboardKey.numpadEnter) {
+      return KeyEventResult.ignored;
+    }
+    // Mid-composition (an IME's candidate list) Enter picks the candidate.
+    if (_controller.value.composing.isValid) return KeyEventResult.ignored;
+    final keys = HardwareKeyboard.instance;
+    if (keys.isShiftPressed) return KeyEventResult.ignored;
+    _submit(andClose: !(keys.isControlPressed || keys.isMetaPressed));
+    return KeyEventResult.handled;
+  }
 
   /// How many went in this sitting. Shown rather than the pile's total: the
   /// total is the footer's job, and while this is open the point is that the
@@ -197,9 +229,10 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                         hintText: widget.hint,
                         border: InputBorder.none,
                       ),
-                      // Enter makes a new line here, unlike the footer's one-
-                      // line field: this is a box you were given the whole
-                      // screen for, so it would be odd if it took one line.
+                      // Several lines are welcome: this is a box you were
+                      // given the whole screen for. On a phone Enter is the
+                      // new line; with a keyboard it is Shift+Enter, and
+                      // Enter saves (see _onKey).
                       keyboardType: TextInputType.multiline,
                       textCapitalization: TextCapitalization.sentences,
                     ),
@@ -212,18 +245,32 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                       // Chaining, for the case this exists for: somebody lists
                       // three books at you and closing between each is three
                       // taps you do not have time for.
-                      TextButton(
-                        onPressed: () => _submit(andClose: false),
-                        style: TextButton.styleFrom(
-                          foregroundColor: T.muted,
-                          minimumSize: const Size(0, 44),
-                        ),
-                        child: const Text(
-                          'Save & another',
-                          style: TextStyle(fontSize: T.fsLabel),
+                      Tooltip(
+                        message: widget.enterSaves ? 'Ctrl+Enter' : '',
+                        child: TextButton(
+                          onPressed: () => _submit(andClose: false),
+                          style: TextButton.styleFrom(
+                            foregroundColor: T.muted,
+                            minimumSize: const Size(0, 44),
+                          ),
+                          child: const Text(
+                            'Save & another',
+                            style: TextStyle(fontSize: T.fsLabel),
+                          ),
                         ),
                       ),
                       const Spacer(),
+                      if (widget.enterSaves)
+                        const Padding(
+                          padding: EdgeInsets.only(right: T.s2),
+                          child: Text(
+                            'Shift+Enter: new line',
+                            style: TextStyle(
+                              fontSize: T.fsMeta,
+                              color: T.muted,
+                            ),
+                          ),
+                        ),
                       FilledButton(
                         onPressed: _submit,
                         style: FilledButton.styleFrom(

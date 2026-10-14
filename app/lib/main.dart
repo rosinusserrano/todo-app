@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:media_kit/media_kit.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -37,6 +38,7 @@ import 'sync/protocol.dart';
 import 'sync/sync_service.dart';
 import 'theme.dart';
 import 'tray.dart';
+import 'window_spots.dart';
 import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
 import 'ui/calendar/calendar_view.dart';
@@ -68,8 +70,8 @@ import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/thought_sheet.dart';
 import 'ui/update_sheet.dart';
-import 'ui/view_bar.dart';
-import 'ui/workspace_bar.dart';
+import 'ui/workspace_form.dart';
+import 'ui/workspace_view.dart';
 import 'web_safe_area.dart';
 
 Future<void> main() async {
@@ -1058,32 +1060,20 @@ class _WidgetShellState extends State<WidgetShell>
     _openAdd();
   }
 
-  /// Thoughts are capturable from both sides now, so this keeps focus mode
-  /// intact and uses whichever field is actually on screen.
+  /// Ctrl+Alt+H, the quick action, the dock's ＋. Focus mode keeps its own
+  /// field, so capturing does not end it; everywhere else it is the capture
+  /// pane, on every device. On a desktop that used to be the footer's field
+  /// expanding in place - except on the full-window calendar and the list,
+  /// which draw no footer - and one shortcut opening two different things
+  /// depending on the view was the complaint. Closing the pane lands back on
+  /// whatever was under it.
   Future<void> _jumpToAddThought() async {
     if (!await _surfaceForCapture(leaveFocus: false)) return;
     if (s.focusTask != null) {
       _openFocusThought();
       return;
     }
-    // On touch the footer has no field to focus - the bubble's pane is the
-    // capture surface there, and it is the one this shortcut's desktop twin
-    // would be opening if it existed on a phone.
-    if (_layout.touch) {
-      _openThoughtCapture();
-      return;
-    }
-    // The footer's field is not in the tree everywhere: the full-window
-    // calendar and the shopping list replace the whole body, footer included.
-    // Focusing a field that does not exist was the shortcut silently doing
-    // nothing on the calendar; the capture pane opens over whatever is there,
-    // and closing it lands back on it.
-    final footer = _footerKey.currentState;
-    if (footer == null) {
-      _openThoughtCapture();
-      return;
-    }
-    footer.openAndFocus();
+    _openThoughtCapture();
   }
 
   /// The quick action for the task in focus was picked.
@@ -1444,6 +1434,21 @@ class _WidgetShellState extends State<WidgetShell>
             _openAdd();
             return KeyEventResult.handled;
           }
+          // Ctrl+E: the calendar's edit mode, on and off. In a browser too -
+          // there it would otherwise be the address bar's search.
+          if (event is KeyDownEvent &&
+              (isDesktop || isWeb) &&
+              s.showCalendar &&
+              event.logicalKey == LogicalKeyboardKey.keyE &&
+              HardwareKeyboard.instance.isControlPressed &&
+              !HardwareKeyboard.instance.isAltPressed &&
+              !HardwareKeyboard.instance.isShiftPressed &&
+              FocusManager.instance.primaryFocus?.context
+                      ?.findAncestorStateOfType<EditableTextState>() ==
+                  null) {
+            s.toggleCalendarEditing();
+            return KeyEventResult.handled;
+          }
           // Ctrl + / Ctrl - / Ctrl 0, as in a browser. Not in one: the
           // browser takes those keys for its own zoom, and both at once would
           // be two zooms multiplied.
@@ -1472,6 +1477,10 @@ class _WidgetShellState extends State<WidgetShell>
           }
           if (_updateOpen) {
             _closeUpdateSheet();
+          } else if (_thoughtCapture) {
+            // What was typed stays unsaved, as with the ✕: Esc is "never
+            // mind", and Enter is right there for "keep it".
+            _closeThoughtCapture();
           } else if (_noteOn != null) {
             _closeNoteOn();
           } else if (_settingsOpen) {
@@ -1591,6 +1600,7 @@ class _WidgetShellState extends State<WidgetShell>
             accent: T.thoughts,
             onAdd: (text) => s.addThought(text),
             onClose: _closeThoughtCapture,
+            enterSaves: !_layout.touch,
           ),
         ),
 
@@ -1609,6 +1619,7 @@ class _WidgetShellState extends State<WidgetShell>
               hint: 'Add a line to its notes…',
               onAdd: (text) async => s.appendToNotes(task, text),
               onClose: _closeNoteOn,
+              enterSaves: !_layout.touch,
             );
           },
         ),
@@ -1658,6 +1669,8 @@ class _WidgetShellState extends State<WidgetShell>
             listOpen: s.showList,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
+            onWindowSize: isDesktop ? (size) => _placeWindow(size: size) : null,
+            onWindowSpot: isDesktop ? (spot) => _placeWindow(spot: spot) : null,
             // Along the top the dock is in this bar, beside the name, rather
             // than a second bar under it. It fades with the body in focus
             // mode, which this bar otherwise stays visible through.
@@ -1843,12 +1856,9 @@ class _WidgetShellState extends State<WidgetShell>
     return cal == null ? '' : s.calendarName(cal);
   }
 
-  /// Back to the task list from the rail.
-  ///
-  /// The ▾ menu closes a view by re-picking it, which works because the menu
-  /// only ever offers the three; a rail lists Tasks as a destination of its
-  /// own, and a destination has to be reachable from any of them. Every branch
-  /// is a toggle and at most one view is open, so at most one fires.
+  /// Back to the task list - the dock's Tasks row, a panel header's title.
+  /// Every branch is a toggle and at most one view is open, so at most one
+  /// fires.
   void _showTasks() {
     if (_clearOverlays()) return;
     if (s.showHistory) s.toggleHistory();
@@ -1861,10 +1871,9 @@ class _WidgetShellState extends State<WidgetShell>
 
   /// Go to one view directly, rather than toggling towards it.
   ///
-  /// The ▾ menu's entries are toggles - pressing the open one closes it - which
-  /// is right for a menu you opened on purpose. The bottom bar and the swipe are
-  /// *destinations*: tapping Notes must land on Notes whatever was showing, and
-  /// a swipe that toggled would go backwards half the time.
+  /// The dock's rows and the swipe are *destinations*: picking Notes must
+  /// land on Notes whatever was showing, and a swipe that toggled would go
+  /// backwards half the time.
   void _selectView(WorkspaceView? view) {
     if (_clearOverlays()) return;
     _showTasks();
@@ -1884,20 +1893,21 @@ class _WidgetShellState extends State<WidgetShell>
     }
   }
 
-  /// One step along [kBarViews]. Returns false at either end, so a swipe there
-  /// does nothing rather than wrapping around - a list with a first and last
-  /// entry that silently loops is one you cannot tell your position in.
+  /// One step along [kViewOrder]. Returns false at either end, so a swipe
+  /// there does nothing rather than wrapping around - a list with a first and
+  /// last entry that silently loops is one you cannot tell your position in.
   bool _swipeView(int direction) {
-    final at = kBarViews.indexOf(_openView);
-    // History is not on the bar, so a swipe from it has no defined neighbour.
-    // Going back to the list is the honest answer.
+    final at = kViewOrder.indexOf(_openView);
+    // The thought pile is not one of the workspace's views, so a swipe from
+    // it has no defined neighbour. Going back to the list is the honest
+    // answer.
     if (at < 0) {
       _showTasks();
       return true;
     }
     final next = at + direction;
-    if (next < 0 || next >= kBarViews.length) return false;
-    _selectView(kBarViews[next]);
+    if (next < 0 || next >= kViewOrder.length) return false;
+    _selectView(kViewOrder[next]);
     return true;
   }
 
@@ -1965,6 +1975,27 @@ class _WidgetShellState extends State<WidgetShell>
 
   void _closeUpdateSheet() {
     if (_updateOpen) setState(() => _updateOpen = false);
+  }
+
+  /// A window preset: a [size] where the window already is, or the window
+  /// as it is at a [spot]. See window_spots.dart.
+  Future<void> _placeWindow({WindowSize? size, WindowSpot? spot}) async {
+    if (await windowManager.isMaximized()) await windowManager.unmaximize();
+    final bounds = await windowManager.getBounds();
+    Rect areaOf(Display d) =>
+        (d.visiblePosition ?? Offset.zero) & (d.visibleSize ?? d.size);
+    final area = areaFor(
+      bounds,
+      [for (final d in await screenRetriever.getAllDisplays()) areaOf(d)],
+      areaOf(await screenRetriever.getPrimaryDisplay()),
+    );
+    await windowManager.setBounds(
+      placeWindow(
+        area: area,
+        size: size?.within(area) ?? bounds.size,
+        spot: spot ?? spotOf(bounds, area),
+      ),
+    );
   }
 
   void _openThoughtCapture() {
@@ -2047,18 +2078,16 @@ class _WidgetShellState extends State<WidgetShell>
       return _calendar();
     }
 
-    // Narrow: the workspace bar across the top, with its two ▾ menus. Wide
-    // enough and the same controls unroll into a rail down the left, where the
-    // workspace list and the views are on screen instead of behind a press.
-    // The bar and the swipe are the same navigation, offered twice: the bar
-    // says which views exist, the swipe is the cheap way between them. Both
-    // walk kBarViews, so they cannot disagree about what is next to what.
+    // The dock and the swipe are the same navigation, offered twice: the
+    // dock says which views exist, the swipe is the cheap way between them.
+    // Both walk kViewOrder, so they cannot disagree about what is next to
+    // what.
     //
     // A horizontal drag is safe to claim here. The one other horizontal gesture
     // in the list is the task Draggable, and that only exists when there is
     // something beside the list to drop onto (see _plannable) - which needs a
     // window far wider than any phone, so the two can never both be live.
-    final content = _layout.touch && !_layout.hasRail
+    final content = _layout.touch && !_layout.isWide
         ? GestureDetector(
             behavior: HitTestBehavior.translucent,
             onHorizontalDragEnd: (details) {
@@ -2099,7 +2128,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// Not applied where there is room for both (the rail, the split), because
   /// there the chrome is beside the note rather than crowding it.
   bool get _noteTakesScreen =>
-      _layout.touch && !_layout.hasRail && s.showJournal && _noteOpen;
+      _layout.touch && !_layout.isWide && s.showJournal && _noteOpen;
 
   /// Where expanding a task is the *shell's* job rather than the row's.
   ///
@@ -2108,7 +2137,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// and the footer are using, and a row inside a scrolling list cannot take
   /// them. Anywhere else the row grows in place, which keeps the list around
   /// it - scroll past an expanded task on a desktop and the next one is there.
-  bool get _expandsToScreen => _layout.touch && !_layout.hasRail;
+  bool get _expandsToScreen => _layout.touch && !_layout.isWide;
 
   /// The expanded task, or null if nothing is expanded or the row it named has
   /// since left the list (completed here, or merged away by sync).
@@ -2153,16 +2182,16 @@ class _WidgetShellState extends State<WidgetShell>
 
   /// Along the bottom while the window is narrow - a phone, the desktop
   /// widget at its own size - where a thumb is and where the eye ends up.
-  /// Past [Layout.hasRail] it goes where Settings says: across the top or
+  /// Past [Layout.isWide] it goes where Settings says: across the top or
   /// down the side.
-  DockEdge get _dockEdge => _layout.hasRail ? s.wideDock : DockEdge.bottom;
+  DockEdge get _dockEdge => _layout.isWide ? s.wideDock : DockEdge.bottom;
 
-  /// Outside the rail and outside the split, spanning the whole width: the
+  /// Outside the split, spanning the whole width: the
   /// pressure meter is about the pile, not about the workspace - or the view -
   /// you happen to be in.
   Widget _footer(Color ws) => ThoughtFooter(
     key: _footerKey,
-    onCapture: _layout.touch ? _openThoughtCapture : null,
+    onCapture: _openThoughtCapture,
     // Wherever the dock is drawn it is the whole control - the way in, the
     // count and the escalation - and this bar has nothing of its own left to
     // say. It stays in the tree rather than being dropped from it because the
@@ -2236,6 +2265,10 @@ class _WidgetShellState extends State<WidgetShell>
           ink: T.inkOn(ws),
           dimmed: s.showCalendar || s.showList,
           semanticLabel: 'Workspace: ${current?.name ?? ''}',
+          // A click on the workspace itself goes to its add field: the
+          // hover already showed the list of workspaces, and "this one" is
+          // the commonest thing to want of it.
+          onClick: _jumpToAddTask,
           items: [
             DockItem(
               icon: Icons.add_rounded,
@@ -2262,13 +2295,7 @@ class _WidgetShellState extends State<WidgetShell>
           dimmed: global,
           dot: s.groupsDueForReview.isNotEmpty,
           // Nearest the thumb at the bottom: Tasks is the one you go back to.
-          items: [
-            viewItem(WorkspaceView.history),
-            viewItem(WorkspaceView.parked),
-            viewItem(WorkspaceView.collections),
-            viewItem(WorkspaceView.notes),
-            viewItem(null),
-          ],
+          items: [for (final v in kViewOrder.reversed) viewItem(v)],
         ),
         DockSegment(
           icon: moreIcon,
@@ -3198,9 +3225,9 @@ class _WidgetShellState extends State<WidgetShell>
   /// The add field, folded: one line at the head of the list saying a task can
   /// be added here, which turns into the field in place when pressed.
   ///
-  /// The ＋ on the workspace bar and N are still there, but on a wide window
-  /// the ＋ is in the rail - the far side of the window from where the task
-  /// will appear - and a shortcut is only a way in once you know it. Adding a
+  /// The dock's ＋, a click on its workspace and N are ways in too, but they
+  /// are not where the task will appear, and a shortcut is only a way in
+  /// once you know it. Adding a
   /// task is the commonest thing done in this app, so the way to do it is on
   /// the list itself. Same `_adding` state as the other two, so there is still
   /// one field; same padding as the field, so opening it does not move the

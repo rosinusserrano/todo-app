@@ -1688,6 +1688,7 @@ class _WidgetShellState extends State<WidgetShell>
             syncTooltip: widget.sync.describe(),
             windowModes: isDesktop ? s.windowModes : null,
             onWindowMode: _placeWindow,
+            onFullScreen: _fullScreen,
             onSaveWindowMode: _saveWindowMode,
             onRemoveWindowMode: s.removeWindowMode,
             // Along the top the dock is in this bar, beside the name, rather
@@ -1996,38 +1997,46 @@ class _WidgetShellState extends State<WidgetShell>
     if (_updateOpen) setState(() => _updateOpen = false);
   }
 
-  /// A window mode from the title bar: its size, at its spot, on the
-  /// screen the window is on. See window_spots.dart.
+  /// A saved window mode from the title bar: the bounds it was saved with,
+  /// or the same place in proportion when its screen is gone. See
+  /// window_spots.dart.
   Future<void> _placeWindow(WindowMode mode) async {
     if (await windowManager.isMaximized()) await windowManager.unmaximize();
-    final (_, area) = await _windowAndArea();
-    await windowManager.setBounds(mode.placeIn(area));
+    final (_, area, areas) = await _windowAndAreas();
+    await windowManager.setBounds(mode.placeIn(areas, area));
   }
 
-  /// The window as it is now, kept as a mode: its exact size, at whichever
-  /// spot it is nearest.
+  /// The title bar's one built-in mode. Maximised rather than a saved
+  /// rectangle: it means the whole screen on every screen.
+  Future<void> _fullScreen() => windowManager.maximize();
+
+  /// The window as it is now, kept under a name asked for here.
   Future<void> _saveWindowMode() async {
-    final (bounds, area) = await _windowAndArea();
-    await s.addWindowMode(
-      WindowMode(
-        spot: spotOf(bounds, area),
-        width: bounds.width.roundToDouble(),
-        height: bounds.height.roundToDouble(),
-      ),
+    final (bounds, area, _) = await _windowAndAreas();
+    if (!mounted) return;
+    final name = await askWindowModeName(
+      context,
+      taken: [for (final m in s.windowModes) m.name],
     );
+    if (name == null) return;
+    await s.addWindowMode(WindowMode(name: name, bounds: bounds, area: area));
   }
 
-  /// The window's bounds and the work area of the screen it is on.
-  Future<(Rect, Rect)> _windowAndArea() async {
+  /// The window's bounds, the work area of the screen it is on, and the
+  /// work areas of every screen.
+  Future<(Rect, Rect, List<Rect>)> _windowAndAreas() async {
     final bounds = await windowManager.getBounds();
     Rect areaOf(Display d) =>
         (d.visiblePosition ?? Offset.zero) & (d.visibleSize ?? d.size);
+    final areas = [
+      for (final d in await screenRetriever.getAllDisplays()) areaOf(d),
+    ];
     final area = areaFor(
       bounds,
-      [for (final d in await screenRetriever.getAllDisplays()) areaOf(d)],
+      areas,
       areaOf(await screenRetriever.getPrimaryDisplay()),
     );
-    return (bounds, area);
+    return (bounds, area, areas);
   }
 
   void _openThoughtCapture() {

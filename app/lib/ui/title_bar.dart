@@ -21,6 +21,7 @@ import 'package:window_manager/window_manager.dart';
 import '../layout.dart';
 import '../theme.dart';
 import '../window_spots.dart';
+import 'form_sheet.dart';
 
 class TitleBar extends StatelessWidget {
   const TitleBar({
@@ -46,15 +47,17 @@ class TitleBar extends StatelessWidget {
     this.dock,
     this.windowModes,
     this.onWindowMode,
+    this.onFullScreen,
     this.onSaveWindowMode,
     this.onRemoveWindowMode,
   });
 
-  /// The window modes (see window_spots.dart), dropped down from a button
-  /// beside Minimize. Desktop only; null on anything that is not a window of
-  /// its own.
+  /// The saved window modes (see window_spots.dart), dropped down from a
+  /// button beside Minimize under Full screen. Desktop only; null on anything
+  /// that is not a window of its own.
   final List<WindowMode>? windowModes;
   final ValueChanged<WindowMode>? onWindowMode;
+  final VoidCallback? onFullScreen;
   final VoidCallback? onSaveWindowMode;
   final ValueChanged<WindowMode>? onRemoveWindowMode;
 
@@ -208,6 +211,7 @@ class TitleBar extends StatelessWidget {
               modes: modes,
               accent: accent,
               onPick: onWindowMode!,
+              onFullScreen: onFullScreen!,
               onSave: onSaveWindowMode!,
               onRemove: onRemoveWindowMode!,
             ),
@@ -434,16 +438,18 @@ class _VolumePanelState extends State<_VolumePanel> {
 }
 
 /// The window modes: a button where a maximise button would be, whose list
-/// drops down while the mouse is over it - each row a size and a place in
-/// one, with a picture of where the window goes - plus a row that keeps the
-/// window as it is now as another. Same hover arrangement as the volume
-/// panel above: button and panel feed one hover, and leaving either starts a
-/// short timer rather than closing outright, so the gap can be crossed.
+/// drops down while the mouse is over it - Full screen, then the
+/// arrangements saved by name, each with a picture of where the window goes,
+/// then a row that saves the window as it is now. Same hover arrangement as
+/// the volume panel above: button and panel feed one hover, and leaving
+/// either starts a short timer rather than closing outright, so the gap can
+/// be crossed.
 class _WindowModes extends StatefulWidget {
   const _WindowModes({
     required this.modes,
     required this.accent,
     required this.onPick,
+    required this.onFullScreen,
     required this.onSave,
     required this.onRemove,
   });
@@ -451,6 +457,7 @@ class _WindowModes extends StatefulWidget {
   final List<WindowMode> modes;
   final Color accent;
   final ValueChanged<WindowMode> onPick;
+  final VoidCallback onFullScreen;
   final VoidCallback onSave;
   final ValueChanged<WindowMode> onRemove;
 
@@ -471,8 +478,8 @@ class _WindowModesState extends State<_WindowModes> {
   @override
   void didUpdateWidget(_WindowModes oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // The entry is built from this widget's fields; a mode saved or removed
-    // while the panel is up has to show in it.
+    // The entry is built from this widget's fields; a mode removed while the
+    // panel is up has to go from it.
     _panel?.markNeedsBuild();
   }
 
@@ -495,6 +502,13 @@ class _WindowModesState extends State<_WindowModes> {
     _timer = Timer(_grace, _close);
   }
 
+  /// Every row closes the panel before it acts: the window is about to move
+  /// out from under the mouse, or a naming sheet is about to open over it.
+  VoidCallback _closing(VoidCallback action) => () {
+    _close();
+    action();
+  };
+
   void _open() {
     if (_panel != null || !mounted) return;
     _panel = OverlayEntry(
@@ -513,11 +527,9 @@ class _WindowModesState extends State<_WindowModes> {
             child: _ModesPanel(
               modes: widget.modes,
               accent: widget.accent,
-              onPick: (m) {
-                _close();
-                widget.onPick(m);
-              },
-              onSave: widget.onSave,
+              onPick: (m) => _closing(() => widget.onPick(m))(),
+              onFullScreen: _closing(widget.onFullScreen),
+              onSave: _closing(widget.onSave),
               onRemove: widget.onRemove,
             ),
           ),
@@ -557,6 +569,7 @@ class _ModesPanel extends StatelessWidget {
     required this.modes,
     required this.accent,
     required this.onPick,
+    required this.onFullScreen,
     required this.onSave,
     required this.onRemove,
   });
@@ -564,9 +577,13 @@ class _ModesPanel extends StatelessWidget {
   static const width = 236.0;
   static const _rowHeight = 34.0;
 
+  /// What the Full screen row draws: a window filling its screen.
+  static const _whole = Rect.fromLTWH(0, 0, 16, 9);
+
   final List<WindowMode> modes;
   final Color accent;
   final ValueChanged<WindowMode> onPick;
+  final VoidCallback onFullScreen;
   final VoidCallback onSave;
   final ValueChanged<WindowMode> onRemove;
 
@@ -592,42 +609,32 @@ class _ModesPanel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _ModeRow(
+              label: 'Full screen',
+              picture: _MiniScreen(
+                window: _whole,
+                screen: _whole,
+                accent: accent,
+              ),
+              onTap: onFullScreen,
+            ),
             for (final m in modes)
               _ModeRow(
-                mode: m,
-                accent: accent,
+                label: m.name,
+                picture: _MiniScreen(
+                  window: m.bounds,
+                  screen: m.area,
+                  accent: accent,
+                ),
                 onTap: () => onPick(m),
                 onRemove: () => onRemove(m),
               ),
-            if (modes.isNotEmpty)
-              const Divider(
-                height: T.s2,
-                thickness: 1,
-                color: Color(0x14FFFFFF),
-              ),
-            InkWell(
+            const Divider(height: T.s2, thickness: 1, color: Color(0x14FFFFFF)),
+            _ModeRow(
+              label: 'Save this window…',
+              muted: true,
+              picture: const Icon(Icons.add_rounded, size: 16, color: T.muted),
               onTap: onSave,
-              child: SizedBox(
-                height: _rowHeight,
-                child: Row(
-                  children: [
-                    const SizedBox(width: T.s3),
-                    const SizedBox(
-                      width: _MiniScreen.width,
-                      child: Icon(Icons.add_rounded, size: 16, color: T.muted),
-                    ),
-                    const SizedBox(width: T.s3),
-                    const Expanded(
-                      child: Text(
-                        'Save this window',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: T.fsLabel, color: T.muted),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ],
         ),
@@ -638,16 +645,20 @@ class _ModesPanel extends StatelessWidget {
 
 class _ModeRow extends StatefulWidget {
   const _ModeRow({
-    required this.mode,
-    required this.accent,
+    required this.label,
+    required this.picture,
     required this.onTap,
-    required this.onRemove,
+    this.onRemove,
+    this.muted = false,
   });
 
-  final WindowMode mode;
-  final Color accent;
+  final String label;
+  final Widget picture;
   final VoidCallback onTap;
-  final VoidCallback onRemove;
+
+  /// Null for the rows that are not the person's to remove.
+  final VoidCallback? onRemove;
+  final bool muted;
 
   @override
   State<_ModeRow> createState() => _ModeRowState();
@@ -658,6 +669,7 @@ class _ModeRowState extends State<_ModeRow> {
 
   @override
   Widget build(BuildContext context) {
+    final remove = widget.onRemove;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -668,37 +680,44 @@ class _ModeRowState extends State<_ModeRow> {
           child: Row(
             children: [
               const SizedBox(width: T.s3),
-              _MiniScreen(mode: widget.mode, accent: widget.accent),
+              SizedBox(
+                width: _MiniScreen.width,
+                child: Center(child: widget.picture),
+              ),
               const SizedBox(width: T.s3),
               Expanded(
                 child: Text(
-                  widget.mode.label,
+                  widget.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: T.fsLabel, color: T.text),
+                  style: TextStyle(
+                    fontSize: T.fsLabel,
+                    color: widget.muted ? T.muted : T.text,
+                  ),
                 ),
               ),
               // Removing is there only under the mouse, so the list reads
               // as a list of places rather than a list of delete buttons.
-              Opacity(
-                opacity: _hovered ? 1 : 0,
-                child: Tooltip(
-                  message: 'Remove',
-                  child: InkWell(
-                    onTap: _hovered ? widget.onRemove : null,
-                    borderRadius: BorderRadius.circular(T.radius),
-                    child: const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 14,
-                        color: T.muted,
+              if (remove != null)
+                Opacity(
+                  opacity: _hovered ? 1 : 0,
+                  child: Tooltip(
+                    message: 'Remove',
+                    child: InkWell(
+                      onTap: _hovered ? remove : null,
+                      borderRadius: BorderRadius.circular(T.radius),
+                      child: const SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: T.muted,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
               const SizedBox(width: T.s1),
             ],
           ),
@@ -708,18 +727,19 @@ class _ModeRowState extends State<_ModeRow> {
   }
 }
 
-/// A screen in miniature with the window drawn where [mode] puts it.
+/// A screen in miniature with [window] drawn where it sits on [screen].
 class _MiniScreen extends StatelessWidget {
-  const _MiniScreen({required this.mode, required this.accent});
+  const _MiniScreen({
+    required this.window,
+    required this.screen,
+    required this.accent,
+  });
 
   static const width = 28.0;
   static const height = 18.0;
 
-  /// The screen the picture assumes: a common laptop's work area. Only the
-  /// proportions matter.
-  static const _screen = Rect.fromLTWH(0, 0, 1920, 1032);
-
-  final WindowMode mode;
+  final Rect window;
+  final Rect screen;
   final Color accent;
 
   @override
@@ -727,8 +747,8 @@ class _MiniScreen extends StatelessWidget {
     return CustomPaint(
       size: const Size(width, height),
       painter: _MiniScreenPainter(
-        window: mode.placeIn(_screen),
-        screen: _screen,
+        window: window,
+        screen: screen,
         accent: accent,
       ),
     );
@@ -759,11 +779,15 @@ class _MiniScreenPainter extends CustomPainter {
     final inner = frame.deflate(2);
     final sx = inner.width / screen.width;
     final sy = inner.height / screen.height;
+    // Clipped to the screen: a window saved hanging off an edge is drawn as
+    // the part of it that shows.
+    final shown = window.intersect(screen);
+    if (shown.isEmpty) return;
     final r = Rect.fromLTWH(
-      inner.left + (window.left - screen.left) * sx,
-      inner.top + (window.top - screen.top) * sy,
-      math.max(2, window.width * sx),
-      math.max(2, window.height * sy),
+      inner.left + (shown.left - screen.left) * sx,
+      inner.top + (shown.top - screen.top) * sy,
+      math.max(2, shown.width * sx),
+      math.max(2, shown.height * sy),
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(r, const Radius.circular(1)),
@@ -773,7 +797,91 @@ class _MiniScreenPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MiniScreenPainter old) =>
-      old.window != window || old.accent != accent;
+      old.window != window || old.screen != screen || old.accent != accent;
+}
+
+/// Asks what to call the window as it is now. Null when cancelled. A name
+/// already in [taken] is allowed, and says so: saving under it replaces that
+/// one, which is how a mode is moved.
+Future<String?> askWindowModeName(
+  BuildContext context, {
+  required List<String> taken,
+}) {
+  return showFormSheet<String>(
+    context,
+    builder: (context, layout) => _NameSheet(layout: layout, taken: taken),
+  );
+}
+
+class _NameSheet extends StatefulWidget {
+  const _NameSheet({required this.layout, required this.taken});
+
+  final Layout layout;
+  final List<String> taken;
+
+  @override
+  State<_NameSheet> createState() => _NameSheetState();
+}
+
+class _NameSheetState extends State<_NameSheet> {
+  final _name = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    if (name.isEmpty) return;
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final touch = widget.layout.touch;
+    final replaces = widget.taken.contains(_name.text.trim());
+    return FormSheet(
+      accent: T.accent,
+      layout: widget.layout,
+      title: 'Save this window',
+      maxWidth: 360,
+      onClose: () => Navigator.of(context).pop(),
+      actions: [
+        FormSheet.cancelButton(
+          touch: touch,
+          onTap: () => Navigator.of(context).pop(),
+        ),
+        FormSheet.saveButton(touch: touch, accent: T.accent, onTap: _save),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Its size and place right now, under a name. It goes in the '
+            'list behind the □ in the title bar.',
+            style: TextStyle(fontSize: T.fsLabel, color: T.muted),
+          ),
+          const SizedBox(height: T.s3),
+          TextField(
+            controller: _name,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _save(),
+            style: const TextStyle(fontSize: T.fsBody, color: T.text),
+            decoration: InputDecoration(
+              hintText: 'Name, e.g. Corner or Big',
+              isDense: true,
+              helperText: replaces ? 'Replaces the one with this name' : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Btn extends StatelessWidget {

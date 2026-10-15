@@ -1,21 +1,23 @@
-// Preset sizes and places for the desktop window.
+// Saved window arrangements for the desktop window.
 //
 // The widget lives in a corner of the screen at its own small size most of
 // the time, and every so often wants to be big for a while - the week, a long
 // note - and then go back. Dragging an edge and a title bar to get there and
-// back is two fiddly gestures each way, so the title bar offers both answers
-// as presets: a size, and a spot.
+// back is two fiddly gestures each way. So the person arranges the window by
+// hand once, saves it under a name, and from then on it is one click in the
+// title bar (`_WindowModes` in title_bar.dart).
 //
-// The two are independent. Picking a size keeps the window where it is -
-// anchored on the corner it is nearest, so a widget in the bottom-right
-// grows up and to the left instead of off the screen. Picking a spot keeps
-// its size. Both are measured against the *work area* of the screen the
-// window is on (the screen minus the taskbar), never the whole screen.
+// There are no presets. Where the widget should sit is a fact about this
+// person's screen and habits, and any guess would be a row to delete; the
+// one arrangement that means the same on every screen, full screen, is the
+// title bar's own row and not one of these.
 //
-// The two are offered together as *modes* (WindowMode) - a size and a spot
-// picked in one go, which is how the window actually gets used: small in a
-// corner, or big in the middle. A device starts with those two and can save
-// the window as it is as another.
+// A mode is the window's exact bounds plus the *work area* of the screen it
+// was saved on (the screen minus the taskbar). The area is what lets a mode
+// survive the screens changing: on the same screen the bounds are used as
+// they are; when no screen holds them any more (a monitor unplugged, a
+// laptop off its dock) they are carried over in proportion to the screen the
+// window is on now. It also lets the menu draw where the window goes.
 //
 // Pure maths, so it is tested without a window; main.dart does the asking
 // (`window_manager`, `screen_retriever`).
@@ -24,94 +26,87 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
-/// The gap kept between the window and the edge of the work area.
-const kWindowMargin = 8.0;
+class WindowMode {
+  const WindowMode({
+    required this.name,
+    required this.bounds,
+    required this.area,
+  });
 
-enum WindowSize {
-  /// The widget: the size it was designed at.
-  small('Small'),
+  final String name;
 
-  /// A column the height of the screen: room for a long list or a day.
-  tall('Tall'),
+  /// Where the window was and how big, in screen pixels.
+  final Rect bounds;
 
-  /// Most of the screen: the week beside the list.
-  large('Large');
+  /// The work area of the screen it was on when it was saved.
+  final Rect area;
 
-  const WindowSize(this.label);
-  final String label;
-
-  /// What this size is on a work area [area], never more than fits.
-  Size within(Rect area) {
-    final room = Size(
-      area.width - 2 * kWindowMargin,
-      area.height - 2 * kWindowMargin,
-    );
-    final want = switch (this) {
-      WindowSize.small => const Size(340, 480),
-      WindowSize.tall => Size(420, room.height),
-      WindowSize.large => Size(
-        math.min(1280, area.width * 0.8),
-        math.min(860, area.height * 0.85),
+  /// Where this mode puts the window, given the work areas of the screens
+  /// there are now and [current], the one the window is on.
+  Rect placeIn(List<Rect> areas, Rect current) {
+    for (final a in areas) {
+      if (a.contains(bounds.center)) return fitInto(bounds, a);
+    }
+    // Its screen has gone: the same place in proportion on this one.
+    final sx = current.width / area.width;
+    final sy = current.height / area.height;
+    return fitInto(
+      Rect.fromLTWH(
+        current.left + (bounds.left - area.left) * sx,
+        current.top + (bounds.top - area.top) * sy,
+        bounds.width * sx,
+        bounds.height * sy,
       ),
-    };
-    return Size(
-      math.min(want.width, room.width),
-      math.min(want.height, room.height),
+      current,
     );
   }
-}
 
-enum WindowSpot {
-  topLeft('Top left'),
-  topRight('Top right'),
-  center('Centre'),
-  bottomLeft('Bottom left'),
-  bottomRight('Bottom right');
-
-  const WindowSpot(this.label);
-  final String label;
-}
-
-/// The spot a window at [window] is already in: a corner by which quarter of
-/// [area] its middle is in, or the centre when its middle is in the middle
-/// third both ways.
-WindowSpot spotOf(Rect window, Rect area) {
-  final c = window.center;
-  final third = Size(area.width / 3, area.height / 3);
-  final middle = Rect.fromLTWH(
-    area.left + third.width,
-    area.top + third.height,
-    third.width,
-    third.height,
-  );
-  if (middle.contains(c)) return WindowSpot.center;
-  final left = c.dx < area.center.dx;
-  final top = c.dy < area.center.dy;
-  return top
-      ? (left ? WindowSpot.topLeft : WindowSpot.topRight)
-      : (left ? WindowSpot.bottomLeft : WindowSpot.bottomRight);
-}
-
-/// Where a window of [size] goes at [spot] in [area].
-Rect placeWindow({
-  required Rect area,
-  required Size size,
-  required WindowSpot spot,
-}) {
-  final w = math.min(size.width, area.width - 2 * kWindowMargin);
-  final h = math.min(size.height, area.height - 2 * kWindowMargin);
-  final left = area.left + kWindowMargin;
-  final right = area.right - kWindowMargin - w;
-  final top = area.top + kWindowMargin;
-  final bottom = area.bottom - kWindowMargin - h;
-  final at = switch (spot) {
-    WindowSpot.topLeft => Offset(left, top),
-    WindowSpot.topRight => Offset(right, top),
-    WindowSpot.bottomLeft => Offset(left, bottom),
-    WindowSpot.bottomRight => Offset(right, bottom),
-    WindowSpot.center => Offset(area.center.dx - w / 2, area.center.dy - h / 2),
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'bounds': _rect(bounds),
+    'area': _rect(area),
   };
-  return at & Size(w, h);
+
+  /// Null for anything unreadable, so one bad entry drops itself rather than
+  /// the list.
+  static WindowMode? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final name = json['name'];
+    final bounds = _readRect(json['bounds']);
+    final area = _readRect(json['area']);
+    if (name is! String || bounds == null || area == null) return null;
+    return WindowMode(name: name, bounds: bounds, area: area);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is WindowMode &&
+      other.name == name &&
+      other.bounds == bounds &&
+      other.area == area;
+
+  @override
+  int get hashCode => Object.hash(name, bounds, area);
+}
+
+List<double> _rect(Rect r) => [r.left, r.top, r.width, r.height];
+
+Rect? _readRect(Object? json) {
+  if (json is! List || json.length != 4 || json.any((v) => v is! num)) {
+    return null;
+  }
+  final [l, t, w, h] = [for (final v in json) (v as num).toDouble()];
+  if (w <= 0 || h <= 0) return null;
+  return Rect.fromLTWH(l, t, w, h);
+}
+
+/// [r] moved, and shrunk only if it has to be, so all of it is inside [area].
+Rect fitInto(Rect r, Rect area) {
+  final w = math.min(r.width, area.width);
+  final h = math.min(r.height, area.height);
+  final left = r.left.clamp(area.left, area.right - w).toDouble();
+  final top = r.top.clamp(area.top, area.bottom - h).toDouble();
+  return Rect.fromLTWH(left, top, w, h);
 }
 
 /// The work area of whichever of [areas] holds the middle of [window], or
@@ -124,95 +119,17 @@ Rect areaFor(Rect window, List<Rect> areas, Rect fallback) {
   return fallback;
 }
 
-/// One of the person's own window arrangements: a size and a spot, picked
-/// together from the title bar - "small in the bottom left", "large in the
-/// middle". Each is either one of the [WindowSize] presets, which are
-/// measured against whatever screen the window is on, or an exact size saved
-/// from a window that was arranged by hand.
-class WindowMode {
-  const WindowMode({required this.spot, this.size, this.width, this.height})
-    : assert(size != null || (width != null && height != null));
-
-  final WindowSpot spot;
-  final WindowSize? size;
-  final double? width;
-  final double? height;
-
-  /// The size this mode makes the window on a work area [area], never more
-  /// than fits.
-  Size sizeWithin(Rect area) {
-    final preset = size;
-    if (preset != null) return preset.within(area);
-    return Size(
-      math.min(width!, area.width - 2 * kWindowMargin),
-      math.min(height!, area.height - 2 * kWindowMargin),
-    );
-  }
-
-  /// Where this mode puts the window in [area].
-  Rect placeIn(Rect area) =>
-      placeWindow(area: area, size: sizeWithin(area), spot: spot);
-
-  String get label {
-    final preset = size;
-    final what = preset != null
-        ? preset.label
-        : '${width!.round()} × ${height!.round()}';
-    return '$what · ${spot.label.toLowerCase()}';
-  }
-
-  Map<String, Object?> toJson() => {
-    'spot': spot.name,
-    if (size != null) 'size': size!.name,
-    if (size == null) 'width': width,
-    if (size == null) 'height': height,
-  };
-
-  /// Null for anything unreadable, so one bad entry drops itself rather than
-  /// the list.
-  static WindowMode? fromJson(Object? json) {
-    if (json is! Map) return null;
-    final spot = WindowSpot.values.asNameMap()[json['spot']];
-    if (spot == null) return null;
-    final size = WindowSize.values.asNameMap()[json['size']];
-    if (size != null) return WindowMode(spot: spot, size: size);
-    final w = json['width'];
-    final h = json['height'];
-    if (w is! num || h is! num || w <= 0 || h <= 0) return null;
-    return WindowMode(spot: spot, width: w.toDouble(), height: h.toDouble());
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is WindowMode &&
-      other.spot == spot &&
-      other.size == size &&
-      other.width == width &&
-      other.height == height;
-
-  @override
-  int get hashCode => Object.hash(spot, size, width, height);
-}
-
-/// What a device starts with: the widget tucked into a corner, and the
-/// window big in the middle for the week or a long note.
-const kDefaultWindowModes = [
-  WindowMode(spot: WindowSpot.bottomLeft, size: WindowSize.small),
-  WindowMode(spot: WindowSpot.center, size: WindowSize.large),
-];
-
 String encodeWindowModes(List<WindowMode> modes) =>
     jsonEncode([for (final m in modes) m.toJson()]);
 
-/// The stored list, or the defaults when nothing was ever stored. An empty
-/// list stays empty: that is somebody having removed them all.
+/// The stored list; nothing stored, or nothing readable, is no modes.
 List<WindowMode> decodeWindowModes(String? stored) {
-  if (stored == null) return kDefaultWindowModes;
+  if (stored == null) return const [];
   try {
     final list = jsonDecode(stored);
-    if (list is! List) return kDefaultWindowModes;
+    if (list is! List) return const [];
     return [for (final e in list) ?WindowMode.fromJson(e)];
   } on FormatException {
-    return kDefaultWindowModes;
+    return const [];
   }
 }

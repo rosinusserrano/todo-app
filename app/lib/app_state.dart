@@ -29,7 +29,7 @@ import 'ui/dock.dart' show DockEdge;
 import 'theme.dart';
 import 'whats_new.dart' show ReleaseNote, kReleaseNotes, notesSince;
 import 'window_spots.dart'
-    show WindowMode, decodeWindowModes, encodeWindowModes, kDefaultWindowModes;
+    show WindowMode, decodeWindowModes, encodeWindowModes;
 
 const _kLastWorkspace = 'ui:last-workspace';
 const _kNudge = 'ui:nudge-enabled';
@@ -1303,15 +1303,18 @@ class AppState extends ChangeNotifier {
     windowModes = decodeWindowModes(await _store.setting(_kWindowModes));
   }
 
-  /// The window arrangements offered in the title bar (window_spots.dart).
-  /// Device-local: which corner suits this screen is not a fact about the
-  /// todo list.
-  List<WindowMode> windowModes = kDefaultWindowModes;
+  /// The window arrangements saved from the title bar (window_spots.dart).
+  /// Device-local: where the window sits on this screen is not a fact about
+  /// the todo list.
+  List<WindowMode> windowModes = const [];
 
-  /// Adds [mode] at the end, unless it is already there.
+  /// Adds [mode] at the end - or, under a name already taken, in that one's
+  /// place: saving "Small" again is putting Small somewhere else.
   Future<void> addWindowMode(WindowMode mode) async {
-    if (windowModes.contains(mode)) return;
-    windowModes = [...windowModes, mode];
+    final at = windowModes.indexWhere((m) => m.name == mode.name);
+    windowModes = at < 0
+        ? [...windowModes, mode]
+        : [...windowModes.take(at), mode, ...windowModes.skip(at + 1)];
     notifyListeners();
     await _store.setSetting(_kWindowModes, encodeWindowModes(windowModes));
   }

@@ -25,6 +25,12 @@ import 'package:todo_widget/ui/task_row.dart';
 import 'package:todo_widget/ui/title_bar.dart';
 import 'package:todo_widget/window_spots.dart';
 
+const _corner = WindowMode(
+  name: 'Corner',
+  bounds: Rect.fromLTWH(10, 540, 340, 480),
+  area: Rect.fromLTWH(0, 0, 1920, 1032),
+);
+
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -476,6 +482,7 @@ void main() {
           syncTooltip: 'Sync off',
           windowModes: windowModes,
           onWindowMode: onWindowMode ?? (_) {},
+          onFullScreen: () {},
           onSaveWindowMode: () {},
           onRemoveWindowMode: (_) {},
         ),
@@ -529,28 +536,25 @@ void main() {
         tester,
         isDesktop: true,
         playing: false,
-        windowModes: kDefaultWindowModes,
+        windowModes: const [_corner],
         onWindowMode: (m) => picked = m,
       );
       final g = await mouse(tester);
       await g.moveTo(tester.getCenter(find.byIcon(Icons.crop_square_rounded)));
       // Passing over the button on the way to Close opens nothing.
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Small · bottom left'), findsNothing);
+      expect(find.text('Corner'), findsNothing);
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Small · bottom left'), findsOneWidget);
-      expect(find.text('Large · centre'), findsOneWidget);
-      expect(find.text('Save this window'), findsOneWidget);
+      expect(find.text('Full screen'), findsOneWidget);
+      expect(find.text('Corner'), findsOneWidget);
+      expect(find.text('Save this window…'), findsOneWidget);
 
-      await g.moveTo(tester.getCenter(find.text('Large · centre')));
+      await g.moveTo(tester.getCenter(find.text('Corner')));
       await tester.pump();
-      await tester.tap(
-        find.text('Large · centre'),
-        kind: PointerDeviceKind.mouse,
-      );
+      await tester.tap(find.text('Corner'), kind: PointerDeviceKind.mouse);
       await tester.pump();
-      expect(picked, kDefaultWindowModes[1]);
-      expect(find.text('Large · centre'), findsNothing);
+      expect(picked, _corner);
+      expect(find.text('Corner'), findsNothing);
     });
 
     testWidgets('the window modes close once the mouse has left', (
@@ -560,15 +564,15 @@ void main() {
         tester,
         isDesktop: true,
         playing: false,
-        windowModes: kDefaultWindowModes,
+        windowModes: const [_corner],
       );
       final g = await mouse(tester);
       await g.moveTo(tester.getCenter(find.byIcon(Icons.crop_square_rounded)));
       await tester.pump(const Duration(milliseconds: 200));
-      expect(find.text('Small · bottom left'), findsOneWidget);
+      expect(find.text('Corner'), findsOneWidget);
       await g.moveTo(const Offset(20, 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Small · bottom left'), findsNothing);
+      expect(find.text('Corner'), findsNothing);
     });
 
     testWidgets(

@@ -1416,18 +1416,22 @@ Configured in `main()` via `window_manager` + `flutter_acrylic`: 340×480,
 frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
 
 - **Window modes** (`window_spots.dart`, the title bar's □ beside
-  Minimize): each `WindowMode` is a size *and* a spot, picked in one go -
-  Marco's two are small in the bottom left and large in the middle, which
-  are `kDefaultWindowModes`. A mode's size is a `WindowSize` preset (measured
-  against the screen) or an exact size saved from the window (*Save this
-  window*, nearest spot by `spotOf`). The list is device-local
-  (`AppState.windowModes`, `window:modes`); nothing stored means the
-  defaults, an empty list means he removed them. The menu drops down on
+  Minimize): **no presets**. Marco arranges the window by hand and *Save this
+  window…* keeps its exact bounds under a name he types
+  (`askWindowModeName`); saving under a taken name replaces that one in
+  place, which is how a mode is moved. The one built-in row is *Full screen*
+  (`windowManager.maximize`), because it is the only arrangement that means
+  the same on every screen. A `WindowMode` stores the bounds **and the work
+  area of the screen it was saved on**: `placeIn` uses the bounds as they are
+  while a screen still holds them, and carries them over in proportion to
+  the current screen when it does not (monitor unplugged); the area also
+  draws the row's picture. Device-local (`AppState.windowModes`,
+  `window:modes`). The menu drops down on
   hover (`_WindowModes`, the volume panel's arrangement: an `OverlayEntry`
   on a `LayerLink`, one hover fed by button and panel, a grace timer to
   cross the gap, and a 150ms open delay so passing over it on the way to
   Close opens nothing); a click opens it too. The maths is pure and tested;
-  `_windowAndArea` in `main.dart` asks `screen_retriever` for each display's
+  `_windowAndAreas` in `main.dart` asks `screen_retriever` for each display's
   *visible* area (the work area, minus the taskbar) and picks the one
   holding the window's middle.
 

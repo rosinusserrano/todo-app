@@ -1696,6 +1696,15 @@ publishes it. Three rules keep it compiling and starting:
   `ui/push_settings.dart`. The key is fetched when that row appears, and
   `_turnOn` calls `WebPush.enable` before awaiting anything: a browser shows
   its permission prompt only while the tap is still being handled.
+- **A field that opens on a tap needs `primeWebKeyboard()` inside the tap**
+  (`web_keyboard.dart`, `todoPrimeKeyboard` in `index.html`). iOS shows the
+  keyboard only for a focus moved during a touch's own event handler, and a
+  pane's field is built a frame later; the page focuses a throwaway 16px
+  input inside the tap so the keyboard is already up when the real field
+  takes over. `_openThoughtCapture` does it (web + touch only). The field
+  itself must still ask for focus outright, after its first frame -
+  `autofocus` gives way to the shell's key handler, which always has focus
+  (`ThoughtSheet.initState`; `test/thought_sheet_test.dart` pins it).
 - **Native-only features are switched off at their entry point, not stubbed.**
   `main()` skips `MediaKit`, the legacy import and the attachment store on the
   web; `blobs == null` is what hides the paperclip, and a null `onToggleSound`

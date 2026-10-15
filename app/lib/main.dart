@@ -38,6 +38,7 @@ import 'sync/protocol.dart';
 import 'sync/sync_service.dart';
 import 'theme.dart';
 import 'tray.dart';
+import 'web_keyboard.dart';
 import 'whats_new.dart';
 import 'window_spots.dart';
 import 'ui/attachment_sheet.dart';
@@ -2041,6 +2042,11 @@ class _WidgetShellState extends State<WidgetShell>
 
   void _openThoughtCapture() {
     _exitFocus();
+    // Still inside the tap that asked for it, which is the only moment iOS
+    // will bring a keyboard up for a web page. A browser with a mouse has no
+    // on-screen keyboard to bring, and a focus moved out from under it there
+    // would only blink.
+    if (isWeb && _layout.touch) primeWebKeyboard();
     setState(() => _thoughtCapture = true);
   }
 

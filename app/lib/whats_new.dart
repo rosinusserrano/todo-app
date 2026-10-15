@@ -38,6 +38,17 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-15-2',
+    title: 'Ready to type, and your own window sizes',
+    points: [
+      'The thought pane opens with the cursor in it, and on a phone the '
+          'keyboard comes up straight away.',
+      'Windows app: arrange the window how you like it, rest the mouse on '
+          'the □ beside Minimize and choose "Save this window…" to keep that '
+          'size and place under a name. Full screen is there too.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-15',
     title: 'Edit mode, and stretchable events',
     points: [

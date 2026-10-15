@@ -85,6 +85,21 @@
           });
         });
       }).observe(document.head, { childList: true });
+      // The keyboard on iOS (lib/web_keyboard.dart): focused inside a tap,
+      // this brings the keyboard up so the field built a frame later can
+      // take it over. 16px so iOS does not zoom to it; off-screen and
+      // transparent so nothing is seen; gone once the real field has focus.
+      window.todoPrimeKeyboard = function () {
+        var input = document.createElement('input');
+        input.setAttribute('aria-hidden', 'true');
+        input.tabIndex = -1;
+        input.style.cssText =
+          'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;' +
+          'font-size:16px;border:0;padding:0;pointer-events:none';
+        document.body.appendChild(input);
+        input.focus();
+        setTimeout(function () { input.remove(); }, 1000);
+      };
       var probe;
       window.todoSafeBottom = function () {
         if (!probe) {

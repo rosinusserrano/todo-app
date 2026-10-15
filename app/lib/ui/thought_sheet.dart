@@ -114,6 +114,18 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
   int _added = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // Asked for outright, after the first frame. The field's `autofocus`
+    // only takes focus when nothing else in the scope has it, and the shell's
+    // own key handler always does - so the pane opened with the caret
+    // nowhere and the first thing typed went to the list behind it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     _focus.dispose();

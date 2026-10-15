@@ -76,4 +76,48 @@ void main() {
     expect(added, isEmpty);
     expect(closed, 0);
   });
+
+  testWidgets('the field takes focus on opening, even from a focused shell', (
+    tester,
+  ) async {
+    // The shell's key handler holds focus whenever nothing else does, which
+    // is exactly the case `autofocus` gives up on.
+    final shell = FocusNode();
+    addTearDown(shell.dispose);
+    var open = false;
+    late StateSetter setOpen;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Focus(
+          focusNode: shell,
+          autofocus: true,
+          child: StatefulBuilder(
+            builder: (context, set) {
+              setOpen = set;
+              return Scaffold(
+                body: Stack(
+                  children: [
+                    if (open)
+                      ThoughtSheet(
+                        accent: T.thoughts,
+                        enterSaves: true,
+                        onAdd: (_) async {},
+                        onClose: () {},
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(shell.hasPrimaryFocus, isTrue);
+    setOpen(() => open = true);
+    await tester.pump();
+    await tester.pump();
+    final field = tester.widget<EditableText>(find.byType(EditableText));
+    expect(field.focusNode.hasPrimaryFocus, isTrue);
+  });
 }

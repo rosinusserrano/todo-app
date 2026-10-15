@@ -1092,7 +1092,9 @@ at the screen gives nothing away) and its lock is **opt-in**.
   the thought and closes the pane (back to where you were), **Ctrl+Enter**
   saves it and clears the pane for the next one, and **Shift+Enter** is a new
   line. Esc closes it without saving. On a phone the keyboard's return is
-  still a new line, with *Save* and *Save & another* under the thumb.
+  still a new line, with *Save* and *Save & another* under the thumb. It opens
+  ready to type: the caret is in the field, and on a phone the keyboard comes
+  up with it.
 - **Esc** unwinds one layer at a time — the sound sheet, then the focus-mode
   thought field, then focus mode, then the parked-thoughts panel.
   **Ctrl+Enter** in any capture field
@@ -1398,6 +1400,8 @@ reminders are both there now**, queued for 0.18.0.
 
 - **0.29.0** — *(in progress)*
   - **What's new**: a box after every update says what changed.
+  - **The thought pane opens ready to type**, with the keyboard up on a
+    phone; it used to open with nothing focused.
   - **The phone's bottom bar is new**: workspace, where, more and ＋ (add a
     task or a thought); press, slide up to where you want to go, let go. Slide
     right on a workspace to edit it. See *Getting around*.

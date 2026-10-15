@@ -1495,6 +1495,14 @@ class LocalStore {
   /// indistinguishable from one that is up by looking at the app alone. This
   /// count is what lets the UI say "your work is queued" rather than leaving
   /// the user to guess.
+  /// Whether this database has ever held a task, done or deleted ones
+  /// included: what tells a device that has been in use from a fresh install
+  /// when there is no other record to go by.
+  Future<bool> hasAnyTask() async {
+    final rows = await _db.rawQuery('SELECT 1 FROM tasks LIMIT 1');
+    return rows.isNotEmpty;
+  }
+
   Future<int> pendingCount() async {
     var total = 0;
     for (final table in _tables) {

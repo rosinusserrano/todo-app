@@ -38,6 +38,7 @@ import 'sync/protocol.dart';
 import 'sync/sync_service.dart';
 import 'theme.dart';
 import 'tray.dart';
+import 'whats_new.dart';
 import 'window_spots.dart';
 import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
@@ -142,6 +143,7 @@ Future<void> main() async {
     journalCrypto: journalCrypto,
   );
   await state.load();
+  await state.checkWhatsNew();
 
   // Bytes whose row was tombstoned on another device arrive here as a merge,
   // never as a local delete, so this is the only thing that ever collects them.
@@ -537,8 +539,23 @@ class _WidgetShellState extends State<WidgetShell>
     _reminders.tick();
     _reminders.start();
     // Launching is opening the app, so it opens on the list - after the first
-    // layout, and after any quick action that launched it, which wins.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openListOnReturn());
+    // layout, and after any quick action that launched it, which wins. The
+    // notes for an update go over whatever that opened.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _openListOnReturn();
+      await _showWhatsNew();
+    });
+  }
+
+  /// The box after an update (whats_new.dart), once. Marked as seen when it
+  /// opens rather than when it closes: a box that came back because the page
+  /// was reloaded with it up would be the box nagging.
+  Future<void> _showWhatsNew() async {
+    final notes = s.whatsNew;
+    if (!mounted || notes.isEmpty) return;
+    await s.markWhatsNewSeen();
+    if (!mounted) return;
+    await showWhatsNew(context, notes: notes, accent: T.accent);
   }
 
   /// Coming back from the background.

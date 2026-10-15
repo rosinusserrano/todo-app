@@ -1598,6 +1598,29 @@ Notes for changing it:
   short window (phone landscape, a widget squashed against the taskbar) keeps
   it at the bottom.
 
+### What's new (`app/lib/whats_new.dart`)
+
+**Every deploy of the app - the web build to `/srv/todo-web`, or a release of
+the native app - adds a `ReleaseNote` at the top of `kReleaseNotes` with a new
+`id`** (the date; a suffix for a second one that day). That is the whole of how
+a device knows it has something to show, so a deploy without one shows
+nothing, and reusing an id shows nothing either. Write the points for Marco,
+not for the code: what he will notice, one sentence each - FEATURES.md's
+changelog is the long record.
+
+- **An id, not the version.** The web app is redeployed many times per
+  version number; each is still an update to the person reloading.
+- **Seen is device-local** (`whats-new:seen` in settings). `checkWhatsNew`
+  runs from `main()`, deliberately **not** from `AppState.load`, so no test
+  that builds the shell ever has a box open over it.
+- **No stored id** is a fresh install or a device from before the box: a
+  database that has ever held a task (`LocalStore.hasAnyTask`) gets the
+  latest note, an empty one is marked seen silently.
+- **Marked seen when it opens**, not when it closes, so a reload with the box
+  up does not bring it back. At most `kMaxNotesShown` notes at once.
+- It opens after `_openListOnReturn` in the shell's first post-frame
+  callback, over whatever that opened.
+
 ## Gotchas
 
 - **The old Tauri build is gone from the working tree**, not from history:

@@ -1038,6 +1038,11 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 ## Window & look
 
+- **What's new, once per update.** After an update the app opens a box
+  listing what changed, in plain words; *Got it* (or tapping outside) closes
+  it and it does not come back until the next update. Each device shows it
+  once, on its own. A fresh install shows nothing - there is nothing for it to
+  have changed from.
 - **Frameless, always-on-top widget** — small (340×480), transparent rounded
   corners, acrylic/blur background. A Sticky-Notes-style replacement.
 - **Drag** anywhere on the title bar to move it.
@@ -1390,6 +1395,7 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **What's new**: a box after every update says what changed.
   - **The phone's bottom bar is new**: workspace, where, more and ＋ (add a
     task or a thought); press, slide up to where you want to go, let go. Slide
     right on a workspace to edit it. See *Getting around*.

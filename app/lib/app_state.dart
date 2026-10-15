@@ -27,6 +27,7 @@ import 'sync/models.dart';
 import 'ui/calendar/time_grid.dart' show kHourHeight, kHourHeightMin, kHourHeightMax;
 import 'ui/dock.dart' show DockEdge;
 import 'theme.dart';
+import 'whats_new.dart' show ReleaseNote, kReleaseNotes, notesSince;
 
 const _kLastWorkspace = 'ui:last-workspace';
 const _kNudge = 'ui:nudge-enabled';
@@ -36,6 +37,7 @@ const _kCalendarZoom = 'ui:calendar-hour-height';
 const _kCalendarHidden = 'ui:calendar-hidden';
 const _kCalendarBlock = 'ui:calendar-block';
 const _kWideDock = 'ui:wide-dock';
+const _kWhatsNewSeen = 'whats-new:seen';
 const _kSplitFraction = 'ui:split-fraction';
 const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
 const _kTasksPaneCollapsed = 'ui:tasks-pane-collapsed';
@@ -163,6 +165,39 @@ class AppState extends ChangeNotifier {
     await restoreFocus();
     await loadFeeds();
     await loadList();
+  }
+
+  // ------------------------------------------------------------ what's new
+
+  /// The release notes this device has not shown yet (whats_new.dart), filled
+  /// by [checkWhatsNew]. Empty means nothing to show.
+  List<ReleaseNote> whatsNew = const [];
+
+  /// Works out [whatsNew] from the id this device last showed. Called from
+  /// `main()` and not from [load], so a test that builds the shell never has
+  /// a box open over it.
+  ///
+  /// No id stored is either a fresh install or a device from before the box
+  /// existed. A database with tasks in it is the second, and gets the latest
+  /// note; a fresh one has nothing to compare the new version with, so it is
+  /// marked as having seen it.
+  Future<void> checkWhatsNew() async {
+    final seen = await _store.setting(_kWhatsNewSeen);
+    if (seen == null) {
+      if (await _store.hasAnyTask()) {
+        whatsNew = notesSince(null).take(1).toList();
+      } else {
+        await markWhatsNewSeen();
+      }
+      return;
+    }
+    whatsNew = notesSince(seen);
+  }
+
+  /// The box was shown: it does not come back until there is a newer note.
+  Future<void> markWhatsNewSeen() async {
+    whatsNew = const [];
+    await _store.setSetting(_kWhatsNewSeen, kReleaseNotes.first.id);
   }
 
   // -------------------------------------------------------------- sessions

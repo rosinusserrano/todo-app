@@ -224,7 +224,7 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     await showReminderMenu(
       context: context,
       position: at,
-      task: widget.task,
+      armed: widget.task.remindAtTime,
       onChosen: onSet,
     );
   }

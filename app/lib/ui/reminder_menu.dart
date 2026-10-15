@@ -12,7 +12,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../sync/models.dart';
 import '../theme.dart';
 import 'reminder_picker.dart';
 
@@ -80,11 +79,10 @@ String describeReminder(DateTime at, [DateTime? nowOverride]) {
 Future<void> showReminderMenu({
   required BuildContext context,
   required RelativeRect position,
-  required Task task,
+  required DateTime? armed,
   required Future<void> Function(DateTime?) onChosen,
 }) async {
   final now = DateTime.now();
-  final armed = task.remindAtTime;
 
   final chosen = await showMenu<Object>(
     context: context,

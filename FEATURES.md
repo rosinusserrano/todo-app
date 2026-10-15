@@ -6,19 +6,41 @@ Newest changes are noted in the changelog at the bottom.
 ## Tasks
 
 - **Add a task** — press **Add a task** at the top of the list (or the **＋**
-  on the dock, or **N** on the keyboard),
-  type, and press Enter. The line at the top of the list is there on every
-  screen size, because the way to do the commonest thing in the app should be
-  where the task will appear, not across the window in the dock. The field stays open
-  for the next one; Enter on an empty field, Esc, or clicking elsewhere puts it
-  away. It used to be a text field permanently above the list, which cost a
-  phone a row of height for something used a few seconds an hour. A field with
-  something typed in it never folds away on its own.
-- **Add to another workspace without leaving this one.** The coloured dot at
-  the start of the open add field is the workspace the task goes into; click it
-  to pick another. The list stays where it is and a line under the field says
-  where the task went, since it will not appear on screen. The choice lasts
-  until the field closes.
+  on the dock, or **N** on the keyboard). The line lifts off the list and flies
+  to the middle of the window as a **card**, growing as it goes, with the list
+  dimmed behind it. Type, and press Enter (or the filled ↑). The card stays
+  open for the next one; Enter on nothing, Esc or a tap on the dimmed list
+  puts it away. Whatever was typed is kept: the line at the top of the list
+  shows it, and opening the card again carries on from it. The line is there
+  on every screen size, because the way to do the commonest thing in the app
+  should be where the task will appear, not across the window in the dock.
+- **The card's buttons**: ⚑ marks it high priority, the 🔔 sets a reminder
+  (the same presets and date picker as a task's own), the coloured dot picks
+  the **workspace** it goes into, and **⤢** (or Ctrl+D) opens the long form
+  with everything set so far carried over. Picking another workspace keeps the
+  list where it is and the card says where the task went, since it will not
+  appear on screen; the choice lasts while the card is open. Priority and the
+  reminder reset after each task.
+- **Settings typed into the title.** Write a workspace's name, a day or a
+  time in the title and it is read as that setting: *call the bank tomorrow
+  9:30 Work* goes onto Work as *call the bank* with a reminder at 09:30
+  tomorrow. What was recognised is highlighted in the field and shows on its
+  button; the **×** on that button keeps the word in the title instead, and
+  choosing that setting with its button does the same. The rules:
+  - **Workspaces** by name, any case, as a whole word (*#Work* works too); the
+    longest name wins, the workspace you are in is not a keyword, and only one
+    name is read per task.
+  - **Times** need a colon, am/pm or *Uhr*: *14:30*, *9:30pm*, *3pm*, *um 16
+    Uhr*, *at 9:30*, *noon*. A bare number is never a time, so *buy 2 eggs*
+    stays as it is. *in 10 min*, *in 2h* are a reminder that far from now.
+  - **Days**: *today*, *tomorrow*, *tonight* (18:00), *heute*, *morgen*,
+    *übermorgen*, weekday names in English or German (*Friday*, *am Freitag*,
+    *next Monday*), *in 3 days*, *15.10.*, *15.10.2026*, *24/12*,
+    *2026-12-01*, *3 Dec*, *Dec 3rd*. Dates are day first.
+  - **A time alone is today**, or tomorrow once that time has passed — a
+    reminder in the past would fire the moment it was written. **A day alone
+    is 09:00** that day (or the next whole hour, if that has passed).
+  - A title made of nothing but keywords is kept as the title.
 - **Check off a task** — click the circle; it plays a slide-out animation, then
   gets logged to history (not deleted).
 - **The actions live in a bar you ask for.** A row is a tick box, a title and
@@ -74,12 +96,12 @@ Newest changes are noted in the changelog at the bottom.
   it is overdue), a 📎 when it holds documents, a 📅 when it is planned into a
   calendar block. Those are marks, not buttons: pressing anywhere on the row
   opens the bar, which is where the matching action is.
-- **The long form — Ctrl+D, or the ⤢ in the add field** (once it is open). Opens a bigger
+- **The long form — Ctrl+D, or the ⤢ on the add card.** Opens a bigger
   composer for the task that needs more than a line: **notes**, a **priority
-  flag** and a **reminder**, all set before it ever reaches the list. Whatever
-  you had already typed comes across as the title and the caret lands straight
-  in the notes box, so the shortcut never costs you the line you were writing.
-  Cancelling leaves the quick field exactly as it was.
+  flag**, a **reminder** and a repeat, all set before it ever reaches the list.
+  The card's title (keywords taken out), priority, reminder and workspace come
+  across and the caret lands straight in the notes box, so the shortcut never
+  costs you what you had set. Cancelling leaves the card exactly as it was.
 - **Notes stay readable.** A task carrying notes previews their first line under
   its title; expanding the row shows all of them, rendered. A note you can only
   write is a note you will not write.
@@ -1406,6 +1428,10 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **A new way to add a task**: *Add a task* opens a card in the middle of
+    the screen with buttons for priority, a reminder, the workspace and the
+    long form, and a workspace's name, a day or a time typed into the title
+    sets them (see *Tasks*).
   - **Notifications from outside the app** (server): `POST /api/notify` and
     notify-only tokens, for the server's monitoring to alert the phone.
   - **What's new**: a box after every update says what changed.

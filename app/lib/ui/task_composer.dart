@@ -78,6 +78,8 @@ Future<TaskDraft?> showTaskComposer(
   BuildContext context, {
   Task? existing,
   String initialText = '',
+  int initialPriority = 0,
+  DateTime? initialRemindAt,
   Color accent = T.accent,
 }) {
   return showFormSheet<TaskDraft>(
@@ -88,6 +90,8 @@ Future<TaskDraft?> showTaskComposer(
       // reason the notes field takes recurNotes: editing a repeating task has
       // to edit the thing that repeats.
       initialText: existing?.recurText ?? existing?.text ?? initialText,
+      initialPriority: initialPriority,
+      initialRemindAt: initialRemindAt,
       accent: accent,
       layout: layout,
     ),
@@ -98,12 +102,18 @@ class _ComposerSheet extends StatefulWidget {
   const _ComposerSheet({
     required this.existing,
     required this.initialText,
+    this.initialPriority = 0,
+    this.initialRemindAt,
     required this.accent,
     required this.layout,
   });
 
   final Task? existing;
   final String initialText;
+
+  /// What the add card had set, for a new task. Ignored with [existing].
+  final int initialPriority;
+  final DateTime? initialRemindAt;
   final Color accent;
 
   /// Passed down rather than read from context: this widget is built by a
@@ -123,8 +133,10 @@ class _ComposerSheetState extends State<_ComposerSheet> {
   late final _notes = TextEditingController(
       text: widget.existing?.recurNotes ?? widget.existing?.notes ?? '');
 
-  late int _priority = widget.existing?.priority ?? 0;
-  late DateTime? _remindAt = widget.existing?.remindAtTime;
+  late int _priority = widget.existing?.priority ?? widget.initialPriority;
+  late DateTime? _remindAt = widget.existing == null
+      ? widget.initialRemindAt
+      : widget.existing!.remindAtTime;
   late RepeatSpec _repeat = RepeatSpec(
     recur: widget.existing?.recur,
     from: widget.existing?.recurFrom ?? RecurFrom.schedule,

@@ -38,6 +38,19 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-15-3',
+    title: 'A new way to add a task',
+    points: [
+      '"Add a task" now opens a card in the middle of the screen, with '
+          'buttons for priority, a reminder, the workspace, and ⤢ for the '
+          'full editor.',
+      'Type a workspace\'s name, a day or a time into the title and it is '
+          'used as a setting: "call bank tomorrow 9:30 Work" goes on Work '
+          'as "call bank" with a reminder. The × on a highlighted setting '
+          'keeps the word in the title instead.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-15-2',
     title: 'Ready to type, and your own window sizes',
     points: [

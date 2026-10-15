@@ -9,6 +9,33 @@ work that is about to happen.
 
 ## In progress
 
+### The add card — asked for 2026-10-15
+
+Marco: tapping the field or the dock's ＋ should fly the field to the middle
+and grow it, with buttons under it for priority, reminder, workspace and
+"expand" (the composer), and the title should take settings as words - a
+workspace's name moves the task there, a date and time is the reminder, a time
+alone is today.
+
+- **A card over the list, not a route.** It flies out of the folded line and
+  back into it, which a dialog cannot do, and the shell's other overlays (the
+  thought pane, settings) stay above it, so a capture hotkey mid-card returns
+  to the card with the draft intact.
+- **Parse live, strip on submit.** Taking words out of the field as they are
+  typed would move the caret under the hand; highlighting them and showing the
+  values on the buttons says the same thing without editing what is being
+  written.
+- **Every guess has an exit.** A workspace called *Work* makes "Work on the
+  report" ambiguous, and no rule can tell the two apart, so a recognised word
+  shows a × on its button that hands it back, and choosing a setting by hand
+  switches that kind of keyword off. The rules themselves lean towards not
+  firing (see the header of `task_keywords.dart`).
+- **A time that has passed today means tomorrow.** Marco asked for "today";
+  taken literally, typing *8:00* at ten writes a reminder that fires the instant
+  it is saved. Tomorrow is shown on the button before anything is written, so
+  it is visible rather than surprising. Revisit if he disagrees.
+- **Day-first dates, English and German words**: that is how he writes them.
+
 ### Collections — agreed 2026-10-13
 
 Asked for and settled with Marco on 2026-10-13: next to Notes and Parked, a

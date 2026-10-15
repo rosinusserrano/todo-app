@@ -29,6 +29,26 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 61. The add card  `[~]`
+
+Asked for 2026-10-15; design in `ROADMAP.md` under *The add card*. Built on
+the **`redesign` branch** (worktree `../todo-app-redesign`), published to the
+dev site, merged to `main` once Marco has tried it.
+
+- [x] **61.1** `task_keywords.dart`: workspace names, dates and times read
+      from a title, with `test/task_keywords_test.dart`.
+- [x] **61.2** `ui/task_capture.dart`: the card - the flight from the folded
+      line, the scrim, the bar (priority, reminder, workspace, ⤢, add), the
+      highlighted keywords and their ×, `test/task_capture_test.dart`. The
+      shell's inline field and its workspace chip are gone; the composer
+      takes the card's priority and reminder.
+- [x] **61.3** FEATURES / CLAUDE.md / What's new; published to
+      todo-dev.sniggles.de.
+- [ ] **61.4** Marco tries it on the dev site (phone and desktop); changes
+      from that.
+- [ ] **61.5** Merge `redesign` to `main`, publish the web app,
+      `install-windows.ps1`.
+
 ### 60. Notifications from outside the app: `POST /api/notify`  `[~]`
 
 Asked for 2026-10-16: the server's Beszel monitoring (monitor.sniggles.de)

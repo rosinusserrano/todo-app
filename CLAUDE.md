@@ -456,25 +456,43 @@ contain every table a later step touches, which is why `journal_test` carries
   (`_neutralChrome`), and every thought surface uses `T.thoughts`: the pile is
   global, and drawing it in one workspace's colour claimed otherwise.
 
-### The add field is opened, not permanent
+### The add field is a card (`app/lib/ui/task_capture.dart`)
 
 `_adding` on the shell, set by the dock's ＋ (*Add a task*), a mouse click on
-the dock's workspace segment (`DockSegment.onClick`), `N` on desktop, and
-every capture path (`_jumpToAddTask` calls `_openAdd`). `_addShowing` also holds it open while the controller has
-text, so nothing half-typed is folded away; `_closeAdd` refuses a non-empty
-field. Enter adds and keeps the caret; Enter on nothing, Esc, or a tap outside
-closes it. The `N` handler checks the focused node's ancestry for an
-`EditableTextState`, because a text field's key events bubble through the
-shell's `Focus` too and an "n" typed into a note must stay an "n".
+the dock's workspace segment (`DockSegment.onClick`), `N` on desktop, the
+folded "Add a task" line at the head of the list (`_addPrompt`), and every
+capture path (`_jumpToAddTask` calls `_openAdd`). Open, `TaskCapture` flies
+from that line's rect (`_addPromptRect`, in the shell Stack's space) to a
+centred column over a scrim, growing as it goes; closed, it flies back and
+`onClosed` lets the line draw again (`_addCardShown`). The `N` handler checks
+the focused node's ancestry for an `EditableTextState`, because a text field's
+key events bubble through the shell's `Focus` too and an "n" typed into a note
+must stay an "n". The things that are load-bearing:
 
-Folded, the field is `_addPrompt` - one "Add a task" line in the same slot and
-padding, so the way in is on the list at every size. Open, its prefix is a
-workspace chip (`_addTarget`, resolved through `_addTargetWorkspace` so a
-deleted target means "here"): `AppState.addTask(workspaceUuid:)` writes there
-without switching, and `_addedTo` says where it went. The chip's menu sets
-`_pickingAddTarget` while open, because a tap on a popup route is a tap
-*outside* the field and `onTapOutside` would fold an empty field under the
-choice.
+- **The card is always in the shell's Stack** and draws nothing while closed:
+  its State holds the draft's priority / reminder / workspace between
+  openings, and an exit animation needs a widget still in the tree.
+- **The flight is laid out, not scaled** (`_FlightLayout`, a
+  `SingleChildLayoutDelegate` lerping from the line's box to the centred one),
+  for focus mode's reason: a scale would stretch the text. The origin is read
+  at the start of *each* flight, since the list can move in between.
+- **The shell owns the controller (`KeywordController`), so closing keeps the
+  draft** and the folded line shows it. Esc, the scrim and Enter on nothing
+  all close; none of them throw away text.
+- **Keywords are parsed, not consumed, while typing.** `parseTaskKeywords`
+  (`task_keywords.dart`, pure, `now` injected, `test/task_keywords_test.dart`)
+  runs per keystroke; the controller highlights its spans, the bar shows the
+  values, and the stripped title is only produced on submit. A hand-picked
+  setting switches its kind of keyword off, and the bar's × does the same for
+  a recognised word, so there is always a way to keep a word in a title. The
+  parser's guesses are tuned to *not* fire: a bare number is never a time,
+  weekdays are full names, `1/2` is a fraction, and a title that would be left
+  empty keeps its words.
+- `KeywordController.invalidate` does **not** notify: the card calls it from
+  `didUpdateWidget` (workspaces changed), and notifying there is a setState
+  during build.
+- Enter in tests is `testTextInput.receiveAction(TextInputAction.done)`, not a
+  key event: the field is single-line and submits through the text input.
 
 ### Selecting several tasks
 

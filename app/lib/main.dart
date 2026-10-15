@@ -4,7 +4,7 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show unawaited;
 import 'dart:convert' show utf8;
 import 'dart:io' show File;
 
@@ -65,6 +65,7 @@ import 'ui/shopping_list.dart';
 import 'ui/sheet_transition.dart';
 import 'ui/sound_sheet.dart';
 import 'ui/split_pane.dart';
+import 'ui/task_capture.dart';
 import 'ui/task_composer.dart';
 import 'ui/task_detail.dart';
 import 'ui/task_drag.dart';
@@ -283,65 +284,50 @@ class _WidgetShellState extends State<WidgetShell>
         WidgetsBindingObserver {
   AppState get s => widget.state;
 
-  final _addController = TextEditingController();
+  final _addController = KeywordController();
   final _addFocus = FocusNode();
 
-  /// The add field is showing.
+  /// The add card is open (ui/task_capture.dart).
   ///
-  /// It used to be permanent - a text field above every list, 42 units of a
-  /// phone's height spent on something used a few seconds an hour. Now it is a
-  /// ＋ on the workspace bar (or the rail) and this is whether that ＋ has been
-  /// pressed. It stays open while there is text in it, so nothing half-typed
-  /// is ever folded away.
+  /// The field used to open in place at the head of the list; now the folded
+  /// line there is where the card lifts off from and lands back on. Closing
+  /// keeps whatever was typed - the folded line shows it - so a tap on the
+  /// dimmed list costs nothing.
   bool _adding = false;
 
-  bool get _addShowing => _adding || _addController.text.isNotEmpty;
+  /// The card is on screen, flying home included. The folded line stays
+  /// hidden until it has landed, or there would be two of it.
+  bool _addCardShown = false;
 
-  /// The workspace the add field writes into, when it is not this one.
-  ///
-  /// Picked from the chip at the start of the field. Capturing into another
-  /// list is not the same as wanting to look at it, so the screen stays where
-  /// it is and [_addedTo] says where the task went instead. Resolved through
-  /// [_addTargetWorkspace], so a target that was deleted, or that became the
-  /// current workspace, simply means "here".
-  String? _addTarget;
+  final _addPromptKey = GlobalKey();
 
-  /// The name shown under the field for a moment after a task went elsewhere -
-  /// it will not appear on the list, and a field that empties itself is
-  /// otherwise indistinguishable from one that dropped what you typed.
-  String? _addedTo;
-  Timer? _addedToTimer;
-
-  /// A workspace menu is open from the field's chip. The menu is a route, so a
-  /// tap on it is a tap *outside* the field, and the field would fold itself
-  /// away underneath the choice.
-  bool _pickingAddTarget = false;
-
-  Workspace? get _addTargetWorkspace {
-    final target = _addTarget;
-    if (target == null || target == s.currentWorkspaceUuid) return null;
-    for (final w in s.workspaces) {
-      if (w.uuid == target) return w;
-    }
-    return null;
-  }
-
-  /// Open the field and put the caret in it. The focus waits for the frame
-  /// that builds the field.
+  /// Open the card. The caret is the card's to place, once it is built.
   void _openAdd() {
-    if (!_adding) setState(() => _adding = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _addFocus.requestFocus();
+    // Inside the tap, when there is one: iOS raises the keyboard only for a
+    // focus moved during the touch's own handler (see web_keyboard.dart).
+    if (isWeb && _layout.touch) primeWebKeyboard();
+    if (_adding) return;
+    setState(() {
+      _adding = true;
+      _addCardShown = true;
     });
   }
 
-  /// Fold it away - only when empty. Whatever was typed is still the draft.
+  /// Fly it home. What was typed stays as the draft.
   void _closeAdd() {
-    if (_addController.text.trim().isNotEmpty) return;
-    _addController.clear();
-    _addFocus.unfocus();
-    _addTarget = null;
-    if (_adding) setState(() => _adding = false);
+    if (!_adding) return;
+    setState(() => _adding = false);
+  }
+
+  /// The folded line, in the shell Stack's coordinates - where the card
+  /// leaves from and lands on. Null when another view has the content area.
+  Rect? _addPromptRect() {
+    final box = _addPromptKey.currentContext?.findRenderObject() as RenderBox?;
+    final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || stack == null || !box.attached || !box.hasSize) {
+      return null;
+    }
+    return box.localToGlobal(Offset.zero, ancestor: stack) & box.size;
   }
 
   final _stackKey = GlobalKey();
@@ -1173,7 +1159,6 @@ class _WidgetShellState extends State<WidgetShell>
 
   @override
   void dispose() {
-    _addedToTimer?.cancel();
     s.removeListener(_onState);
     widget.sync.removeListener(_onState);
     widget.sound.removeListener(_onState);
@@ -1507,7 +1492,7 @@ class _WidgetShellState extends State<WidgetShell>
             _closeSound();
           } else if (_focusThoughtOpen) {
             _closeFocusThought();
-          } else if (_adding && _addController.text.trim().isEmpty) {
+          } else if (_adding) {
             _closeAdd();
           } else if (s.focusTask != null) {
             _exitFocus();
@@ -1601,6 +1586,32 @@ class _WidgetShellState extends State<WidgetShell>
         if (_phase == _Focus.resting) _focusOverlay(ws),
         if (_phase == _Focus.flyingIn || _phase == _Focus.flyingOut)
           _flyingTile(ws),
+
+        // The add card, over the list it lifts off from and under every sheet:
+        // a capture hotkey or a thought pane opened on top of it closes back
+        // onto it, draft intact.
+        Positioned.fill(
+          child: TaskCapture(
+            open: _adding,
+            controller: _addController,
+            focusNode: _addFocus,
+            workspaces: s.workspaces,
+            hereUuid: s.currentWorkspaceUuid,
+            layout: _layout,
+            originOf: _addPromptRect,
+            onSubmit: (r) => s.addTask(
+              r.title,
+              workspaceUuid: r.workspaceUuid,
+              priority: r.priority,
+              remindAt: r.remindAt,
+            ),
+            onExpand: _openComposer,
+            onClose: _closeAdd,
+            onClosed: () {
+              if (mounted) setState(() => _addCardShown = false);
+            },
+          ),
+        ),
 
         // Above the focus overlay, since picking something to listen to is
         // exactly what you do *after* picking a task.
@@ -2660,14 +2671,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// what a narrow window gets, and what the left pane of the split calendar
   /// gets - it is 340px wide by construction, so it is the narrow case.
   Widget _stackedContent(Color ws) {
-    final secondary = _secondaryView(ws);
-    if (secondary == null) return _taskColumn(ws);
-    return Column(
-      children: [
-        if (_addShowing) _addField(ws),
-        Expanded(child: secondary),
-      ],
-    );
+    return _secondaryView(ws) ?? _taskColumn(ws);
   }
 
   /// The add field and the task list, capped at a readable column width.
@@ -2702,8 +2706,6 @@ class _WidgetShellState extends State<WidgetShell>
                 onDelete: () => _finishSelected(complete: false),
                 onClear: _clearSelection,
               )
-            else if (_addShowing)
-              _addField(ws)
             else
               _addPrompt(ws),
             Expanded(child: _activeView(ws)),
@@ -3009,21 +3011,24 @@ class _WidgetShellState extends State<WidgetShell>
 
   // ------------------------------------------------------------- composer
 
-  /// The long form, from the add field. Ctrl+D and the ⤢ both land here.
+  /// The long form, from the add card. Ctrl+D and the ⤢ both land here.
   ///
-  /// Whatever has been typed is carried over as the title - a shortcut that
-  /// cost you the line you had already written would not be worth pressing -
-  /// and the field is only cleared once the composer actually produced a task,
-  /// so cancelling leaves the quick path exactly as it was.
-  Future<void> _openComposer() async {
+  /// The card's title (keywords taken out) and settings are carried over - a
+  /// shortcut that cost you what you had already set would not be worth
+  /// pressing - and the card is only emptied once the composer actually
+  /// produced a task, so cancelling leaves it exactly as it was.
+  Future<bool> _openComposer(CaptureResult r) async {
+    final target = r.workspaceUuid == null
+        ? null
+        : s.workspaces.where((w) => w.uuid == r.workspaceUuid).firstOrNull;
     final draft = await showTaskComposer(
       context,
-      initialText: _addController.text.trim(),
-      accent: s.workspaceColor,
+      initialText: r.title,
+      initialPriority: r.priority,
+      initialRemindAt: r.remindAt,
+      accent: target == null ? s.workspaceColor : T.parseHex(target.color),
     );
-    if (draft == null || !mounted) return;
-    final target = _addTargetWorkspace;
-    _addController.clear();
+    if (draft == null || !mounted) return false;
     _closeAdd();
     await s.addTask(
       draft.text,
@@ -3035,6 +3040,7 @@ class _WidgetShellState extends State<WidgetShell>
       recurFrom: draft.repeat.from,
       recurLead: draft.repeat.lead,
     );
+    return true;
   }
 
   /// The same form on a task that already exists, opened from its own text.
@@ -3057,250 +3063,50 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
-  Widget _addField(Color ws) {
-    final field = TextField(
-      controller: _addController,
-      focusNode: _addFocus,
-      style: const TextStyle(fontSize: T.fsBody),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Add a task…',
-        prefixIcon: _addTargetChip(ws),
-        prefixIconConstraints: const BoxConstraints(minHeight: 30),
-        filled: true,
-        fillColor: T.surface,
-        // The shortcut, made visible - and the only way in on a phone, which
-        // has no Ctrl to hold.
-        suffixIcon: Tooltip(
-          message: 'More: notes, priority, reminder (Ctrl+D)',
-          child: InkWell(
-            onTap: _openComposer,
-            borderRadius: BorderRadius.circular(T.radius),
-            child: const Icon(
-              Icons.open_in_full_rounded,
-              size: 14,
-              color: T.muted,
-            ),
-          ),
-        ),
-        suffixIconConstraints: const BoxConstraints(
-          minWidth: 34,
-          minHeight: 30,
-        ),
-        contentPadding: const EdgeInsets.all(T.s2),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(T.radius),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(T.radius),
-          borderSide: BorderSide(color: ws.withValues(alpha: 0.6)),
-        ),
-      ),
-      // Enter adds and keeps the caret, because the field was opened on
-      // purpose and the next task is usually right behind the first. An Enter
-      // on nothing is the way out, as is Esc or tapping elsewhere.
-      onSubmitted: (value) async {
-        if (value.trim().isEmpty) {
-          _closeAdd();
-          return;
-        }
-        final target = _addTargetWorkspace;
-        _addController.clear();
-        await s.addTask(value, workspaceUuid: target?.uuid);
-        if (!mounted) return;
-        if (target != null) _sayAddedTo(target.name);
-        _addFocus.requestFocus();
-      },
-      onTapOutside: (_) {
-        if (_pickingAddTarget) return;
-        if (_addController.text.trim().isEmpty) _closeAdd();
-      },
-    );
-
-    return Padding(
-      // The window column is inset by one step, and so is the inside of a
-      // task row - which puts a task's text at two steps from the window
-      // edge and this field's fill exactly over the rows' fills. They were
-      // 12 and 10 before, misaligned by a pixel nobody could name.
-      padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
-      // The shortcut is bound around the field rather than globally: Ctrl+D is
-      // only unambiguous while the caret is in here, and a global binding would
-      // fire from inside the journal editor or a note.
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyD, control: true):
-              _openComposer,
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            field,
-            if (_addedTo != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, 0),
-                child: Text(
-                  'Added to $_addedTo',
-                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _sayAddedTo(String name) {
-    _addedToTimer?.cancel();
-    setState(() => _addedTo = name);
-    _addedToTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _addedTo = null);
-    });
-  }
-
-  /// The chip at the start of the add field: which list the task goes on.
-  ///
-  /// A dot in the current workspace's colour while it is "here" - the name is
-  /// already on the bar above and repeating it would cost the field its width -
-  /// and the dot plus the name once it points anywhere else, because then it is
-  /// the one thing on screen saying so.
-  Widget _addTargetChip(Color ws) {
-    final target = _addTargetWorkspace;
-    final color = target == null ? ws : T.parseHex(target.color);
-    return Tooltip(
-      message: 'Add to… (${target?.name ?? s.currentWorkspace?.name ?? ''})',
-      child: InkWell(
-        onTap: _pickAddTarget,
-        borderRadius: BorderRadius.circular(T.radius),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s1),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              if (target != null) ...[
-                const SizedBox(width: T.s1),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 96),
-                  child: Text(
-                    target.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: T.fsMeta,
-                      color: color,
-                      fontWeight: T.wMedium,
-                    ),
-                  ),
-                ),
-              ],
-              const Icon(Icons.expand_more_rounded, size: 12, color: T.muted),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickAddTarget() async {
-    // In the overlay's space, not the screen's: UiScale sits above the
-    // Navigator (see taskActionAnchor).
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
-    final field = _addFocus.context?.findRenderObject() as RenderBox?;
-    if (overlay == null || field == null) return;
-    final rect =
-        field.localToGlobal(Offset.zero, ancestor: overlay) & field.size;
-    final current = _addTargetWorkspace?.uuid ?? s.currentWorkspaceUuid;
-
-    _pickingAddTarget = true;
-    final picked = await showMenu<String>(
-      context: context,
-      color: T.bgSolid,
-      position: RelativeRect.fromRect(
-        Rect.fromLTWH(rect.left, rect.bottom, rect.width, 0),
-        Offset.zero & overlay.size,
-      ),
-      items: [
-        for (final w in s.workspaces)
-          PopupMenuItem<String>(
-            value: w.uuid,
-            height: 38,
-            child: Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: T.parseHex(w.color),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: T.s2),
-                Expanded(
-                  child: Text(
-                    w.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: T.fsLabel,
-                      color: w.uuid == current ? T.text : T.muted,
-                      fontWeight: w.uuid == current ? T.wMedium : T.wNormal,
-                    ),
-                  ),
-                ),
-                if (w.uuid == s.currentWorkspaceUuid)
-                  const Text(
-                    'this one',
-                    style: TextStyle(fontSize: T.fsMeta, color: T.muted),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-    _pickingAddTarget = false;
-    if (!mounted) return;
-    if (picked != null) setState(() => _addTarget = picked);
-    _addFocus.requestFocus();
-  }
-
-  /// The add field, folded: one line at the head of the list saying a task can
-  /// be added here, which turns into the field in place when pressed.
+  /// The add card, folded: one line at the head of the list saying a task can
+  /// be added here. Pressed, the card lifts off from it (ui/task_capture.dart)
+  /// and lands back on it when it closes.
   ///
   /// The dock's ＋, a click on its workspace and N are ways in too, but they
   /// are not where the task will appear, and a shortcut is only a way in
-  /// once you know it. Adding a
-  /// task is the commonest thing done in this app, so the way to do it is on
-  /// the list itself. Same `_adding` state as the other two, so there is still
-  /// one field; same padding as the field, so opening it does not move the
-  /// list.
+  /// once you know it. Adding a task is the commonest thing done in this app,
+  /// so the way to do it is on the list itself. A closed card keeps its
+  /// draft, and this line shows it, so nothing half-typed is out of sight.
   Widget _addPrompt(Color ws) {
+    final draft = _addController.text.trim();
     return Padding(
       padding: const EdgeInsets.fromLTRB(T.s2, T.s1, T.s2, T.s1),
-      child: Semantics(
-        button: true,
-        label: 'Add a task',
-        child: InkWell(
-          onTap: _openAdd,
-          borderRadius: BorderRadius.circular(T.radius),
-          child: Padding(
-            padding: const EdgeInsets.all(T.s2),
-            child: Row(
-              children: [
-                Icon(Icons.add_rounded, size: 16, color: ws),
-                const SizedBox(width: T.s2),
-                const ExcludeSemantics(
-                  child: Text(
-                    'Add a task',
-                    style: TextStyle(fontSize: T.fsBody, color: T.muted),
+      child: Opacity(
+        // The card is this line, lifted off; drawing both would be two.
+        opacity: _addCardShown ? 0 : 1,
+        child: Semantics(
+          button: true,
+          label: draft.isEmpty ? 'Add a task' : 'Continue: $draft',
+          child: InkWell(
+            key: _addPromptKey,
+            onTap: _openAdd,
+            borderRadius: BorderRadius.circular(T.radius),
+            child: Padding(
+              padding: const EdgeInsets.all(T.s2),
+              child: Row(
+                children: [
+                  Icon(Icons.add_rounded, size: 16, color: ws),
+                  const SizedBox(width: T.s2),
+                  Expanded(
+                    child: ExcludeSemantics(
+                      child: Text(
+                        draft.isEmpty ? 'Add a task' : draft,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: T.fsBody,
+                          color: draft.isEmpty ? T.muted : T.text,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

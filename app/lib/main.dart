@@ -1686,8 +1686,10 @@ class _WidgetShellState extends State<WidgetShell>
             listOpen: s.showList,
             syncColor: _syncColor(),
             syncTooltip: widget.sync.describe(),
-            onWindowSize: isDesktop ? (size) => _placeWindow(size: size) : null,
-            onWindowSpot: isDesktop ? (spot) => _placeWindow(spot: spot) : null,
+            windowModes: isDesktop ? s.windowModes : null,
+            onWindowMode: _placeWindow,
+            onSaveWindowMode: _saveWindowMode,
+            onRemoveWindowMode: s.removeWindowMode,
             // Along the top the dock is in this bar, beside the name, rather
             // than a second bar under it. It fades with the body in focus
             // mode, which this bar otherwise stays visible through.
@@ -1994,10 +1996,29 @@ class _WidgetShellState extends State<WidgetShell>
     if (_updateOpen) setState(() => _updateOpen = false);
   }
 
-  /// A window preset: a [size] where the window already is, or the window
-  /// as it is at a [spot]. See window_spots.dart.
-  Future<void> _placeWindow({WindowSize? size, WindowSpot? spot}) async {
+  /// A window mode from the title bar: its size, at its spot, on the
+  /// screen the window is on. See window_spots.dart.
+  Future<void> _placeWindow(WindowMode mode) async {
     if (await windowManager.isMaximized()) await windowManager.unmaximize();
+    final (_, area) = await _windowAndArea();
+    await windowManager.setBounds(mode.placeIn(area));
+  }
+
+  /// The window as it is now, kept as a mode: its exact size, at whichever
+  /// spot it is nearest.
+  Future<void> _saveWindowMode() async {
+    final (bounds, area) = await _windowAndArea();
+    await s.addWindowMode(
+      WindowMode(
+        spot: spotOf(bounds, area),
+        width: bounds.width.roundToDouble(),
+        height: bounds.height.roundToDouble(),
+      ),
+    );
+  }
+
+  /// The window's bounds and the work area of the screen it is on.
+  Future<(Rect, Rect)> _windowAndArea() async {
     final bounds = await windowManager.getBounds();
     Rect areaOf(Display d) =>
         (d.visiblePosition ?? Offset.zero) & (d.visibleSize ?? d.size);
@@ -2006,13 +2027,7 @@ class _WidgetShellState extends State<WidgetShell>
       [for (final d in await screenRetriever.getAllDisplays()) areaOf(d)],
       areaOf(await screenRetriever.getPrimaryDisplay()),
     );
-    await windowManager.setBounds(
-      placeWindow(
-        area: area,
-        size: size?.within(area) ?? bounds.size,
-        spot: spot ?? spotOf(bounds, area),
-      ),
-    );
+    return (bounds, area);
   }
 
   void _openThoughtCapture() {

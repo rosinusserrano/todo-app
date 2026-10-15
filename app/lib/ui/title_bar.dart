@@ -44,14 +44,19 @@ class TitleBar extends StatelessWidget {
     required this.syncColor,
     required this.syncTooltip,
     this.dock,
-    this.onWindowSize,
-    this.onWindowSpot,
+    this.windowModes,
+    this.onWindowMode,
+    this.onSaveWindowMode,
+    this.onRemoveWindowMode,
   });
 
-  /// The window presets (see window_spots.dart). Desktop only; null on
-  /// anything that is not a window of its own.
-  final ValueChanged<WindowSize>? onWindowSize;
-  final ValueChanged<WindowSpot>? onWindowSpot;
+  /// The window modes (see window_spots.dart), dropped down from a button
+  /// beside Minimize. Desktop only; null on anything that is not a window of
+  /// its own.
+  final List<WindowMode>? windowModes;
+  final ValueChanged<WindowMode>? onWindowMode;
+  final VoidCallback? onSaveWindowMode;
+  final ValueChanged<WindowMode>? onRemoveWindowMode;
 
   static const height = 40.0;
 
@@ -183,8 +188,6 @@ class TitleBar extends StatelessWidget {
             onPressed: onToggleSound,
           ),
         if (isDesktop) ...[
-          if (onWindowSize != null && onWindowSpot != null)
-            _WindowMenu(onSize: onWindowSize!, onSpot: onWindowSpot!),
           _Btn(
             tooltip: pinned ? 'Unpin' : 'Always on top',
             icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
@@ -198,6 +201,16 @@ class TitleBar extends StatelessWidget {
             icon: Icons.remove,
             onPressed: windowManager.minimize,
           ),
+          // Where a maximise button would be: this is the window's size too,
+          // just more than two of them.
+          if (windowModes case final modes?)
+            _WindowModes(
+              modes: modes,
+              accent: accent,
+              onPick: onWindowMode!,
+              onSave: onSaveWindowMode!,
+              onRemove: onRemoveWindowMode!,
+            ),
           _Btn(tooltip: 'Close', icon: Icons.close, onPressed: onClose),
         ],
         const SizedBox(width: 6),
@@ -420,88 +433,347 @@ class _VolumePanelState extends State<_VolumePanel> {
   }
 }
 
-/// The window presets: three sizes over five spots. One button, because both
-/// are the same errand - "put the window somewhere useful" - and the title
-/// bar of a 340px window has no room for eight.
-class _WindowMenu extends StatelessWidget {
-  const _WindowMenu({required this.onSize, required this.onSpot});
+/// The window modes: a button where a maximise button would be, whose list
+/// drops down while the mouse is over it - each row a size and a place in
+/// one, with a picture of where the window goes - plus a row that keeps the
+/// window as it is now as another. Same hover arrangement as the volume
+/// panel above: button and panel feed one hover, and leaving either starts a
+/// short timer rather than closing outright, so the gap can be crossed.
+class _WindowModes extends StatefulWidget {
+  const _WindowModes({
+    required this.modes,
+    required this.accent,
+    required this.onPick,
+    required this.onSave,
+    required this.onRemove,
+  });
 
-  final ValueChanged<WindowSize> onSize;
-  final ValueChanged<WindowSpot> onSpot;
+  final List<WindowMode> modes;
+  final Color accent;
+  final ValueChanged<WindowMode> onPick;
+  final VoidCallback onSave;
+  final ValueChanged<WindowMode> onRemove;
 
-  static const _spotIcons = {
-    WindowSpot.topLeft: Icons.north_west_rounded,
-    WindowSpot.topRight: Icons.north_east_rounded,
-    WindowSpot.center: Icons.filter_center_focus_rounded,
-    WindowSpot.bottomLeft: Icons.south_west_rounded,
-    WindowSpot.bottomRight: Icons.south_east_rounded,
-  };
+  @override
+  State<_WindowModes> createState() => _WindowModesState();
+}
 
-  static const _sizeIcons = {
-    WindowSize.small: Icons.crop_portrait_rounded,
-    WindowSize.tall: Icons.view_agenda_outlined,
-    WindowSize.large: Icons.crop_landscape_rounded,
-  };
+class _WindowModesState extends State<_WindowModes> {
+  final _link = LayerLink();
+  OverlayEntry? _panel;
+  Timer? _timer;
 
-  PopupMenuItem<Object> _item(Object value, IconData icon, String label) =>
-      PopupMenuItem<Object>(
-        value: value,
-        height: 36,
-        child: Row(
-          children: [
-            Icon(icon, size: 15, color: T.muted),
-            const SizedBox(width: T.s2),
-            Text(label, style: const TextStyle(fontSize: T.fsLabel)),
-          ],
+  /// Resting on the button opens it; passing over it on the way to Close
+  /// does not.
+  static const _openDelay = Duration(milliseconds: 150);
+  static const _grace = Duration(milliseconds: 250);
+
+  @override
+  void didUpdateWidget(_WindowModes oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The entry is built from this widget's fields; a mode saved or removed
+    // while the panel is up has to show in it.
+    _panel?.markNeedsBuild();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    if (_panel?.mounted ?? false) _panel!.remove();
+    _panel = null;
+    super.dispose();
+  }
+
+  void _enter() {
+    _timer?.cancel();
+    if (_panel != null) return;
+    _timer = Timer(_openDelay, _open);
+  }
+
+  void _exit() {
+    _timer?.cancel();
+    _timer = Timer(_grace, _close);
+  }
+
+  void _open() {
+    if (_panel != null || !mounted) return;
+    _panel = OverlayEntry(
+      builder: (_) => Positioned(
+        width: _ModesPanel.width,
+        child: CompositedTransformFollower(
+          link: _link,
+          // Hung from the button's right edge and growing left, like the
+          // volume panel: the button is at the right-hand end of the bar.
+          targetAnchor: Alignment.bottomRight,
+          followerAnchor: Alignment.topRight,
+          offset: const Offset(0, 4),
+          child: MouseRegion(
+            onEnter: (_) => _timer?.cancel(),
+            onExit: (_) => _exit(),
+            child: _ModesPanel(
+              modes: widget.modes,
+              accent: widget.accent,
+              onPick: (m) {
+                _close();
+                widget.onPick(m);
+              },
+              onSave: widget.onSave,
+              onRemove: widget.onRemove,
+            ),
+          ),
         ),
-      );
-
-  PopupMenuItem<Object> _heading(String label) => PopupMenuItem<Object>(
-    enabled: false,
-    height: 28,
-    child: Text(
-      label,
-      style: const TextStyle(
-        fontSize: T.fsMeta,
-        fontFamily: T.fontDisplay,
-        fontWeight: T.wMedium,
-        color: T.muted,
       ),
-    ),
-  );
+    );
+    Overlay.of(context).insert(_panel!);
+  }
+
+  void _close() {
+    _timer?.cancel();
+    if (_panel?.mounted ?? false) _panel!.remove();
+    _panel = null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final layout = Layout.of(context);
-    final side = math.min(layout.tapTarget, TitleBar.height);
-    return PopupMenuButton<Object>(
-      tooltip: 'Window size and place',
-      color: T.bgSolid,
-      position: PopupMenuPosition.under,
-      padding: EdgeInsets.zero,
-      onSelected: (v) => switch (v) {
-        final WindowSize s => onSize(s),
-        final WindowSpot s => onSpot(s),
-        _ => null,
-      },
-      itemBuilder: (_) => [
-        _heading('Size'),
-        for (final s in WindowSize.values) _item(s, _sizeIcons[s]!, s.label),
-        const PopupMenuDivider(),
-        _heading('Place'),
-        for (final s in WindowSpot.values) _item(s, _spotIcons[s]!, s.label),
-      ],
-      child: SizedBox(
-        width: side,
-        height: side,
-        child: Icon(
-          Icons.picture_in_picture_alt_outlined,
-          size: layout.actionIcon,
-          color: T.muted,
+    return CompositedTransformTarget(
+      link: _link,
+      child: MouseRegion(
+        onEnter: (_) => _enter(),
+        onExit: (_) => _exit(),
+        // A click opens it at once, for a touch screen or anyone who clicks
+        // before the hover has caught up; a second click closes it.
+        child: _Btn(
+          tooltip: 'Window size and place',
+          icon: Icons.crop_square_rounded,
+          onPressed: () => _panel == null ? _open() : _close(),
         ),
       ),
     );
   }
+}
+
+class _ModesPanel extends StatelessWidget {
+  const _ModesPanel({
+    required this.modes,
+    required this.accent,
+    required this.onPick,
+    required this.onSave,
+    required this.onRemove,
+  });
+
+  static const width = 236.0;
+  static const _rowHeight = 34.0;
+
+  final List<WindowMode> modes;
+  final Color accent;
+  final ValueChanged<WindowMode> onPick;
+  final VoidCallback onSave;
+  final ValueChanged<WindowMode> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: T.s1),
+        decoration: BoxDecoration(
+          color: T.bgSolid,
+          borderRadius: BorderRadius.circular(T.radius),
+          border: Border.all(color: const Color(0x1FFFFFFF)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final m in modes)
+              _ModeRow(
+                mode: m,
+                accent: accent,
+                onTap: () => onPick(m),
+                onRemove: () => onRemove(m),
+              ),
+            if (modes.isNotEmpty)
+              const Divider(
+                height: T.s2,
+                thickness: 1,
+                color: Color(0x14FFFFFF),
+              ),
+            InkWell(
+              onTap: onSave,
+              child: SizedBox(
+                height: _rowHeight,
+                child: Row(
+                  children: [
+                    const SizedBox(width: T.s3),
+                    const SizedBox(
+                      width: _MiniScreen.width,
+                      child: Icon(Icons.add_rounded, size: 16, color: T.muted),
+                    ),
+                    const SizedBox(width: T.s3),
+                    const Expanded(
+                      child: Text(
+                        'Save this window',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: T.fsLabel, color: T.muted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeRow extends StatefulWidget {
+  const _ModeRow({
+    required this.mode,
+    required this.accent,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final WindowMode mode;
+  final Color accent;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  @override
+  State<_ModeRow> createState() => _ModeRowState();
+}
+
+class _ModeRowState extends State<_ModeRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        child: SizedBox(
+          height: _ModesPanel._rowHeight,
+          child: Row(
+            children: [
+              const SizedBox(width: T.s3),
+              _MiniScreen(mode: widget.mode, accent: widget.accent),
+              const SizedBox(width: T.s3),
+              Expanded(
+                child: Text(
+                  widget.mode.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: T.fsLabel, color: T.text),
+                ),
+              ),
+              // Removing is there only under the mouse, so the list reads
+              // as a list of places rather than a list of delete buttons.
+              Opacity(
+                opacity: _hovered ? 1 : 0,
+                child: Tooltip(
+                  message: 'Remove',
+                  child: InkWell(
+                    onTap: _hovered ? widget.onRemove : null,
+                    borderRadius: BorderRadius.circular(T.radius),
+                    child: const SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 14,
+                        color: T.muted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: T.s1),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A screen in miniature with the window drawn where [mode] puts it.
+class _MiniScreen extends StatelessWidget {
+  const _MiniScreen({required this.mode, required this.accent});
+
+  static const width = 28.0;
+  static const height = 18.0;
+
+  /// The screen the picture assumes: a common laptop's work area. Only the
+  /// proportions matter.
+  static const _screen = Rect.fromLTWH(0, 0, 1920, 1032);
+
+  final WindowMode mode;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(width, height),
+      painter: _MiniScreenPainter(
+        window: mode.placeIn(_screen),
+        screen: _screen,
+        accent: accent,
+      ),
+    );
+  }
+}
+
+class _MiniScreenPainter extends CustomPainter {
+  _MiniScreenPainter({
+    required this.window,
+    required this.screen,
+    required this.accent,
+  });
+
+  final Rect window;
+  final Rect screen;
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final frame = Offset.zero & size;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(frame.deflate(0.5), const Radius.circular(2)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = T.muted,
+    );
+    final inner = frame.deflate(2);
+    final sx = inner.width / screen.width;
+    final sy = inner.height / screen.height;
+    final r = Rect.fromLTWH(
+      inner.left + (window.left - screen.left) * sx,
+      inner.top + (window.top - screen.top) * sy,
+      math.max(2, window.width * sx),
+      math.max(2, window.height * sy),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(r, const Radius.circular(1)),
+      Paint()..color = accent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_MiniScreenPainter old) =>
+      old.window != window || old.accent != accent;
 }
 
 class _Btn extends StatelessWidget {

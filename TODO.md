@@ -122,8 +122,9 @@ later rounds go the same way (branch, dev site, then main). Reasoning is in `ROA
       - every thought capture opens `ThoughtSheet`, desktop included, Enter
         saves + closes, Ctrl+Enter saves + another, Shift+Enter newline;
       - a mouse click on the dock's workspace segment opens the add field;
-      - window presets (Small / Tall / Large, corners + centre) in the title
-        bar, desktop only (`window_spots.dart`).
+      - window presets in the title bar, desktop only (`window_spots.dart`);
+        redone 2026-10-15 as hover-open *modes* (size + spot together, Small
+        bottom-left and Large centre by default, save your own).
       Then: `viewport-fit=cover` only for the home-screen web app (in a
       Firefox tab on iOS the dock sat under the browser's toolbar), and a
       stretched block's preview drawn solid over the faded original.

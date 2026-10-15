@@ -28,6 +28,8 @@ import 'ui/calendar/time_grid.dart' show kHourHeight, kHourHeightMin, kHourHeigh
 import 'ui/dock.dart' show DockEdge;
 import 'theme.dart';
 import 'whats_new.dart' show ReleaseNote, kReleaseNotes, notesSince;
+import 'window_spots.dart'
+    show WindowMode, decodeWindowModes, encodeWindowModes, kDefaultWindowModes;
 
 const _kLastWorkspace = 'ui:last-workspace';
 const _kNudge = 'ui:nudge-enabled';
@@ -38,6 +40,7 @@ const _kCalendarHidden = 'ui:calendar-hidden';
 const _kCalendarBlock = 'ui:calendar-block';
 const _kWideDock = 'ui:wide-dock';
 const _kWhatsNewSeen = 'whats-new:seen';
+const _kWindowModes = 'window:modes';
 const _kSplitFraction = 'ui:split-fraction';
 const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
 const _kTasksPaneCollapsed = 'ui:tasks-pane-collapsed';
@@ -1297,6 +1300,29 @@ class AppState extends ChangeNotifier {
     splitFraction = double.tryParse(await _store.setting(_kSplitFraction) ?? '');
     calendarSplitFraction =
         double.tryParse(await _store.setting(_kCalendarSplitFraction) ?? '');
+    windowModes = decodeWindowModes(await _store.setting(_kWindowModes));
+  }
+
+  /// The window arrangements offered in the title bar (window_spots.dart).
+  /// Device-local: which corner suits this screen is not a fact about the
+  /// todo list.
+  List<WindowMode> windowModes = kDefaultWindowModes;
+
+  /// Adds [mode] at the end, unless it is already there.
+  Future<void> addWindowMode(WindowMode mode) async {
+    if (windowModes.contains(mode)) return;
+    windowModes = [...windowModes, mode];
+    notifyListeners();
+    await _store.setSetting(_kWindowModes, encodeWindowModes(windowModes));
+  }
+
+  Future<void> removeWindowMode(WindowMode mode) async {
+    windowModes = [
+      for (final m in windowModes)
+        if (m != mode) m,
+    ];
+    notifyListeners();
+    await _store.setSetting(_kWindowModes, encodeWindowModes(windowModes));
   }
 
   Future<void> setWideDock(DockEdge edge) async {

@@ -23,6 +23,7 @@ import 'package:todo_widget/ui/panel_header.dart';
 import 'package:todo_widget/ui/task_composer.dart';
 import 'package:todo_widget/ui/task_row.dart';
 import 'package:todo_widget/ui/title_bar.dart';
+import 'package:todo_widget/window_spots.dart';
 
 void main() {
   setUpAll(() {
@@ -448,6 +449,8 @@ void main() {
       bool isDesktop = false,
       double volume = 0.5,
       ValueChanged<double>? onVolume,
+      List<WindowMode>? windowModes,
+      ValueChanged<WindowMode>? onWindowMode,
     }) => MaterialApp(
       home: Scaffold(
         body: TitleBar(
@@ -462,13 +465,19 @@ void main() {
           onVolumeChanged: onVolume ?? (_) {},
           accent: ws,
           onClose: () {},
-          onOpenSettings: () {},
-          onToggleCalendar: () {},
+          // The dock carries these now; a bar with the window controls as
+          // well is the shape that never runs, and at 340px does not fit.
+          onOpenSettings: windowModes == null ? () {} : null,
+          onToggleCalendar: windowModes == null ? () {} : null,
           calendarOpen: false,
-          onToggleList: () {},
+          onToggleList: windowModes == null ? () {} : null,
           listOpen: false,
           syncColor: T.muted,
           syncTooltip: 'Sync off',
+          windowModes: windowModes,
+          onWindowMode: onWindowMode ?? (_) {},
+          onSaveWindowMode: () {},
+          onRemoveWindowMode: (_) {},
         ),
       ),
     );
@@ -484,6 +493,8 @@ void main() {
       bool isDesktop = false,
       double volume = 0.5,
       ValueChanged<double>? onVolume,
+      List<WindowMode>? windowModes,
+      ValueChanged<WindowMode>? onWindowMode,
     }) async {
       tester.view.physicalSize = const Size(340, 480);
       tester.view.devicePixelRatio = 1.0;
@@ -495,6 +506,8 @@ void main() {
           isDesktop: isDesktop,
           volume: volume,
           onVolume: onVolume,
+          windowModes: windowModes,
+          onWindowMode: onWindowMode,
         ),
       );
     }
@@ -507,6 +520,56 @@ void main() {
       addTearDown(() => g.removePointer());
       return g;
     }
+
+    testWidgets('the window modes drop down on hover, and a pick applies', (
+      tester,
+    ) async {
+      WindowMode? picked;
+      await pumpBar(
+        tester,
+        isDesktop: true,
+        playing: false,
+        windowModes: kDefaultWindowModes,
+        onWindowMode: (m) => picked = m,
+      );
+      final g = await mouse(tester);
+      await g.moveTo(tester.getCenter(find.byIcon(Icons.crop_square_rounded)));
+      // Passing over the button on the way to Close opens nothing.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Small · bottom left'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Small · bottom left'), findsOneWidget);
+      expect(find.text('Large · centre'), findsOneWidget);
+      expect(find.text('Save this window'), findsOneWidget);
+
+      await g.moveTo(tester.getCenter(find.text('Large · centre')));
+      await tester.pump();
+      await tester.tap(
+        find.text('Large · centre'),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      expect(picked, kDefaultWindowModes[1]);
+      expect(find.text('Large · centre'), findsNothing);
+    });
+
+    testWidgets('the window modes close once the mouse has left', (
+      tester,
+    ) async {
+      await pumpBar(
+        tester,
+        isDesktop: true,
+        playing: false,
+        windowModes: kDefaultWindowModes,
+      );
+      final g = await mouse(tester);
+      await g.moveTo(tester.getCenter(find.byIcon(Icons.crop_square_rounded)));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('Small · bottom left'), findsOneWidget);
+      await g.moveTo(const Offset(20, 300));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Small · bottom left'), findsNothing);
+    });
 
     testWidgets(
       'the pin lights in the workspace colour, not the theme accent',

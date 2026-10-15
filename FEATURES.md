@@ -1056,14 +1056,15 @@ at the screen gives nothing away) and its lock is **opt-in**.
   ordinary window that still called itself pinned, and it stayed behind
   everything until the app was restarted.
 - **Minimize** (—).
-- **Window presets** (the ⧉ beside the pin) — three sizes and five places, one
-  click each. *Small* is the widget's own 340×480, *Tall* is a column the
-  height of the screen, *Large* is most of it (room for the week beside the
-  list). *Top left*, *Top right*, *Centre*, *Bottom left* and *Bottom right*
-  put the window there at the size it is. A new size keeps the corner the
-  window is in, so a widget parked bottom-right grows up and to the left
-  rather than off the screen. Everything is measured against the screen the
-  window is on, minus the taskbar.
+- **Window modes** (the □ beside Minimize, Windows app) — rest the mouse on
+  it and a list drops down of your window arrangements, each a size and a
+  place with a little picture of where the window goes; click one and the
+  window goes there. It starts with *Small · bottom left* (the widget's own
+  340×480, tucked in the corner) and *Large · centre* (most of the screen,
+  room for the week beside the list). *Save this window* adds the window as
+  it is now - its exact size, at the corner or centre it is nearest - and the
+  × on a row (under the mouse) removes it. Everything is measured against the
+  screen the window is on, minus the taskbar. Kept per device.
 - **Close guard** (✕ / Alt+F4) — the window *refuses to close* while any task or
   side thought remains, so you're forced to move everything into your real
   planner (or check it off) first. The footer shakes red ("Clear it all first")
@@ -1423,8 +1424,9 @@ reminders are both there now**, queued for 0.18.0.
     instead of under them. On a desktop a new thought always opens the thought
     pane (Enter saves and closes, Ctrl+Enter saves and starts another,
     Shift+Enter is a new line). A click on the dock's workspace goes to the
-    add field. The title bar has **window presets**: Small, Tall or Large, in
-    any corner or the centre. A sideways swipe on the list walks the same
+    add field. The title bar has **window modes**: a list that drops down on
+    hover of size-and-place arrangements (small in the bottom left, large in
+    the centre, and any you save). A sideways swipe on the list walks the same
     views the dock lists (Tasks, Notes, Collections, Parked, History). The old
     workspace bar, rail and view bar are gone from the code too.
   - **Calendar and list touches**: the next and previous week show beside the

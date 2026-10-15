@@ -53,8 +53,9 @@ const kReleaseNotes = <ReleaseNote>[
       'Clicking the workspace on the dock opens the add field. Swiping '
           'sideways on the list walks Tasks, Notes, Collections, Parked and '
           'History.',
-      'The Windows app has window presets in the title bar: Small, Tall or '
-          'Large, in a corner or the centre.',
+      'The Windows app has window modes beside Minimize: rest the mouse on '
+          'it for small in the bottom left, large in the centre, or any '
+          'arrangement you save.',
       'And this box: it shows once after every update.',
     ],
   ),

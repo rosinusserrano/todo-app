@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_widget/layout.dart';
 import 'package:todo_widget/sync/models.dart';
@@ -16,10 +17,15 @@ Workspace ws(String uuid, String name, String color) => Workspace(
 
 /// The card in a host that owns `open` the way the shell does.
 class _Host extends StatefulWidget {
-  const _Host({required this.controller, required this.submitted});
+  const _Host({
+    required this.controller,
+    required this.submitted,
+    required this.shortcuts,
+  });
 
   final KeywordController controller;
   final List<CaptureResult> submitted;
+  final List<(String, String)> shortcuts;
 
   @override
   State<_Host> createState() => _HostState();
@@ -61,6 +67,7 @@ class _HostState extends State<_Host> {
             onExpand: (r) async => false,
             onClose: () => setState(() => open = false),
             onClosed: () => setState(() => shown = false),
+            onAddShortcut: (uuid, sc) async => widget.shortcuts.add((uuid, sc)),
           ),
         ),
       ],
@@ -71,10 +78,12 @@ class _HostState extends State<_Host> {
 void main() {
   late KeywordController controller;
   late List<CaptureResult> submitted;
+  late List<(String, String)> shortcuts;
 
   Future<void> pump(WidgetTester tester) async {
     controller = KeywordController();
     submitted = [];
+    shortcuts = [];
     tester.view.physicalSize = const Size(340, 480);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -82,7 +91,11 @@ void main() {
       MaterialApp(
         home: Scaffold(
           backgroundColor: T.bgSolid,
-          body: _Host(controller: controller, submitted: submitted),
+          body: _Host(
+            controller: controller,
+            submitted: submitted,
+            shortcuts: shortcuts,
+          ),
         ),
       ),
     );
@@ -103,41 +116,86 @@ void main() {
     expect(find.byIcon(Icons.open_in_full_rounded), findsOneWidget);
   });
 
+  Future<void> key(
+    WidgetTester tester,
+    LogicalKeyboardKey k, {
+    LogicalKeyboardKey? holding,
+  }) async {
+    if (holding != null) await tester.sendKeyDownEvent(holding);
+    await tester.sendKeyEvent(k);
+    if (holding != null) await tester.sendKeyUpEvent(holding);
+    await tester.pump();
+  }
+
   testWidgets('keywords set the workspace and reminder and leave the title', (
     tester,
   ) async {
     await pump(tester);
     await tester.enterText(
       find.byType(TextField),
-      'ring Anna Work tomorrow 9:30',
+      'ring Anna #Work tomorrow 9:30',
     );
     await tester.pump();
     // The bar says what was read.
     expect(find.text('Work'), findsOneWidget);
     expect(find.textContaining('tomorrow 09:30'), findsOneWidget);
 
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
+    await key(
+      tester,
+      LogicalKeyboardKey.enter,
+      holding: LogicalKeyboardKey.controlLeft,
+    );
     expect(submitted, hasLength(1));
     final r = submitted.single;
     final now = DateTime.now();
     expect(r.title, 'ring Anna');
     expect(r.workspaceUuid, 'work');
     expect(r.remindAt, DateTime(now.year, now.month, now.day + 1, 9, 30));
-    // Ready for the next one, and saying where that one went.
+    // Ctrl+Enter: ready for the next one, and saying where that one went.
     expect(controller.text, isEmpty);
     expect(find.text('Added to Work'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('a bare workspace name is just a word', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'Work on the report');
+    await key(tester, LogicalKeyboardKey.enter);
+    expect(submitted.single.title, 'Work on the report');
+    expect(submitted.single.workspaceUuid, isNull);
+  });
+
+  testWidgets('Enter adds and closes', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'one thing');
+    await key(tester, LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(submitted.single.title, 'one thing');
+    expect(find.byType(TextField), findsNothing);
+    expect(controller.text, isEmpty);
+  });
+
+  testWidgets('Shift+Enter does not add', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'two lines');
+    await key(
+      tester,
+      LogicalKeyboardKey.enter,
+      holding: LogicalKeyboardKey.shiftLeft,
+    );
+    await tester.pumpAndSettle();
+    expect(submitted, isEmpty);
+    expect(find.byType(TextField), findsOneWidget);
   });
 
   testWidgets('the × hands a word back to the title', (tester) async {
     await pump(tester);
-    await tester.enterText(find.byType(TextField), 'Work on the report');
+    await tester.enterText(find.byType(TextField), 'tidy up #Work');
     await tester.pump();
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    expect(submitted.single.title, 'Work on the report');
+    await key(tester, LogicalKeyboardKey.enter);
+    expect(submitted.single.title, 'tidy up #Work');
     expect(submitted.single.workspaceUuid, isNull);
   });
 
@@ -146,10 +204,36 @@ void main() {
     await tester.tap(find.byIcon(Icons.outlined_flag_rounded));
     await tester.pump();
     await tester.enterText(find.byType(TextField), 'urgent thing');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
+    await key(
+      tester,
+      LogicalKeyboardKey.enter,
+      holding: LogicalKeyboardKey.controlLeft,
+    );
     expect(submitted.single.priority, 1);
     expect(find.byIcon(Icons.outlined_flag_rounded), findsOneWidget);
+  });
+
+  testWidgets('a recognised #workspace offers a shortcut', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'read #Work');
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Shortcut'), findsOneWidget);
+
+    await tester.tap(find.text('Shortcut'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shortcut for Work'), findsOneWidget);
+    // Taken: another workspace's name.
+    await tester.enterText(find.byType(TextField).last, '#tasks');
+    await tester.pump();
+    expect(find.text('#tasks is Tasks'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, '#W');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(shortcuts, [('work', 'W')]);
+    // The title is left as it was.
+    expect(controller.text, 'read #Work');
   });
 
   testWidgets('the scrim closes it and keeps the draft', (tester) async {
@@ -164,7 +248,7 @@ void main() {
 
   testWidgets('Enter on nothing closes', (tester) async {
     await pump(tester);
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await key(tester, LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing);
   });

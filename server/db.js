@@ -58,6 +58,7 @@ function init(db) {
       name       TEXT NOT NULL,
       color      TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
+      shortcuts  TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       deleted_at TEXT,
@@ -376,6 +377,8 @@ function init(db) {
   // carry them. A server that predates the calendar has the table but not the
   // column, and would reject every attachment push without this.
   addColumn(db, 'attachments', 'event_uuid', 'TEXT');
+  // A workspace's other names in a task title (protocol 5).
+  addColumn(db, 'workspaces', 'shortcuts', 'TEXT');
 
   // Web Push subscriptions and what has been sent - see push.js. Not in
   // TABLES: they are this server's own bookkeeping and never sync.
@@ -396,7 +399,7 @@ function addColumn(db, table, column, type) {
 // Column lists drive the generic merge below. `uuid` and the sync bookkeeping
 // columns are handled separately, so these are the payload fields only.
 export const TABLES = {
-  workspaces: ['name', 'color', 'sort_order', 'created_at'],
+  workspaces: ['name', 'color', 'sort_order', 'shortcuts', 'created_at'],
   parked_groups: [
     'workspace_uuid',
     'title',
@@ -475,7 +478,10 @@ export const TABLES = {
 // that device stops receiving anything at all. Every column added from
 // protocol 2 on is listed here with the protocol that brought it; a table
 // likewise. A client that does not say which protocol it speaks is 1.
-const COLUMN_SINCE = { calendar_events: { feed_uuid: 2 } };
+const COLUMN_SINCE = {
+  calendar_events: { feed_uuid: 2 },
+  workspaces: { shortcuts: 5 },
+};
 const TABLE_SINCE = {
   calendar_feeds: 2,
   lists: 3,

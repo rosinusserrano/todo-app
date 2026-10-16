@@ -35,7 +35,12 @@
 /// 4 added collections - `collections`, `collection_fields` and
 /// `collection_entries` - the same way again, held back from a server below
 /// [kCollectionsProtocol].
-const kSyncProtocol = 4;
+///
+/// 5 added one column, `workspaces.shortcuts`. Nothing is held back from an
+/// older server - it keeps only the columns it knows, and `applyRemote` keeps
+/// ours when a row comes back without it - so this is the server's number: it
+/// does not send the column to a client below 5.
+const kSyncProtocol = 5;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;

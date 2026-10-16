@@ -1,9 +1,9 @@
 // Reading settings out of a task's title as it is typed.
 //
-// The add card lets a title carry its own settings: a workspace's name puts
-// the task on that workspace, a date and/or a time arms a reminder. The words
-// that did that are taken out of the title when the task is written, so
-// "call the bank tomorrow 9:30 Work" becomes "call the bank" on Work with a
+// The add card lets a title carry its own settings: `#` and a workspace's name
+// puts the task on that workspace, a date and/or a time arms a reminder. The
+// words that did that are taken out of the title when the task is written, so
+// "call the bank tomorrow 9:30 #Work" becomes "call the bank" on Work with a
 // reminder at 09:30 tomorrow.
 //
 // Pure and synchronous, with `now` passed in, because it runs on every
@@ -15,8 +15,14 @@
 //
 // - **A recognised word is only consumed if a title is left.** "Tomorrow" on
 //   its own is a task called Tomorrow, not an untitled reminder.
-// - **One workspace, one date, one time.** A second workspace name in the
-//   same line is just a word in the title.
+// - **A workspace needs its `#`.** Bare names were read at first, and a
+//   workspace called Work turned "Work on the report" into "on the report".
+//   With the `#` nothing is ever guessed, which is also what lets a
+//   workspace have **shortcuts** (`#MT` for "Master thesis", stored on the
+//   workspace). The name or shortcut has to end at a word boundary, and the
+//   longest one that fits wins.
+// - **One workspace, one date, one time.** A second `#workspace` in the same
+//   line is just text in the title.
 // - **A bare number is never a time.** "buy 2 eggs" and "chapter 12" stay as
 //   they are; a time needs a colon, am/pm or "Uhr". Weekdays are full names
 //   only, because "sat", "sun" and "wed" are English words.
@@ -27,8 +33,8 @@
 //   and typing "8:00" at ten in the morning means tomorrow's eight o'clock.
 // - **A date alone is 09:00 that day** - the hour the reminder menu's
 //   "Tomorrow" preset uses - or the next whole hour if that has passed.
-// - The current workspace is not a keyword: naming it changes nothing, so
-//   consuming it would only eat a word of the title.
+// - Naming the current workspace is a keyword like any other: the `#` says
+//   it was meant, and the tag would only be clutter left in the title.
 
 import 'sync/models.dart';
 
@@ -71,15 +77,12 @@ class KeywordParse {
   bool get hasReminder => remindAt != null;
 }
 
-/// Read [text] for settings. [hereUuid] is the workspace the card was opened
-/// in, which is not a keyword (see the header). Either kind can be switched
-/// off - the card does that once a setting of that kind has been chosen by
+/// Read [text] for settings. Either kind can be switched off - the card does that once a setting of that kind has been chosen by
 /// hand, or a recognised word has been dismissed.
 KeywordParse parseTaskKeywords(
   String text, {
   required DateTime now,
   List<Workspace> workspaces = const [],
-  String? hereUuid,
   bool matchWorkspaces = true,
   bool matchDates = true,
 }) {
@@ -116,7 +119,7 @@ KeywordParse parseTaskKeywords(
 
   String? wsUuid;
   if (matchWorkspaces) {
-    final hit = _findWorkspace(text, workspaces, hereUuid, spans);
+    final hit = _findWorkspace(text, workspaces, spans);
     if (hit != null) {
       spans.add(hit);
       wsUuid = hit.workspaceUuid;
@@ -148,37 +151,71 @@ KeywordParse parseTaskKeywords(
 KeywordSpan? _findWorkspace(
   String text,
   List<Workspace> workspaces,
-  String? hereUuid,
   List<KeywordSpan> taken,
 ) {
-  // Longest name first, so "Meine Apps" wins over a workspace called "Apps"
-  // where both would match.
-  final candidates = [
-    for (final w in workspaces)
-      if (w.uuid != hereUuid && w.name.trim().isNotEmpty) w,
-  ]..sort((a, b) => b.name.trim().length.compareTo(a.name.trim().length));
+  // Every name and shortcut, longest first, so "#Meine Apps" wins over a
+  // workspace called "Meine" where both would match.
+  final names = <(String, String)>[
+    for (final w in workspaces) ...[
+      if (w.name.trim().isNotEmpty) (w.name.trim(), w.uuid),
+      for (final sc in w.shortcuts)
+        if (sc.trim().isNotEmpty) (sc.trim(), w.uuid),
+    ],
+  ]..sort((a, b) => b.$1.length.compareTo(a.$1.length));
+  if (names.isEmpty) return null;
 
   KeywordSpan? best;
-  for (final w in candidates) {
-    final re = RegExp(
-      '(?<![\\p{L}\\p{N}#])#?${RegExp.escape(w.name.trim())}(?![\\p{L}\\p{N}])',
-      caseSensitive: false,
-      unicode: true,
-    );
-    for (final m in re.allMatches(text)) {
+  for (final m in RegExp('#').allMatches(text)) {
+    // "C#" and "issue#4" are not tags.
+    if (m.start > 0 && _wordChar.hasMatch(text[m.start - 1])) continue;
+    final rest = text.substring(m.end).toLowerCase();
+    for (final (name, uuid) in names) {
+      if (!rest.startsWith(name.toLowerCase())) continue;
+      final end = m.end + name.length;
+      if (end < text.length && _wordChar.hasMatch(text[end])) continue;
       final span = KeywordSpan(
         m.start,
-        m.end,
+        end,
         KeywordKind.workspace,
-        workspaceUuid: w.uuid,
+        workspaceUuid: uuid,
       );
-      if (taken.any(span.overlaps)) continue;
-      if (best != null && span.overlaps(best)) continue;
+      if (taken.any(span.overlaps)) break;
       // The last one written wins: settings are usually tacked on at the end.
       if (best == null || span.start > best.start) best = span;
+      break;
     }
   }
   return best;
+}
+
+final _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
+/// What is wrong with [raw] as a new shortcut for [owner], or null when it
+/// can be saved. [raw] may carry its `#`. A shortcut is one word, and it may
+/// not be another workspace's name or shortcut - `#MT` meaning two places
+/// would be read as whichever sorted first.
+String? shortcutProblem(String raw, Workspace owner, List<Workspace> all) {
+  final sc = normalizeShortcut(raw);
+  if (sc.isEmpty) return 'Type a shortcut';
+  if (RegExp(r'\s').hasMatch(sc)) return 'One word, no spaces';
+  if (sc.contains('#')) return 'Without a second #';
+  final lower = sc.toLowerCase();
+  for (final w in all) {
+    final taken =
+        w.name.trim().toLowerCase() == lower ||
+        w.shortcuts.any((x) => x.toLowerCase() == lower);
+    if (!taken) continue;
+    return w.uuid == owner.uuid
+        ? '#$sc already means ${owner.name}'
+        : '#$sc is ${w.name}';
+  }
+  return null;
+}
+
+/// [raw] as it is stored: trimmed, without its leading `#`.
+String normalizeShortcut(String raw) {
+  final t = raw.trim();
+  return t.startsWith('#') ? t.substring(1).trim() : t;
 }
 
 // ----------------------------------------------------------------- date/time

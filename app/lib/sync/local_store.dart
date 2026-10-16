@@ -76,7 +76,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 18,
+        version: 19,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -242,6 +242,15 @@ class LocalStore {
       await db.execute(_collectionsWorkspaceIndex);
       await db.execute(_collectionFieldsIndex);
       await db.execute(_collectionEntriesIndex);
+    }
+    if (from < 19) {
+      // A workspace's shortcuts in a task's title (`#MT`). Null is "none",
+      // which is what every existing workspace has. The cursor goes back to
+      // the start for v16's reason: a build below protocol 5 is not sent the
+      // column, and its cursor walked past the rows that carry it.
+      await db.execute('ALTER TABLE workspaces ADD COLUMN shortcuts TEXT');
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
     }
   }
 
@@ -609,6 +618,7 @@ class LocalStore {
         name       TEXT NOT NULL,
         color      TEXT NOT NULL,
         sort_order INTEGER NOT NULL DEFAULT 0,
+        shortcuts  TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,

@@ -1338,3 +1338,30 @@ test('collections sync at protocol 4 and are withheld below it', async () => {
   assert.equal(older.collection_entries, undefined);
   assert.ok(Array.isArray(older.lists));
 });
+
+test('workspace shortcuts sync at protocol 5 and survive an older app', async () => {
+  const db = freshDb();
+  const ws = {
+    uuid: 'w-thesis',
+    name: 'Master thesis',
+    color: '#7c9cff',
+    sort_order: 0,
+    shortcuts: '["MT"]',
+    created_at: '2026-10-16T10:00:00+02:00',
+    updated_at: '2026-10-16T10:00:00+02:00',
+    deleted_at: null,
+  };
+  sync(db, USER, 0, { workspaces: [ws] }, 5);
+  assert.equal(sync(db, USER, 0, {}, 5).changes.workspaces[0].shortcuts, '["MT"]');
+
+  // Below 5 the column is not sent, and a rename pushed back without it
+  // leaves it where it was.
+  const old = sync(db, USER, 0, {}, 4).changes.workspaces[0];
+  assert.equal('shortcuts' in old, false);
+  const renamed = { ...old, name: 'Thesis', updated_at: '2026-10-16T11:00:00+02:00' };
+  delete renamed.seq;
+  sync(db, USER, 0, { workspaces: [renamed] }, 4);
+  const after = sync(db, USER, 0, {}, 5).changes.workspaces[0];
+  assert.equal(after.name, 'Thesis');
+  assert.equal(after.shortcuts, '["MT"]');
+});

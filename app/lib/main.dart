@@ -1610,6 +1610,7 @@ class _WidgetShellState extends State<WidgetShell>
             onClosed: () {
               if (mounted) setState(() => _addCardShown = false);
             },
+            onAddShortcut: s.addWorkspaceShortcut,
           ),
         ),
 
@@ -3591,6 +3592,7 @@ class _WidgetShellState extends State<WidgetShell>
       uuid: existing?.uuid,
       name: result.name,
       color: result.color,
+      shortcuts: result.shortcuts,
     );
   }
 }

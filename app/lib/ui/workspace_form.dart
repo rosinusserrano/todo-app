@@ -1,4 +1,6 @@
-// Creating and editing a workspace: its name and colour, and deleting it.
+// Creating and editing a workspace: its name and colour, its shortcuts, and
+// deleting it. Shortcuts are only removed here; one is added on the add card,
+// from the `#name` it stands for (task_capture.dart).
 //
 // The form outlived the workspace bar it was drawn from (the dock replaced
 // the bar); it is opened from the dock's workspace menu now.
@@ -11,10 +13,16 @@ import '../theme.dart';
 /// Create/edit sheet. Returns null on cancel, a [WorkspaceEdit] on save, and
 /// [WorkspaceEdit.deleted] when the workspace should be removed.
 class WorkspaceEdit {
-  const WorkspaceEdit(this.name, this.color, {this.delete = false});
+  const WorkspaceEdit(
+    this.name,
+    this.color, {
+    this.shortcuts = const [],
+    this.delete = false,
+  });
 
   final String name;
   final String color;
+  final List<String> shortcuts;
   final bool delete;
 
   static const deleted = WorkspaceEdit('', '', delete: true);
@@ -55,6 +63,7 @@ class _WorkspaceDialog extends StatefulWidget {
 class _WorkspaceDialogState extends State<_WorkspaceDialog> {
   late final _name = TextEditingController(text: widget.existing?.name ?? '');
   late Color _color = widget.initialColor;
+  late final _shortcuts = [...?widget.existing?.shortcuts];
 
   @override
   void dispose() {
@@ -65,7 +74,10 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
   void _save() {
     final name = _name.text.trim();
     if (name.isEmpty) return;
-    Navigator.pop(context, WorkspaceEdit(name, T.toHex(_color)));
+    Navigator.pop(
+      context,
+      WorkspaceEdit(name, T.toHex(_color), shortcuts: _shortcuts),
+    );
   }
 
   @override
@@ -115,6 +127,29 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
                 ),
             ],
           ),
+          if (_shortcuts.isNotEmpty) ...[
+            const SizedBox(height: T.s4),
+            const Text(
+              'Shortcuts in a task title',
+              style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+            ),
+            const SizedBox(height: T.s2),
+            Wrap(
+              spacing: T.s2,
+              runSpacing: T.s2,
+              children: [
+                for (final sc in _shortcuts)
+                  InputChip(
+                    label: Text(
+                      '#$sc',
+                      style: const TextStyle(fontSize: T.fsLabel),
+                    ),
+                    deleteButtonTooltipMessage: 'Remove #$sc',
+                    onDeleted: () => setState(() => _shortcuts.remove(sc)),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
       actions: [

@@ -488,11 +488,33 @@ must stay an "n". The things that are load-bearing:
   parser's guesses are tuned to *not* fire: a bare number is never a time,
   weekdays are full names, `1/2` is a fraction, and a title that would be left
   empty keeps its words.
+- **A workspace keyword needs its `#`.** Bare names used to be read, and a
+  workspace called Work ate the first word of "Work on the report". The `#`
+  is also what makes **shortcuts** possible: `workspaces.shortcuts` (client
+  v19, protocol 5, `COLUMN_SINCE` on the server) is a JSON array of other
+  names, stored without the `#`, matched exactly like the name.
+  `shortcutProblem` is the one check (one word, not another workspace's name
+  or shortcut) and the card's `_ShortcutSheet` is the only way to add one;
+  the workspace form only removes. v19 resets the sync cursor for v16's
+  reason.
+- **The shortcut pill is placed from the last layout.** `_placePill` runs
+  after the frame, finds the `RenderEditable` under `_fieldKey` and asks
+  `getBoxesForSelection` where the word is; hover reads the same boxes. It
+  shows for the hovered word or the one the caret is in (touch has no
+  hover), and it is a `TextFieldTapRegion` - without that, the press
+  unfocuses the field, the caret span goes, and the pill disappears from
+  under the finger before the tap lands.
+- **Enter adds and closes, Ctrl+Enter adds and stays, Shift+Enter is a
+  line** - ThoughtSheet's keys, taken by a `Focus` around the field
+  (`_onKey`) so a handled Enter never reaches the text input. The field is
+  multiline on a keyboard; on touch it is `TextInputType.text` with Done,
+  which submits through `onSubmitted`. Closing after an add also forgets a
+  hand-picked workspace; staying keeps it.
 - `KeywordController.invalidate` does **not** notify: the card calls it from
   `didUpdateWidget` (workspaces changed), and notifying there is a setState
   during build.
-- Enter in tests is `testTextInput.receiveAction(TextInputAction.done)`, not a
-  key event: the field is single-line and submits through the text input.
+- The tests send real key events (`sendKeyEvent`, with Ctrl/Shift held by
+  `sendKeyDownEvent`), because the three Enters differ only in modifiers.
 
 ### Selecting several tasks
 

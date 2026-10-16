@@ -57,5 +57,8 @@
 //   4  Collections: `collections`, `collection_fields` and
 //      `collection_entries`, in TABLE_SINCE on the same terms as 3.
 //      MIN_CLIENT stays 1.
-export const PROTOCOL = 4;
+//   5  `workspaces.shortcuts` (a workspace's other names in a task title), in
+//      COLUMN_SINCE: not sent to a client below 5, and kept when such a
+//      client pushes the row back without it. MIN_CLIENT stays 1.
+export const PROTOCOL = 5;
 export const MIN_CLIENT = 1;

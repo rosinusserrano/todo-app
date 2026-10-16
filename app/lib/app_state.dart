@@ -317,6 +317,7 @@ class AppState extends ChangeNotifier {
     String? uuid,
     required String name,
     required String color,
+    List<String>? shortcuts,
   }) async {
     if (uuid == null) {
       final ws = Workspace(
@@ -335,7 +336,27 @@ class AppState extends ChangeNotifier {
 
     final existing = workspaces.firstWhere((w) => w.uuid == uuid);
     await _store.putWorkspace(
-      existing.copyWith(name: name, color: color, updatedAt: nowStamp()),
+      existing.copyWith(
+        name: name,
+        color: color,
+        shortcuts: shortcuts,
+        updatedAt: nowStamp(),
+      ),
+    );
+    await refreshWorkspaces();
+  }
+
+  /// Gives a workspace another name for the add card's title: `#MT` for
+  /// "Master thesis". Stored without the `#`; the caller has already checked
+  /// it is free (`shortcutProblem`).
+  Future<void> addWorkspaceShortcut(String uuid, String shortcut) async {
+    final existing = workspaces.where((w) => w.uuid == uuid).firstOrNull;
+    if (existing == null || existing.shortcuts.contains(shortcut)) return;
+    await _store.putWorkspace(
+      existing.copyWith(
+        shortcuts: [...existing.shortcuts, shortcut],
+        updatedAt: nowStamp(),
+      ),
     );
     await refreshWorkspaces();
   }

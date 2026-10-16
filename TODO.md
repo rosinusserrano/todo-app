@@ -44,10 +44,14 @@ dev site, merged to `main` once Marco has tried it.
       takes the card's priority and reminder.
 - [x] **61.3** FEATURES / CLAUDE.md / What's new; published to
       todo-dev.sniggles.de.
-- [ ] **61.4** Marco tries it on the dev site (phone and desktop); changes
-      from that.
-- [ ] **61.5** Merge `redesign` to `main`, publish the web app,
-      `install-windows.ps1`.
+- [x] **61.4** Marco's first round (2026-10-16): Enter adds and closes,
+      Ctrl+Enter adds and stays, Shift+Enter is a line; workspaces only with
+      `#`; shortcuts (`workspaces.shortcuts`, client v19, protocol 5), added
+      from a pill on the recognised word, removed in the workspace form.
+- [x] **61.5** Merged `redesign` to `main` and pushed (Marco, 2026-10-16).
+- [ ] **61.6** Deploy the server (protocol 5, or shortcuts do not sync -
+      `sudo server/update-server.sh`), publish the web app
+      (`server/build-web.sh /srv/todo-web`), `install-windows.ps1`.
 
 ### 60. Notifications from outside the app: `POST /api/notify`  `[~]`
 

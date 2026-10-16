@@ -2,14 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/task_keywords.dart';
 
-Workspace ws(String uuid, String name) => Workspace(
-  uuid: uuid,
-  name: name,
-  color: '#6F86CC',
-  sortOrder: 0,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
-);
+Workspace ws(String uuid, String name, [List<String> shortcuts = const []]) =>
+    Workspace(
+      uuid: uuid,
+      name: name,
+      color: '#6F86CC',
+      sortOrder: 0,
+      shortcuts: shortcuts,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    );
 
 void main() {
   // A Thursday, mid-morning.
@@ -19,56 +21,97 @@ void main() {
     ws('work', 'Work'),
     ws('apps', 'Meine Apps'),
     ws('a', 'Apps'),
+    ws('mt', 'Master thesis', ['MT']),
   ];
 
   KeywordParse p(String text) =>
-      parseTaskKeywords(text, now: now, workspaces: spaces, hereUuid: 'here');
+      parseTaskKeywords(text, now: now, workspaces: spaces);
 
   group('workspaces', () {
-    test('a name moves the task and leaves the title', () {
-      final r = p('fix the sync bug Work');
+    test('#name moves the task and leaves the title', () {
+      final r = p('fix the sync bug #Work');
       expect(r.title, 'fix the sync bug');
       expect(r.workspaceUuid, 'work');
     });
 
-    test('case-insensitive, whole words, # allowed', () {
-      expect(p('ring Anna work').workspaceUuid, 'work');
+    test('a bare name is just a word', () {
+      expect(p('Work on the report').workspaceUuid, isNull);
+      expect(p('Work on the report').title, 'Work on the report');
+      expect(p('ring Anna work').workspaceUuid, isNull);
+    });
+
+    test('case-insensitive, and the name must end there', () {
+      expect(p('ring Anna #work').workspaceUuid, 'work');
       expect(p('ring Anna #work').title, 'ring Anna');
-      expect(p('homework due').workspaceUuid, isNull);
-      expect(p('workshop notes').workspaceUuid, isNull);
+      expect(p('#workshop notes').workspaceUuid, isNull);
+      expect(p('learn C#Work').workspaceUuid, isNull);
+    });
+
+    test('a name with a space', () {
+      final r = p('read chapter 2 #master thesis');
+      expect(r.workspaceUuid, 'mt');
+      expect(r.title, 'read chapter 2');
+    });
+
+    test('a shortcut stands for its workspace', () {
+      final r = p('#MT read chapter 2');
+      expect(r.workspaceUuid, 'mt');
+      expect(r.title, 'read chapter 2');
+      expect(p('read #mt notes').workspaceUuid, 'mt');
+      expect(p('read #MTX notes').workspaceUuid, isNull);
     });
 
     test('the longest name wins', () {
-      final r = p('ship it Meine Apps');
+      final r = p('ship it #Meine Apps');
       expect(r.workspaceUuid, 'apps');
       expect(r.title, 'ship it');
     });
 
     test('a leading name with a colon leaves no colon', () {
-      expect(p('Work: ring Anna').title, 'ring Anna');
+      expect(p('#Work: ring Anna').title, 'ring Anna');
     });
 
-    test('the current workspace is not a keyword', () {
-      final r = p('Tasks to sort');
-      expect(r.workspaceUuid, isNull);
-      expect(r.title, 'Tasks to sort');
+    test('the current workspace can be named too', () {
+      final r = p('sort these #Tasks');
+      expect(r.workspaceUuid, 'here');
+      expect(r.title, 'sort these');
     });
 
     test('a name on its own is the title', () {
-      final r = p('Work');
+      final r = p('#Work');
       expect(r.workspaceUuid, isNull);
-      expect(r.title, 'Work');
+      expect(r.title, '#Work');
     });
 
     test('switched off, nothing is read', () {
       final r = parseTaskKeywords(
-        'report Work',
+        'report #Work',
         now: now,
         workspaces: spaces,
         matchWorkspaces: false,
       );
       expect(r.workspaceUuid, isNull);
-      expect(r.title, 'report Work');
+      expect(r.title, 'report #Work');
+    });
+  });
+
+  group('shortcuts', () {
+    final thesis = spaces.last;
+
+    test('stored without the #', () {
+      expect(normalizeShortcut(' #MT '), 'MT');
+      expect(normalizeShortcut('MT'), 'MT');
+    });
+
+    test('a free word is fine', () {
+      expect(shortcutProblem('#MA', thesis, spaces), isNull);
+    });
+
+    test('one word, and not taken', () {
+      expect(shortcutProblem('#', thesis, spaces), isNotNull);
+      expect(shortcutProblem('M T', thesis, spaces), isNotNull);
+      expect(shortcutProblem('#mt', thesis, spaces), contains('already'));
+      expect(shortcutProblem('#work', thesis, spaces), '#work is Work');
     });
   });
 
@@ -186,7 +229,7 @@ void main() {
   });
 
   test('everything at once', () {
-    final r = p('Meine Apps: release notes Friday 9:30');
+    final r = p('#Meine Apps: release notes Friday 9:30');
     expect(r.title, 'release notes');
     expect(r.workspaceUuid, 'apps');
     expect(r.remindAt, DateTime(2026, 10, 16, 9, 30));

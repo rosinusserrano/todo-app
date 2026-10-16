@@ -8,8 +8,10 @@ Newest changes are noted in the changelog at the bottom.
 - **Add a task** — press **Add a task** at the top of the list (or the **＋**
   on the dock, or **N** on the keyboard). The line lifts off the list and flies
   to the middle of the window as a **card**, growing as it goes, with the list
-  dimmed behind it. Type, and press Enter (or the filled ↑). The card stays
-  open for the next one; Enter on nothing, Esc or a tap on the dimmed list
+  dimmed behind it. Type, and press **Enter** (or the filled ↑) to add it and
+  put the card away; **Ctrl+Enter** adds it and keeps the card open for the
+  next one, and **Shift+Enter** starts a new line. On a phone the keyboard's
+  Done adds and closes. Enter on nothing, Esc or a tap on the dimmed list
   puts it away. Whatever was typed is kept: the line at the top of the list
   shows it, and opening the card again carries on from it. The line is there
   on every screen size, because the way to do the commonest thing in the app
@@ -19,17 +21,23 @@ Newest changes are noted in the changelog at the bottom.
   the **workspace** it goes into, and **⤢** (or Ctrl+D) opens the long form
   with everything set so far carried over. Picking another workspace keeps the
   list where it is and the card says where the task went, since it will not
-  appear on screen; the choice lasts while the card is open. Priority and the
-  reminder reset after each task.
-- **Settings typed into the title.** Write a workspace's name, a day or a
+  appear on screen; the choice lasts while the card is open (Ctrl+Enter).
+  Priority and the reminder reset after each task.
+- **Settings typed into the title.** Write a **#workspace**, a day or a
   time in the title and it is read as that setting: *call the bank tomorrow
-  9:30 Work* goes onto Work as *call the bank* with a reminder at 09:30
+  9:30 #Work* goes onto Work as *call the bank* with a reminder at 09:30
   tomorrow. What was recognised is highlighted in the field and shows on its
   button; the **×** on that button keeps the word in the title instead, and
   choosing that setting with its button does the same. The rules:
-  - **Workspaces** by name, any case, as a whole word (*#Work* works too); the
-    longest name wins, the workspace you are in is not a keyword, and only one
-    name is read per task.
+  - **Workspaces** need the **#**: *#Work*, *#Master thesis*, any case. A
+    name without it is just a word, so *Work on the report* stays as it is.
+    The longest name that fits wins, and only one is read per task.
+  - **Shortcuts.** Point at a recognised *#workspace* (or put the caret in
+    it, on a phone) and a **＋ Shortcut** pill appears under it: give
+    *Master thesis* the shortcut *MT* and from then on *#MT* does the same
+    as *#Master thesis*. A shortcut is one word and cannot be another
+    workspace's name or shortcut. They sync, and the workspace's edit form
+    lists them with a × to remove one.
   - **Times** need a colon, am/pm or *Uhr*: *14:30*, *9:30pm*, *3pm*, *um 16
     Uhr*, *at 9:30*, *noon*. A bare number is never a time, so *buy 2 eggs*
     stays as it is. *in 10 min*, *in 2h* are a reminder that far from now.
@@ -1430,8 +1438,10 @@ reminders are both there now**, queued for 0.18.0.
 - **0.29.0** — *(in progress)*
   - **A new way to add a task**: *Add a task* opens a card in the middle of
     the screen with buttons for priority, a reminder, the workspace and the
-    long form, and a workspace's name, a day or a time typed into the title
-    sets them (see *Tasks*).
+    long form; a #workspace (or its shortcut, e.g. *#MT*), a day or a time
+    typed into the title sets them; Enter adds and closes, Ctrl+Enter adds
+    and stays, Shift+Enter is a new line (see *Tasks*). Workspaces gain
+    `shortcuts` (client v19, sync protocol 5).
   - **Notifications from outside the app** (server): `POST /api/notify` and
     notify-only tokens, for the server's monitoring to alert the phone.
   - **What's new**: a box after every update says what changed.

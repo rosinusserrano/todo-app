@@ -453,6 +453,11 @@ class Workspace implements SyncRow {
   final String name;
   final String color;
   final int sortOrder;
+
+  /// Other names for it in a task's title - `#MT` for "Master thesis" -
+  /// stored without the `#`. Empty for most workspaces; null in the
+  /// database (v19), which is what every older row means.
+  final List<String> shortcuts;
   final String createdAt;
   @override
   final String updatedAt;
@@ -464,6 +469,7 @@ class Workspace implements SyncRow {
     required this.name,
     required this.color,
     required this.sortOrder,
+    this.shortcuts = const [],
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -476,6 +482,7 @@ class Workspace implements SyncRow {
     String? name,
     String? color,
     int? sortOrder,
+    List<String>? shortcuts,
     String? updatedAt,
     String? deletedAt,
     bool clearDeleted = false,
@@ -485,6 +492,7 @@ class Workspace implements SyncRow {
         name: name ?? this.name,
         color: color ?? this.color,
         sortOrder: sortOrder ?? this.sortOrder,
+        shortcuts: shortcuts ?? this.shortcuts,
         createdAt: createdAt,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
@@ -496,6 +504,7 @@ class Workspace implements SyncRow {
         'name': name,
         'color': color,
         'sort_order': sortOrder,
+        'shortcuts': shortcuts.isEmpty ? null : jsonEncode(shortcuts),
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -506,10 +515,24 @@ class Workspace implements SyncRow {
         name: m['name']! as String,
         color: m['color']! as String,
         sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        shortcuts: _decodeShortcuts(m['shortcuts']),
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );
+
+  /// A list of strings, or nothing: a value another build wrote that is not
+  /// one reads as no shortcuts rather than failing the whole load.
+  static List<String> _decodeShortcuts(Object? raw) {
+    if (raw is! String || raw.isEmpty) return const [];
+    try {
+      final v = jsonDecode(raw);
+      if (v is List) return List.unmodifiable(v.whereType<String>());
+    } on FormatException {
+      // Fall through.
+    }
+    return const [];
+  }
 }
 
 /// A titled shelf of tasks inside one workspace - "Backlog", "Future ideas".

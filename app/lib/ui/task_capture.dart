@@ -8,11 +8,23 @@
 // full composer.
 //
 // The title can also carry those settings itself (task_keywords.dart): a
-// workspace's name, a date, a time. What was recognised is highlighted in the
+// `#workspace`, a date, a time. What was recognised is highlighted in the
 // field and shows on its button in the bar with a × that hands the word back
 // to the title. Choosing a setting by hand does the same for that kind - a
 // hand-picked reminder is not overridden by the "9:30" the title happens to
 // contain.
+//
+// A recognised `#workspace` offers **a shortcut** - "#MT" for "#Master
+// thesis" - in a small pill under the word, while the mouse is on it or the
+// caret is in it (a finger has no hover). The pill is a `TextFieldTapRegion`,
+// so a tap on it counts as inside the field and does not take the caret
+// away - which would hide the pill under the finger before the tap landed.
+//
+// Keys, on a keyboard: **Enter adds and closes, Ctrl+Enter adds and stays
+// open for the next one, Shift+Enter is a new line** - ThoughtSheet's keys.
+// They are taken on the way up from the field (`_onKey`), so a handled Enter
+// never reaches the text input as a line break. A phone's return key is
+// "Done", which adds and closes.
 //
 // Things about it that are load-bearing:
 //
@@ -36,12 +48,14 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../layout.dart';
 import '../sync/models.dart';
 import '../task_keywords.dart';
 import '../theme.dart';
+import 'form_sheet.dart';
 import 'reminder_menu.dart';
 import 'title_bar.dart';
 
@@ -149,6 +163,7 @@ class TaskCapture extends StatefulWidget {
     required this.onExpand,
     required this.onClose,
     required this.onClosed,
+    required this.onAddShortcut,
   });
 
   final bool open;
@@ -176,6 +191,10 @@ class TaskCapture extends StatefulWidget {
 
   /// The flight home has landed - the folded line can be drawn again.
   final VoidCallback onClosed;
+
+  /// Store [shortcut] (already checked, without its `#`) on a workspace.
+  final Future<void> Function(String workspaceUuid, String shortcut)
+  onAddShortcut;
 
   @override
   State<TaskCapture> createState() => _TaskCaptureState();
@@ -206,6 +225,22 @@ class _TaskCaptureState extends State<TaskCapture>
   final _reminderKey = GlobalKey();
   final _workspaceKey = GlobalKey();
 
+  /// Around the field, to find its `RenderEditable` for where a word is.
+  final _fieldKey = GlobalKey();
+
+  /// The box the shortcut pill is placed in.
+  final _stackKey = GlobalKey();
+
+  /// The `#workspace` under the mouse, and whether the mouse is on the pill.
+  /// Leaving the word waits a moment before the pill goes, so the mouse can
+  /// cross the gap to it (the dock's hover menus do the same).
+  KeywordSpan? _hoverSpan;
+  bool _overPill = false;
+  Timer? _hoverTimer;
+
+  /// Where the pill goes, in [_stackKey]'s space: under the word's start.
+  Offset? _pillAt;
+
   @override
   void initState() {
     super.initState();
@@ -235,6 +270,7 @@ class _TaskCaptureState extends State<TaskCapture>
   void dispose() {
     widget.controller.removeListener(_onText);
     _addedToTimer?.cancel();
+    _hoverTimer?.cancel();
     _flight.dispose();
     super.dispose();
   }
@@ -251,7 +287,6 @@ class _TaskCaptureState extends State<TaskCapture>
     text,
     now: DateTime.now(),
     workspaces: widget.workspaces,
-    hereUuid: widget.hereUuid,
     matchWorkspaces: _workspace == null && !_ignoreWorkspaceWord,
     matchDates: _remindAt == null && !_ignoreDateWords,
   );
@@ -309,8 +344,8 @@ class _TaskCaptureState extends State<TaskCapture>
     );
   }
 
-  /// Ready for the next task. The workspace stays: several tasks in a row
-  /// are usually for the same place.
+  /// Ready for the next task. The workspace stays when the card does: several
+  /// tasks in a row are usually for the same place.
   void _resetForNext() {
     _priority = 0;
     _remindAt = null;
@@ -321,18 +356,213 @@ class _TaskCaptureState extends State<TaskCapture>
       ..clear();
   }
 
-  Future<void> _submit() async {
+  /// Adds the task. [stay] keeps the card open for the next one (Ctrl+Enter);
+  /// otherwise it closes, and a hand-picked workspace goes with it - the
+  /// next time the card opens is a new sitting.
+  Future<void> _submit({bool stay = false}) async {
     final r = _result;
     if (r.title.trim().isEmpty) {
       widget.onClose();
       return;
     }
+    if (!stay) _workspace = null;
     _resetForNext();
+    if (!stay) widget.onClose();
     await widget.onSubmit(r);
-    if (!mounted) return;
+    if (!mounted || !stay) return;
     final w = _workspaceById(r.workspaceUuid);
     if (w != null) _sayAddedTo(w.name);
     widget.focusNode.requestFocus();
+  }
+
+  /// On the way up from the field: see the header for the three Enters.
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (e.logicalKey != LogicalKeyboardKey.enter &&
+        e.logicalKey != LogicalKeyboardKey.numpadEnter) {
+      return KeyEventResult.ignored;
+    }
+    // Mid-composition (an IME's candidate list) Enter picks the candidate.
+    if (widget.controller.value.composing.isValid) {
+      return KeyEventResult.ignored;
+    }
+    final keys = HardwareKeyboard.instance;
+    if (keys.isShiftPressed) return KeyEventResult.ignored;
+    _submit(stay: keys.isControlPressed || keys.isMetaPressed);
+    return KeyEventResult.handled;
+  }
+
+  // ------------------------------------------------------------- shortcuts
+
+  RenderEditable? _editable() {
+    RenderEditable? found;
+    void visit(RenderObject o) {
+      if (found != null) return;
+      if (o is RenderEditable) {
+        found = o;
+        return;
+      }
+      o.visitChildren(visit);
+    }
+
+    final root = _fieldKey.currentContext?.findRenderObject();
+    if (root != null) visit(root);
+    return found;
+  }
+
+  /// The word's boxes in the editable's own space.
+  List<Rect> _boxesOf(RenderEditable editable, KeywordSpan span) => [
+    for (final b in editable.getBoxesForSelection(
+      TextSelection(baseOffset: span.start, extentOffset: span.end),
+    ))
+      b.toRect(),
+  ];
+
+  void _onHover(PointerHoverEvent e) {
+    final editable = _editable();
+    if (editable == null) return;
+    final local = editable.globalToLocal(e.position);
+    KeywordSpan? hit;
+    for (final span in widget.controller.parse.spans) {
+      if (span.kind != KeywordKind.workspace) continue;
+      if (_boxesOf(editable, span).any((r) => r.inflate(2).contains(local))) {
+        hit = span;
+      }
+    }
+    if (hit != null) {
+      _hoverTimer?.cancel();
+      if (_hoverSpan?.start != hit.start || _hoverSpan?.end != hit.end) {
+        setState(() => _hoverSpan = hit);
+      }
+    } else if (_hoverSpan != null) {
+      _leaveSoon();
+    }
+  }
+
+  void _leaveSoon() {
+    _hoverTimer?.cancel();
+    _hoverTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted && !_overPill) setState(() => _hoverSpan = null);
+    });
+  }
+
+  /// The `#workspace` the caret is in or at the end of, while typing.
+  KeywordSpan? _caretSpan() {
+    if (!widget.focusNode.hasFocus) return null;
+    final sel = widget.controller.selection;
+    if (!sel.isValid || !sel.isCollapsed) return null;
+    for (final span in widget.controller.parse.spans) {
+      if (span.kind != KeywordKind.workspace) continue;
+      if (sel.baseOffset >= span.start && sel.baseOffset <= span.end) {
+        return span;
+      }
+    }
+    return null;
+  }
+
+  KeywordSpan? get _pillSpan {
+    final hovered = _hoverSpan;
+    // The text can change under a hover; only a word still recognised counts.
+    if (hovered != null &&
+        widget.controller.parse.spans.any(
+          (s) =>
+              s.kind == KeywordKind.workspace &&
+              s.start == hovered.start &&
+              s.end == hovered.end,
+        )) {
+      return hovered;
+    }
+    return _caretSpan();
+  }
+
+  /// Where the pill goes is a question about the last layout, so it is
+  /// answered after the frame and set if it moved.
+  void _placePill() {
+    if (!mounted) return;
+    final span = _pillSpan;
+    final editable = _editable();
+    final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    Offset? at;
+    if (span != null && editable != null && stack != null) {
+      final boxes = _boxesOf(editable, span);
+      if (boxes.isNotEmpty) {
+        at = stack.globalToLocal(
+          editable.localToGlobal(boxes.first.bottomLeft),
+        );
+      }
+    }
+    if (at != _pillAt) setState(() => _pillAt = at);
+  }
+
+  Future<void> _addShortcut(KeywordSpan span) async {
+    final w = _workspaceById(span.workspaceUuid);
+    if (w == null) return;
+    _menuOpen = true;
+    final shortcut = await showFormSheet<String>(
+      context,
+      builder: (context, layout) => _ShortcutSheet(
+        layout: layout,
+        workspace: w,
+        workspaces: widget.workspaces,
+      ),
+    );
+    _menuOpen = false;
+    if (!mounted) return;
+    setState(() {
+      _hoverSpan = null;
+      _overPill = false;
+    });
+    if (shortcut != null) await widget.onAddShortcut(w.uuid, shortcut);
+    if (mounted && widget.open) widget.focusNode.requestFocus();
+  }
+
+  Widget _pill(KeywordSpan span, Offset at) {
+    final w = _workspaceById(span.workspaceUuid);
+    final color = w == null ? T.accent : T.parseHex(w.color);
+    return Positioned(
+      left: math.max(0, at.dx),
+      top: at.dy + 2,
+      child: TextFieldTapRegion(
+        child: MouseRegion(
+          onEnter: (_) {
+            _overPill = true;
+            _hoverTimer?.cancel();
+          },
+          onExit: (_) {
+            _overPill = false;
+            _leaveSoon();
+          },
+          child: Material(
+            color: T.bgSolid,
+            elevation: 2,
+            borderRadius: BorderRadius.circular(T.radius),
+            child: InkWell(
+              onTap: () => _addShortcut(span),
+              borderRadius: BorderRadius.circular(T.radius),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: T.s2,
+                  vertical: widget.layout.touch ? T.s2 : T.s1,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_rounded, size: 14, color: color),
+                    const SizedBox(width: T.s1),
+                    Text(
+                      w == null || w.shortcuts.isEmpty
+                          ? 'Shortcut'
+                          : 'Shortcut (${w.shortcuts.map((x) => '#$x').join(' ')})',
+                      style: const TextStyle(fontSize: T.fsMeta, color: T.text),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _expand() async {
@@ -497,18 +727,26 @@ class _TaskCaptureState extends State<TaskCapture>
           const EdgeInsets.fromLTRB(T.s4, T.s4, T.s3, T.s3),
           t,
         )!,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
+          key: _stackKey,
+          clipBehavior: Clip.none,
           children: [
-            _field(t, hereColor),
-            ClipRect(
-              child: Align(
-                alignment: Alignment.topCenter,
-                heightFactor: barT,
-                child: Opacity(opacity: barT, child: _below(hereColor)),
-              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _field(t, hereColor),
+                ClipRect(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: barT,
+                    child: Opacity(opacity: barT, child: _below(hereColor)),
+                  ),
+                ),
+              ],
             ),
+            if (t == 1 && _pillSpan != null && _pillAt != null)
+              _pill(_pillSpan!, _pillAt!),
           ],
         ),
       ),
@@ -516,10 +754,18 @@ class _TaskCaptureState extends State<TaskCapture>
   }
 
   Widget _field(double t, Color hereColor) {
+    if (t == 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _placePill());
+    }
+    final touch = widget.layout.touch;
     final field = TextField(
+      key: _fieldKey,
       controller: widget.controller,
       focusNode: widget.focusNode,
-      textInputAction: TextInputAction.done,
+      // A finger's return key is Done; a keyboard's Shift+Enter is a line.
+      maxLines: null,
+      keyboardType: touch ? TextInputType.text : TextInputType.multiline,
+      textInputAction: touch ? TextInputAction.done : TextInputAction.newline,
       textCapitalization: TextCapitalization.sentences,
       // The display face: on the card the title is the thing being named,
       // and it is set the way a view's name is. Grows with the flight.
@@ -542,20 +788,35 @@ class _TaskCaptureState extends State<TaskCapture>
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyD, control: true): _expand,
       },
-      child: Row(
-        children: [
-          // The folded line's ＋, giving way as the card opens, so the text
-          // does not jump sideways at either end of the flight.
-          SizedBox(
-            width: (16 + T.s2) * (1 - t),
-            child: Opacity(
-              opacity: 1 - t,
-              child: Icon(Icons.add_rounded, size: 16, color: hereColor),
-            ),
-          ),
-          Expanded(child: field),
-        ],
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: _onKey,
+        child: MouseRegion(
+          onHover: _onHover,
+          onExit: (_) {
+            if (_hoverSpan != null) _leaveSoon();
+          },
+          child: _fieldRow(t, hereColor, field),
+        ),
       ),
+    );
+  }
+
+  Widget _fieldRow(double t, Color hereColor, Widget field) {
+    return Row(
+      children: [
+        // The folded line's ＋, giving way as the card opens, so the text
+        // does not jump sideways at either end of the flight.
+        SizedBox(
+          width: (16 + T.s2) * (1 - t),
+          child: Opacity(
+            opacity: 1 - t,
+            child: Icon(Icons.add_rounded, size: 16, color: hereColor),
+          ),
+        ),
+        Expanded(child: field),
+      ],
     );
   }
 
@@ -566,7 +827,7 @@ class _TaskCaptureState extends State<TaskCapture>
     final note = _addedTo != null
         ? 'Added to $_addedTo'
         : empty
-        ? 'A workspace, a day or a time in the title sets it'
+        ? 'A #workspace, a day or a time in the title sets it'
         : null;
 
     return Padding(
@@ -666,7 +927,9 @@ class _TaskCaptureState extends State<TaskCapture>
         const SizedBox(width: T.s1),
         // The one filled block on the card: it is the thing the card is for.
         Tooltip(
-          message: 'Add (Enter)',
+          message: widget.layout.touch
+              ? 'Add'
+              : 'Add (Enter) · Ctrl+Enter adds and stays open',
           child: Material(
             color: empty ? T.surface : hereColor,
             borderRadius: BorderRadius.circular(T.radius),
@@ -846,4 +1109,94 @@ class _Dot extends StatelessWidget {
     height: 8,
     decoration: BoxDecoration(color: color, shape: BoxShape.circle),
   );
+}
+
+/// Asks for a workspace's new shortcut. Pops with it, checked and without
+/// its `#`, or with nothing.
+class _ShortcutSheet extends StatefulWidget {
+  const _ShortcutSheet({
+    required this.layout,
+    required this.workspace,
+    required this.workspaces,
+  });
+
+  final Layout layout;
+  final Workspace workspace;
+  final List<Workspace> workspaces;
+
+  @override
+  State<_ShortcutSheet> createState() => _ShortcutSheetState();
+}
+
+class _ShortcutSheetState extends State<_ShortcutSheet> {
+  final _text = TextEditingController(text: '#');
+  bool _tried = false;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  String? get _problem =>
+      shortcutProblem(_text.text, widget.workspace, widget.workspaces);
+
+  void _save() {
+    if (_problem != null) {
+      setState(() => _tried = true);
+      return;
+    }
+    Navigator.of(context).pop(normalizeShortcut(_text.text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final touch = widget.layout.touch;
+    final accent = T.parseHex(widget.workspace.color);
+    final problem = _problem;
+    // Said once something has been typed, or Save was pressed on nothing:
+    // "Type a shortcut" under an empty field the moment it opens is a scold.
+    final shown = _tried || normalizeShortcut(_text.text).isNotEmpty
+        ? problem
+        : null;
+    return FormSheet(
+      accent: accent,
+      layout: widget.layout,
+      title: 'Shortcut for ${widget.workspace.name}',
+      maxWidth: 360,
+      onClose: () => Navigator.of(context).pop(),
+      actions: [
+        FormSheet.cancelButton(
+          touch: touch,
+          onTap: () => Navigator.of(context).pop(),
+        ),
+        FormSheet.saveButton(touch: touch, accent: accent, onTap: _save),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Typed into a task\'s title, it puts the task on '
+            '${widget.workspace.name}, like #${widget.workspace.name} does.',
+            style: const TextStyle(fontSize: T.fsLabel, color: T.muted),
+          ),
+          const SizedBox(height: T.s3),
+          TextField(
+            controller: _text,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _save(),
+            style: const TextStyle(fontSize: T.fsBody, color: T.text),
+            decoration: InputDecoration(
+              hintText: '#MT',
+              isDense: true,
+              errorText: shown,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

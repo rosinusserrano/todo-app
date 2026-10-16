@@ -301,6 +301,7 @@ END:VCALENDAR
       await store.raw.execute('DROP TABLE collections');
       await store.raw.execute('DROP TABLE collection_fields');
       await store.raw.execute('DROP TABLE collection_entries');
+      await store.raw.execute('ALTER TABLE workspaces DROP COLUMN shortcuts');
       await store.raw.execute('DROP INDEX idx_events_feed');
       await store.raw
           .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');

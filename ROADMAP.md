@@ -35,6 +35,18 @@ alone is today.
   it is saved. Tomorrow is shown on the button before anything is written, so
   it is visible rather than surprising. Revisit if he disagrees.
 - **Day-first dates, English and German words**: that is how he writes them.
+- **2026-10-16, after trying it: workspaces only with `#`, and shortcuts.**
+  Marco: "workspace should always be with # i think thats better, and let me
+  create shortcuts once i have entered it once". The `#` retires the
+  ambiguity the × existed for (the × stays, as the way out of any guess).
+  Shortcuts are a column on `workspaces` rather than a device setting,
+  because a name is synced and a second name for it on only one device would
+  make `#MT` work on the desktop and not on the phone. Added from the card
+  (hover the recognised word, or caret in it on touch), removed in the
+  workspace form.
+- **Keys, same day:** Enter adds and closes, Ctrl+Enter adds and stays,
+  Shift+Enter is a new line - the thought pane's keys, so the two capture
+  surfaces agree.
 
 ### Collections — agreed 2026-10-13
 

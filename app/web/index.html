@@ -100,6 +100,42 @@
         input.focus();
         setTimeout(function () { input.remove(); }, 1000);
       };
+      // Dictation for the thought pane (dictation_web.dart). The browser's own
+      // speech recognition - Chrome, Edge and Safari have it, Firefox does
+      // not, and then the mic is simply not drawn. onText gets the whole
+      // transcript so far, interim words included, every time it changes;
+      // onEnd gets '' or the error's name.
+      var recognition = null;
+      window.todoSpeech = {
+        supported: function () {
+          return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+        },
+        start: function (onText, onEnd) {
+          var Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!Rec) { onEnd('unsupported'); return; }
+          if (recognition) recognition.abort();
+          var rec = new Rec();
+          recognition = rec;
+          rec.lang = navigator.language || 'en-US';
+          rec.continuous = true;
+          rec.interimResults = true;
+          var failed = '';
+          rec.onresult = function (e) {
+            var text = '';
+            for (var i = 0; i < e.results.length; i++) {
+              text += e.results[i][0].transcript;
+            }
+            onText(text);
+          };
+          rec.onerror = function (e) { failed = e.error || 'error'; };
+          rec.onend = function () {
+            if (recognition === rec) recognition = null;
+            onEnd(failed);
+          };
+          try { rec.start(); } catch (err) { recognition = null; onEnd('error'); }
+        },
+        stop: function () { if (recognition) recognition.stop(); }
+      };
       var probe;
       window.todoSafeBottom = function () {
         if (!probe) {

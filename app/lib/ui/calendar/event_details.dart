@@ -22,7 +22,20 @@
 // Material's own surface running to the bottom of the screen - the card's own
 // content squeezed into nothing above it. The panel lays the actions out in a
 // Wrap that takes a second line when the finger-sized buttons do not fit.
+//
+// **A double click (or double tap) edits.** The first click has already
+// opened this card by the time the second arrives, so the second lands on the
+// card or its barrier, never on the block. For [kDoubleTapTimeout] after it
+// opens the card therefore ignores the pointer - the second click falls
+// through to the barrier, which closes it - and a pointer pressed anywhere in
+// that window (`_SecondClick`, a global pointer route) turns the close into
+// Edit. Ignoring the card's own buttons is the point: the second click of a
+// double click must not land on Delete. Nobody aims at a button in the first
+// 300ms of a card existing.
 
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../layout.dart';
@@ -48,8 +61,9 @@ Future<EventAction?> showEventDetails(
   required Future<List<Attachment>> Function() loadAttachments,
   bool offerWorkspace = false,
   String? feedName,
-}) {
-  return showFormSheet<EventAction>(
+}) async {
+  final second = _SecondClick();
+  final action = await showFormSheet<EventAction>(
     context,
     builder: (context, layout) => _DetailsDialog(
       offerWorkspace: offerWorkspace,
@@ -60,8 +74,45 @@ Future<EventAction?> showEventDetails(
       loadTasks: loadTasks,
       loadAttachments: loadAttachments,
       layout: layout,
+      second: second,
     ),
   );
+  second.stop();
+  // A feed's event has no Edit to give (see [_DetailsDialog.feedName]).
+  if (action == null && second.hit && feedName == null) {
+    return EventAction.edit;
+  }
+  return action;
+}
+
+/// Whether a pointer went down while the card was new: the second half of a
+/// double click. Global, because that click lands on the barrier as often as
+/// on the card.
+class _SecondClick {
+  bool hit = false;
+  bool _listening = false;
+  Timer? _timer;
+
+  void start(VoidCallback onWindowClosed) {
+    if (_listening) return;
+    _listening = true;
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_route);
+    _timer = Timer(kDoubleTapTimeout, () {
+      stop();
+      onWindowClosed();
+    });
+  }
+
+  void _route(PointerEvent e) {
+    if (e is PointerDownEvent) hit = true;
+  }
+
+  void stop() {
+    _timer?.cancel();
+    if (!_listening) return;
+    _listening = false;
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_route);
+  }
 }
 
 /// "10 min before", and the two states that are not a lead time at all.
@@ -112,7 +163,10 @@ class _DetailsDialog extends StatefulWidget {
     required this.layout,
     this.offerWorkspace = false,
     this.feedName,
+    this.second,
   });
+
+  final _SecondClick? second;
 
   /// The subscription this event came from, or null for one made here. Set,
   /// the card has nothing to offer but reading: Edit and Delete would both be
@@ -142,10 +196,27 @@ class _DetailsDialogState extends State<_DetailsDialog> {
   List<Task>? _tasks;
   List<Attachment>? _attachments;
 
+  /// Inside the double-click window: see the header.
+  bool _young = true;
+
   @override
   void initState() {
     super.initState();
     _load();
+    final second = widget.second;
+    if (second == null) {
+      _young = false;
+    } else {
+      second.start(() {
+        if (mounted) setState(() => _young = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.second?.stop();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -192,7 +263,9 @@ class _DetailsDialogState extends State<_DetailsDialog> {
 
     final touch = widget.layout.touch;
 
-    return FormSheet(
+    return IgnorePointer(
+      ignoring: _young,
+      child: FormSheet(
       // The calendar's own colour, so the card belongs to the block it was
       // opened from - the same rule the editor and the composer follow.
       accent: widget.color,
@@ -300,6 +373,7 @@ class _DetailsDialogState extends State<_DetailsDialog> {
               ],
             ],
           ),
+      ),
       ),
     );
   }

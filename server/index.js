@@ -22,6 +22,7 @@ import { adminOnly, middleware } from './auth.js';
 import { DB_PATH, HOST, PORT, WEB_ROOT, loadSecret } from './config.js';
 import { MIN_CLIENT, PROTOCOL } from './protocol.js';
 import { FeedError, fetchFeed } from './feeds.js';
+import { TitleCache, fetchLinkTitle } from './links.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
   deleteSubscription,
@@ -258,6 +259,28 @@ app.get('/api/feed', middleware(auth), async (req, res, next) => {
   try {
     const text = await fetchFeed(req.query.url, { allowPrivate: FEEDS_ALLOW_PRIVATE });
     res.type('text/calendar; charset=utf-8').send(text);
+  } catch (err) {
+    if (err instanceof FeedError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// A page's title for a link in a task - see links.js. The web build asks
+// here; the native builds ask the page. Same private-address rule as feeds.
+
+const linkTitles = new TitleCache();
+
+app.get('/api/link-title', middleware(auth), async (req, res, next) => {
+  try {
+    const url = String(req.query.url ?? '');
+    let title = linkTitles.get(url);
+    if (title === undefined) {
+      title = await fetchLinkTitle(url, { allowPrivate: FEEDS_ALLOW_PRIVATE });
+      linkTitles.set(url, title);
+    }
+    res.json({ title });
   } catch (err) {
     if (err instanceof FeedError) {
       return res.status(err.status).json({ error: err.message });

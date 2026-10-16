@@ -6,12 +6,17 @@ import 'package:todo_widget/ui/dock.dart';
 void main() {
   late List<String> fired;
 
-  DockItem item(String name, {bool second = false}) => DockItem(
+  DockItem item(
+    String name, {
+    bool second = false,
+    List<String> children = const [],
+  }) => DockItem(
     label: name,
     onChoose: () => fired.add(name),
     secondaryIcon: second ? Icons.edit : null,
     secondaryLabel: second ? 'Edit $name' : null,
     onSecondary: second ? () => fired.add('edit $name') : null,
+    children: [for (final c in children) item(c)],
   );
 
   Future<void> pump(
@@ -30,7 +35,14 @@ void main() {
           onClick: () => fired.add('click Work'),
           fill: Colors.blue,
           ink: Colors.black,
-          items: [item('Home', second: true), item('Work', second: true)],
+          items: [
+            item(
+              'Home',
+              second: true,
+              children: ['Home notes', 'Home history'],
+            ),
+            item('Work', second: true),
+          ],
         ),
         DockSegment(
           label: 'Tasks',
@@ -350,6 +362,77 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
       expect(find.text('Notes'), findsOneWidget, reason: 'pinned');
+    });
+  });
+
+  group('a submenu', () {
+    // The menu is 220 wide from the left; a 190-wide submenu does not fit
+    // either side of it on a 400 screen, so it sits against the right edge,
+    // level with Home: Home notes beside Home, Home history beside Work.
+    const subX = 300.0;
+
+    testWidgets('a held finger staying on a row opens it; slide across and '
+        'let go', (tester) async {
+      await pump(tester);
+      final g = await tester.startGesture(const Offset(60, barY));
+      await tester.pump();
+      await g.moveTo(rowCentre(1));
+      await tester.pump();
+      expect(find.text('Home notes'), findsNothing, reason: 'not yet');
+      await tester.pump(const Duration(milliseconds: 450));
+      expect(find.text('Home notes'), findsOneWidget);
+
+      await g.moveTo(rowCentre(0, x: subX));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Home history']);
+    });
+
+    testWidgets('sliding through a row quickly opens nothing', (tester) async {
+      await pump(tester);
+      final g = await tester.startGesture(const Offset(60, barY));
+      await tester.pump();
+      await g.moveTo(rowCentre(1));
+      await tester.pump(const Duration(milliseconds: 100));
+      await g.moveTo(rowCentre(0));
+      await tester.pump(const Duration(milliseconds: 450));
+      expect(find.text('Home notes'), findsNothing);
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['Work']);
+    });
+
+    testWidgets('a long press in a tapped-open menu opens it', (tester) async {
+      await pump(tester);
+      await tester.tapAt(const Offset(60, barY));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('Home'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Home notes'));
+      await tester.pumpAndSettle();
+      expect(fired, ['Home notes']);
+    });
+
+    testWidgets('a mouse resting on the row opens it, and it stays while the '
+        'mouse goes over', (tester) async {
+      await pump(tester);
+      final g = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await g.addPointer(location: const Offset(200, 100));
+      addTearDown(g.removePointer);
+      await g.moveTo(const Offset(60, barY));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      await g.moveTo(rowCentre(1));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Home history'), findsOneWidget);
+
+      await g.moveTo(rowCentre(0, x: subX));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Home history'), findsOneWidget);
+      await tester.tapAt(rowCentre(0, x: subX), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(fired, ['Home history']);
     });
   });
 }

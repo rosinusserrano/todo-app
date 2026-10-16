@@ -393,6 +393,15 @@ about it that are load-bearing:
   Its rows are destinations (`_dockClear` then go), never toggles, and leaving
   the calendar goes through `_toggleCalendar` so pending blocks commit.
 
+**A row can carry a submenu** (`DockItem.children`): the workspace rows carry
+their views. It is drawn in the same overlay Stack as the menu, beside it
+(`_submenu`), and has to be in **both** of the dock's input paths - the
+press-and-slide asks `_subRowAt` before `_rowAt` because the submenu is drawn
+on top, and opens after `_holdForSub` on one row; the mouse opens it after
+`_subDelay` from the row's hover and keeps it while `_overSub`, which
+`_closeAfterHover` also has to respect or the menu closes under a pointer that
+is in its submenu. A tapped-open menu has no hover, so there it is a long press.
+
 **Quick actions wait for the first layout** (`_afterLayout` in `main.dart`).
 iOS delivers the shortcut that launched the app as soon as the handler is
 installed, which is in `initState`; until the first build `_layout` is the
@@ -458,8 +467,7 @@ contain every table a later step touches, which is why `journal_test` carries
 
 ### The add field is a card (`app/lib/ui/task_capture.dart`)
 
-`_adding` on the shell, set by the dock's ＋ (*Add a task*), a mouse click on
-the dock's workspace segment (`DockSegment.onClick`), `N` on desktop, the
+`_adding` on the shell, set by the dock's ＋ (*Add a task*), `N` on desktop, the
 folded "Add a task" line at the head of the list (`_addPrompt`), and every
 capture path (`_jumpToAddTask` calls `_openAdd`). Open, `TaskCapture` flies
 from that line's rect (`_addPromptRect`, in the shell Stack's space) to a
@@ -667,6 +675,11 @@ time on one. The rules that are not obvious from the schema:
   actually got, not for the window. That split is also the only place
   `onPlanTask` is non-null, so the drop targets simply do not exist anywhere a
   task cannot be dragged from.
+- **A double click edits** without delaying the single one: the details card
+  opens on the first click, ignores the pointer for `kDoubleTapTimeout`, and
+  `_SecondClick` (a global pointer route) turns a press in that window - which
+  falls through to the barrier and closes the card - into `EventAction.edit`.
+  The ignoring is what keeps the second click off the card's Delete.
 - **A click on a block reads it** (`showEventDetails`), and right-click /
   long-press is the actions menu (`_eventMenu`); `_editEvent` is the form that
   used to be what a click did. The long press is safe to take *because* the
@@ -1123,6 +1136,28 @@ schema change and no migration.
 - `softLineBreak: true`, unlike strict Markdown. These are notes; a stack of bare
   lines is written far more often than a paragraph is wrapped by hand.
 - Not selectable, deliberately: selection fights the tap that opens the editor.
+
+### Links in titles (`app/lib/link_titles.dart`)
+
+A URL in a task's title is **drawn** as the page's title by `LinkedText` (the
+row and the read view); the stored text never changes, so there is nothing in
+the schema and nothing to sync. `LinkTitles` asks once per URL per device and
+keeps answers - including "no title" - in the device-local `link-titles`
+setting (capped); a failure is retried only on the next launch. Native builds
+ask the page (`fetchLinkTitleDirect`); the web build asks
+`/api/link-title` (`server/links.js`), which is `feeds.js`'s shape - account
+only, every redirect hop checked against private addresses, head of the page
+only - plus an in-memory cache. **`titleFromHtml` exists on both sides and
+must agree.** `LinkedText` is stateful because it owns the span recognisers.
+
+### Dictation (`app/lib/dictation.dart`)
+
+The thought pane's 🎙 is the browser's speech recognition (`todoSpeech` in
+`web/index.html`), web only: natively a keyboard mic and Win+H already dictate
+into any field, so `Dictation.supported` is false and no button is drawn.
+The transcript is written after the field's text as it arrives (interim
+words included); saving stops it first, or late words refill the emptied
+field.
 
 ### Attachments: rows sync, bytes don't
 

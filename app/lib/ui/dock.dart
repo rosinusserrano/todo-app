@@ -28,6 +28,15 @@
 // one menu is open. A finger that landed on the wrong segment does not have to
 // lift.
 //
+// **A row can have a submenu** (`DockItem.children` - a workspace's views),
+// drawn beside the menu level with its row: a mouse opens it by resting on
+// the row (`_subDelay`, which is also what lets the pointer cut across other
+// rows on its way in), a held finger by staying on the row (`_holdForSub`)
+// and then sliding across, and a tapped-open menu by a long press on the row.
+// The row itself still means what it did. The submenu counts as part of the
+// menu for the hover close, and `_move` asks it first, since it is drawn on
+// top.
+//
 // **A mouse only has to rest on a segment.** Its menu opens after a beat
 // (`_hoverOpenDelay`, so a pointer crossing the bar on its way to the list
 // does not flash menus open), moving along the bar switches at once, and
@@ -99,6 +108,7 @@ class DockItem {
     this.secondaryIcon,
     this.secondaryLabel,
     this.onSecondary,
+    this.children = const [],
   });
 
   final String label;
@@ -122,6 +132,9 @@ class DockItem {
   final IconData? secondaryIcon;
   final String? secondaryLabel;
   final VoidCallback? onSecondary;
+
+  /// A submenu beside this row - a workspace's views. Empty for none.
+  final List<DockItem> children;
 }
 
 /// One of the bar's segments, and the menu it opens.
@@ -171,7 +184,7 @@ class DockSegment {
   final double? extent;
 
   /// What a mouse click on the segment itself does, where that is something
-  /// other than opening its menu - the workspace's goes to the add field.
+  /// other than opening its menu - the workspace's goes to its task list.
   /// With a mouse the menu is already open from the hover, so the click is
   /// free to mean this; a finger has no hover, and its tap still opens the
   /// menu.
@@ -209,6 +222,9 @@ class Dock extends StatefulWidget {
 
   /// The second action's target at a row's right-hand end.
   static const secondaryWidth = 56.0;
+
+  /// A submenu's width: room for "Collections" beside its icon.
+  static const subWidth = 190.0;
 
   /// The narrowest a menu is drawn, whatever the segment's width - a third of
   /// a phone is not room for a workspace's name and its edit target.
@@ -261,6 +277,21 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   static const _hoverOpenDelay = Duration(milliseconds: 150);
   static const _hoverCloseDelay = Duration(milliseconds: 300);
 
+  /// The row (drawn index) whose submenu is open, the submenu row lit, and
+  /// whether the mouse is in the submenu.
+  int? _subFor;
+  int? _subHover;
+  bool _overSub = false;
+  Timer? _subTimer;
+  final _subKey = GlobalKey();
+
+  /// How long the mouse rests on a row before its submenu replaces another -
+  /// long enough to cross a row on the diagonal into an open one.
+  static const _subDelay = Duration(milliseconds: 180);
+
+  /// How long a held finger stays on a row before its submenu opens.
+  static const _holdForSub = Duration(milliseconds: 400);
+
   bool get _vertical => widget.edge == DockEdge.left;
 
   /// A menu's rows as drawn. Over a top bar they run the other way up, so the
@@ -301,6 +332,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   @override
   void dispose() {
     _hoverTimer?.cancel();
+    _subTimer?.cancel();
     _pulse.dispose();
     _scroll.dispose();
     super.dispose();
@@ -315,8 +347,39 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       _viaHover = hover;
       _hover = null;
       _hoverSecondary = false;
+      _clearSub();
     });
     if (!_portal.isShowing) _portal.show();
+  }
+
+  void _clearSub() {
+    _subTimer?.cancel();
+    _subFor = null;
+    _subHover = null;
+    _overSub = false;
+  }
+
+  /// Point the submenu at [row] - open it there if the row has one, close it
+  /// if not - after [delay], unless the pointer has reached the submenu by
+  /// then.
+  void _aimSub(int? row, Duration delay) {
+    _subTimer?.cancel();
+    final open = _open;
+    if (open == null) return;
+    final items = _drawn(open);
+    final wants =
+        row != null && row < items.length && items[row].children.isNotEmpty
+        ? row
+        : null;
+    if (wants == _subFor) return;
+    _subTimer = Timer(delay, () {
+      if (!mounted || _open != open || _overSub) return;
+      if (wants != null && _pointer != null) HapticFeedback.selectionClick();
+      setState(() {
+        _subFor = wants;
+        _subHover = null;
+      });
+    });
   }
 
   void close() {
@@ -330,6 +393,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       _hover = null;
       _hoverSecondary = false;
       _pointer = null;
+      _clearSub();
     });
     _portal.hide();
   }
@@ -380,13 +444,27 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
       }
     }
 
+    // The submenu is drawn over everything else, so it is asked first.
+    final sub = _subRowAt(e.position);
+    if (sub != null) {
+      _subTimer?.cancel();
+      if (sub != _subHover) {
+        HapticFeedback.selectionClick();
+        setState(() => _subHover = sub);
+      }
+      return;
+    }
+    if (_subHover != null) setState(() => _subHover = null);
+
     final (row, secondary) = _rowAt(e.position);
     if (row != _hover || secondary != _hoverSecondary) {
       if (row != null) HapticFeedback.selectionClick();
+      final changedRow = row != _hover;
       setState(() {
         _hover = row;
         _hoverSecondary = secondary;
       });
+      if (changedRow) _aimSub(row, _holdForSub);
     }
   }
 
@@ -412,8 +490,16 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     final open = _open;
     final row = _hover;
     final secondary = _hoverSecondary;
+    final subFor = _subFor;
+    final subRow = _subHover;
     close();
-    if (open == null || row == null) return;
+    if (open == null) return;
+    if (subFor != null && subRow != null) {
+      final children = _drawn(open)[subFor].children;
+      if (subRow < children.length) children[subRow].onChoose();
+      return;
+    }
+    if (row == null) return;
     _fire(_drawn(open)[row], secondary);
   }
 
@@ -455,6 +541,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
           _viaHover &&
           _overSegment == null &&
           !_overMenu &&
+          !_overSub &&
           _pointer == null) {
         close();
       }
@@ -485,6 +572,21 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         items[row].onSecondary != null &&
         local.dx >= box.size.width - Dock.secondaryWidth;
     return (row, secondary);
+  }
+
+  /// Which submenu row is at [global], or null off the submenu.
+  int? _subRowAt(Offset global) {
+    final open = _open;
+    final subFor = _subFor;
+    final box = _subKey.currentContext?.findRenderObject() as RenderBox?;
+    if (open == null || subFor == null || box == null || !box.hasSize) {
+      return null;
+    }
+    final local = box.globalToLocal(global);
+    if (!(Offset.zero & box.size).contains(local)) return null;
+    final row = (local.dy / Dock.rowHeight).floor();
+    final count = _drawn(open)[subFor].children.length;
+    return row >= 0 && row < count ? row : null;
   }
 
   // ------------------------------------------------------------ drawing
@@ -726,7 +828,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
           _row(
             items[i],
             index: i,
-            hovered: _hover == i,
+            hovered: _hover == i || _subFor == i,
             secondary: _hover == i && _hoverSecondary,
             // A rule between two rows of one colour; rows that differ in
             // colour are already told apart.
@@ -851,7 +953,77 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
             ),
           ),
         placed,
+        if (_subFor != null && _subFor! < items.length)
+          ?_submenu(items[_subFor!], _subFor!, overlay, bar),
       ],
+    );
+  }
+
+  /// The open row's submenu, beside the menu and level with the row: to the
+  /// right where there is room, else to the left, else against the right
+  /// edge over the menu. Kept off the bar.
+  Widget? _submenu(DockItem parent, int index, RenderBox overlay, Rect bar) {
+    final menu = _menuKey.currentContext?.findRenderObject() as RenderBox?;
+    if (menu == null || !menu.hasSize) return null;
+    final screen = overlay.size;
+    final menuRect =
+        menu.localToGlobal(Offset.zero, ancestor: overlay) & menu.size;
+    final scrolled = _scroll.hasClients && widget.edge != DockEdge.top
+        ? _scroll.offset
+        : 0.0;
+    final rowTop = menuRect.top + index * Dock.rowHeight - scrolled;
+    final width = math.min(Dock.subWidth, screen.width);
+    final height = parent.children.length * Dock.rowHeight;
+    final left = menuRect.right + width <= screen.width
+        ? menuRect.right
+        : menuRect.left - width >= 0
+        ? menuRect.left - width
+        : screen.width - width;
+    final (lo, hi) = switch (widget.edge) {
+      DockEdge.bottom => (0.0, bar.top),
+      DockEdge.top => (bar.bottom, screen.height),
+      DockEdge.left => (0.0, screen.height),
+    };
+    final top = rowTop.clamp(lo, math.max(lo, hi - height)).toDouble();
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: width,
+      child: MouseRegion(
+        onEnter: (_) {
+          _overSub = true;
+          _subTimer?.cancel();
+          _hoverTimer?.cancel();
+        },
+        onExit: (_) {
+          _overSub = false;
+          if (_subHover != null) setState(() => _subHover = null);
+          _aimSub(_hover, _subDelay);
+          _closeAfterHover();
+        },
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            boxShadow: [BoxShadow(color: Color(0x66000000), blurRadius: 12)],
+          ),
+          child: Column(
+            key: _subKey,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < parent.children.length; i++)
+                _row(
+                  parent.children[i],
+                  index: i,
+                  hovered: _subHover == i,
+                  secondary: false,
+                  rule: i > 0,
+                  sub: true,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -861,6 +1033,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     required bool hovered,
     required bool secondary,
     required bool rule,
+    bool sub = false,
   }) {
     final own = item.fill;
     final base = own ?? _menuFill;
@@ -881,6 +1054,10 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         cursor: SystemMouseCursors.click,
         onHover: (e) {
           if (!_sticky) return;
+          if (sub) {
+            if (_subHover != index) setState(() => _subHover = index);
+            return;
+          }
           final (row, secondary) = _rowAt(e.position);
           if (row != _hover || secondary != _hoverSecondary) {
             setState(() {
@@ -888,9 +1065,12 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
               _hoverSecondary = secondary;
             });
           }
+          _aimSub(row, _subDelay);
         },
         onExit: (_) {
-          if (_sticky && _hover == index) setState(() => _hover = null);
+          if (sub || !_sticky) return;
+          if (_hover == index) setState(() => _hover = null);
+          _aimSub(null, _subDelay);
         },
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -900,6 +1080,16 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
             close();
             item.onChoose();
           },
+          // A finger in a tapped-open menu has no hover to rest with.
+          onLongPress: sub || item.children.isEmpty
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _subFor = index;
+                    _subHover = null;
+                  });
+                },
           child: SizedBox(
             height: Dock.rowHeight,
             child: Stack(
@@ -972,6 +1162,12 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                         const SizedBox(width: T.s2),
                         const _Dot(),
                       ],
+                      if (item.children.isNotEmpty)
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 18,
+                          color: ink.withValues(alpha: 0.5),
+                        ),
                       if (item.onSecondary != null)
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,

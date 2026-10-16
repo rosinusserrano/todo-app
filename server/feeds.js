@@ -72,7 +72,7 @@ export function isPrivateAddress(ip) {
   return /^(fc|fd|fe[89ab])/.test(v6);
 }
 
-async function assertPublic(url, lookup) {
+export async function assertPublic(url, lookup) {
   const host = url.hostname.replace(/^\[|\]$/g, '');
   const addresses = isIP(host)
     ? [{ address: host }]

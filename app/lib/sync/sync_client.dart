@@ -323,6 +323,23 @@ class SyncClient {
     return utf8.decode(res.bodyBytes, allowMalformed: true);
   }
 
+  /// A page's title, looked up by the server - the web build's way round
+  /// CORS, as with [fetchFeed]. Null when the page has none; throws when the
+  /// server could not be asked or refused the address.
+  Future<String?> fetchLinkTitle(Uri url) async {
+    final res = await _http
+        .get(
+          _endpoint(
+            '/api/link-title',
+          ).replace(queryParameters: {'url': '$url'}),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 20));
+    if (res.statusCode != 200) throw FeedError(_errorOf(res.body));
+    final title = (jsonDecode(res.body) as Map)['title'];
+    return title is String && title.isNotEmpty ? title : null;
+  }
+
   void dispose() => _http.close();
 
   static String _short(Object e) {

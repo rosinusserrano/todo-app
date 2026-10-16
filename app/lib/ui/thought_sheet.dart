@@ -40,10 +40,17 @@
 // Nothing is lost by stopping at [TitleBar.height]: what the pane hides is the
 // workspace name and the tasks, and both of those are *below* the bar. The bar
 // itself says "Todo" and holds window controls.
+//
+// **The mic speaks into the field** where the browser can recognise speech
+// (dictation.dart): what is heard is written after what was already there,
+// interim words and all, so the words appear as they are said and can be
+// corrected before saving. Tap it again, or stop talking, and it stops;
+// saving is still a decision. Not drawn where there is no recogniser.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../dictation.dart';
 import '../theme.dart';
 import 'title_bar.dart';
 
@@ -127,12 +134,65 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
 
   @override
   void dispose() {
+    _dictation?.stop();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
   }
 
+  /// Listening, and what the field held when it started.
+  Dictation? _dictation;
+  String _beforeSpeech = '';
+  String? _speechError;
+
+  void _toggleDictation() {
+    final running = _dictation;
+    if (running != null) {
+      running.stop();
+      return;
+    }
+    final text = _controller.text.trimRight();
+    _beforeSpeech = text.isEmpty ? '' : '$text ';
+    final d = Dictation();
+    setState(() {
+      _dictation = d;
+      _speechError = null;
+    });
+    d.start(
+      onText: (heard) {
+        if (!mounted || _dictation != d) return;
+        final value = '$_beforeSpeech${heard.trimLeft()}';
+        _controller.value = TextEditingValue(
+          text: value,
+          selection: TextSelection.collapsed(offset: value.length),
+        );
+      },
+      onEnd: (error) {
+        if (!mounted || _dictation != d) return;
+        setState(() {
+          _dictation = null;
+          // Silence and a stop are not failures worth a line.
+          _speechError = switch (error) {
+            null || 'no-speech' || 'aborted' => null,
+            'not-allowed' ||
+            'service-not-allowed' => 'The microphone is not allowed for this page',
+            'network' => 'Speech needs a connection',
+            _ => 'Could not listen ($error)',
+          };
+        });
+        _focus.requestFocus();
+      },
+    );
+  }
+
   Future<void> _submit({bool andClose = true}) async {
+    // Saving ends the listening: words still arriving would refill the field
+    // that was just emptied.
+    final listening = _dictation;
+    if (listening != null) {
+      _dictation = null;
+      listening.stop();
+    }
     final text = _controller.text.trim();
     if (text.isEmpty) {
       if (andClose) widget.onClose();
@@ -250,10 +310,47 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                     ),
                   ),
                 ),
+                if (_speechError != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: T.s3),
+                    child: Text(
+                      _speechError!,
+                      style: const TextStyle(fontSize: T.fsMeta, color: T.warn),
+                    ),
+                  ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s3),
                   child: Row(
                     children: [
+                      if (Dictation.supported) ...[
+                        Tooltip(
+                          message: _dictation == null ? 'Speak' : 'Stop',
+                          child: Material(
+                            color: _dictation == null
+                                ? Colors.transparent
+                                : widget.accent,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _toggleDictation,
+                              child: SizedBox(
+                                width: 44,
+                                height: 44,
+                                child: Icon(
+                                  _dictation == null
+                                      ? Icons.mic_none_rounded
+                                      : Icons.mic_rounded,
+                                  size: 22,
+                                  color: _dictation == null
+                                      ? T.muted
+                                      : T.inkOn(widget.accent),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: T.s1),
+                      ],
                       // Chaining, for the case this exists for: somebody lists
                       // three books at you and closing between each is three
                       // taps you do not have time for.

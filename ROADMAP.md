@@ -48,6 +48,27 @@ alone is today.
   Shift+Enter is a new line - the thought pane's keys, so the two capture
   surfaces agree.
 
+### Six from the shelf — 2026-10-16
+
+Sent as a screenshot of the shelf; three answers asked for and given.
+
+- **Workspace click → its list.** Two shelf items contradicted each other
+  (one wanted the click to go to the add field, which was built; the newer
+  one wanted it not to). Marco: go to the list, nothing focused.
+- **Views in the workspace menu: a side submenu**, opened by resting (mouse)
+  or holding (finger). Chosen over an inline ▸ expand, which would push the
+  other workspaces out from under a finger mid-slide.
+- **Calendar double-click edits**, as a task's does - without the 300ms a
+  real double-tap recogniser would add to every single click.
+- **Links show the page's title in place of the URL**, the URL staying the
+  stored text. Not rewritten into Markdown: a title fetched once and frozen
+  into the row would go stale, and the edit field would fill with brackets.
+  Looked up per device, not synced: a title is a cache, not data.
+- **Voice input for thoughts**: the browser's recogniser, so the iPhone web
+  app gets a mic in the pane. Natively nothing new - the keyboard's mic and
+  Win+H already dictate into any field, and a speech plugin is three
+  platforms' permissions for what the OS already does.
+
 ### Collections — agreed 2026-10-13
 
 Asked for and settled with Marco on 2026-10-13: next to Notes and Parked, a

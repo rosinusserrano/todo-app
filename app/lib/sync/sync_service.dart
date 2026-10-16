@@ -181,6 +181,22 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// A link's page title through the server - see `link_titles.dart`.
+  /// Throws while there is no server to ask, which the cache treats as "try
+  /// again next launch".
+  Future<String?> linkTitleViaServer(Uri url) async {
+    final bearer = await _bearer();
+    if (!isConfigured || bearer == null) {
+      throw const FeedError('No sync server');
+    }
+    final client = SyncClient(baseUrl: baseUrl!, token: bearer);
+    try {
+      return await client.fetchLinkTitle(url);
+    } finally {
+      client.dispose();
+    }
+  }
+
   /// The bearer for the next request.
   ///
   /// Returns null when an SSO session exists but could not be refreshed, which

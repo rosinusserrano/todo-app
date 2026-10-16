@@ -38,6 +38,19 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-16-2',
+    title: 'From your wishlist',
+    points: [
+      'Clicking the workspace in the bar goes to its tasks instead of the '
+          'add field.',
+      'The workspace menu has each workspace\'s views (Tasks, Notes, '
+          'Parked…) beside it: rest on a workspace, or hold it with a finger.',
+      'Double-click a calendar event to edit it.',
+      'Web links in a task show the page\'s title instead of the address.',
+      'In the browser, the thought pane has a 🎙: tap it and speak.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-16',
     title: 'A new way to add a task',
     points: [

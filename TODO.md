@@ -29,6 +29,21 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 62. Six from the shelf  `[~]`
+
+Sent 2026-10-16 (screenshot of the shelf); answers and reasons in
+`ROADMAP.md` under *Six from the shelf*. Built on `redesign`.
+
+- [x] **62.1** A click on the dock's workspace goes to its task list.
+- [x] **62.2** Double-click / double-tap a calendar event edits it.
+- [x] **62.3** The workspace menu's rows have a submenu of their views.
+- [x] **62.4** Links in task titles drawn as the page title
+      (`link_titles.dart`, server `/api/link-title`).
+- [x] **62.5** 🎙 dictation in the thought pane (browser build).
+- [ ] **62.6** Marco tries it on the dev site; then merge, deploy the server
+      (needed for link titles in the browser, and for 61's shortcuts),
+      publish the web app.
+
 ### 61. The add card  `[~]`
 
 Asked for 2026-10-15; design in `ROADMAP.md` under *The add card*. Built on

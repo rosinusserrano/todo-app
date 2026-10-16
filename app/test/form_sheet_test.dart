@@ -241,6 +241,48 @@ void main() {
       expect(picked, EventAction.openWorkspace);
     });
 
+    testWidgets('a double click edits; a later click on the barrier closes',
+        (tester) async {
+      tester.view.physicalSize = desktop;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      EventAction? picked;
+      var done = false;
+      await tester.pumpWidget(host(
+        size: desktop,
+        touch: false,
+        open: (context) async {
+          picked = await showEventDetails(
+            context,
+            event: event(),
+            calendarName: 'Work',
+            color: T.accent,
+            loadTasks: () async => const <Task>[],
+            loadAttachments: () async => const <Attachment>[],
+          );
+          done = true;
+        },
+      ));
+      final at = tester.getCenter(find.text('open'));
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(done, isTrue);
+      expect(picked, EventAction.edit);
+
+      // Opened and left alone, a click outside is just closing it.
+      done = false;
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(done, isTrue);
+      expect(picked, isNull);
+    });
+
     testWidgets('says nothing about repeating when it does not', (tester) async {
       tester.view.physicalSize = phone;
       tester.view.devicePixelRatio = 1;

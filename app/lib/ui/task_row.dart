@@ -62,6 +62,7 @@ import 'package:flutter/services.dart';
 
 import '../layout.dart';
 import '../sync/models.dart';
+import '../link_titles.dart';
 import '../theme.dart';
 import 'list_rule.dart';
 import 'markdown_text.dart';
@@ -671,7 +672,8 @@ class _TaskText extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
+        // A URL in the title is drawn as its page's title (link_titles.dart).
+        LinkedText(
           task.text,
           style: const TextStyle(
             fontSize: T.fsBody,

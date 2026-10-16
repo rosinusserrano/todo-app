@@ -20,6 +20,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app_state.dart';
 import 'journal_crypto.dart';
 import 'layout.dart';
+import 'link_titles.dart';
 import 'notifications.dart';
 import 'platform.dart';
 import 'quick_actions.dart';
@@ -179,6 +180,15 @@ Future<void> main() async {
   state.fetchFeed = isWeb ? sync.fetchFeedViaServer : fetchFeedDirect;
   await sync.load();
 
+  // Links in task titles are drawn as their pages' titles - asked of the page
+  // natively, of the sync server in a browser, for the feeds' reason.
+  final linkTitles = LinkTitles(
+    fetch: isWeb ? sync.linkTitleViaServer : fetchLinkTitleDirect,
+    read: () => store.setting('link-titles'),
+    write: (json) => store.setSetting('link-titles', json),
+  );
+  await linkTitles.load();
+
   final sound = SoundService(store);
   if (!isWeb) await sound.load();
 
@@ -188,6 +198,7 @@ Future<void> main() async {
       sync: sync,
       sound: sound,
       notifications: notifications,
+      linkTitles: linkTitles,
     ),
   );
 }
@@ -199,15 +210,18 @@ class TodoApp extends StatelessWidget {
     required this.sync,
     required this.sound,
     required this.notifications,
+    this.linkTitles,
   });
 
   final AppState state;
   final SyncService sync;
   final SoundService sound;
   final NotificationService notifications;
+  final LinkTitles? linkTitles;
 
   @override
   Widget build(BuildContext context) {
+    final titles = linkTitles;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: T.themeData(),
@@ -221,7 +235,12 @@ class TodoApp extends StatelessWidget {
           builder: (context, zoom, _) => UiScale(
             scale: isDesktop ? 1.0 : T.mobileScale,
             zoom: zoom,
-            child: child ?? const SizedBox.shrink(),
+            child: titles == null
+                ? child ?? const SizedBox.shrink()
+                : LinkTitlesScope(
+                    titles: titles,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
           ),
         ),
       ),
@@ -2324,10 +2343,12 @@ class _WidgetShellState extends State<WidgetShell>
           ink: T.inkOn(ws),
           dimmed: s.showCalendar || s.showList,
           semanticLabel: 'Workspace: ${current?.name ?? ''}',
-          // A click on the workspace itself goes to its add field: the
-          // hover already showed the list of workspaces, and "this one" is
-          // the commonest thing to want of it.
-          onClick: _jumpToAddTask,
+          // A click on the workspace itself goes to its task list: the hover
+          // already showed the list of workspaces, and "this one's tasks" is
+          // the commonest thing to want of it. It used to open the add
+          // field, which put a caret in front of someone who had only come
+          // to look (Marco, 2026-10-16).
+          onClick: () => _dockToView(null),
           items: [
             DockItem(
               icon: Icons.add_rounded,
@@ -2343,6 +2364,19 @@ class _WidgetShellState extends State<WidgetShell>
                 secondaryIcon: Icons.edit_outlined,
                 secondaryLabel: 'Edit ${w.name}',
                 onSecondary: () => _editWorkspace(w),
+                // Straight to one of its views, from anywhere.
+                children: [
+                  for (final v in kViewOrder)
+                    DockItem(
+                      icon: views[v]!.$1,
+                      label: views[v]!.$2,
+                      current:
+                          !global &&
+                          w.uuid == s.currentWorkspaceUuid &&
+                          view == v,
+                      onChoose: () => _dockToWorkspaceView(w, v),
+                    ),
+                ],
               ),
           ],
         ),
@@ -2455,6 +2489,16 @@ class _WidgetShellState extends State<WidgetShell>
     if (!mounted) return;
     // selectWorkspace closes every view, so this lands on its task list.
     await _switchWorkspace(w);
+  }
+
+  /// A workspace's view from the workspace menu's submenu: switch (which
+  /// lands on its list), then go to the view.
+  Future<void> _dockToWorkspaceView(Workspace w, WorkspaceView? view) async {
+    await _dockClear();
+    if (!mounted) return;
+    if (w.uuid != s.currentWorkspaceUuid) await _switchWorkspace(w);
+    if (!mounted) return;
+    _selectView(view);
   }
 
   Future<void> _dockToCalendar() async {

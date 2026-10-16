@@ -49,6 +49,12 @@ Newest changes are noted in the changelog at the bottom.
     reminder in the past would fire the moment it was written. **A day alone
     is 09:00** that day (or the next whole hour, if that has passed).
   - A title made of nothing but keywords is kept as the title.
+- **Links show as the page's title.** A web address in a task's title is
+  drawn as the title of the page it points to (underlined, in the accent
+  colour), and clicking it opens the page. The task itself still holds the
+  address - edit the task and it is there. Each address is looked up once
+  per device and remembered; until then the row shows the address shortened.
+  The browser build asks the sync server, the apps ask the page directly.
 - **Check off a task** — click the circle; it plays a slide-out animation, then
   gets logged to history (not deleted).
 - **The actions live in a bar you ask for.** A row is a tick box, a title and
@@ -555,6 +561,11 @@ Three tiers, none of which need an account, an API key, or a licence:
     to scroll the day, which is the only way to reach the rest of it.
   - Creating only happens on **empty** grid. A click or press on an existing
     event opens that event and nothing else.
+- **Click an event to read it, double-click (or double-tap) to edit it.** The
+  details card opens on the first click; a second one straight after turns it
+  into the edit form. For its first instant the card ignores clicks, so the
+  second half of a double-click can never land on Delete. Subscribed events
+  have nothing to edit and just close.
 - **Edit mode** (the ✎ pencil in the calendar's header; **Ctrl+E** on a
   desktop) is where blocks are changed by hand: moved, stretched, and laid
   down fast. Outside it a block only opens and a drag only opens the editor,
@@ -958,6 +969,13 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 - **Capture a thought** — the 💭 button on the *left* of the footer expands a
   field to jot a quick note.
+- **Speak a thought.** In the browser build (the iPhone web app, Chrome,
+  Edge, Safari) the thought pane has a 🎙 button: tap it and talk, and the
+  words are written into the field as they are recognised, after anything
+  already there. Tap it again, or stop talking, and it stops; Save as usual.
+  It is not drawn where the browser has no speech recognition (Firefox), nor
+  in the apps, where the keyboard's own mic and Windows' Win+H already do
+  this in any field.
 - **Not in the workspace's colour.** Thoughts are one pile for every workspace,
   so the Thoughts entry, the capture pane and the footer's meter are drawn in the app's
   own blue, and the window drops its workspace tint while the pile is open — the
@@ -1035,7 +1053,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   the next one opens at once; move away from both the part and its menu and
   it closes. Passing over the bar on the way somewhere else opens nothing.
   Click a row to go there - the row under the pointer lights. **Clicking the
-  workspace part itself goes to its add-task field**; clicking any other part
+  workspace part itself goes to its task list** (out of Notes, Parked and
+  the rest, with nothing focused); clicking any other part
   keeps its menu open until you pick or click elsewhere. Pressing and sliding
   works with a mouse as it does with a finger.
 - **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
@@ -1045,6 +1064,11 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **Slide right to edit a workspace.** Each workspace row has a pencil at its
   right-hand end; carry your finger onto it and the row says "Edit …" - let go
   there to edit it.
+- **A workspace's views, straight from the workspace menu.** Each workspace
+  row has a ▸ and a little menu beside it: Tasks, Notes, Collections, Parked,
+  History. With a mouse, rest on the row; with a finger, hold on the row for a
+  moment and slide across (or long-press it in a tapped-open menu). Picking
+  one switches workspace and opens that view in one go.
 - **Tapping works too**: a tap opens the menu and leaves it open, a second tap
   picks. Tap the part again, or anywhere above the menu, to close it.
 - The pile of side thoughts shows on **More**: its count, and the same tint and
@@ -1436,6 +1460,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **From the shelf**: a click on the dock's workspace goes to its task list
+    (not the add field); the workspace menu has each workspace's views in a
+    submenu; double-click a calendar event to edit it; links in task titles
+    show the page's title (server: `/api/link-title`); a 🎙 in the thought
+    pane in the browser build.
   - **A new way to add a task**: *Add a task* opens a card in the middle of
     the screen with buttons for priority, a reminder, the workspace and the
     long form; a #workspace (or its shortcut, e.g. *#MT*), a day or a time

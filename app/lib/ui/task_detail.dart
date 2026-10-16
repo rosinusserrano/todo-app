@@ -24,6 +24,7 @@
 import 'package:flutter/material.dart';
 
 import '../sync/models.dart';
+import '../link_titles.dart';
 import '../theme.dart';
 import 'markdown_text.dart';
 import 'panel_header.dart';
@@ -120,7 +121,7 @@ class TaskDetail extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (showTitle) ...[
-          Text(
+          LinkedText(
             task.text,
             style: const TextStyle(
               fontSize: T.fsMenu,

@@ -49,9 +49,9 @@ dev site, merged to `main` once Marco has tried it.
       `#`; shortcuts (`workspaces.shortcuts`, client v19, protocol 5), added
       from a pill on the recognised word, removed in the workspace form.
 - [x] **61.5** Merged `redesign` to `main` and pushed (Marco, 2026-10-16).
-- [ ] **61.6** Deploy the server (protocol 5, or shortcuts do not sync -
-      `sudo server/update-server.sh`), publish the web app
-      (`server/build-web.sh /srv/todo-web`), `install-windows.ps1`.
+- [~] **61.6** Web app published from `main` (2026-10-16). Left: deploy the
+      server (protocol 5, or shortcuts do not sync - `sudo
+      server/update-server.sh`, Marco), `install-windows.ps1`.
 
 ### 60. Notifications from outside the app: `POST /api/notify`  `[~]`
 

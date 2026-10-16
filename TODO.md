@@ -40,9 +40,9 @@ Sent 2026-10-16 (screenshot of the shelf); answers and reasons in
 - [x] **62.4** Links in task titles drawn as the page title
       (`link_titles.dart`, server `/api/link-title`).
 - [x] **62.5** 🎙 dictation in the thought pane (browser build).
-- [ ] **62.6** Marco tries it on the dev site; then merge, deploy the server
+- [~] **62.6** Merged to `main` (2026-10-16). Left: deploy the server
       (needed for link titles in the browser, and for 61's shortcuts),
-      publish the web app.
+      publish the web app (`server/build-web.sh /srv/todo-web`).
 
 ### 61. The add card  `[~]`
 

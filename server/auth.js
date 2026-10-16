@@ -28,6 +28,13 @@
 //          operator here can cut an SSO identity off immediately without
 //          waiting for, or having access to, the directory.
 //
+// A device token can be *narrowed*: `tokens.scope` (users.js) marks one that
+// is good for a single route, the notification hook, and nothing else. That is
+// not a third kind - it is the first kind with less in it - so it is refused
+// here, at the one place every route already passes, unless the route asked
+// for that scope by name. A route has to opt in; forgetting to is a 403, never
+// a narrowed token that quietly syncs.
+//
 // Which kind a credential is, is decided by its *shape* (`looksLikeJwt`), not
 // by trying one and falling through to the other. Falling through would make a
 // failed JWT quietly become a tokens-table lookup, and the error a caller gets
@@ -62,12 +69,12 @@ function bearer(req) {
  *
  * @returns {Promise<string>} user id
  */
-export async function identify(req, { db, oidc = null }) {
+export async function identify(req, { db, oidc = null }, { scope = null } = {}) {
   const presented = bearer(req);
 
   const userId = oidc && looksLikeJwt(presented)
     ? await identifyOidc(presented, { db, oidc })
-    : identifyToken(presented, { db });
+    : identifyToken(presented, { db }, scope);
 
   // Checked for both kinds, and last, so that blocking an account is one
   // switch rather than one per credential type.
@@ -77,11 +84,16 @@ export async function identify(req, { db, oidc = null }) {
   return userId;
 }
 
-function identifyToken(presented, { db }) {
+function identifyToken(presented, { db }, scope) {
   const found = resolveToken(db, presented);
   // One message for unknown, revoked and malformed alike: telling a caller that
   // a token was real but revoked tells them the token was real.
   if (!found) throw new AuthError('Invalid token');
+  // A full token is good everywhere, including a route that also takes a
+  // narrowed one. A narrowed token is good only where its scope was asked for.
+  if (found.scope && found.scope !== scope) {
+    throw new AuthError(`This token can only be used for "${found.scope}"`, 403);
+  }
   return found.userId;
 }
 
@@ -109,9 +121,13 @@ async function identifyOidc(presented, { db, oidc }) {
   return user.id;
 }
 
-export function middleware(config) {
+/**
+ * @param {{scope?: string}} [options] a narrowed token kind this route also
+ *   accepts (users.js NOTIFY_SCOPE); full tokens are always accepted.
+ */
+export function middleware(config, { scope = null } = {}) {
   return (req, res, next) => {
-    identify(req, config)
+    identify(req, config, { scope })
       .then((userId) => {
         req.userId = userId;
         next();

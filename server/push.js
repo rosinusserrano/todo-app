@@ -373,6 +373,59 @@ export async function tick(db, keys, now = new Date(), opts = {}) {
   return sent;
 }
 
+// ------------------------------------------------------------- notifications
+//
+// The other way in: something outside the app - the server's monitoring, a
+// backup script - has news for an account and calls POST /api/notify. It goes
+// to every subscription of that account and is not recorded anywhere; whether
+// to send the same news twice is the sender's business, not this server's.
+
+/** Longest title and body kept. A push payload has to fit in ~4KB after
+ *  encryption, and a lock screen shows far less than this anyway. */
+export const NOTIFY_TITLE_MAX = 120;
+export const NOTIFY_BODY_MAX = 600;
+
+function clip(text, max) {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/**
+ * The notification in a request body, or null when there is none to send.
+ *
+ * Takes `body` or `message` for the text - `message` is what most webhook
+ * senders call it, Beszel's included, and refusing it would turn every one of
+ * them into a 400 for a naming difference. Too-long text is cut, not refused:
+ * an alert that arrives shortened beats one that never arrives.
+ */
+export function readNotification(input) {
+  if (typeof input !== 'object' || input === null) return null;
+  const text = (v) => (typeof v === 'string' ? v.trim() : v == null ? '' : null);
+  const title = text(input.title);
+  const body = text(input.body ?? input.message);
+  if (title === null || body === null || (!title && !body)) return null;
+
+  const tag = input.tag;
+  if (tag != null && (typeof tag !== 'string' || !tag || tag.length > 64)) return null;
+
+  return {
+    title: clip(title || 'Todo', NOTIFY_TITLE_MAX),
+    body: clip(body, NOTIFY_BODY_MAX),
+    // Same tag replaces the earlier notification on the device; none stacks.
+    ...(tag ? { tag } : {}),
+    url: '/',
+  };
+}
+
+/** Sends one notification to every subscription of a user. */
+export async function notifyUser(db, keys, userId, payload, opts = {}) {
+  const subs = subscriptionsOf(db, userId);
+  let sent = 0;
+  for (const sub of subs) {
+    if ((await sendTo(db, keys, sub, payload, opts)) === 'ok') sent++;
+  }
+  return { sent, subscriptions: subs.length };
+}
+
 /** Starts the minute tick. Returns a stop function. */
 export function startPush(db, { intervalMs = 60_000 } = {}) {
   const keys = vapidKeys(db);

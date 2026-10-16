@@ -12,7 +12,10 @@ import { openDb, purgeUser, sync } from './db.js';
 import {
   dueNotifications,
   eventLead,
+  notifyUser,
   nth,
+  NOTIFY_BODY_MAX,
+  readNotification,
   readSubscription,
   saveSubscription,
   subscriptionsOf,
@@ -216,4 +219,52 @@ test('deleting an account removes its subscriptions', () => {
   const db = subscribed();
   purgeUser(db, USER);
   assert.equal(subscriptionsOf(db, USER).length, 0);
+});
+
+test('a notification reads title and body, or message for body', () => {
+  assert.deepEqual(readNotification({ title: 'Disk', body: '85% full' }), {
+    title: 'Disk',
+    body: '85% full',
+    url: '/',
+  });
+  // What webhook senders (Beszel's included) call the text.
+  assert.equal(readNotification({ title: 'Disk', message: '85% full' }).body, '85% full');
+  assert.equal(readNotification({ body: 'no title' }).title, 'Todo');
+  assert.equal(readNotification({ title: 'x', tag: 'disk' }).tag, 'disk');
+});
+
+test('a notification with nothing to say, or the wrong types, is refused', () => {
+  assert.equal(readNotification(null), null);
+  assert.equal(readNotification('text'), null);
+  assert.equal(readNotification({}), null);
+  assert.equal(readNotification({ title: '  ', body: '' }), null);
+  assert.equal(readNotification({ title: 5 }), null);
+  assert.equal(readNotification({ title: 'x', tag: 'y'.repeat(65) }), null);
+});
+
+test('a long notification is cut, not refused', () => {
+  const n = readNotification({ title: 'x', body: 'y'.repeat(5000) });
+  assert.equal(n.body.length, NOTIFY_BODY_MAX);
+  assert.ok(n.body.endsWith('…'));
+});
+
+test('a notification goes to every subscription of that user, and no one else', async () => {
+  const db = subscribed();
+  saveSubscription(db, USER, readSubscription({ ...SUB, endpoint: 'https://push.example.com/laptop' }));
+  saveSubscription(db, 'someone-else', readSubscription({ ...SUB, endpoint: 'https://push.example.com/bob' }));
+  const { sent, send } = recorder();
+
+  const result = await notifyUser(db, vapidKeys(db), USER, readNotification({ title: 'Disk', body: '85%' }), { send });
+  assert.deepEqual(result, { sent: 2, subscriptions: 2 });
+  assert.deepEqual(sent.map((s) => s.endpoint).sort(), [SUB.endpoint, 'https://push.example.com/laptop']);
+  assert.equal(sent[0].title, 'Disk');
+});
+
+test('a notification to a user with no subscriptions sends nothing', async () => {
+  const db = openDb(':memory:');
+  const { send } = recorder();
+  assert.deepEqual(await notifyUser(db, vapidKeys(db), USER, { title: 'x' }, { send }), {
+    sent: 0,
+    subscriptions: 0,
+  });
 });

@@ -17,10 +17,12 @@ import {
   LAN_USER,
   adoptBootstrapSecret,
   createUser,
+  initUsers,
   isAdmin,
   issueToken,
   listTokens,
   listUsers,
+  NOTIFY_SCOPE,
   resolveToken,
   revokeToken,
   setAdmin,
@@ -174,6 +176,56 @@ test('a revoked token stops working, and takes only itself down', async () => {
   // Revoking twice is not an error worth crashing over, but it must report that
   // it did nothing, so the CLI can say so.
   assert.equal(revokeToken(db, phone.id), false);
+});
+
+test('a notify-only token is refused everywhere that did not ask for it', async () => {
+  const db = freshDb();
+  const alice = createUser(db, 'Alice');
+  const hook = issueToken(db, alice.id, 'beszel', { scope: NOTIFY_SCOPE });
+  const phone = issueToken(db, alice.id, 'phone');
+
+  // Every ordinary route calls identify() with no scope: that is a 403, so a
+  // leaked hook token can never read or write a row.
+  await assert.rejects(
+    () => identify(req(`Bearer ${hook.token}`), { db }),
+    (err) => err instanceof AuthError && err.status === 403
+  );
+  // The route that asked for it gets the owner...
+  assert.equal(await identify(req(`Bearer ${hook.token}`), { db }, { scope: NOTIFY_SCOPE }), alice.id);
+  // ...and still takes a full token, which can do everything a narrowed one can.
+  assert.equal(await identify(req(`Bearer ${phone.token}`), { db }, { scope: NOTIFY_SCOPE }), alice.id);
+
+  // Revoked is revoked for this kind too.
+  revokeToken(db, hook.id);
+  await assert.rejects(
+    () => identify(req(`Bearer ${hook.token}`), { db }, { scope: NOTIFY_SCOPE }),
+    (err) => err instanceof AuthError && err.status === 401
+  );
+});
+
+test('the token listing says which tokens are narrowed', () => {
+  const db = freshDb();
+  const alice = createUser(db, 'Alice');
+  issueToken(db, alice.id, 'phone');
+  issueToken(db, alice.id, 'beszel', { scope: NOTIFY_SCOPE });
+  assert.deepEqual(
+    listTokens(db, alice.id).map((t) => [t.label, t.scope]),
+    [['phone', null], ['beszel', NOTIFY_SCOPE]]
+  );
+  assert.throws(() => issueToken(db, alice.id, 'x', { scope: 'everything' }), /unknown scope/);
+});
+
+test('a tokens table from before scopes gains the column, every token still full', () => {
+  const db = freshDb();
+  // The shape every server before this has: no scope column, tokens in it.
+  db.exec('ALTER TABLE tokens DROP COLUMN scope');
+  const alice = createUser(db, 'Alice');
+  db.prepare(
+    `INSERT INTO tokens (id, hash, user_id, label, created_at) VALUES ('old', 'h', ?, 'old', 'x')`
+  ).run(alice.id);
+
+  initUsers(db); // what the next start does
+  assert.equal(listTokens(db, alice.id)[0].scope, null);
 });
 
 test('a revoked token cannot be resurrected by the bootstrap secret path', async () => {

@@ -25,6 +25,8 @@ import { FeedError, fetchFeed } from './feeds.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
   deleteSubscription,
+  notifyUser,
+  readNotification,
   readSubscription,
   saveSubscription,
   sendTo,
@@ -40,6 +42,7 @@ import {
   issueToken,
   listTokens,
   listUsers,
+  NOTIFY_SCOPE,
   revokeToken,
 } from './users.js';
 
@@ -316,6 +319,28 @@ app.post('/api/push/test', middleware(auth), async (req, res, next) => {
   }
 });
 
+// Sends the caller a notification on every device that turned them on - for
+// things outside the app with news, like the server's monitoring. Takes a
+// notify-only token (`npm run token -- notify <user>`) as well as a full one,
+// so whatever is configured with it can do this and nothing else.
+//
+//   POST /api/notify   {"title": "...", "body": "...", "tag": "optional"}
+//
+// 200 even when no device is subscribed: the request was fine, and `sent: 0`
+// says the rest. A 4xx would have a sender retrying something that cannot
+// succeed until a person turns notifications on.
+app.post('/api/notify', middleware(auth, { scope: NOTIFY_SCOPE }), async (req, res, next) => {
+  const payload = readNotification(req.body);
+  if (!payload) {
+    return res.status(400).json({ error: 'Send JSON with a "title" and/or "body" string' });
+  }
+  try {
+    res.json(await notifyUser(db, vapidKeys(db), req.userId, payload));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ------------------------------------------------------------------ admin api
 //
 // The same routes the CLI covers, for the app's user-management panel. They are
@@ -347,6 +372,7 @@ app.get('/api/admin/users', ...admin, (_req, res) => {
       tokens: listTokens(db, u.id).map((t) => ({
         id: t.id,
         label: t.label,
+        scope: t.scope,
         created_at: t.created_at,
         last_seen_at: t.last_seen_at,
         revoked: t.revoked_at != null,
@@ -382,9 +408,10 @@ app.post('/api/admin/tokens/:id/revoke', ...admin, (req, res) => {
   const token = listTokens(db).find((t) => t.id === req.params.id);
   if (!token) return res.status(404).json({ error: 'No such token' });
   // Revoking your own last token locks you out of the server from this device,
-  // and the panel you would use to fix it goes with it.
-  if (token.user_id === req.userId) {
-    const mine = listTokens(db, req.userId).filter((t) => !t.revoked_at);
+  // and the panel you would use to fix it goes with it. A notify-only token is
+  // no way back in: revoking one is always fine, and it does not count.
+  if (token.user_id === req.userId && !token.scope) {
+    const mine = listTokens(db, req.userId).filter((t) => !t.revoked_at && !t.scope);
     if (mine.length <= 1) {
       return res.status(400).json({ error: 'That is the token you are using right now' });
     }

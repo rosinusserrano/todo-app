@@ -29,6 +29,21 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 60. Notifications from outside the app: `POST /api/notify`  `[~]`
+
+Asked for 2026-10-16: the server's Beszel monitoring (monitor.sniggles.de)
+should alert the phone through the app's Web Push, instead of email. Web Push
+only - the native apps do not get it. Server only; no app change.
+
+- [x] **60.1** `POST /api/notify` (`readNotification`, `notifyUser` in
+      push.js), notify-only tokens (`tokens.scope`, refused by every route
+      that does not ask for the scope), `npm run token -- notify`. Tests,
+      a scratch server, Beszel's exact payload. Docs: DEPLOY.md, FEATURES.md.
+- [ ] **60.2** Deploy the server (`sudo server/update-server.sh`), issue a
+      notify token for Marco's account (DEPLOY.md, *Notifications from other
+      things*), put the `generic://` URL into Beszel under Settings →
+      Notifications, press Test.
+
 ### 59. Collections  `[~]`
 
 Agreed with Marco 2026-10-13 (name, per workspace, text / link / number /

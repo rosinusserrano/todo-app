@@ -29,6 +29,13 @@ export const LAN_USER = 'local';
 /// the secret can find and retire the previous one.
 const BOOTSTRAP_LABEL = 'bootstrap secret';
 
+/// The one narrower kind of token: it can send its owner a notification
+/// (POST /api/notify) and nothing else - no sync, no reading a single row. It
+/// exists so that something outside the app, like the server's monitoring, can
+/// be given a credential whose worst case on leaking is unwanted notifications.
+/// A token with no scope is a full device token, as every token was before.
+export const NOTIFY_SCOPE = 'notify';
+
 export function initUsers(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -71,6 +78,14 @@ export function initUsers(db) {
   // holding the moment SSO was switched on.
   if (!column('blocked_at')) {
     db.exec(`ALTER TABLE users ADD COLUMN blocked_at TEXT`);
+  }
+  // What a token is limited to, or null for a full device token (see
+  // NOTIFY_SCOPE). Null for every token that predates it, which is right.
+  const tokenColumn = db
+    .prepare(`SELECT 1 FROM pragma_table_info('tokens') WHERE name = 'scope'`)
+    .get();
+  if (!tokenColumn) {
+    db.exec(`ALTER TABLE tokens ADD COLUMN scope TEXT`);
   }
 
   // Two accounts claiming one provider identity would make "who is this" a
@@ -240,14 +255,15 @@ export function deleteUserIdentity(db, userId) {
  * @returns {{token: string, id: string}} the plaintext token - this is the only
  *   time it exists anywhere, so the caller must show it to the human now.
  */
-export function issueToken(db, userId, label = 'device') {
+export function issueToken(db, userId, label = 'device', { scope = null } = {}) {
   if (!getUser(db, userId)) throw new Error(`no such user: ${userId}`);
+  if (scope !== null && scope !== NOTIFY_SCOPE) throw new Error(`unknown scope: ${scope}`);
 
   const token = randomBytes(24).toString('base64url');
   const id = randomBytes(4).toString('hex');
   db.prepare(
-    `INSERT INTO tokens (id, hash, user_id, label, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(id, hashToken(token), userId, label, now());
+    `INSERT INTO tokens (id, hash, user_id, label, created_at, scope) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, hashToken(token), userId, label, now(), scope);
   return { token, id };
 }
 
@@ -262,7 +278,7 @@ export function resolveToken(db, presented) {
   if (typeof presented !== 'string' || !presented) return null;
 
   const row = db
-    .prepare(`SELECT id, user_id, label, revoked_at FROM tokens WHERE hash = ?`)
+    .prepare(`SELECT id, user_id, label, scope, revoked_at FROM tokens WHERE hash = ?`)
     .get(hashToken(presented));
   if (!row || row.revoked_at) return null;
 
@@ -276,7 +292,7 @@ export function resolveToken(db, presented) {
       WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?)`
   ).run(stamp, row.id, cutoff);
 
-  return { userId: row.user_id, tokenId: row.id, tokenLabel: row.label };
+  return { userId: row.user_id, tokenId: row.id, tokenLabel: row.label, scope: row.scope };
 }
 
 export function revokeToken(db, tokenId) {
@@ -302,7 +318,7 @@ export function listTokens(db, userId = null) {
   const args = userId ? [userId] : [];
   return db
     .prepare(
-      `SELECT id, user_id, label, created_at, last_seen_at, revoked_at
+      `SELECT id, user_id, label, scope, created_at, last_seen_at, revoked_at
          FROM tokens ${where} ORDER BY created_at`
     )
     .all(...args);

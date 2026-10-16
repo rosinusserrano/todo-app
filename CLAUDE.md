@@ -61,7 +61,7 @@ Run from `app/` unless noted. The Flutter SDK must be on `PATH`.
 | Build a Windows release | `flutter build windows` |
 | Add a dependency | `flutter pub add <pkg>` |
 | Run the sync server (repo root) | `npm run server` |
-| Add a user / token to the server | `npm run token -- add "<name>"` (also `list`, `revoke <id>`) |
+| Add a user / token to the server | `npm run token -- add "<name>"` (also `list`, `revoke <id>`, `notify <user-id>`) |
 | Start the server with setup + firewall help | `server\start-server.ps1` / `server/start-server.sh` |
 | Install the built app for daily use (repo root) | `install-windows.ps1` |
 
@@ -1696,6 +1696,11 @@ publishes it. Three rules keep it compiling and starting:
   `ui/push_settings.dart`. The key is fetched when that row appears, and
   `_turnOn` calls `WebPush.enable` before awaiting anything: a browser shows
   its permission prompt only while the tap is still being handled.
+  `POST /api/notify` is the same send for news from outside the app
+  (`readNotification`, `notifyUser`), not recorded in `push_sent`. It takes
+  a **notify-only token** (`tokens.scope = 'notify'`): `identify()` refuses a
+  scoped token unless the route passed that scope to `middleware()`, so a new
+  route is closed to it by default - keep it that way.
 - **A field that opens on a tap needs `primeWebKeyboard()` inside the tap**
   (`web_keyboard.dart`, `todoPrimeKeyboard` in `index.html`). iOS shows the
   keyboard only for a focus moved during a touch's own event handler, and a

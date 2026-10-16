@@ -1279,6 +1279,13 @@ simply stretched.
 - **Also from the command line** — `npm run token -- add "Alice"`, `list`,
   `revoke <token-id>`, `admin <user-id> [on|off]`. Same operations as the panel,
   and the way back in if nobody can sign in at all.
+- **Notifications from outside the app** — `POST /api/notify` with a title and
+  a body sends them as a notification to every device that has Web Push on, so
+  the server's monitoring (or any script with a webhook) can reach your phone.
+  `npm run token -- notify <user-id>` issues a token that can do that and
+  nothing else: it is refused by every other route, so leaking it costs at most
+  some unwanted notifications. Listed as *notify only*; revoked like any other.
+  How to call it: `server/DEPLOY.md`, *Notifications from other things*.
 
 ## Platforms
 
@@ -1399,6 +1406,8 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Notifications from outside the app** (server): `POST /api/notify` and
+    notify-only tokens, for the server's monitoring to alert the phone.
   - **What's new**: a box after every update says what changed.
   - **The thought pane opens ready to type**, with the keyboard up on a
     phone; it used to open with nothing focused.

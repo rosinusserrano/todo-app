@@ -324,6 +324,35 @@ Safari tab - the settings row says so when that is the problem. The bootstrap
 service worker: there is one worker per site, and Flutter's would replace
 `push_sw.js` and silently end every subscription.
 
+#### Notifications from other things on the server
+
+`POST /api/notify` sends the caller a notification on every device that has
+them turned on - for monitoring alerts, a finished backup, anything with a
+webhook. Give it a **notify-only token**, which can do that and nothing else
+(no sync, no reading a row), so the config file it sits in is not a key to
+your tasks:
+
+```sh
+sudo -u todosync TODO_SYNC_DB=/var/lib/todo-sync/sync.db \
+  node /opt/todo-sync/server/tokens.js notify <user-id> beszel
+```
+
+```sh
+curl -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+     -d '{"title":"Backup done","body":"42 GB in 6 min"}' https://todo.example.com/api/notify
+```
+
+`body` may be called `message`, which is what most webhook senders use.
+An optional `tag` makes a later notification with the same tag replace the
+earlier one. It answers `{"sent": n, "subscriptions": m}`; `sent: 0` means no
+device has notifications on. Revoke the token like any other.
+
+For Beszel (Settings → Notifications → Webhook / Push URL):
+
+```
+generic://todo.example.com/api/notify?template=json&@Authorization=Bearer%20<token>
+```
+
 ---
 
 ## Backups

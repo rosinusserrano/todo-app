@@ -131,6 +131,7 @@ All optional:
 npm run token -- list
 npm run token -- add "Marco's phone"     # prints the token once
 npm run token -- revoke <id>
+npm run token -- notify <user-id> beszel # can only send notifications
 ```
 
 Tokens are stored as a SHA-256, never in the clear, which is why one is

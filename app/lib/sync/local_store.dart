@@ -12,6 +12,8 @@
 
 // Written against the sqflite API alone; which implementation backs it (FFI on
 // desktop, the plugin on mobile, WASM in a browser) is db_factory.dart's call.
+import 'dart:typed_data';
+
 import 'package:sqflite_common/sqflite.dart';
 
 import 'db_factory.dart';
@@ -76,7 +78,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 19,
+        version: 20,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -249,6 +251,19 @@ class LocalStore {
       // the start for v16's reason: a build below protocol 5 is not sent the
       // column, and its cursor walked past the rows that carry it.
       await db.execute('ALTER TABLE workspaces ADD COLUMN shortcuts TEXT');
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
+    }
+    if (from < 20) {
+      // Voice notes: a thought said aloud, and the task it becomes. Null is
+      // "typed", which is every existing row. The bytes go in `blobs`, which
+      // is this device's and never syncs. The cursor goes back for v16's
+      // reason again: a build below protocol 6 is not sent the columns.
+      await db.execute('ALTER TABLE side_thoughts ADD COLUMN audio TEXT');
+      await db.execute('ALTER TABLE side_thoughts ADD COLUMN audio_ms INTEGER');
+      await db.execute('ALTER TABLE tasks ADD COLUMN audio TEXT');
+      await db.execute('ALTER TABLE tasks ADD COLUMN audio_ms INTEGER');
+      await db.execute(_blobsTable);
       await db.update('sync_state', {'value': '0'},
           where: 'key = ?', whereArgs: ['cursor']);
     }
@@ -510,6 +525,20 @@ class LocalStore {
   static const _eventsStartIndex =
       'CREATE INDEX idx_events_start ON calendar_events (start_at)';
 
+  /// Bytes a row names by digest - a voice note's audio. Device-local and
+  /// never synced as a table: what was recorded here waits with `uploaded` 0
+  /// until a sync puts it on the server, and what was fetched from there is
+  /// a cache, trimmed oldest-used first ([trimBlobs]).
+  static const _blobsTable = '''
+      CREATE TABLE blobs (
+        sha256   TEXT PRIMARY KEY,
+        type     TEXT NOT NULL,
+        size     INTEGER NOT NULL,
+        data     BLOB NOT NULL,
+        uploaded INTEGER NOT NULL DEFAULT 0,
+        used_at  TEXT NOT NULL
+      )''';
+
   static const _attachmentsEventIndex =
       'CREATE INDEX idx_attachments_event ON attachments (event_uuid)';
 
@@ -651,6 +680,8 @@ class LocalStore {
         event_uuid     TEXT,
         notes          TEXT NOT NULL DEFAULT '',
         priority       INTEGER NOT NULL DEFAULT 0,
+        audio          TEXT,
+        audio_ms       INTEGER,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,
         dirty          INTEGER NOT NULL DEFAULT 1
@@ -674,10 +705,13 @@ class LocalStore {
         text        TEXT NOT NULL,
         created_at  TEXT NOT NULL,
         resolved_at TEXT,
+        audio       TEXT,
+        audio_ms    INTEGER,
         updated_at  TEXT NOT NULL,
         deleted_at  TEXT,
         dirty       INTEGER NOT NULL DEFAULT 1
       )''');
+    await db.execute(_blobsTable);
 
     await db.execute('''
       CREATE TABLE sync_state (
@@ -1355,6 +1389,71 @@ class LocalStore {
   Future<void> putTask(Task t) => put('tasks', t);
   Future<void> putWorkspace(Workspace w) => put('workspaces', w);
   Future<void> putThought(SideThought s) => put('side_thoughts', s);
+
+  // ------------------------------------------------------------------ blobs
+
+  /// Keep [data] under [sha256]. [uploaded] false queues it for the server;
+  /// true is a copy of what the server already has.
+  Future<void> putBlob(
+    String sha256,
+    String type,
+    Uint8List data, {
+    bool uploaded = false,
+  }) async {
+    await _db.insert('blobs', {
+      'sha256': sha256,
+      'type': type,
+      'size': data.length,
+      'data': data,
+      'uploaded': uploaded ? 1 : 0,
+      'used_at': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  /// The bytes and their type, or null when this device has never had them.
+  Future<({String type, Uint8List data})?> blob(String sha256) async {
+    final rows = await _db.query('blobs',
+        columns: ['type', 'data'], where: 'sha256 = ?', whereArgs: [sha256]);
+    if (rows.isEmpty) return null;
+    await _db.update(
+        'blobs', {'used_at': DateTime.now().toUtc().toIso8601String()},
+        where: 'sha256 = ?', whereArgs: [sha256]);
+    final data = rows.first['data'];
+    return (
+      type: rows.first['type']! as String,
+      data: data is Uint8List ? data : Uint8List.fromList(data! as List<int>),
+    );
+  }
+
+  /// The digests still waiting to go to the server.
+  Future<List<String>> pendingBlobs() async {
+    final rows = await _db.query('blobs',
+        columns: ['sha256'], where: 'uploaded = 0', orderBy: 'used_at');
+    return [for (final r in rows) r['sha256']! as String];
+  }
+
+  Future<void> markBlobUploaded(String sha256) => _db.update(
+      'blobs', {'uploaded': 1},
+      where: 'sha256 = ?', whereArgs: [sha256]);
+
+  /// Drop the least recently used copies until what is kept fits in
+  /// [maxBytes]. Never one still waiting to be uploaded: that is the only
+  /// copy there is.
+  Future<void> trimBlobs(int maxBytes) async {
+    final rows = await _db.query('blobs',
+        columns: ['sha256', 'size'],
+        where: 'uploaded = 1',
+        orderBy: 'used_at DESC');
+    var kept = 0;
+    final drop = <String>[];
+    for (final r in rows) {
+      kept += (r['size']! as num).toInt();
+      if (kept > maxBytes) drop.add(r['sha256']! as String);
+    }
+    for (final sha in drop) {
+      await _db.delete('blobs', where: 'sha256 = ?', whereArgs: [sha]);
+    }
+  }
   Future<void> putGroup(ParkedGroup g) => put('parked_groups', g);
   Future<void> putAttachment(Attachment a) => put('attachments', a);
   Future<void> putJournal(JournalEntry e) => put('journal_entries', e);

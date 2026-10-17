@@ -23,6 +23,7 @@ import { DB_PATH, HOST, PORT, WEB_ROOT, loadSecret } from './config.js';
 import { MIN_CLIENT, PROTOCOL } from './protocol.js';
 import { FeedError, fetchFeed } from './feeds.js';
 import { TitleCache, fetchLinkTitle } from './links.js';
+import { BlobError, MAX_BLOB_BYTES, getBlob, putBlob } from './blobs.js';
 import { OidcVerifier, oidcConfigFromEnv } from './oidc.js';
 import {
   deleteSubscription,
@@ -287,6 +288,36 @@ app.get('/api/link-title', middleware(auth), async (req, res, next) => {
     }
     next(err);
   }
+});
+
+// --------------------------------------------------------------------- blobs
+//
+// A voice note's bytes, named by their SHA-256 - see blobs.js. The body is
+// the file itself, so this route reads it raw rather than as JSON.
+
+app.put(
+  '/api/blobs/:sha256',
+  middleware(auth),
+  express.raw({ type: () => true, limit: MAX_BLOB_BYTES }),
+  (req, res, next) => {
+    try {
+      putBlob(db, req.userId, req.params.sha256, req.get('content-type'), req.body);
+      res.status(204).end();
+    } catch (err) {
+      if (err instanceof BlobError) {
+        return res.status(err.status).json({ error: err.message });
+      }
+      next(err);
+    }
+  },
+);
+
+app.get('/api/blobs/:sha256', middleware(auth), (req, res) => {
+  const blob = getBlob(db, req.userId, req.params.sha256);
+  if (!blob) return res.status(404).json({ error: 'no such blob' });
+  // Named by its contents, so it can never change under this name.
+  res.set('Cache-Control', 'private, max-age=31536000, immutable');
+  res.type(blob.type).send(blob.data);
 });
 
 // ------------------------------------------------------------------ web push

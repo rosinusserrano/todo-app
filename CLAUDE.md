@@ -121,7 +121,8 @@ window, the focus flight, the tray and the overlays.
 `lists` and `list_items` (v17), `collections`, `collection_fields` and
 `collection_entries` (v18), plus a key/value `settings` table used for UI
 prefs (last workspace, nudge, sound volume, calendar mode/scope/hidden/block
-target).
+target), and a device-local `blobs` table for voice notes' bytes (v20, see
+*Voice notes*).
 
 Rows are keyed by **UUID**, not autoincrement — two devices offline at once used
 to collide. Every row carries `updated_at` and `deleted_at`; deletes are
@@ -393,6 +394,13 @@ about it that are load-bearing:
   Its rows are destinations (`_dockClear` then go), never toggles, and leaving
   the calendar goes through `_toggleCalendar` so pending blocks commit.
 
+**A short tap or click is the segment's `onClick`, never its menu**:
+the workspace and view segments go to the current task list, More and ＋
+have none and do nothing (Marco, 2026-10-17). A finger held still past
+`kLongPressTimeout` (a timer, `_held` - test pointer events carry no time
+stamps) and let go leaves the menu up for a tap; a mouse click with no
+action hands the menu back to the hover.
+
 **A row can carry a submenu** (`DockItem.children`): the workspace rows carry
 their views. It is drawn in the same overlay Stack as the menu, beside it
 (`_submenu`), and has to be in **both** of the dock's input paths - the
@@ -400,7 +408,7 @@ press-and-slide asks `_subRowAt` before `_rowAt` because the submenu is drawn
 on top, and opens after `_holdForSub` on one row; the mouse opens it after
 `_subDelay` from the row's hover and keeps it while `_overSub`, which
 `_closeAfterHover` also has to respect or the menu closes under a pointer that
-is in its submenu. A tapped-open menu has no hover, so there it is a long press.
+is in its submenu. A held-open menu has no hover, so there it is a long press.
 
 **Quick actions wait for the first layout** (`_afterLayout` in `main.dart`).
 iOS delivers the shortcut that launched the app as soon as the handler is
@@ -1150,14 +1158,31 @@ only, every redirect hop checked against private addresses, head of the page
 only - plus an in-memory cache. **`titleFromHtml` exists on both sides and
 must agree.** `LinkedText` is stateful because it owns the span recognisers.
 
-### Dictation (`app/lib/dictation.dart`)
+### Voice notes (`app/lib/voice_notes.dart`)
 
-The thought pane's 🎙 is the browser's speech recognition (`todoSpeech` in
-`web/index.html`), web only: natively a keyboard mic and Win+H already dictate
-into any field, so `Dictation.supported` is false and no button is drawn.
-The transcript is written after the field's text as it arrives (interim
-words included); saving stops it first, or late words refill the emptied
-field.
+The thought pane's 🎙 **records** (`voice_recorder.dart`, MediaRecorder via
+`todoRecorder` in `web/index.html`; web only - natively
+`VoiceRecorder.supported` is false and no button is drawn). It replaced
+dictation, whose transcripts were not worth keeping. Things that are
+load-bearing:
+
+- **A row names its recording by digest**: `audio` (SHA-256) and
+  `audio_ms` on `side_thoughts` **and** `tasks` (v20, protocol 6). Columns
+  on both rather than an attachment, because the web build has no
+  attachments and the phone is where these are made; `moveThoughts`
+  carries them onto the task.
+- **Bytes travel on their own channel**: the device-local `blobs` table
+  (not in `tables`, never synced as rows) holds what was recorded here with
+  `uploaded` 0 until `SyncService._uploadBlobs` has `PUT /api/blobs/:sha256`
+  it after a sync that worked; a 404 (older server) leaves it queued.
+  Other devices `GET` it on first play and keep a copy, trimmed past
+  `VoiceNotes.cacheBytes`, never a pending one. The server
+  (`server/blobs.js`) checks the body hashes to its name and keeps bytes per
+  account in the database file; `purgeUser` deletes them.
+- **iOS plays only from an element a tap started**, and the bytes arrive
+  after the tap, so `VoiceNotes.toggle` calls `VoicePlayer.prime()` before
+  awaiting anything (`todoAudio.prime` plays a generated silence on the
+  page's one element). Natively it is media_kit from a temporary file.
 
 ### Attachments: rows sync, bytes don't
 

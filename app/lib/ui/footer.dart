@@ -35,6 +35,7 @@ import 'package:flutter/services.dart';
 import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
+import '../voice_notes.dart';
 import 'list_rule.dart';
 import 'panel_header.dart';
 import 'thought_pressure.dart';
@@ -613,9 +614,26 @@ class _ThoughtTile extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: T.s2),
-                    child: Text(
-                      thought.text,
-                      style: const TextStyle(fontSize: T.fsBody, color: T.text),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (thought.text.isNotEmpty)
+                          Text(
+                            thought.text,
+                            style: const TextStyle(
+                              fontSize: T.fsBody,
+                              color: T.text,
+                            ),
+                          ),
+                        if (thought.voice != null) ...[
+                          if (thought.text.isNotEmpty)
+                            const SizedBox(height: T.s1),
+                          VoiceNoteButton(
+                            note: thought.voice,
+                            accent: T.thoughts,
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),

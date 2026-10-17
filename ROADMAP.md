@@ -64,10 +64,25 @@ Sent as a screenshot of the shelf; three answers asked for and given.
   stored text. Not rewritten into Markdown: a title fetched once and frozen
   into the row would go stale, and the edit field would fill with brackets.
   Looked up per device, not synced: a title is a cache, not data.
-- **Voice input for thoughts**: the browser's recogniser, so the iPhone web
-  app gets a mic in the pane. Natively nothing new - the keyboard's mic and
-  Win+H already dictate into any field, and a speech plugin is three
-  platforms' permissions for what the OS already does.
+- **Voice input for thoughts**: first built as the browser's recogniser, so
+  the iPhone web app got a mic in the pane. **Replaced 2026-10-17 by
+  recording**: Marco found the transcripts useless ("without the large
+  whisper models transcription is shit"). A thought now keeps the audio,
+  named by its SHA-256 in `audio` on the row, and a task made from it keeps
+  it too - columns on both rows rather than an attachment, because the web
+  build has no attachments and the phone is where these are made. The bytes
+  get their own channel, `/api/blobs/:sha256` (`server/blobs.js`), per
+  account and in the database file, which is the "syncing attachment bytes"
+  backlog item's second channel for this one kind of file. Recording is
+  browser-only (MediaRecorder); natively it needs a plugin and three
+  platforms' microphone permissions, so the apps only play, through
+  media_kit. Transcription stays out until there is a model worth running.
+- **Dock taps (2026-10-17).** A short tap on the workspace or view segment
+  goes to the current workspace's task list, and on More and ＋ does
+  nothing; the menus are the press-and-slide's and the hover's. Marco: a
+  tap that opened a menu stood in the way of getting back to the list. A
+  finger that holds still and lets go still leaves the menu up, so
+  tap-to-pick is not lost, just behind a hold.
 
 ### Collections — agreed 2026-10-13
 

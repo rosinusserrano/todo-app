@@ -60,5 +60,8 @@
 //   5  `workspaces.shortcuts` (a workspace's other names in a task title), in
 //      COLUMN_SINCE: not sent to a client below 5, and kept when such a
 //      client pushes the row back without it. MIN_CLIENT stays 1.
-export const PROTOCOL = 5;
+//   6  Voice notes: `audio` and `audio_ms` on `side_thoughts` and `tasks`, in
+//      COLUMN_SINCE on 5's terms. The bytes go through /api/blobs, which an
+//      older server answers with 404 - the client keeps them queued.
+export const PROTOCOL = 6;
 export const MIN_CLIENT = 1;

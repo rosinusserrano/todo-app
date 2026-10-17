@@ -21,6 +21,7 @@ import 'app_state.dart';
 import 'journal_crypto.dart';
 import 'layout.dart';
 import 'link_titles.dart';
+import 'voice_notes.dart';
 import 'notifications.dart';
 import 'platform.dart';
 import 'quick_actions.dart';
@@ -189,6 +190,10 @@ Future<void> main() async {
   );
   await linkTitles.load();
 
+  // Voice notes play from this device's copy, else the server's - see
+  // voice_notes.dart.
+  final voiceNotes = VoiceNotes(store: store, fetch: sync.fetchBlob);
+
   final sound = SoundService(store);
   if (!isWeb) await sound.load();
 
@@ -199,6 +204,7 @@ Future<void> main() async {
       sound: sound,
       notifications: notifications,
       linkTitles: linkTitles,
+      voiceNotes: voiceNotes,
     ),
   );
 }
@@ -211,6 +217,7 @@ class TodoApp extends StatelessWidget {
     required this.sound,
     required this.notifications,
     this.linkTitles,
+    this.voiceNotes,
   });
 
   final AppState state;
@@ -218,10 +225,12 @@ class TodoApp extends StatelessWidget {
   final SoundService sound;
   final NotificationService notifications;
   final LinkTitles? linkTitles;
+  final VoiceNotes? voiceNotes;
 
   @override
   Widget build(BuildContext context) {
     final titles = linkTitles;
+    final voice = voiceNotes;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: T.themeData(),
@@ -235,12 +244,11 @@ class TodoApp extends StatelessWidget {
           builder: (context, zoom, _) => UiScale(
             scale: isDesktop ? 1.0 : T.mobileScale,
             zoom: zoom,
-            child: titles == null
-                ? child ?? const SizedBox.shrink()
-                : LinkTitlesScope(
-                    titles: titles,
-                    child: child ?? const SizedBox.shrink(),
-                  ),
+            child: _scoped(
+              child ?? const SizedBox.shrink(),
+              titles: titles,
+              voice: voice,
+            ),
           ),
         ),
       ),
@@ -252,6 +260,15 @@ class TodoApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The app-wide services a widget anywhere may draw from, above the
+/// Navigator so routes see them too.
+Widget _scoped(Widget child, {LinkTitles? titles, VoiceNotes? voice}) {
+  var out = child;
+  if (voice != null) out = VoiceNotesScope(notes: voice, child: out);
+  if (titles != null) out = LinkTitlesScope(titles: titles, child: out);
+  return out;
 }
 
 /// Hands a browser build the bottom safe area its engine leaves out (see
@@ -1647,9 +1664,10 @@ class _WidgetShellState extends State<WidgetShell>
           open: _thoughtCapture,
           builder: (_) => ThoughtSheet(
             accent: T.thoughts,
-            onAdd: (text) => s.addThought(text),
+            onAdd: (text, clip) => s.addThought(text, clip: clip),
             onClose: _closeThoughtCapture,
             enterSaves: !_layout.touch,
+            canRecord: true,
           ),
         ),
 
@@ -1666,7 +1684,7 @@ class _WidgetShellState extends State<WidgetShell>
               glyph: '📝',
               title: task.text,
               hint: 'Add a line to its notes…',
-              onAdd: (text) async => s.appendToNotes(task, text),
+              onAdd: (text, _) async => s.appendToNotes(task, text),
               onClose: _closeNoteOn,
               enterSaves: !_layout.touch,
             );
@@ -2343,11 +2361,11 @@ class _WidgetShellState extends State<WidgetShell>
           ink: T.inkOn(ws),
           dimmed: s.showCalendar || s.showList,
           semanticLabel: 'Workspace: ${current?.name ?? ''}',
-          // A click on the workspace itself goes to its task list: the hover
-          // already showed the list of workspaces, and "this one's tasks" is
-          // the commonest thing to want of it. It used to open the add
-          // field, which put a caret in front of someone who had only come
-          // to look (Marco, 2026-10-16).
+          // A tap or a click on the workspace itself goes to its task list:
+          // "this one's tasks" is the commonest thing to want of it. It used
+          // to open the add field, which put a caret in front of someone who
+          // had only come to look (Marco, 2026-10-16), and on touch it
+          // opened the menu, which stood in the way (2026-10-17).
           onClick: () => _dockToView(null),
           items: [
             DockItem(
@@ -2387,6 +2405,8 @@ class _WidgetShellState extends State<WidgetShell>
           ink: T.text,
           dimmed: global,
           dot: s.groupsDueForReview.isNotEmpty,
+          // The same as the workspace's: a tap is the way back to the list.
+          onClick: () => _dockToView(null),
           // Nearest the thumb at the bottom: Tasks is the one you go back to.
           items: [for (final v in kViewOrder.reversed) viewItem(v)],
         ),

@@ -197,6 +197,38 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// A blob from the server - a voice note recorded on another device. Null
+  /// when there is no server, or it does not have it (yet).
+  Future<({String type, Uint8List data})?> fetchBlob(String sha256) async {
+    final bearer = await _bearer();
+    if (!isConfigured || bearer == null) return null;
+    final client = SyncClient(baseUrl: baseUrl!, token: bearer);
+    try {
+      return await client.getBlob(sha256);
+    } finally {
+      client.dispose();
+    }
+  }
+
+  /// Send what this device recorded and the server does not have yet. After
+  /// the rows, on the back of a sync that worked: a peer that pulls the row
+  /// first finds no bytes and asks again later, which costs a moment, where
+  /// the other order would cost nothing but needs a second queue. Stops at
+  /// the first refusal; the rest wait for the next cycle.
+  Future<void> _uploadBlobs(SyncClient client) async {
+    for (final sha in await _store.pendingBlobs()) {
+      final blob = await _store.blob(sha);
+      if (blob == null) continue;
+      try {
+        if (!await client.putBlob(sha, blob.type, blob.data)) return;
+      } catch (e) {
+        debugPrint('blob upload failed: $e');
+        return;
+      }
+      await _store.markBlobUploaded(sha);
+    }
+  }
+
   /// The bearer for the next request.
   ///
   /// Returns null when an SSO session exists but could not be refreshed, which
@@ -597,6 +629,7 @@ class SyncService extends ChangeNotifier {
       }
       // Rows the re-arm just flagged were not in the payload that went out.
       if (result is SyncOk && result.rearmed) _dirtyAgain = true;
+      if (result is SyncOk) await _uploadBlobs(client);
     } finally {
       client.dispose();
       _inFlight = false;

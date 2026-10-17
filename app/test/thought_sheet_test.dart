@@ -19,7 +19,7 @@ void main() {
               ThoughtSheet(
                 accent: T.thoughts,
                 enterSaves: enterSaves,
-                onAdd: (t) async => added.add(t),
+                onAdd: (t, _) async => added.add(t),
                 onClose: () => closed++,
               ),
             ],
@@ -101,7 +101,7 @@ void main() {
                       ThoughtSheet(
                         accent: T.thoughts,
                         enterSaves: true,
-                        onAdd: (_) async {},
+                        onAdd: (_, _) async {},
                         onClose: () {},
                       ),
                   ],

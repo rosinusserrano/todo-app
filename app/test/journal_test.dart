@@ -39,6 +39,19 @@ const _workspaces = '''
 /// And the tasks table as it stood before v10, which adds `event_uuid` to it.
 /// Same reason as the attachments scaffolding below: a fixture without the
 /// table fails in that step rather than in the journal columns under test.
+/// Scaffolding: the side thoughts table as it was before v20 gave it a
+/// recording, which that step alters.
+const _v1Thoughts = '''
+      CREATE TABLE side_thoughts (
+        uuid        TEXT PRIMARY KEY,
+        text        TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        resolved_at TEXT,
+        updated_at  TEXT NOT NULL,
+        deleted_at  TEXT,
+        dirty       INTEGER NOT NULL DEFAULT 1
+      )''';
+
 const _v9Tasks = '''
       CREATE TABLE tasks (
         uuid           TEXT PRIMARY KEY,
@@ -416,6 +429,7 @@ void main() {
     // attachments table since v4, and the v8 step adds a column to it.
     await db.execute(_v4Attachments);
     await db.execute(_v9Tasks);
+    await db.execute(_v1Thoughts);
     await db.execute(_workspaces);
     await db.insert('journal_entries', {
       'uuid': 'j-old',
@@ -463,6 +477,7 @@ void main() {
         'CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
     await db.execute(_v4Attachments);
     await db.execute(_v9Tasks);
+    await db.execute(_v1Thoughts);
     await db.execute(_workspaces);
     await db.insert('journal_entries', {
       'uuid': 'j-enc',

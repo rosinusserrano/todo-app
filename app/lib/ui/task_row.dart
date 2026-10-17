@@ -546,6 +546,7 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
                           armed: armed != null,
                           attached: widget.attachmentCount > 0,
                           planned: widget.task.isPlanned,
+                          voice: widget.task.audio != null,
                         ),
                         if (widget.dragHandle != null) widget.dragHandle!,
                       ],
@@ -604,6 +605,7 @@ class _StateMarks extends StatelessWidget {
     required this.armed,
     required this.attached,
     required this.planned,
+    this.voice = false,
   });
 
   final Color accent;
@@ -612,6 +614,9 @@ class _StateMarks extends StatelessWidget {
   final bool armed;
   final bool attached;
   final bool planned;
+
+  /// It has a voice note, which the read view plays.
+  final bool voice;
 
   @override
   Widget build(BuildContext context) {
@@ -625,6 +630,7 @@ class _StateMarks extends StatelessWidget {
           color: due ? T.warn : accent,
         ),
       if (attached) Icon(Icons.attach_file_rounded, size: size, color: accent),
+      if (voice) Icon(Icons.mic_none_rounded, size: size, color: accent),
       if (planned)
         Icon(Icons.event_available_rounded, size: size, color: accent),
     ];

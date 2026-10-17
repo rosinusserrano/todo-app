@@ -11,6 +11,7 @@ import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:io' show File;
 import 'dart:ui' show Color;
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 
 import 'journal_crypto.dart';
@@ -27,6 +28,7 @@ import 'sync/models.dart';
 import 'ui/calendar/time_grid.dart' show kHourHeight, kHourHeightMin, kHourHeightMax;
 import 'ui/dock.dart' show DockEdge;
 import 'theme.dart';
+import 'voice_clip.dart';
 import 'whats_new.dart' show ReleaseNote, kReleaseNotes, notesSince;
 import 'window_spots.dart'
     show WindowMode, decodeWindowModes, encodeWindowModes;
@@ -1393,13 +1395,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addThought(String text) async {
-    if (text.trim().isEmpty) return;
+  /// A thought, typed or said. A [clip] may come with no text at all; its
+  /// bytes go in the device's `blobs` table under their digest, queued for
+  /// the server (see voice_notes.dart), and the row names them.
+  Future<void> addThought(String text, {VoiceClip? clip}) async {
+    if (text.trim().isEmpty && clip == null) return;
+    String? audio;
+    if (clip != null) {
+      audio = sha256.convert(clip.bytes).toString();
+      await _store.putBlob(audio, clip.type, clip.bytes);
+    }
     await _store.putThought(
       SideThought(
         uuid: newId(),
         text: text.trim(),
         createdAt: nowStamp(),
+        audio: audio,
+        audioMs: clip?.ms,
         updatedAt: nowStamp(),
       ),
     );
@@ -1407,17 +1419,27 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
-  /// Tidy a thought into a real task. The thought is resolved rather than
-  /// deleted - side thoughts are never hard-removed, so the record survives.
+  /// Tidy a thought into a real task on this list - [moveThoughts] for one.
   Future<void> promoteThought(SideThought s) async {
-    await addTask(s.text);
-    await resolveThought(s);
+    final ws = currentWorkspaceUuid;
+    if (ws == null) return;
+    await moveThoughts([s], workspaceUuid: ws);
+  }
+
+  /// What a thought is called once it is a task: its words, or for one only
+  /// said aloud "Voice note (0:42)" - something to tell two of them apart by
+  /// until it is renamed.
+  static String _thoughtTitle(SideThought t) {
+    final text = t.text.trim();
+    if (text.isNotEmpty) return text;
+    final length = t.voice?.length ?? '';
+    return length.isEmpty ? 'Voice note' : 'Voice note ($length)';
   }
 
   /// Several thoughts at once, onto any workspace's list or shelf - each
   /// becomes a task there and the thought is resolved, as [promoteThought]
   /// does for one onto this list. One pass and one refresh, the same shape as
-  /// [moveTasks].
+  /// [moveTasks]. A recording goes with it onto the task.
   Future<void> moveThoughts(
     List<SideThought> thoughts, {
     required String workspaceUuid,
@@ -1425,7 +1447,7 @@ class AppState extends ChangeNotifier {
   }) async {
     final keep = [
       for (final t in thoughts)
-        if (t.text.trim().isNotEmpty) t,
+        if (t.text.trim().isNotEmpty || t.audio != null) t,
     ];
     if (keep.isEmpty) return;
     var order = await _store.nextSortOrder(workspaceUuid);
@@ -1435,10 +1457,12 @@ class AppState extends ChangeNotifier {
         Task(
           uuid: newId(),
           workspaceUuid: workspaceUuid,
-          text: t.text.trim(),
+          text: _thoughtTitle(t),
           createdAt: stamp,
           sortOrder: order++,
           groupUuid: groupUuid,
+          audio: t.audio,
+          audioMs: t.audioMs,
           updatedAt: stamp,
         ),
       );

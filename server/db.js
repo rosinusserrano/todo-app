@@ -23,6 +23,7 @@ import { dirname } from 'node:path';
 
 import { PROTOCOL } from './protocol.js';
 import { deletePushFor, initPush } from './push.js';
+import { deleteBlobsFor, initBlobs } from './blobs.js';
 import { deleteUserIdentity, initUsers } from './users.js';
 
 export function openDb(path) {
@@ -108,6 +109,9 @@ function init(db) {
       recur_lead     INTEGER,
       recur_text     TEXT,
       recur_notes    TEXT,
+      -- A voice note: the SHA-256 of its bytes (blobs.js) and its length.
+      audio          TEXT,
+      audio_ms       INTEGER,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
       seq            INTEGER NOT NULL,
@@ -156,6 +160,8 @@ function init(db) {
       text        TEXT NOT NULL,
       created_at  TEXT NOT NULL,
       resolved_at TEXT,
+      audio       TEXT,
+      audio_ms    INTEGER,
       updated_at  TEXT NOT NULL,
       deleted_at  TEXT,
       seq         INTEGER NOT NULL,
@@ -379,10 +385,18 @@ function init(db) {
   addColumn(db, 'attachments', 'event_uuid', 'TEXT');
   // A workspace's other names in a task title (protocol 5).
   addColumn(db, 'workspaces', 'shortcuts', 'TEXT');
+  // A voice note on a thought, and on the task a thought became (protocol 6).
+  // The bytes are not a column - see blobs.js.
+  addColumn(db, 'side_thoughts', 'audio', 'TEXT');
+  addColumn(db, 'side_thoughts', 'audio_ms', 'INTEGER');
+  addColumn(db, 'tasks', 'audio', 'TEXT');
+  addColumn(db, 'tasks', 'audio_ms', 'INTEGER');
 
   // Web Push subscriptions and what has been sent - see push.js. Not in
   // TABLES: they are this server's own bookkeeping and never sync.
   initPush(db);
+  // The bytes a row names by digest - see blobs.js. Not in TABLES either.
+  initBlobs(db);
 }
 
 /**
@@ -425,6 +439,8 @@ export const TABLES = {
     'recur_lead',
     'recur_text',
     'recur_notes',
+    'audio',
+    'audio_ms',
   ],
   attachments: [
     'task_uuid',
@@ -434,7 +450,7 @@ export const TABLES = {
     'sha256',
     'created_at',
   ],
-  side_thoughts: ['text', 'created_at', 'resolved_at'],
+  side_thoughts: ['text', 'created_at', 'resolved_at', 'audio', 'audio_ms'],
   journal_entries: ['workspace_uuid', 'title', 'text', 'encrypted', 'created_at'],
   calendars: [
     'workspace_uuid',
@@ -481,6 +497,8 @@ export const TABLES = {
 const COLUMN_SINCE = {
   calendar_events: { feed_uuid: 2 },
   workspaces: { shortcuts: 5 },
+  side_thoughts: { audio: 6, audio_ms: 6 },
+  tasks: { audio: 6, audio_ms: 6 },
 };
 const TABLE_SINCE = {
   calendar_feeds: 2,
@@ -545,6 +563,7 @@ export function purgeUser(db, userId) {
       rows += db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId).changes;
     }
     deletePushFor(db, userId);
+    deleteBlobsFor(db, userId);
     deleteUserIdentity(db, userId);
     return rows;
   });

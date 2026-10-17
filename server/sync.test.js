@@ -1365,3 +1365,36 @@ test('workspace shortcuts sync at protocol 5 and survive an older app', async ()
   assert.equal(after.name, 'Thesis');
   assert.equal(after.shortcuts, '["MT"]');
 });
+
+test('voice notes sync at protocol 6 and survive an older app', async () => {
+  const db = freshDb();
+  const thought = {
+    uuid: 't-voice',
+    text: '',
+    created_at: '2026-10-17T10:00:00+02:00',
+    resolved_at: null,
+    audio: 'a'.repeat(64),
+    audio_ms: 42000,
+    updated_at: '2026-10-17T10:00:00+02:00',
+    deleted_at: null,
+  };
+  sync(db, USER, 0, { side_thoughts: [thought] }, 6);
+  const now = sync(db, USER, 0, {}, 6).changes.side_thoughts[0];
+  assert.equal(now.audio, 'a'.repeat(64));
+  assert.equal(now.audio_ms, 42000);
+
+  // Below 6 the columns are not sent, and resolving the thought on such a
+  // device leaves the recording where it was.
+  const old = sync(db, USER, 0, {}, 5).changes.side_thoughts[0];
+  assert.equal('audio' in old, false);
+  const resolved = {
+    ...old,
+    resolved_at: '2026-10-17T11:00:00+02:00',
+    updated_at: '2026-10-17T11:00:00+02:00',
+  };
+  delete resolved.seq;
+  sync(db, USER, 0, { side_thoughts: [resolved] }, 5);
+  const after = sync(db, USER, 0, {}, 6).changes.side_thoughts[0];
+  assert.equal(after.resolved_at, '2026-10-17T11:00:00+02:00');
+  assert.equal(after.audio_ms, 42000);
+});

@@ -6,6 +6,7 @@
 // showing in the UI, rather than thrown as raw exceptions.
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -338,6 +339,39 @@ class SyncClient {
     if (res.statusCode != 200) throw FeedError(_errorOf(res.body));
     final title = (jsonDecode(res.body) as Map)['title'];
     return title is String && title.isNotEmpty ? title : null;
+  }
+
+  /// Put a blob on the server (`server/blobs.js`). True once it is there;
+  /// false when the server has no blob store yet (an older one answers 404),
+  /// so the caller keeps it queued. Throws on anything else.
+  Future<bool> putBlob(String sha256, String type, Uint8List data) async {
+    final res = await _http
+        .put(
+          _endpoint('/api/blobs/$sha256'),
+          headers: {'Authorization': 'Bearer $token', 'Content-Type': type},
+          body: data,
+        )
+        .timeout(const Duration(minutes: 2));
+    if (res.statusCode == 404) return false;
+    if (res.statusCode >= 300) throw Exception(_errorOf(res.body));
+    return true;
+  }
+
+  /// A blob from the server, or null when it has none by that name - not
+  /// uploaded yet by the device that recorded it, or an older server.
+  Future<({String type, Uint8List data})?> getBlob(String sha256) async {
+    final res = await _http
+        .get(
+          _endpoint('/api/blobs/$sha256'),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(minutes: 2));
+    if (res.statusCode == 404) return null;
+    if (res.statusCode != 200) throw Exception(_errorOf(res.body));
+    return (
+      type: res.headers['content-type'] ?? 'application/octet-stream',
+      data: res.bodyBytes,
+    );
   }
 
   void dispose() => _http.close();

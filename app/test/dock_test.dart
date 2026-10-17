@@ -149,26 +149,41 @@ void main() {
     expect(fired, ['edit Work']);
   });
 
-  testWidgets('a tap leaves the menu open for a second tap', (tester) async {
+  testWidgets('a short tap is the segment\'s own action, not its menu', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tapAt(const Offset(60, barY));
+    await tester.pumpAndSettle();
+    expect(fired, ['click Work']);
+    expect(find.text('Home'), findsNothing, reason: 'no menu left standing');
+  });
+
+  testWidgets('a short tap on a segment with no action does nothing', (
+    tester,
+  ) async {
     await pump(tester);
     await tester.tapAt(const Offset(200, barY));
     await tester.pumpAndSettle();
-    expect(find.text('Notes'), findsOneWidget);
-
-    await tester.tap(find.text('Notes'));
-    await tester.pumpAndSettle();
-    expect(fired, ['Notes']);
+    expect(fired, isEmpty);
     expect(find.text('Notes'), findsNothing);
   });
 
-  testWidgets('tapping the open segment again closes it', (tester) async {
+  testWidgets('holding still and letting go leaves the menu up for a tap', (
+    tester,
+  ) async {
     await pump(tester);
-    await tester.tapAt(const Offset(200, barY));
+    final g = await tester.startGesture(const Offset(60, barY));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await g.up();
     await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(200, barY));
+    expect(fired, isEmpty, reason: 'a hold is not a tap');
+    expect(find.text('Home'), findsOneWidget);
+
+    await tester.tap(find.text('Home'));
     await tester.pumpAndSettle();
-    expect(find.text('Notes'), findsNothing);
-    expect(fired, isEmpty);
+    expect(fired, ['Home']);
+    expect(find.text('Home'), findsNothing);
   });
 
   testWidgets('sliding along the bar switches menus', (tester) async {
@@ -338,17 +353,8 @@ void main() {
       expect(find.text('Home'), findsNothing, reason: 'the menu closes');
     });
 
-    testWidgets('a finger on that segment still opens its menu', (
-      tester,
-    ) async {
-      await pump(tester);
-      await tester.tapAt(const Offset(60, barY));
-      await tester.pumpAndSettle();
-      expect(fired, isEmpty);
-      expect(find.text('Home'), findsOneWidget);
-    });
-
-    testWidgets('a click on a hovered segment pins its menu', (tester) async {
+    testWidgets('a click on a hovered segment with no action leaves the '
+        'menu to the hover', (tester) async {
       await pump(tester);
       final g = await mouse(tester);
       await g.moveTo(const Offset(200, barY));
@@ -356,12 +362,13 @@ void main() {
       await g.down(const Offset(200, barY));
       await g.up();
       await tester.pumpAndSettle();
+      expect(fired, isEmpty);
       expect(find.text('Notes'), findsOneWidget, reason: 'not closed');
 
       await g.moveTo(const Offset(300, 100));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      expect(find.text('Notes'), findsOneWidget, reason: 'pinned');
+      expect(find.text('Notes'), findsNothing, reason: 'not pinned either');
     });
   });
 
@@ -403,9 +410,11 @@ void main() {
       expect(fired, ['Work']);
     });
 
-    testWidgets('a long press in a tapped-open menu opens it', (tester) async {
+    testWidgets('a long press in a held-open menu opens it', (tester) async {
       await pump(tester);
-      await tester.tapAt(const Offset(60, barY));
+      final g = await tester.startGesture(const Offset(60, barY));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await g.up();
       await tester.pumpAndSettle();
       await tester.longPress(find.text('Home'));
       await tester.pumpAndSettle();

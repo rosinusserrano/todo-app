@@ -16,8 +16,10 @@
 // it; the row under the finger lights as the finger slides up, and letting go
 // goes there. One gesture with nothing to aim at twice - the menu's rows are
 // as wide as a thumb is careless. Letting go anywhere off the menu does
-// nothing, which is how you change your mind. A plain tap leaves the menu open
-// instead, so a careful hand can still tap-then-tap.
+// nothing, which is how you change your mind. A short tap is not for the
+// menu: the workspace and the view segments go to the task list, the others
+// do nothing (`DockSegment.onClick`). Holding still and letting go leaves the
+// menu open instead, so a careful hand can still tap a row.
 //
 // **Slide right for the second thing.** A row that has another action keeps it
 // at its right-hand end - edit a workspace, add a task, write a thought - and
@@ -32,7 +34,7 @@
 // drawn beside the menu level with its row: a mouse opens it by resting on
 // the row (`_subDelay`, which is also what lets the pointer cut across other
 // rows on its way in), a held finger by staying on the row (`_holdForSub`)
-// and then sliding across, and a tapped-open menu by a long press on the row.
+// and then sliding across, and a held-open menu by a long press on the row.
 // The row itself still means what it did. The submenu counts as part of the
 // menu for the hover close, and `_move` asks it first, since it is drawn on
 // top.
@@ -42,8 +44,8 @@
 // does not flash menus open), moving along the bar switches at once, and
 // leaving both the segment and its menu closes it after a shorter beat - long
 // enough to cut a corner on the way in. A hovered menu draws no scrim: it is
-// a menu bar's menu, not a modal. Clicking the segment pins it the way a tap
-// does, and the press-and-slide still works with the button held.
+// a menu bar's menu, not a modal. A click is the segment's own action, as a
+// tap is, and the press-and-slide still works with the button held.
 //
 // Why a Listener and not gesture recognisers: the whole thing is one pointer's
 // life, from the press on a segment to the release over a row that did not
@@ -67,7 +69,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind, kTouchSlop;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kLongPressTimeout, kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -183,11 +186,11 @@ class DockSegment {
   /// square.
   final double? extent;
 
-  /// What a mouse click on the segment itself does, where that is something
-  /// other than opening its menu - the workspace's goes to its task list.
-  /// With a mouse the menu is already open from the hover, so the click is
-  /// free to mean this; a finger has no hover, and its tap still opens the
-  /// menu.
+  /// What a short tap or a click on the segment itself does - the workspace
+  /// and the view segments go to the task list. Null does nothing: the menu
+  /// is the press-and-slide's (or the hover's), never a tap's, so a tap that
+  /// was only meant to get somewhere does not leave a menu standing in the
+  /// way (Marco, 2026-10-17).
   final VoidCallback? onClick;
 }
 
@@ -258,9 +261,15 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   Offset _downAt = Offset.zero;
   bool _moved = false;
 
-  /// The press landed on the segment whose menu was already open by a tap, so
-  /// lifting without moving closes it.
-  bool _tapCloses = false;
+  /// The press has been held still for a long press: letting go leaves the
+  /// menu up rather than counting as a tap. A timer rather than the events'
+  /// time stamps, which are the device's and not every source fills them.
+  bool _held = false;
+  Timer? _holdTimer;
+
+  /// The press landed on a menu the mouse had opened, so a click that does
+  /// nothing gives it back to the hover.
+  bool _wasHover = false;
 
   /// Opened by a mouse resting on its segment, and closed by it leaving.
   bool _viaHover = false;
@@ -333,6 +342,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   void dispose() {
     _hoverTimer?.cancel();
     _subTimer?.cancel();
+    _holdTimer?.cancel();
     _pulse.dispose();
     _scroll.dispose();
     super.dispose();
@@ -405,9 +415,10 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     _downKind = e.kind;
     _downAt = e.position;
     _moved = false;
-    // A click on a menu the mouse opened pins it, rather than closing what
-    // the person evidently wanted open.
-    _tapCloses = _open == segment && _sticky && !_viaHover;
+    _held = false;
+    _holdTimer?.cancel();
+    _holdTimer = Timer(kLongPressTimeout, () => _held = true);
+    _wasHover = _open == segment && _viaHover;
     if (_open != segment) HapticFeedback.selectionClick();
     _openMenu(segment, sticky: false);
   }
@@ -416,7 +427,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (e.pointer != _pointer) return;
     if (!_moved && (e.position - _downAt).distance > kTouchSlop) {
       _moved = true;
-      _tapCloses = false;
+      _holdTimer?.cancel();
     }
     if (!_moved) return;
 
@@ -471,19 +482,26 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   void _up(PointerUpEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
+    _holdTimer?.cancel();
     if (!_moved) {
-      final click = _open == null ? null : widget.segments[_open!].onClick;
-      if (click != null && _downKind == PointerDeviceKind.mouse) {
-        close();
-        click();
+      final mouse = _downKind == PointerDeviceKind.mouse;
+      // A finger held still: it wanted the menu, so leave it up for a tap.
+      if (!mouse && _held) {
+        setState(() => _sticky = true);
         return;
       }
-      // A tap: leave the menu up for a second tap, or close it if it was
-      // already up.
-      if (_tapCloses) {
+      final click = _open == null ? null : widget.segments[_open!].onClick;
+      if (click != null) {
         close();
+        click();
+      } else if (mouse && _wasHover) {
+        // Nothing to do: the menu goes back to being the hover's.
+        setState(() {
+          _sticky = true;
+          _viaHover = true;
+        });
       } else {
-        setState(() => _sticky = true);
+        close();
       }
       return;
     }
@@ -506,6 +524,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   void _cancel(PointerCancelEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
+    _holdTimer?.cancel();
     if (!_sticky) close();
   }
 

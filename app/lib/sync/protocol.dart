@@ -40,7 +40,11 @@
 /// older server - it keeps only the columns it knows, and `applyRemote` keeps
 /// ours when a row comes back without it - so this is the server's number: it
 /// does not send the column to a client below 5.
-const kSyncProtocol = 5;
+///
+/// 6 added voice notes, `audio` and `audio_ms` on `side_thoughts` and
+/// `tasks`, on 5's terms. Their bytes go to `/api/blobs`, which an older
+/// server answers with 404; they stay queued in `blobs` until it is updated.
+const kSyncProtocol = 6;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;

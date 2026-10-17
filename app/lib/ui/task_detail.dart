@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import '../sync/models.dart';
 import '../link_titles.dart';
 import '../theme.dart';
+import '../voice_notes.dart';
 import 'markdown_text.dart';
 import 'panel_header.dart';
 import 'reminder_menu.dart';
@@ -134,6 +135,11 @@ class TaskDetail extends StatelessWidget {
         ],
         Wrap(spacing: 6, runSpacing: 4, children: chips),
         const SizedBox(height: 8),
+        // What was said, when the task began as a thought said aloud.
+        if (task.voice != null) ...[
+          VoiceNoteButton(note: task.voice, accent: accent),
+          const SizedBox(height: 8),
+        ],
         if (task.hasNotes)
           // The point of the whole view: the notes as they were written, with
           // the headings, lists and maths actually rendered, at a size meant

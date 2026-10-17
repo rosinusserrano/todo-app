@@ -969,13 +969,21 @@ at the screen gives nothing away) and its lock is **opt-in**.
 
 - **Capture a thought** — the 💭 button on the *left* of the footer expands a
   field to jot a quick note.
-- **Speak a thought.** In the browser build (the iPhone web app, Chrome,
-  Edge, Safari) the thought pane has a 🎙 button: tap it and talk, and the
-  words are written into the field as they are recognised, after anything
-  already there. Tap it again, or stop talking, and it stops; Save as usual.
-  It is not drawn where the browser has no speech recognition (Firefox), nor
-  in the apps, where the keyboard's own mic and Windows' Win+H already do
-  this in any field.
+- **Say a thought.** In the browser build (the iPhone web app, Chrome,
+  Edge, Firefox, Safari) the thought pane has a 🎙 button: tap it to record,
+  tap again to stop. The recording waits above the buttons - ▶ to listen
+  back, × to throw it away - and Save keeps it, with whatever you typed or
+  with nothing typed at all. It is **recorded, not transcribed**: the
+  browser's speech recognition garbled too much to be worth keeping. Saving
+  while it records stops it and keeps what was said.
+- **Listen to it anywhere.** A thought with a recording shows a ▶ with its
+  length in the pile, on every device, the desktop app included: the
+  recording goes up to your sync server with the next sync and other devices
+  fetch it the first time it is played (and keep it, up to ~100 MB). One
+  recorded offline says *Not on the server yet* until the phone syncs.
+  Turned into a task, the recording goes with it - the task shows a 🎙 mark
+  and plays it from its details - and one with nothing typed is called
+  *Voice note (0:42)*. Recording is browser-only for now; the apps play.
 - **Not in the workspace's colour.** Thoughts are one pile for every workspace,
   so the Thoughts entry, the capture pane and the footer's meter are drawn in the app's
   own blue, and the window drops its workspace tint while the pile is open — the
@@ -1053,10 +1061,10 @@ at the screen gives nothing away) and its lock is **opt-in**.
   the next one opens at once; move away from both the part and its menu and
   it closes. Passing over the bar on the way somewhere else opens nothing.
   Click a row to go there - the row under the pointer lights. **Clicking the
-  workspace part itself goes to its task list** (out of Notes, Parked and
-  the rest, with nothing focused); clicking any other part
-  keeps its menu open until you pick or click elsewhere. Pressing and sliding
-  works with a mouse as it does with a finger.
+  workspace part or the view part itself goes to the task list** of the
+  workspace you are in (out of Notes, Parked and the rest, with nothing
+  focused); clicking More or ＋ does nothing - their menus are the hover's.
+  Pressing and sliding works with a mouse as it does with a finger.
 - **Press, slide up, let go.** Touching a part opens its menu upward. Slide your
   finger to a row - it lights, and the phone ticks - and let go to go there.
   Let go anywhere off the menu and nothing happens. Sliding along the bar
@@ -1067,10 +1075,13 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **A workspace's views, straight from the workspace menu.** Each workspace
   row has a ▸ and a little menu beside it: Tasks, Notes, Collections, Parked,
   History. With a mouse, rest on the row; with a finger, hold on the row for a
-  moment and slide across (or long-press it in a tapped-open menu). Picking
+  moment and slide across (or long-press it in a held-open menu). Picking
   one switches workspace and opens that view in one go.
-- **Tapping works too**: a tap opens the menu and leaves it open, a second tap
-  picks. Tap the part again, or anywhere above the menu, to close it.
+- **A short tap is not for the menu.** On the workspace or the view part it
+  goes to the task list of the workspace you are in; on More and ＋ it does
+  nothing. To pick from a menu without sliding, **hold the part for a moment
+  and let go**: the menu stays up and a second tap picks. Tap anywhere above
+  it to close it.
 - The pile of side thoughts shows on **More**: its count, and the same tint and
   pulse as it grows that the old bar had. A red dot there means sync needs you.
 - It replaces the workspace pill at the top, the old four-icon bar, the
@@ -1463,8 +1474,14 @@ reminders are both there now**, queued for 0.18.0.
   - **From the shelf**: a click on the dock's workspace goes to its task list
     (not the add field); the workspace menu has each workspace's views in a
     submenu; double-click a calendar event to edit it; links in task titles
-    show the page's title (server: `/api/link-title`); a 🎙 in the thought
-    pane in the browser build.
+    show the page's title (server: `/api/link-title`).
+  - **Voice notes**: the thought pane's 🎙 records instead of transcribing,
+    and a thought or task with a recording plays it on every device. Rows
+    gain `audio` / `audio_ms` (client v20, sync protocol 6); the bytes go
+    through the server's new `/api/blobs/:sha256`, kept per account.
+  - **Dock taps**: a short tap or click on the workspace or view part goes
+    to the task list; on More and ＋ it does nothing. Holding a part and
+    letting go leaves its menu open.
   - **A new way to add a task**: *Add a task* opens a card in the middle of
     the screen with buttons for priority, a reminder, the workspace and the
     long form; a #workspace (or its shortcut, e.g. *#MT*), a day or a time

@@ -38,6 +38,19 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-17',
+    title: 'Voice notes',
+    points: [
+      'The 🎙 in the thought pane now records what you say instead of '
+          'typing it out. Listen back before saving, or save it with nothing '
+          'typed.',
+      'A thought with a recording has a ▶ on every device, and keeps it '
+          'when it becomes a task.',
+      'A short tap on the workspace or the view in the bar goes back to '
+          'the tasks. Hold a part for a moment to keep its menu open.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-16-2',
     title: 'From your wishlist',
     points: [

@@ -776,6 +776,14 @@ class Task implements SyncRow {
   /// column can carry more without another migration.
   final int priority;
 
+  /// A voice note: the SHA-256 of its bytes, or null for none. Set when a
+  /// thought recorded aloud becomes a task, so what was said comes with it.
+  /// The bytes are not in the row - see [VoiceNote] and `server/blobs.js`.
+  final String? audio;
+
+  /// How long [audio] runs, for the label before it is played.
+  final int? audioMs;
+
   @override
   final String updatedAt;
   @override
@@ -815,11 +823,16 @@ class Task implements SyncRow {
     this.eventUuid,
     this.notes = '',
     this.priority = 0,
+    this.audio,
+    this.audioMs,
     required this.updatedAt,
     this.deletedAt,
   });
 
   bool get isActive => completedAt == null && deletedAt == null;
+
+  /// The voice note, or null.
+  VoiceNote? get voice => audio == null ? null : VoiceNote(audio!, audioMs);
 
   bool get isPlanned => eventUuid != null;
 
@@ -1006,8 +1019,11 @@ class Task implements SyncRow {
     String? eventUuid,
     String? notes,
     int? priority,
+    String? audio,
+    int? audioMs,
     String? updatedAt,
     String? deletedAt,
+    bool clearAudio = false,
     bool clearCompleted = false,
     bool clearDeleted = false,
     bool clearReminder = false,
@@ -1040,6 +1056,8 @@ class Task implements SyncRow {
         // cleared values, so passing them says it outright.
         notes: notes ?? this.notes,
         priority: priority ?? this.priority,
+        audio: clearAudio ? null : (audio ?? this.audio),
+        audioMs: clearAudio ? null : (audioMs ?? this.audioMs),
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
       );
@@ -1063,6 +1081,8 @@ class Task implements SyncRow {
         'event_uuid': eventUuid,
         'notes': notes,
         'priority': priority,
+        'audio': audio,
+        'audio_ms': audioMs,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -1090,6 +1110,8 @@ class Task implements SyncRow {
         // pre-v11 column list has neither of these.
         notes: (m['notes'] as String?) ?? '',
         priority: (m['priority'] as num?)?.toInt() ?? 0,
+        audio: m['audio'] as String?,
+        audioMs: (m['audio_ms'] as num?)?.toInt(),
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );
@@ -1308,6 +1330,24 @@ class JournalEntry implements SyncRow {
       );
 }
 
+/// A recording a row points at: the SHA-256 of its bytes and how long it
+/// runs. The bytes live in the device's `blobs` table and on the server
+/// (`server/blobs.js`), never in a synced row - see `voice_notes.dart`.
+class VoiceNote {
+  const VoiceNote(this.sha256, this.ms);
+
+  final String sha256;
+  final int? ms;
+
+  /// `0:42`, or empty when the length is not known.
+  String get length {
+    final m = ms;
+    if (m == null) return '';
+    final secs = (m / 1000).round();
+    return '${secs ~/ 60}:${(secs % 60).toString().padLeft(2, '0')}';
+  }
+}
+
 class SideThought implements SyncRow {
   @override
   final String uuid;
@@ -1317,6 +1357,12 @@ class SideThought implements SyncRow {
   /// Side thoughts are never hard-deleted - discarding one resolves it, so the
   /// full history stays in the database.
   final String? resolvedAt;
+
+  /// A recording of it: the SHA-256 of the bytes, or null for a typed one.
+  /// [text] may then be empty - said aloud, nothing written. See [VoiceNote].
+  final String? audio;
+  final int? audioMs;
+
   @override
   final String updatedAt;
   @override
@@ -1327,12 +1373,17 @@ class SideThought implements SyncRow {
     required this.text,
     required this.createdAt,
     this.resolvedAt,
+    this.audio,
+    this.audioMs,
     required this.updatedAt,
     this.deletedAt,
   });
 
   @override
   bool get isDeleted => deletedAt != null;
+
+  /// The voice note, or null.
+  VoiceNote? get voice => audio == null ? null : VoiceNote(audio!, audioMs);
 
   SideThought copyWith({
     String? text,
@@ -1345,6 +1396,8 @@ class SideThought implements SyncRow {
         text: text ?? this.text,
         createdAt: createdAt,
         resolvedAt: resolvedAt ?? this.resolvedAt,
+        audio: audio,
+        audioMs: audioMs,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: deletedAt ?? this.deletedAt,
       );
@@ -1355,6 +1408,8 @@ class SideThought implements SyncRow {
         'text': text,
         'created_at': createdAt,
         'resolved_at': resolvedAt,
+        'audio': audio,
+        'audio_ms': audioMs,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -1364,6 +1419,8 @@ class SideThought implements SyncRow {
         text: m['text']! as String,
         createdAt: m['created_at']! as String,
         resolvedAt: m['resolved_at'] as String?,
+        audio: m['audio'] as String?,
+        audioMs: (m['audio_ms'] as num?)?.toInt(),
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );

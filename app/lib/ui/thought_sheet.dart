@@ -41,17 +41,22 @@
 // workspace name and the tasks, and both of those are *below* the bar. The bar
 // itself says "Todo" and holds window controls.
 //
-// **The mic speaks into the field** where the browser can recognise speech
-// (dictation.dart): what is heard is written after what was already there,
-// interim words and all, so the words appear as they are said and can be
-// corrected before saving. Tap it again, or stop talking, and it stops;
-// saving is still a decision. Not drawn where there is no recogniser.
+// **The mic records** (voice_recorder.dart), where there is a recorder and
+// the pane was given [ThoughtSheet.canRecord]: tap to start, tap to stop,
+// and the recording waits above the buttons to be listened to or thrown
+// away until Save stores it with whatever was typed - or with nothing typed,
+// which is the point. It used to be dictation, and the browser's
+// transcripts were too garbled to keep (Marco, 2026-10-17). Saving while it
+// runs stops it and keeps what was said; closing throws it away like the
+// text.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../dictation.dart';
 import '../theme.dart';
+import '../voice_clip.dart';
+import '../voice_notes.dart';
+import '../voice_recorder.dart';
 import 'title_bar.dart';
 
 class ThoughtSheet extends StatefulWidget {
@@ -64,7 +69,12 @@ class ThoughtSheet extends StatefulWidget {
     this.title,
     this.hint,
     this.enterSaves = false,
+    this.canRecord = false,
   });
+
+  /// Draw the mic, where this build can record. Only the thought pile keeps
+  /// a recording; a note on a task is text.
+  final bool canRecord;
 
   /// Enter saves and closes, Ctrl+Enter saves and stays for another, and
   /// Shift+Enter is the new line. Off on touch, where Enter is a new line.
@@ -82,9 +92,10 @@ class ThoughtSheet extends StatefulWidget {
   /// The empty field's prompt. Absent means none.
   final String? hint;
 
-  /// Returns once the thought is stored. The sheet stays open on an empty
-  /// submit rather than closing on nothing.
-  final Future<void> Function(String text) onAdd;
+  /// Returns once the thought is stored. [clip] is a recording, and comes
+  /// only from a pane that [canRecord]. Nothing typed and nothing recorded
+  /// is not a submit.
+  final Future<void> Function(String text, VoiceClip? clip) onAdd;
 
   final VoidCallback onClose;
 
@@ -134,73 +145,106 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
 
   @override
   void dispose() {
-    _dictation?.stop();
+    _recorder?.cancel();
+    _player?.stop();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
   }
 
-  /// Listening, and what the field held when it started.
-  Dictation? _dictation;
-  String _beforeSpeech = '';
-  String? _speechError;
+  /// Recording, since when, and what the last recording made.
+  VoiceRecorder? _recorder;
+  DateTime? _recordingSince;
+  VoiceClip? _clip;
+  String? _recordError;
 
-  void _toggleDictation() {
-    final running = _dictation;
-    if (running != null) {
-      running.stop();
+  /// Ticks the elapsed time while recording.
+  Stream<int>? _ticker;
+
+  /// The app's player, held so a draft playing when the pane goes is
+  /// stopped with it.
+  VoiceNotes? _player;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _player = VoiceNotesScope.maybeOf(context);
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_recorder != null) {
+      await _stopRecording();
+      _focus.requestFocus();
       return;
     }
-    final text = _controller.text.trimRight();
-    _beforeSpeech = text.isEmpty ? '' : '$text ';
-    final d = Dictation();
+    final rec = VoiceRecorder();
     setState(() {
-      _dictation = d;
-      _speechError = null;
+      _recorder = rec;
+      _recordError = null;
     });
-    d.start(
-      onText: (heard) {
-        if (!mounted || _dictation != d) return;
-        final value = '$_beforeSpeech${heard.trimLeft()}';
-        _controller.value = TextEditingValue(
-          text: value,
-          selection: TextSelection.collapsed(offset: value.length),
-        );
-      },
-      onEnd: (error) {
-        if (!mounted || _dictation != d) return;
-        setState(() {
-          _dictation = null;
-          // Silence and a stop are not failures worth a line.
-          _speechError = switch (error) {
-            null || 'no-speech' || 'aborted' => null,
-            'not-allowed' ||
-            'service-not-allowed' => 'The microphone is not allowed for this page',
-            'network' => 'Speech needs a connection',
-            _ => 'Could not listen ($error)',
-          };
-        });
-        _focus.requestFocus();
-      },
-    );
+    try {
+      await rec.start();
+    } catch (reason) {
+      if (!mounted || _recorder != rec) return;
+      setState(() {
+        _recorder = null;
+        _recordError = reason == 'not-allowed'
+            ? 'The microphone is not allowed for this page'
+            : 'Could not record ($reason)';
+      });
+      return;
+    }
+    if (!mounted || _recorder != rec) {
+      rec.cancel();
+      return;
+    }
+    // A new recording replaces one not saved yet - it was listened to and
+    // found wanting, or forgotten.
+    await _player?.stop();
+    setState(() {
+      _clip = null;
+      _recordingSince = DateTime.now();
+      _ticker = Stream.periodic(const Duration(seconds: 1), (i) => i);
+    });
+  }
+
+  /// Stop, and keep what was said as the draft's recording.
+  Future<void> _stopRecording() async {
+    final rec = _recorder;
+    if (rec == null) return;
+    setState(() {
+      _recorder = null;
+      _recordingSince = null;
+      _ticker = null;
+    });
+    final clip = await rec.stop();
+    if (!mounted) return;
+    if (clip != null && clip.bytes.isNotEmpty) setState(() => _clip = clip);
+  }
+
+  void _discardClip() {
+    _player?.stop();
+    setState(() => _clip = null);
   }
 
   Future<void> _submit({bool andClose = true}) async {
-    // Saving ends the listening: words still arriving would refill the field
-    // that was just emptied.
-    final listening = _dictation;
-    if (listening != null) {
-      _dictation = null;
-      listening.stop();
-    }
+    // Saving ends a recording and keeps it: Save is the obvious way to say
+    // "done" mid-sentence.
+    if (_recorder != null) await _stopRecording();
+    if (!mounted) return;
     final text = _controller.text.trim();
-    if (text.isEmpty) {
+    final clip = _clip;
+    if (text.isEmpty && clip == null) {
       if (andClose) widget.onClose();
       return;
     }
+    await _player?.stop();
     _controller.clear();
-    setState(() => _added++);
-    await widget.onAdd(text);
+    setState(() {
+      _added++;
+      _clip = null;
+    });
+    await widget.onAdd(text, clip);
     if (!mounted) return;
     if (andClose) {
       widget.onClose();
@@ -310,38 +354,74 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                     ),
                   ),
                 ),
-                if (_speechError != null)
+                if (_recordError != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: T.s3),
                     child: Text(
-                      _speechError!,
+                      _recordError!,
                       style: const TextStyle(fontSize: T.fsMeta, color: T.warn),
+                    ),
+                  ),
+                if (_clip != null || _recordingSince != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, 0),
+                    child: Row(
+                      children: [
+                        if (_recordingSince != null)
+                          _Recording(
+                            since: _recordingSince!,
+                            ticker: _ticker,
+                            color: widget.accent,
+                          )
+                        else ...[
+                          VoiceNoteButton(clip: _clip, accent: widget.accent),
+                          const SizedBox(width: T.s1),
+                          Tooltip(
+                            message: 'Throw the recording away',
+                            child: InkWell(
+                              onTap: _discardClip,
+                              borderRadius: BorderRadius.circular(T.radius),
+                              child: const SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 18,
+                                  color: T.muted,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s3),
                   child: Row(
                     children: [
-                      if (Dictation.supported) ...[
+                      if (widget.canRecord && VoiceRecorder.supported) ...[
                         Tooltip(
-                          message: _dictation == null ? 'Speak' : 'Stop',
+                          message: _recorder == null
+                              ? 'Record a voice note'
+                              : 'Stop recording',
                           child: Material(
-                            color: _dictation == null
+                            color: _recorder == null
                                 ? Colors.transparent
                                 : widget.accent,
                             shape: const CircleBorder(),
                             child: InkWell(
                               customBorder: const CircleBorder(),
-                              onTap: _toggleDictation,
+                              onTap: _toggleRecording,
                               child: SizedBox(
                                 width: 44,
                                 height: 44,
                                 child: Icon(
-                                  _dictation == null
+                                  _recorder == null
                                       ? Icons.mic_none_rounded
-                                      : Icons.mic_rounded,
+                                      : Icons.stop_rounded,
                                   size: 22,
-                                  color: _dictation == null
+                                  color: _recorder == null
                                       ? T.muted
                                       : T.inkOn(widget.accent),
                                 ),
@@ -403,6 +483,50 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// ● 0:12 - the recording running, counted from [since].
+class _Recording extends StatelessWidget {
+  const _Recording({
+    required this.since,
+    required this.ticker,
+    required this.color,
+  });
+
+  final DateTime since;
+  final Stream<int>? ticker;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<int>(
+      stream: ticker,
+      builder: (context, _) {
+        final secs = DateTime.now().difference(since).inSeconds;
+        final time = '${secs ~/ 60}:${(secs % 60).toString().padLeft(2, '0')}';
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: T.s2),
+            Text(
+              'Recording $time',
+              style: const TextStyle(
+                fontSize: T.fsLabel,
+                color: T.text,
+                fontWeight: T.wMedium,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

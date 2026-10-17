@@ -39,7 +39,17 @@ Sent 2026-10-16 (screenshot of the shelf); answers and reasons in
 - [x] **62.3** The workspace menu's rows have a submenu of their views.
 - [x] **62.4** Links in task titles drawn as the page title
       (`link_titles.dart`, server `/api/link-title`).
-- [x] **62.5** 🎙 dictation in the thought pane (browser build).
+- [x] **62.5** 🎙 dictation in the thought pane (browser build). Replaced
+      by 62.7.
+- [x] **62.7** 🎙 records a voice note instead of transcribing (2026-10-17):
+      `audio`/`audio_ms` on thoughts and tasks (client v20, protocol 6),
+      bytes through `/api/blobs` (`server/blobs.js`), played everywhere
+      (`voice_notes.dart`). Recording is browser-only.
+- [x] **62.8** Dock: a short tap / click on the workspace or view segment
+      goes to the task list; on More and ＋ it does nothing; hold and let go
+      keeps a menu open.
+- [ ] **62.9** Try both on the iPhone web app (recording, playback after
+      the clip has gone through the server) and the desktop app (playback).
 - [~] **62.6** Merged to `main` (2026-10-16). Left: deploy the server
       (needed for link titles in the browser, and for 61's shortcuts),
       publish the web app (`server/build-web.sh /srv/todo-web`).

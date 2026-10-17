@@ -100,41 +100,124 @@
         input.focus();
         setTimeout(function () { input.remove(); }, 1000);
       };
-      // Dictation for the thought pane (dictation_web.dart). The browser's own
-      // speech recognition - Chrome, Edge and Safari have it, Firefox does
-      // not, and then the mic is simply not drawn. onText gets the whole
-      // transcript so far, interim words included, every time it changes;
-      // onEnd gets '' or the error's name.
-      var recognition = null;
-      window.todoSpeech = {
+      // Voice notes for the thought pane (voice_recorder_web.dart). Recorded,
+      // not transcribed: the browser's recognisers garble anything but the
+      // plainest sentence. AAC in MP4 where the browser can make it, since
+      // that plays everywhere - Safari, Chrome and the desktop app's mpv;
+      // Opus in WebM otherwise. 32 kbit/s is plenty for a voice: about
+      // 240 kB a minute.
+      var recorder = null, recStream = null, recChunks = [], recStart = 0;
+      function recRelease() {
+        if (recStream) recStream.getTracks().forEach(function (t) { t.stop(); });
+        recStream = null;
+        recorder = null;
+        recChunks = [];
+      }
+      window.todoRecorder = {
         supported: function () {
-          return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+          return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
+            window.MediaRecorder);
         },
-        start: function (onText, onEnd) {
-          var Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-          if (!Rec) { onEnd('unsupported'); return; }
-          if (recognition) recognition.abort();
-          var rec = new Rec();
-          recognition = rec;
-          rec.lang = navigator.language || 'en-US';
-          rec.continuous = true;
-          rec.interimResults = true;
-          var failed = '';
-          rec.onresult = function (e) {
-            var text = '';
-            for (var i = 0; i < e.results.length; i++) {
-              text += e.results[i][0].transcript;
+        // onStarted() once the microphone is live; onError(reason) instead.
+        start: function (onStarted, onError) {
+          if (recorder) { onError('busy'); return; }
+          navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+            recStream = stream;
+            var types = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4',
+              'audio/webm;codecs=opus', 'audio/webm'];
+            var type = '';
+            for (var i = 0; i < types.length; i++) {
+              if (MediaRecorder.isTypeSupported(types[i])) { type = types[i]; break; }
             }
-            onText(text);
-          };
-          rec.onerror = function (e) { failed = e.error || 'error'; };
-          rec.onend = function () {
-            if (recognition === rec) recognition = null;
-            onEnd(failed);
-          };
-          try { rec.start(); } catch (err) { recognition = null; onEnd('error'); }
+            var options = { audioBitsPerSecond: 32000 };
+            if (type) options.mimeType = type;
+            var rec;
+            try { rec = new MediaRecorder(stream, options); }
+            catch (e) { rec = new MediaRecorder(stream); }
+            recorder = rec;
+            recChunks = [];
+            rec.ondataavailable = function (e) {
+              if (e.data && e.data.size) recChunks.push(e.data);
+            };
+            rec.start(1000);
+            recStart = Date.now();
+            onStarted();
+          }, function (err) {
+            recRelease();
+            var name = (err && err.name) || 'error';
+            onError(name === 'NotAllowedError' ? 'not-allowed' : name);
+          });
         },
-        stop: function () { if (recognition) recognition.stop(); }
+        // onDone(bytes, type, ms), or onDone(null, '', 0) with nothing to stop.
+        stop: function (onDone) {
+          var rec = recorder;
+          if (!rec) { onDone(null, '', 0); return; }
+          var ms = Date.now() - recStart;
+          rec.onstop = function () {
+            var type = rec.mimeType || (recChunks[0] && recChunks[0].type) || 'audio/webm';
+            var blob = new Blob(recChunks, { type: type });
+            recRelease();
+            blob.arrayBuffer().then(function (buf) {
+              onDone(new Uint8Array(buf), type, ms);
+            }, function () { onDone(null, '', 0); });
+          };
+          rec.stop();
+        },
+        cancel: function () {
+          if (recorder) {
+            recorder.onstop = null;
+            try { recorder.stop(); } catch (e) {}
+          }
+          recRelease();
+        }
+      };
+      // Playing a voice note (voice_player_web.dart). One element for the
+      // page, primed by prime() inside the tap: iOS lets an element play only
+      // once a tap has started it, and the note's bytes arrive a moment after
+      // the tap, from IndexedDB or the server.
+      var player = null, playerUrl = null, playerEnd = null;
+      function silence() {
+        var n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+        var w = function (o, s) { for (var i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+        w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+        v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+        w(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+        return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+      }
+      function playerFinish(error) {
+        var end = playerEnd;
+        playerEnd = null;
+        if (playerUrl) URL.revokeObjectURL(playerUrl);
+        playerUrl = null;
+        if (end) end(error);
+      }
+      window.todoAudio = {
+        prime: function () {
+          if (!player) player = new Audio();
+          if (playerEnd) return;
+          player.src = silence();
+          player.play().catch(function () {});
+        },
+        // onEnd('') at the end, onEnd(reason) if it could not play.
+        play: function (bytes, type, onEnd) {
+          if (!player) player = new Audio();
+          playerFinish('stopped');
+          playerUrl = URL.createObjectURL(new Blob([bytes], { type: type }));
+          playerEnd = onEnd;
+          var url = playerUrl;
+          player.onended = function () { if (playerUrl === url) playerFinish(''); };
+          player.onerror = function () { if (playerUrl === url) playerFinish('error'); };
+          player.src = url;
+          player.play().catch(function (e) {
+            if (playerUrl === url) playerFinish((e && e.name) || 'error');
+          });
+        },
+        stop: function () {
+          if (player) player.pause();
+          playerFinish('stopped');
+        }
       };
       var probe;
       window.todoSafeBottom = function () {

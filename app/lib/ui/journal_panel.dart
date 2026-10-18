@@ -58,7 +58,12 @@ class JournalView extends StatefulWidget {
     required this.onDelete,
     required this.onBack,
     this.onFocusChanged,
+    this.onEditingChanged,
   });
+
+  /// Called when the editor opens and when it closes - the shell hides a
+  /// bottom dock while a note is written, and keeps it while one is read.
+  final ValueChanged<bool>? onEditingChanged;
 
   /// Called when an open note goes into focus - nothing on screen but its
   /// title and its text - and again when it comes out, or the note closes.
@@ -437,14 +442,23 @@ class _JournalViewState extends State<JournalView> {
   /// calling setState, and doing that from inside another widget's build is the
   /// "setState called during build" crash.
   bool? _reportedFocus;
+  bool? _reportedEditing;
 
   void _reportFocus() {
     final focus = _inFocus && !widget.locked;
-    if (focus == _reportedFocus) return;
-    _reportedFocus = focus;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onFocusChanged?.call(focus);
-    });
+    final editing = _editorOpen && !widget.locked;
+    if (focus != _reportedFocus) {
+      _reportedFocus = focus;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onFocusChanged?.call(focus);
+      });
+    }
+    if (editing != _reportedEditing) {
+      _reportedEditing = editing;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onEditingChanged?.call(editing);
+      });
+    }
   }
 
   Widget _content() {

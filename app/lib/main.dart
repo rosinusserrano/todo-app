@@ -395,6 +395,13 @@ class _WidgetShellState extends State<WidgetShell>
   /// whole screen - see [_noteTakesScreen].
   bool _noteFocused = false;
 
+  /// A note is being written, not read. A bottom dock steps aside for it
+  /// (Marco, 2026-10-18) - see [_dockShows].
+  bool _noteEditing = false;
+
+  /// An on-screen keyboard is up, as of the last build. See [_dockShows].
+  bool _keyboardUp = false;
+
   /// The task whose read-only long form has the content area, by uuid.
   ///
   /// The uuid rather than the row, because the list is reloaded under this
@@ -1444,6 +1451,9 @@ class _WidgetShellState extends State<WidgetShell>
   Widget build(BuildContext context) {
     final ws = s.workspaceColor;
     _bottomInset = isDesktop ? 0 : MediaQuery.paddingOf(context).bottom;
+    // Read here, above the Scaffold: its body is handed a MediaQuery with
+    // the keyboard taken out.
+    _keyboardUp = !isDesktop && MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -2282,7 +2292,15 @@ class _WidgetShellState extends State<WidgetShell>
   /// everything global - and replaced the workspace bar, the rail, the view
   /// bar and the title bar's calendar, list and settings buttons. Only a note
   /// or a task that has taken a phone's screen hides it.
-  bool get _dockShows => !_takesScreen;
+  ///
+  /// It also steps aside for an on-screen keyboard - it was a row of the
+  /// little space left above one, and nothing in it is for typing - and,
+  /// along the bottom, for a note being written; reading one keeps it
+  /// (Marco, 2026-10-18).
+  bool get _dockShows =>
+      !_takesScreen &&
+      !_keyboardUp &&
+      !(s.showJournal && _noteEditing && _dockEdge == DockEdge.bottom);
 
   /// Along the bottom while the window is narrow - a phone, the desktop
   /// widget at its own size - where a thumb is and where the eye ends up.
@@ -2302,8 +2320,10 @@ class _WidgetShellState extends State<WidgetShell>
     // field is still what [openAndFocus] focuses (the desktop shortcut) and
     // the refusal is still what the close guard flashes; it simply takes no
     // height until one of those happens.
-    showCaptureButton: !_dockShows,
-    showPressure: !_dockShows,
+    // Not `_dockShows`: a keyboard hiding the dock for a moment is no
+    // reason for this bar to grow a second way in.
+    showCaptureButton: _takesScreen,
+    showPressure: _takesScreen,
     thoughts: s.thoughts,
     accent: T.thoughts,
     blockedMessage: _blockedMessage,
@@ -2527,6 +2547,7 @@ class _WidgetShellState extends State<WidgetShell>
       setState(() {
         _secondaryKey = GlobalKey(debugLabel: 'secondary view');
         _noteFocused = false;
+        _noteEditing = false;
       });
     }
     _selectView(view);
@@ -2898,6 +2919,10 @@ class _WidgetShellState extends State<WidgetShell>
         onFocusChanged: (focus) {
           if (_noteFocused == focus) return;
           setState(() => _noteFocused = focus);
+        },
+        onEditingChanged: (editing) {
+          if (_noteEditing == editing) return;
+          setState(() => _noteEditing = editing);
         },
         configured: s.journalConfigured,
         locked: s.journalLocked,

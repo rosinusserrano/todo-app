@@ -55,6 +55,7 @@ Future<void> pumpPanel(
   required Saves saves,
   VoidCallback? onBack,
   ValueChanged<bool>? onFocusChanged,
+  ValueChanged<bool>? onEditingChanged,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -71,6 +72,7 @@ Future<void> pumpPanel(
           onDelete: saves.delete,
           onBack: onBack ?? () {},
           onFocusChanged: onFocusChanged,
+          onEditingChanged: onEditingChanged,
         ),
       ),
     ),
@@ -509,5 +511,29 @@ void main() {
       expect(told.last, isFalse);
       expect(find.text('Notes'), findsOneWidget);
     });
+  });
+
+  testWidgets('tells the shell when a note is written, not when it is read', (
+    tester,
+  ) async {
+    final told = <bool>[];
+    await pumpPanel(
+      tester,
+      items: [item('a', 'Trip', 'Leaves at nine')],
+      saves: Saves(),
+      onEditingChanged: told.add,
+    );
+    await tester.tap(find.text('Trip'));
+    await tester.pump(kDoubleTapTimeout);
+    await tester.pumpAndSettle();
+    expect(told.last, isFalse, reason: 'reading keeps the dock');
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    expect(told.last, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(told.last, isFalse);
   });
 }

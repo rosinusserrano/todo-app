@@ -38,6 +38,15 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-18-2',
+    title: 'Notes in focus',
+    points: [
+      'An open note keeps the bar at the bottom.',
+      'The ⛶ beside a note leaves only its title and text on screen; tap it '
+          'again to come back.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-18',
     title: 'The bar, again',
     points: [

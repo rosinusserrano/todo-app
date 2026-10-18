@@ -57,18 +57,18 @@ class JournalView extends StatefulWidget {
     required this.onSave,
     required this.onDelete,
     required this.onBack,
-    this.onEntryOpen,
+    this.onFocusChanged,
   });
 
-  /// Called when a note is opened for reading or editing, and again when the
-  /// panel drops back to its list.
+  /// Called when an open note goes into focus - nothing on screen but its
+  /// title and its text - and again when it comes out, or the note closes.
   ///
-  /// The shell uses it to give the note the whole screen on a phone. It is a
-  /// callback rather than something the shell can work out for itself because
-  /// which rung of the ladder this panel is on is genuinely this panel's own
-  /// state - `showJournal` only says the pane is open, not whether you are
-  /// looking at the list or at one entry.
-  final ValueChanged<bool>? onEntryOpen;
+  /// The shell hides everything of its own for it: the dock, the footer, and
+  /// on a phone the title bar. It is a callback rather than something the
+  /// shell can work out for itself because which rung of the ladder this
+  /// panel is on is genuinely this panel's own state - `showJournal` only
+  /// says the pane is open.
+  final ValueChanged<bool>? onFocusChanged;
 
   /// A password has been set (encryption is on).
   final bool configured;
@@ -122,6 +122,15 @@ class _JournalViewState extends State<JournalView> {
 
   bool _editorOpen = false;
   bool _reading = false;
+
+  /// The ⛶ in the reader or the editor: everything but the note's title and
+  /// text goes. It carries across reading and editing the one note, and every
+  /// note opened from the list starts out of it (Marco, 2026-10-18).
+  bool _focused = false;
+
+  bool get _inFocus => _focused && (_editorOpen || _reading);
+
+  void _setFocus(bool on) => setState(() => _focused = on);
 
   /// Live for [kDoubleTapTimeout] after a click on the list opened the reader:
   /// a second click inside that window, which lands on the reader since the
@@ -263,6 +272,7 @@ class _JournalViewState extends State<JournalView> {
     _title.clear();
     _body.clear();
     setState(() {
+      _focused = false;
       _editing = null;
       _editorOpen = true;
       _reading = false;
@@ -293,6 +303,7 @@ class _JournalViewState extends State<JournalView> {
     _title.text = item.title;
     _body.text = item.body;
     setState(() {
+      _focused = false;
       _editing = item;
       _editorOpen = false;
       _reading = true;
@@ -379,6 +390,11 @@ class _JournalViewState extends State<JournalView> {
         final key = event.logicalKey;
 
         if (key == LogicalKeyboardKey.escape) {
+          // Out of focus first: it is the outermost thing on screen.
+          if (_inFocus) {
+            _setFocus(false);
+            return KeyEventResult.handled;
+          }
           if (_editorOpen) {
             _closeEditor();
             return KeyEventResult.handled;
@@ -415,24 +431,24 @@ class _JournalViewState extends State<JournalView> {
     );
   }
 
-  /// Whether an entry is on screen, told to the shell when it changes.
+  /// Whether a note is in focus, told to the shell when it changes.
   ///
   /// Reported from `build` and deferred to after the frame: the shell reacts by
   /// calling setState, and doing that from inside another widget's build is the
   /// "setState called during build" crash.
-  bool? _reportedOpen;
+  bool? _reportedFocus;
 
-  void _reportEntryOpen() {
-    final open = _editorOpen || _reading;
-    if (open == _reportedOpen) return;
-    _reportedOpen = open;
+  void _reportFocus() {
+    final focus = _inFocus && !widget.locked;
+    if (focus == _reportedFocus) return;
+    _reportedFocus = focus;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onEntryOpen?.call(open);
+      if (mounted) widget.onFocusChanged?.call(focus);
     });
   }
 
   Widget _content() {
-    _reportEntryOpen();
+    _reportFocus();
     if (widget.locked) return _gate(setup: false);
     if (_settingUp) return _gate(setup: true);
     if (_editorOpen) return _editor();
@@ -621,36 +637,52 @@ class _JournalViewState extends State<JournalView> {
   /// and nothing to re-resolve when the list is rebuilt underneath.
   Widget _reader() {
     final untitled = _title.text.trim().isEmpty;
+    final focus = _inFocus;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        PanelHeader(
-          title: 'Notes',
-          onBack: _closeReader,
-          backTooltip: 'Back to the list (Esc)',
-          actions: [
-            _iconButton(Icons.edit_outlined, 'Edit', _edit),
-            if (_editing != null)
-              _iconButton(
-                Icons.delete_outline,
-                'Delete',
-                _busy ? () {} : _deleteEditing,
-              ),
-          ],
-        ),
+        if (focus)
+          const SizedBox(height: T.s3)
+        else
+          PanelHeader(
+            title: 'Notes',
+            onBack: _closeReader,
+            backTooltip: 'Back to the list (Esc)',
+            actions: [
+              _focusButton(),
+              _iconButton(Icons.edit_outlined, 'Edit', _edit),
+              if (_editing != null)
+                _iconButton(
+                  Icons.delete_outline,
+                  'Delete',
+                  _busy ? () {} : _deleteEditing,
+                ),
+            ],
+          ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s3),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  untitled ? 'Untitled' : _title.text.trim(),
-                  style: TextStyle(
-                    fontSize: T.fsBody,
-                    fontWeight: T.wMedium,
-                    color: untitled ? T.muted : T.text,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        untitled ? 'Untitled' : _title.text.trim(),
+                        style: TextStyle(
+                          fontSize: T.fsBody,
+                          fontWeight: T.wMedium,
+                          color: untitled ? T.muted : T.text,
+                        ),
+                      ),
+                    ),
+                    if (focus) ...[
+                      _iconButton(Icons.edit_outlined, 'Edit', _edit, size: 20),
+                      _focusButton(),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 8),
                 // The body is a handle too, the same way a task's rendered
@@ -676,29 +708,37 @@ class _JournalViewState extends State<JournalView> {
   // ----------------------------------------------------------------- editor
 
   Widget _editor() {
+    final focus = _inFocus;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(T.s3, 2, T.s3, T.s2),
+      padding: EdgeInsets.fromLTRB(T.s3, focus ? T.s3 : 2, T.s3, T.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _title,
-            focusNode: _titleFocus,
-            // The caret starts in the title on a new entry and in the body on
-            // one being revised: the title of an existing entry is the part
-            // that is already right.
-            autofocus: _editing == null,
-            style: const TextStyle(fontSize: T.fsBody, color: T.text),
-            decoration: const InputDecoration(
-              isDense: true,
-              hintText: 'Title',
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: T.s2),
-            ),
-            // Enter in a one-line field does nothing, so it may as well do the
-            // obvious thing. Ctrl+Enter does it too, from either field.
-            textInputAction: TextInputAction.next,
-            onSubmitted: (_) => _bodyFocus.requestFocus(),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _title,
+                  focusNode: _titleFocus,
+                  // The caret starts in the title on a new entry and in the body on
+                  // one being revised: the title of an existing entry is the part
+                  // that is already right.
+                  autofocus: _editing == null,
+                  style: const TextStyle(fontSize: T.fsBody, color: T.text),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'Title',
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: T.s2),
+                  ),
+                  // Enter in a one-line field does nothing, so it may as well do the
+                  // obvious thing. Ctrl+Enter does it too, from either field.
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _bodyFocus.requestFocus(),
+                ),
+              ),
+              _focusButton(),
+            ],
           ),
           const Divider(height: 8, thickness: 0.5, color: T.surfaceHover),
           Expanded(
@@ -723,41 +763,57 @@ class _JournalViewState extends State<JournalView> {
               ),
             ),
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              if (_editing != null)
-                _textAction(
-                  'Delete',
-                  _busy ? null : _deleteEditing,
-                  color: T.danger,
-                ),
-              const Spacer(),
-              _textAction('Cancel', _busy ? null : _closeEditor),
-              const SizedBox(width: 4),
-              Tooltip(
-                message: 'Save (Ctrl+S) · Save and close (Ctrl+Alt+S)',
-                child: FilledButton(
-                  onPressed: _busy ? null : () => _save(),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: T.surfaceHover,
-                    foregroundColor: T.text,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: T.s3,
-                      vertical: T.s2,
-                    ),
+          if (!focus) const SizedBox(height: 6),
+          if (!focus)
+            Row(
+              children: [
+                if (_editing != null)
+                  _textAction(
+                    'Delete',
+                    _busy ? null : _deleteEditing,
+                    color: T.danger,
                   ),
-                  child: const Text('Save'),
+                const Spacer(),
+                _textAction('Cancel', _busy ? null : _closeEditor),
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: 'Save (Ctrl+S) · Save and close (Ctrl+Alt+S)',
+                  child: FilledButton(
+                    onPressed: _busy ? null : () => _save(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: T.surfaceHover,
+                      foregroundColor: T.text,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: T.s3,
+                        vertical: T.s2,
+                      ),
+                    ),
+                    child: const Text('Save'),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );
   }
 
   // ------------------------------------------------------------------ pieces
+
+  /// Into focus, or back out of it. The one control a note in focus keeps:
+  /// a phone has no Esc.
+  Widget _focusButton() => _inFocus
+      ? _iconButton(
+          Icons.fullscreen_exit_rounded,
+          'Leave focus (Esc)',
+          () => _setFocus(false),
+          size: 20,
+        )
+      : _iconButton(
+          Icons.fullscreen_rounded,
+          'Focus: only the note on screen',
+          () => _setFocus(true),
+        );
 
   /// Only the list state carries this bar, which is what keeps the back arrow
   /// honest: from the editor, Esc backs out to the list first, so a "back to
@@ -797,18 +853,22 @@ class _JournalViewState extends State<JournalView> {
     ),
   );
 
-  Widget _iconButton(IconData icon, String tooltip, VoidCallback onTap) =>
-      Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(T.radius),
-          child: Padding(
-            padding: const EdgeInsets.all(T.s1),
-            child: Icon(icon, size: 15, color: T.muted),
-          ),
-        ),
-      );
+  Widget _iconButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap, {
+    double size = 15,
+  }) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(T.radius),
+      child: Padding(
+        padding: const EdgeInsets.all(T.s1),
+        child: Icon(icon, size: size, color: T.muted),
+      ),
+    ),
+  );
 
   Widget _textAction(
     String label,

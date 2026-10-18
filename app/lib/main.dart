@@ -391,10 +391,9 @@ class _WidgetShellState extends State<WidgetShell>
   /// opened from outside the app and closed again.
   Task? _noteOn;
 
-  /// A journal entry is being read or edited, rather than the note list being
-  /// shown. On touch the shell hands that entry the whole screen - see
-  /// [_noteTakesScreen].
-  bool _noteOpen = false;
+  /// An open note is in focus: its ⛶ was pressed, and the shell hands it the
+  /// whole screen - see [_noteTakesScreen].
+  bool _noteFocused = false;
 
   /// The task whose read-only long form has the content area, by uuid.
   ///
@@ -1706,54 +1705,58 @@ class _WidgetShellState extends State<WidgetShell>
         ),
 
         // Above everything, so the window stays draggable and closable during
-        // focus mode and with the sheet open.
+        // focus mode and with the sheet open. A note in focus fades it on a
+        // phone, where it holds nothing a note needs; a desktop window keeps
+        // it, since it is how the window is moved and closed.
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          child: TitleBar(
-            isDesktop: isDesktop,
-            pinned: _pinned,
-            onTogglePin: _togglePin,
-            onToggleSound: isWeb ? null : _toggleSound,
-            soundPlaying: widget.sound.isPlaying,
-            soundPaused: widget.sound.isPaused,
-            onTogglePause: widget.sound.togglePause,
-            volume: widget.sound.volume,
-            onVolumeChanged: widget.sound.setVolume,
-            // The bar's lit controls follow the window they sit on. With the
-            // calendar's neutral chrome underneath, the workspace colour would
-            // be the only thing left on screen belonging to a workspace you
-            // cannot see - and the neutral itself is no use as a tint, being
-            // within a few points of T.muted, so "lit" would stop reading as
-            // lit. The app's own accent is neither workspace's, and it is what
-            // the calendar's own toolbar already uses for an active control.
-            accent: _neutralChrome ? T.accent : ws,
-            onClose: () => isDesktop ? windowManager.close() : null,
-            // No settings, calendar or list buttons: the dock holds all three,
-            // at every size, and a second door to each is one too many.
-            calendarOpen: s.showCalendar,
-            listOpen: s.showList,
-            syncColor: _syncColor(),
-            syncTooltip: widget.sync.describe(),
-            windowModes: isDesktop ? s.windowModes : null,
-            onWindowMode: _placeWindow,
-            onFullScreen: _fullScreen,
-            onSaveWindowMode: _saveWindowMode,
-            onRemoveWindowMode: s.removeWindowMode,
-            // Along the top the dock is in this bar, beside the name, rather
-            // than a second bar under it. It fades with the body in focus
-            // mode, which this bar otherwise stays visible through.
-            dock: _dockShows && _dockEdge == DockEdge.top
-                ? AnimatedOpacity(
-                    opacity: _focusVisible ? 0 : 1,
-                    duration: T.heroDur,
-                    child: IgnorePointer(
-                      ignoring: _focusVisible,
-                      child: _dock(ws, DockEdge.top),
-                    ),
-                  )
-                : null,
+          child: _fadeForNote(
+            TitleBar(
+              isDesktop: isDesktop,
+              pinned: _pinned,
+              onTogglePin: _togglePin,
+              onToggleSound: isWeb ? null : _toggleSound,
+              soundPlaying: widget.sound.isPlaying,
+              soundPaused: widget.sound.isPaused,
+              onTogglePause: widget.sound.togglePause,
+              volume: widget.sound.volume,
+              onVolumeChanged: widget.sound.setVolume,
+              // The bar's lit controls follow the window they sit on. With the
+              // calendar's neutral chrome underneath, the workspace colour would
+              // be the only thing left on screen belonging to a workspace you
+              // cannot see - and the neutral itself is no use as a tint, being
+              // within a few points of T.muted, so "lit" would stop reading as
+              // lit. The app's own accent is neither workspace's, and it is what
+              // the calendar's own toolbar already uses for an active control.
+              accent: _neutralChrome ? T.accent : ws,
+              onClose: () => isDesktop ? windowManager.close() : null,
+              // No settings, calendar or list buttons: the dock holds all three,
+              // at every size, and a second door to each is one too many.
+              calendarOpen: s.showCalendar,
+              listOpen: s.showList,
+              syncColor: _syncColor(),
+              syncTooltip: widget.sync.describe(),
+              windowModes: isDesktop ? s.windowModes : null,
+              onWindowMode: _placeWindow,
+              onFullScreen: _fullScreen,
+              onSaveWindowMode: _saveWindowMode,
+              onRemoveWindowMode: s.removeWindowMode,
+              // Along the top the dock is in this bar, beside the name, rather
+              // than a second bar under it. It fades with the body in focus
+              // mode, which this bar otherwise stays visible through.
+              dock: _dockShows && _dockEdge == DockEdge.top
+                  ? AnimatedOpacity(
+                      opacity: _focusVisible ? 0 : 1,
+                      duration: T.heroDur,
+                      child: IgnorePointer(
+                        ignoring: _focusVisible,
+                        child: _dock(ws, DockEdge.top),
+                      ),
+                    )
+                  : null,
+            ),
           ),
         ),
 
@@ -2213,18 +2216,23 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
-  /// A note being read or written gets the screen to itself on a phone.
+  /// A note in focus gets the screen to itself, at every size: the dock, the
+  /// footer and the session banner go, and on a phone the title bar fades.
   ///
-  /// "Open a note" and "look at this workspace" are different jobs, and on a
-  /// 390pt screen the second one's chrome - the workspace pill, the view bar,
-  /// the thought footer - is most of the height around a paragraph of text.
-  /// Nothing is taken away: the note's own back arrow is the way out, and it is
-  /// the control the eye is already on.
-  ///
-  /// Not applied where there is room for both (the rail, the split), because
-  /// there the chrome is beside the note rather than crowding it.
-  bool get _noteTakesScreen =>
-      _layout.touch && !_layout.isWide && s.showJournal && _noteOpen;
+  /// It used to be every open note on a phone, which took the dock away from
+  /// anyone who had only opened a note to glance at it (Marco, 2026-10-18).
+  /// Now it is asked for, with the note's own ⛶, and the same button (or Esc)
+  /// is the way back.
+  bool get _noteTakesScreen => s.showJournal && _noteFocused;
+
+  Widget _fadeForNote(Widget titleBar) {
+    final hide = _noteTakesScreen && !isDesktop;
+    return AnimatedOpacity(
+      opacity: hide ? 0 : 1,
+      duration: T.heroDur,
+      child: IgnorePointer(ignoring: hide, child: titleBar),
+    );
+  }
 
   /// Where expanding a task is the *shell's* job rather than the row's.
   ///
@@ -2408,9 +2416,8 @@ class _WidgetShellState extends State<WidgetShell>
           // A tap goes to the top of the view it names: out of a collection
           // to the collections, out of a note to the notes (Marco,
           // 2026-10-18).
-          onClick: () => _dockToViewRoot(
-            view == WorkspaceView.thoughts ? null : view,
-          ),
+          onClick: () =>
+              _dockToViewRoot(view == WorkspaceView.thoughts ? null : view),
           // Nearest the thumb at the bottom: Tasks is the one you go back to.
           items: [for (final v in kViewOrder.reversed) viewItem(v)],
         ),
@@ -2519,7 +2526,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (_openView == view) {
       setState(() {
         _secondaryKey = GlobalKey(debugLabel: 'secondary view');
-        _noteOpen = false;
+        _noteFocused = false;
       });
     }
     _selectView(view);
@@ -2746,7 +2753,9 @@ class _WidgetShellState extends State<WidgetShell>
       right: secondary,
       fraction: s.splitFraction,
       defaultLeft: (width) => width * 5 / 9,
-      collapsed: s.tasksPaneCollapsed,
+      // A note in focus folds the list away too, without touching the
+      // stored preference.
+      collapsed: s.tasksPaneCollapsed || _noteTakesScreen,
       onFraction: (f) => s.setSplitFraction(f),
       onCollapsed: s.setTasksPaneCollapsed,
     );
@@ -2779,10 +2788,10 @@ class _WidgetShellState extends State<WidgetShell>
             // the list below it keeps its place in this Column (and its
             // scroll).
             PanelHeader(
-                title: s.currentWorkspace?.name ?? 'Tasks',
-                color: ws,
-                count: s.tasks.isEmpty ? null : s.tasks.length,
-              ),
+              title: s.currentWorkspace?.name ?? 'Tasks',
+              color: ws,
+              count: s.tasks.isEmpty ? null : s.tasks.length,
+            ),
             if (_selectedTasks.isNotEmpty)
               SelectionBar(
                 count: _selectedTasks.length,
@@ -2856,11 +2865,8 @@ class _WidgetShellState extends State<WidgetShell>
         fields: s.collectionFields,
         entries: s.collectionEntries,
         accent: ws,
-        onSaveCollection: (existing, name, fields) => s.saveCollection(
-          existing: existing,
-          name: name,
-          fields: fields,
-        ),
+        onSaveCollection: (existing, name, fields) =>
+            s.saveCollection(existing: existing, name: name, fields: fields),
         onDeleteCollection: s.deleteCollection,
         onSaveEntry: (c, values, existing) =>
             s.saveEntry(c, values, existing: existing),
@@ -2889,9 +2895,9 @@ class _WidgetShellState extends State<WidgetShell>
       // currentWorkspaceUuid on. See JournalView._saveDraftOnTheWayOut.
       final journalWorkspace = s.currentWorkspaceUuid;
       return JournalView(
-        onEntryOpen: (open) {
-          if (_noteOpen == open) return;
-          setState(() => _noteOpen = open);
+        onFocusChanged: (focus) {
+          if (_noteFocused == focus) return;
+          setState(() => _noteFocused = focus);
         },
         configured: s.journalConfigured,
         locked: s.journalLocked,

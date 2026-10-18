@@ -17,18 +17,18 @@ import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/ui/journal_panel.dart';
 
 JournalItem item(String uuid, String title, String body) => JournalItem(
-      entry: JournalEntry(
-        uuid: uuid,
-        workspaceUuid: 'ws',
-        title: title,
-        text: body,
-        encrypted: false,
-        createdAt: '2026-08-11T09:00:00.000Z',
-        updatedAt: '2026-08-11T09:00:00.000Z',
-      ),
-      title: title,
-      body: body,
-    );
+  entry: JournalEntry(
+    uuid: uuid,
+    workspaceUuid: 'ws',
+    title: title,
+    text: body,
+    encrypted: false,
+    createdAt: '2026-08-11T09:00:00.000Z',
+    updatedAt: '2026-08-11T09:00:00.000Z',
+  ),
+  title: title,
+  body: body,
+);
 
 /// What the panel asked its owner to do, in order.
 class Saves {
@@ -36,7 +36,11 @@ class Saves {
   final deleted = <String>[];
 
   /// Hands back a saved item the way AppState does, so the panel can adopt it.
-  Future<JournalItem?> save(String title, String body, JournalItem? existing) async {
+  Future<JournalItem?> save(
+    String title,
+    String body,
+    JournalItem? existing,
+  ) async {
     calls.add((title: title, body: body, existing: existing?.uuid));
     if (title.trim().isEmpty && body.trim().isEmpty) return null;
     return item(existing?.uuid ?? 'minted-uuid', title, body);
@@ -50,6 +54,7 @@ Future<void> pumpPanel(
   required List<JournalItem> items,
   required Saves saves,
   VoidCallback? onBack,
+  ValueChanged<bool>? onFocusChanged,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -65,6 +70,7 @@ Future<void> pumpPanel(
           onSave: saves.save,
           onDelete: saves.delete,
           onBack: onBack ?? () {},
+          onFocusChanged: onFocusChanged,
         ),
       ),
     ),
@@ -88,8 +94,9 @@ Future<void> chord(
 
 void main() {
   group('read first', () {
-    testWidgets('picking an entry renders it rather than opening the editor',
-        (tester) async {
+    testWidgets('picking an entry renders it rather than opening the editor', (
+      tester,
+    ) async {
       final saves = Saves();
       await pumpPanel(
         tester,
@@ -122,8 +129,9 @@ void main() {
       expect(find.text('Leaves at nine'), findsOneWidget); // now in the field
     });
 
-    testWidgets('a double-click on the list goes straight to the editor',
-        (tester) async {
+    testWidgets('a double-click on the list goes straight to the editor', (
+      tester,
+    ) async {
       final saves = Saves();
       await pumpPanel(
         tester,
@@ -142,8 +150,9 @@ void main() {
       expect(find.byType(TextField), findsNWidgets(2));
     });
 
-    testWidgets('a click on the reader after the window is only a click',
-        (tester) async {
+    testWidgets('a click on the reader after the window is only a click', (
+      tester,
+    ) async {
       final saves = Saves();
       await pumpPanel(
         tester,
@@ -158,8 +167,9 @@ void main() {
       expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('a new entry skips the reader and lands in the fields',
-        (tester) async {
+    testWidgets('a new entry skips the reader and lands in the fields', (
+      tester,
+    ) async {
       final saves = Saves();
       await pumpPanel(tester, items: const [], saves: saves);
 
@@ -171,8 +181,9 @@ void main() {
   });
 
   group('the Esc ladder', () {
-    testWidgets('editor backs out to the reader, reader to the list',
-        (tester) async {
+    testWidgets('editor backs out to the reader, reader to the list', (
+      tester,
+    ) async {
       var backedOut = 0;
       final saves = Saves();
       await pumpPanel(
@@ -189,13 +200,21 @@ void main() {
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing, reason: 'back to the reader');
+      expect(
+        find.byType(TextField),
+        findsNothing,
+        reason: 'back to the reader',
+      );
 
       // The rung that needs the pane to hold focus of its own - there is no
       // text field in the reader to carry the key event up to the handler.
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.add), findsOneWidget, reason: 'back to the list');
+      expect(
+        find.byIcon(Icons.add),
+        findsOneWidget,
+        reason: 'back to the list',
+      );
 
       // And the view itself is only closed from the list, by the shell.
       expect(backedOut, 0);
@@ -229,7 +248,11 @@ void main() {
       await chord(tester, LogicalKeyboardKey.keyS);
 
       expect(saves.calls, hasLength(1));
-      expect(find.byType(TextField), findsNothing, reason: 'reading, not editing');
+      expect(
+        find.byType(TextField),
+        findsNothing,
+        reason: 'reading, not editing',
+      );
       expect(find.text('Trip'), findsOneWidget);
     });
 
@@ -249,8 +272,9 @@ void main() {
     // The reason onSave hands the item back. Without the minted uuid the panel
     // would still think it was composing, and the second save would write a
     // second row.
-    testWidgets('saving a new entry twice rewrites the same row',
-        (tester) async {
+    testWidgets('saving a new entry twice rewrites the same row', (
+      tester,
+    ) async {
       final saves = Saves();
       await pumpPanel(tester, items: const [], saves: saves);
       await tester.tap(find.byIcon(Icons.add));
@@ -266,25 +290,27 @@ void main() {
       expect(saves.calls.map((c) => c.existing), [null, 'minted-uuid']);
     });
 
-    testWidgets('an entry cleared to nothing goes to the list, not the reader',
-        (tester) async {
-      final saves = Saves();
-      await pumpPanel(
-        tester,
-        items: [item('a', 'Trip', 'Leaves at nine')],
-        saves: saves,
-      );
-      await tester.tap(find.text('Trip'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.edit_outlined));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'an entry cleared to nothing goes to the list, not the reader',
+      (tester) async {
+        final saves = Saves();
+        await pumpPanel(
+          tester,
+          items: [item('a', 'Trip', 'Leaves at nine')],
+          saves: saves,
+        );
+        await tester.tap(find.text('Trip'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.edit_outlined));
+        await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField).first, '');
-      await tester.enterText(find.byType(TextField).last, '');
-      await chord(tester, LogicalKeyboardKey.keyS);
+        await tester.enterText(find.byType(TextField).first, '');
+        await tester.enterText(find.byType(TextField).last, '');
+        await chord(tester, LogicalKeyboardKey.keyS);
 
-      expect(find.byIcon(Icons.add), findsOneWidget);
-    });
+        expect(find.byIcon(Icons.add), findsOneWidget);
+      },
+    );
   });
 
   group('a draft outlives the panel', () {
@@ -297,8 +323,9 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('a new entry being typed is saved when the panel goes away',
-        (tester) async {
+    testWidgets('a new entry being typed is saved when the panel goes away', (
+      tester,
+    ) async {
       final saves = Saves();
       await pumpPanel(tester, items: const [], saves: saves);
       await tester.tap(find.byIcon(Icons.add));
@@ -312,11 +339,15 @@ void main() {
       expect(saves.calls.single.existing, isNull);
     });
 
-    testWidgets('an edit in progress is saved onto its own entry',
-        (tester) async {
+    testWidgets('an edit in progress is saved onto its own entry', (
+      tester,
+    ) async {
       final saves = Saves();
-      await pumpPanel(tester,
-          items: [item('a', 'Trip', 'Leaves at nine')], saves: saves);
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+      );
       await tester.tap(find.text('Trip'));
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.edit_outlined));
@@ -329,11 +360,15 @@ void main() {
       expect(saves.calls.single.body, 'Leaves at ten');
     });
 
-    testWidgets('nothing is written for an unchanged or emptied entry',
-        (tester) async {
+    testWidgets('nothing is written for an unchanged or emptied entry', (
+      tester,
+    ) async {
       final saves = Saves();
-      await pumpPanel(tester,
-          items: [item('a', 'Trip', 'Leaves at nine')], saves: saves);
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+      );
       await tester.tap(find.text('Trip'));
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.edit_outlined));
@@ -341,8 +376,11 @@ void main() {
       await closePanel(tester);
       expect(saves.calls, isEmpty, reason: 'unchanged');
 
-      await pumpPanel(tester,
-          items: [item('a', 'Trip', 'Leaves at nine')], saves: saves);
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+      );
       await tester.tap(find.text('Trip'));
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.edit_outlined));
@@ -350,12 +388,16 @@ void main() {
       await tester.enterText(find.byType(TextField).first, '');
       await tester.enterText(find.byType(TextField).last, '');
       await closePanel(tester);
-      expect(saves.calls, isEmpty,
-          reason: 'saving empty fields deletes, which is not ours to do');
+      expect(
+        saves.calls,
+        isEmpty,
+        reason: 'saving empty fields deletes, which is not ours to do',
+      );
     });
 
-    testWidgets('keeps the editor when a GlobalKey moves it to a new parent',
-        (tester) async {
+    testWidgets('keeps the editor when a GlobalKey moves it to a new parent', (
+      tester,
+    ) async {
       // The resize case: the shell hands the same view to a Column in a
       // narrow window and a Row in a wide one.
       final saves = Saves();
@@ -363,33 +405,39 @@ void main() {
       var wide = false;
       late StateSetter setOuter;
       Widget panel() => KeyedSubtree(
-            key: key,
-            child: JournalView(
-              configured: false,
-              locked: false,
-              items: const [],
-              onSetup: (_) async {},
-              onUnlock: (_) async => true,
-              onLock: () {},
-              onRemovePassword: () async {},
-              onSave: saves.save,
-              onDelete: saves.delete,
-              onBack: () {},
-            ),
-          );
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(builder: (context, set) {
-            setOuter = set;
-            return wide
-                ? Row(children: [
-                    const SizedBox(width: 10),
-                    Expanded(child: panel()),
-                  ])
-                : Column(children: [Expanded(child: panel())]);
-          }),
+        key: key,
+        child: JournalView(
+          configured: false,
+          locked: false,
+          items: const [],
+          onSetup: (_) async {},
+          onUnlock: (_) async => true,
+          onLock: () {},
+          onRemovePassword: () async {},
+          onSave: saves.save,
+          onDelete: saves.delete,
+          onBack: () {},
         ),
-      ));
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, set) {
+                setOuter = set;
+                return wide
+                    ? Row(
+                        children: [
+                          const SizedBox(width: 10),
+                          Expanded(child: panel()),
+                        ],
+                      )
+                    : Column(children: [Expanded(child: panel())]);
+              },
+            ),
+          ),
+        ),
+      );
       await tester.tap(find.byIcon(Icons.add));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, 'Still here');
@@ -399,6 +447,67 @@ void main() {
 
       expect(find.text('Still here'), findsOneWidget);
       expect(saves.calls, isEmpty, reason: 'it moved, it did not close');
+    });
+  });
+
+  group('focus', () {
+    Future<List<bool>> openInFocus(WidgetTester tester) async {
+      final told = <bool>[];
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: Saves(),
+        onFocusChanged: told.add,
+      );
+      await tester.tap(find.text('Trip'));
+      await tester.pump(kDoubleTapTimeout);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+      await tester.pumpAndSettle();
+      return told;
+    }
+
+    testWidgets('leaves the title and the text, and tells the shell', (
+      tester,
+    ) async {
+      final told = await openInFocus(tester);
+      expect(told.last, isTrue);
+      expect(find.text('Trip'), findsOneWidget);
+      expect(find.text('Leaves at nine'), findsOneWidget);
+      expect(find.text('Notes'), findsNothing, reason: 'the header goes');
+      expect(find.byIcon(Icons.delete_outline), findsNothing);
+    });
+
+    testWidgets('carries into the editor, which loses its buttons', (
+      tester,
+    ) async {
+      await openInFocus(tester);
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNWidgets(2));
+      expect(find.text('Save'), findsNothing);
+      expect(find.byIcon(Icons.fullscreen_exit_rounded), findsOneWidget);
+    });
+
+    testWidgets('Esc leaves focus before it leaves the note', (tester) async {
+      final told = await openInFocus(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(told.last, isFalse);
+      expect(find.text('Notes'), findsOneWidget);
+      expect(
+        find.byIcon(Icons.edit_outlined),
+        findsOneWidget,
+        reason: 'still reading',
+      );
+    });
+
+    testWidgets('the button leaves it too', (tester) async {
+      final told = await openInFocus(tester);
+      await tester.tap(find.byIcon(Icons.fullscreen_exit_rounded));
+      await tester.pumpAndSettle();
+      expect(told.last, isFalse);
+      expect(find.text('Notes'), findsOneWidget);
     });
   });
 }

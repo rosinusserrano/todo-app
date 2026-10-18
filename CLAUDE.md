@@ -327,11 +327,14 @@ land on Notes whatever was showing.
 Two things take the whole screen on touch and both are about what is
 *incidentally* on display: `ThoughtSheet` (`ui/thought_sheet.dart`), because a
 phone is held in front of people and the inline capture field left every task in
-the workspace visible behind the keyboard; and an open journal entry, via
-`_noteTakesScreen`, which hides the dock and the footer.
-`JournalView` reports that through `onEntryOpen` rather than the shell inferring
-it — `showJournal` says the pane is open, not which rung of its ladder you are
-on. That callback is deferred to after the frame, because the shell reacts with
+the workspace visible behind the keyboard; and a journal entry **in focus** (its ⛶), via
+`_noteTakesScreen`, which hides the dock, the footer and the session banner at
+every size, fades the title bar on a phone, and folds the split's task pane
+without touching the stored preference. An open note on its own used to do
+this on a phone and took the dock away from every glance (Marco, 2026-10-18).
+`JournalView` reports it through `onFocusChanged` rather than the shell
+inferring it — `showJournal` says the pane is open, not which rung of its
+ladder you are on, and focus is the panel's own state. That callback is deferred to after the frame, because the shell reacts with
 `setState` and doing that from inside another widget's build is a crash.
 
 `ThoughtSheet` still stops at `TitleBar.height` like every other sheet, and the

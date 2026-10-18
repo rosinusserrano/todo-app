@@ -946,12 +946,13 @@ at the screen gives nothing away) and its lock is **opt-in**.
   "Jul 20, 14:32" stamp. Editing changes the words but **not the timestamp** —
   the log records when a thing was written, not when it was later edited. Saving
   an entry emptied of both title and body deletes it.
-- **On a phone an open note takes the whole screen** — the dock and the footer
-  step aside for it, and the note's own back arrow is
-  the way out. It used to *look* like the note refusing to open: the chrome
-  disappearing rearranged the widget tree around the pane, which threw away the
-  pane's own idea of which rung it was on, and the note snapped back to the list
-  one frame after being opened. It stays open now.
+- **Focus** — the ⛶ in an open note's header (reading) or beside its title
+  (writing) leaves nothing on screen but the title and the text: the dock,
+  the header, the Save row and, on a phone, the title bar all go, and beside
+  a wide split the task list folds away. It stays on between reading and
+  writing the one note; ⛶ again or Esc leaves it, and every note opened from
+  the list starts out of it. An open note no longer hides the dock on its
+  own - that used to happen to every note on a phone.
 - **Tombstoned deletes** — removing an entry marks it deleted rather than
   dropping it, so the removal reaches your other devices instead of resurrecting
   on the next sync.
@@ -1494,6 +1495,8 @@ reminders are both there now**, queued for 0.18.0.
     slide. Holding a part and letting go leaves its menu open.
   - Recording a second voice note in the thought pane asks before it
     replaces the first.
+  - **Notes keep the dock**, and get a **focus** button (⛶) that leaves only
+    the title and the text on screen.
   - **A new way to add a task**: *Add a task* opens a card in the middle of
     the screen with buttons for priority, a reminder, the workspace and the
     long form; a #workspace (or its shortcut, e.g. *#MT*), a day or a time

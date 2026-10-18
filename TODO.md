@@ -52,6 +52,9 @@ Sent 2026-10-16 (screenshot of the shelf); answers and reasons in
       view → the top of that view (`_dockToViewRoot`), More → its menu (a
       second tap closes), ＋ → the add card; a press opens no menu until it
       is held or moves. Recording again asks before replacing the clip.
+- [x] **62.11** Notes keep the dock; a ⛶ focus in the reader and the editor
+      hides everything but the title and the text (`onFocusChanged`,
+      `_noteTakesScreen`).
 - [ ] **62.9** Try both on the iPhone web app (recording, playback after
       the clip has gone through the server) and the desktop app (playback).
 - [~] **62.6** Merged to `main` (2026-10-16). Left: deploy the server

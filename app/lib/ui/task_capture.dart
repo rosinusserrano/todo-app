@@ -861,7 +861,10 @@ class _TaskCaptureState extends State<TaskCapture>
                   ),
           ),
           const SizedBox(height: T.s2),
-          _bar(p, empty, hereColor),
+          // Part of the field as far as a tap is concerned, as the pill is:
+          // otherwise pressing the flag or the folder with a mouse unfocuses
+          // the field, and the Enter after it reaches nothing.
+          TextFieldTapRegion(child: _bar(p, empty, hereColor)),
         ],
       ),
     );

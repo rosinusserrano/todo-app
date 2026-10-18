@@ -25,6 +25,7 @@ import '../sync/sync_client.dart';
 import '../sync/sync_service.dart';
 import '../sync/oidc_client.dart';
 import '../theme.dart';
+import 'archived_projects.dart' show ArchivedProjectsViewState;
 import 'push_settings.dart';
 import 'sso_sign_in.dart';
 import 'server_users_view.dart';
@@ -73,7 +74,7 @@ class SettingsSheet extends StatefulWidget {
   /// How many projects are archived, and the page that shows them
   /// (archived_projects.dart). The row is drawn only while there is one.
   final int archivedCount;
-  final Widget Function()? archive;
+  final Widget Function(GlobalKey<ArchivedProjectsViewState> key)? archive;
 
   @override
   State<SettingsSheet> createState() => _SettingsSheetState();
@@ -111,6 +112,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   /// The archived projects, shown in place the same way.
   bool _showArchive = false;
+  final _archiveKey = GlobalKey<ArchivedProjectsViewState>();
 
   @override
   void initState() {
@@ -234,7 +236,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                       onBack: () => setState(() => _showUsers = false),
                     )
                   : _showArchive && widget.archive != null
-                  ? widget.archive!()
+                  ? widget.archive!(_archiveKey)
                   : _settingsBody(),
             ),
           ],
@@ -250,10 +252,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
         children: [
           if (_showUsers || _showArchive)
             InkWell(
-              onTap: () => setState(() {
-                _showUsers = false;
-                _showArchive = false;
-              }),
+              // The archive has a rung of its own (one project) to walk
+              // back down before the sheet leaves it.
+              onTap: () {
+                final archive = _archiveKey.currentState;
+                if (_showArchive && archive != null && archive.back()) return;
+                setState(() {
+                  _showUsers = false;
+                  _showArchive = false;
+                });
+              },
               borderRadius: BorderRadius.circular(T.radius),
               child: const Padding(
                 padding: EdgeInsets.only(right: T.s2),

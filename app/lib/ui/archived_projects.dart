@@ -26,12 +26,20 @@ class ArchivedProjectsView extends StatefulWidget {
   final AppState state;
 
   @override
-  State<ArchivedProjectsView> createState() => _ArchivedProjectsViewState();
+  State<ArchivedProjectsView> createState() => ArchivedProjectsViewState();
 }
 
-class _ArchivedProjectsViewState extends State<ArchivedProjectsView> {
+class ArchivedProjectsViewState extends State<ArchivedProjectsView> {
   Workspace? _open;
   ArchivedProject? _contents;
+
+  /// One rung down, for the sheet's back arrow: from a project to the list.
+  /// False when already on the list, and the sheet leaves the archive.
+  bool back() {
+    if (_open == null) return false;
+    setState(() => _open = null);
+    return true;
+  }
 
   AppState get s => widget.state;
 
@@ -136,15 +144,6 @@ class _ArchivedProjectsViewState extends State<ArchivedProjectsView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s3),
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => setState(() => _open = null),
-            icon: const Icon(Icons.arrow_back_rounded, size: 14),
-            label: const Text('Archived projects'),
-            style: TextButton.styleFrom(foregroundColor: T.muted),
-          ),
-        ),
         Text(
           p.name,
           style: TextStyle(

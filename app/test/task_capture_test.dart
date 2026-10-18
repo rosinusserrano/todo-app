@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -155,6 +156,30 @@ void main() {
     expect(controller.text, isEmpty);
     expect(find.text('Added to Work'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('the folder adds a project, and the field keeps the caret', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'Launch website');
+    await tester.tap(
+      find.byIcon(Icons.folder_outlined),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    // Lit, and what a project has no use for steps aside.
+    expect(find.text('Project'), findsOneWidget);
+    expect(find.byIcon(Icons.outlined_flag_rounded), findsNothing);
+    expect(find.byIcon(Icons.open_in_full_rounded), findsNothing);
+    // A mouse press on the bar used to unfocus the field, so this Enter went
+    // nowhere.
+    final editable = tester.widget<EditableText>(find.byType(EditableText));
+    expect(editable.focusNode.hasFocus, isTrue);
+
+    await key(tester, LogicalKeyboardKey.enter);
+    expect(submitted.single.title, 'Launch website');
+    expect(submitted.single.project, isTrue);
   });
 
   testWidgets('a bare workspace name is just a word', (tester) async {

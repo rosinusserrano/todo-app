@@ -1723,7 +1723,7 @@ class _WidgetShellState extends State<WidgetShell>
             dockEdge: s.wideDock,
             onDockEdge: s.setWideDock,
             archivedCount: s.archivedProjects.length,
-            archive: () => ArchivedProjectsView(state: s),
+            archive: (key) => ArchivedProjectsView(key: key, state: s),
           ),
         ),
 
@@ -3265,16 +3265,22 @@ class _WidgetShellState extends State<WidgetShell>
       onBack: _leaveProject,
       backTooltip: 'Back to ${parent?.name ?? 'the workspace'} (Esc)',
       actions: [
-        IconButton(
-          key: _projectMenuKey,
-          tooltip: 'Project',
-          iconSize: 18,
-          color: T.muted,
-          icon: const Icon(Icons.more_horiz_rounded),
-          onPressed: () async {
-            final a = await showProjectMenu(context, anchor: _projectMenuKey);
-            if (a != null) await _projectAction(p, a);
-          },
+        // The journal's header buttons' size, so the list starts where a
+        // workspace's does.
+        Tooltip(
+          message: 'Project',
+          child: InkWell(
+            key: _projectMenuKey,
+            borderRadius: BorderRadius.circular(T.radius),
+            onTap: () async {
+              final a = await showProjectMenu(context, anchor: _projectMenuKey);
+              if (a != null) await _projectAction(p, a);
+            },
+            child: const Padding(
+              padding: EdgeInsets.all(T.s1),
+              child: Icon(Icons.more_horiz_rounded, size: 16, color: T.muted),
+            ),
+          ),
         ),
       ],
     );

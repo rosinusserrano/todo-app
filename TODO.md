@@ -43,8 +43,10 @@ Asked for 2026-10-18; design in `ROADMAP.md` under *Projects*. Built on
 - [x] **63.3** UI: `ui/project_row.dart` (the row, its menu), the list header
       and Esc inside a project, the add card's folder toggle, *Make it a
       project* in the task bar, `ui/archived_projects.dart` in Settings.
-- [ ] **63.4** Published to the dev site; Marco tries it (the row's look
-      especially).
+- [~] **63.4** Published to the dev site (2026-10-18); Marco tries it (the
+      row's look especially). The dev server needs `sudo systemctl restart
+      todo-sync-dev` to speak protocol 7, or projects made there stay on
+      the device that made them.
 - [ ] **63.5** Merge to `main`; deploy the server (protocol 7) and the web
       app.
 

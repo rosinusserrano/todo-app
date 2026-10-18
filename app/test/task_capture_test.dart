@@ -60,6 +60,15 @@ class _HostState extends State<_Host> {
             workspaces: [
               ws('here', 'Tasks', '#6F86CC'),
               ws('work', 'Work', '#CC9A6A'),
+              Workspace(
+                uuid: 'launch',
+                name: 'Launch',
+                color: '#CC9A6A',
+                sortOrder: 0,
+                parentUuid: 'work',
+                createdAt: '2026-01-01T00:00:00Z',
+                updatedAt: '2026-01-01T00:00:00Z',
+              ),
             ],
             hereUuid: 'here',
             layout: const Layout(Size(340, 480)),
@@ -180,6 +189,26 @@ void main() {
     await key(tester, LogicalKeyboardKey.enter);
     expect(submitted.single.title, 'Launch website');
     expect(submitted.single.project, isTrue);
+  });
+
+  testWidgets('aimed at a project, the card adds tasks only', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'Copy');
+    await tester.tap(find.byIcon(Icons.folder_outlined));
+    await tester.pump();
+    expect(find.text('Project'), findsOneWidget);
+
+    // One level deep: naming a project takes the folder away, lit or not,
+    // and gives the task's own buttons back.
+    await tester.enterText(find.byType(TextField), 'Copy #Launch');
+    await tester.pump();
+    expect(find.byIcon(Icons.folder_outlined), findsNothing);
+    expect(find.byIcon(Icons.outlined_flag_rounded), findsOneWidget);
+
+    await key(tester, LogicalKeyboardKey.enter);
+    expect(submitted.single.title, 'Copy');
+    expect(submitted.single.workspaceUuid, 'launch');
+    expect(submitted.single.project, isFalse);
   });
 
   testWidgets('a bare workspace name is just a word', (tester) async {

@@ -216,6 +216,15 @@ class _TaskCaptureState extends State<TaskCapture>
   /// after each add, like the priority - a project is the exception.
   bool _project = false;
 
+  /// Where the card would put it: picked, `#`-named, or here.
+  Workspace? get _target =>
+      _workspaceById(_workspace ?? widget.controller.parse.workspaceUuid) ??
+      _workspaceById(widget.hereUuid);
+
+  /// Projects are one level deep, so aimed at a project the card adds tasks
+  /// only: the folder is not drawn, and one lit before the aim moved is off.
+  bool get _asProject => _project && !(_target?.isProject ?? false);
+
   /// Chosen by hand. Either one switches its kind of keyword off.
   DateTime? _remindAt;
   String? _workspace;
@@ -348,9 +357,9 @@ class _TaskCaptureState extends State<TaskCapture>
     return CaptureResult(
       title: p.title,
       workspaceUuid: ws,
-      priority: _project ? 0 : _priority,
-      remindAt: _project ? null : _remindAt ?? p.remindAt,
-      project: _project,
+      priority: _asProject ? 0 : _priority,
+      remindAt: _asProject ? null : _remindAt ?? p.remindAt,
+      project: _asProject,
     );
   }
 
@@ -577,7 +586,7 @@ class _TaskCaptureState extends State<TaskCapture>
   }
 
   Future<void> _expand() async {
-    if (_project) return;
+    if (_asProject) return;
     final done = await widget.onExpand(_result);
     if (!mounted) return;
     if (done) {
@@ -874,7 +883,7 @@ class _TaskCaptureState extends State<TaskCapture>
     final remindAt = _remindAt ?? p.remindAt;
     final remindFromWord = _remindAt == null && p.remindAt != null;
     final wsUuid = _workspace ?? p.workspaceUuid;
-    final target = _workspaceById(wsUuid) ?? _workspaceById(widget.hereUuid);
+    final target = _target;
     final wsFromWord = _workspace == null && p.workspaceUuid != null;
     final wsColor = target == null ? hereColor : T.parseHex(target.color);
     final size = widget.layout.touch ? 36.0 : 30.0;
@@ -891,7 +900,7 @@ class _TaskCaptureState extends State<TaskCapture>
             spacing: T.s1,
             runSpacing: T.s1,
             children: [
-              if (!_project)
+              if (!_asProject)
                 _BarButton(
                   tooltip: _priority > 0
                       ? 'High priority'
@@ -905,7 +914,7 @@ class _TaskCaptureState extends State<TaskCapture>
                   onTap: () =>
                       setState(() => _priority = _priority > 0 ? 0 : 1),
                 ),
-              if (!_project)
+              if (!_asProject)
                 _BarButton(
                   key: _reminderKey,
                   tooltip: 'Reminder',
@@ -935,20 +944,21 @@ class _TaskCaptureState extends State<TaskCapture>
                     : null,
               ),
               // Last, so the priority and the reminder keep their places.
-              _BarButton(
-                tooltip: _project ? 'Adds a project' : 'Add as a project',
-                height: size,
-                lit: _project,
-                color: wsColor,
-                icon: Icons.folder_outlined,
-                label: _project ? 'Project' : null,
-                onTap: () => setState(() => _project = !_project),
-              ),
+              if (!(target?.isProject ?? false))
+                _BarButton(
+                  tooltip: _project ? 'Adds a project' : 'Add as a project',
+                  height: size,
+                  lit: _project,
+                  color: wsColor,
+                  icon: Icons.folder_outlined,
+                  label: _project ? 'Project' : null,
+                  onTap: () => setState(() => _project = !_project),
+                ),
             ],
           ),
         ),
         // The composer writes a task; a project has nothing for it to set.
-        if (!_project) ...[
+        if (!_asProject) ...[
           const SizedBox(width: T.s1),
           _BarButton(
             tooltip: 'Notes, repeat and more (Ctrl+D)',

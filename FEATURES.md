@@ -214,7 +214,9 @@ workspace's list.
 
 - **Making one.** In the add card, the folder button on the bar (*Add as a
   project*) adds the title as a project instead of a task — priority, reminder
-  and the long form step aside while it is lit. A task's action bar has *Make
+  and the long form step aside while it is lit. The button is not there when
+  the card is aimed at a project (opened inside one, or `#`-naming one),
+  since projects are one level deep. A task's action bar has *Make
   it a project*: the task becomes a project of the same name in its place on
   the list, and its notes become the project's first note (with the journal
   locked, the task moves into the project instead, notes and all).

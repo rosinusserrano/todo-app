@@ -46,7 +46,9 @@ Asked for 2026-10-18; design in `ROADMAP.md` under *Projects*. Built on
 - [~] **63.4** Published to the dev site (2026-10-18); Marco tries it (the
       row's look especially). The dev server needs `sudo systemctl restart
       todo-sync-dev` to speak protocol 7, or projects made there stay on
-      the device that made them.
+      the device that made them. From trying it: the card's folder made a
+      project on the parent when used inside a project; it is now not drawn
+      while the card is aimed at one.
 - [ ] **63.5** Merge to `main`; deploy the server (protocol 7) and the web
       app.
 

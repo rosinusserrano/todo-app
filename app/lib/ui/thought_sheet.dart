@@ -177,6 +177,10 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
       _focus.requestFocus();
       return;
     }
+    // One recording per thought, so a second one replaces the first - which
+    // is a thing to be asked, not told after (Marco, 2026-10-18).
+    if (_clip != null && !await _confirmReplace()) return;
+    if (!mounted || _recorder != null) return;
     final rec = VoiceRecorder();
     setState(() {
       _recorder = rec;
@@ -198,14 +202,41 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
       rec.cancel();
       return;
     }
-    // A new recording replaces one not saved yet - it was listened to and
-    // found wanting, or forgotten.
     await _player?.stop();
     setState(() {
       _clip = null;
       _recordingSince = DateTime.now();
       _ticker = Stream.periodic(const Duration(seconds: 1), (i) => i);
     });
+  }
+
+  Future<bool> _confirmReplace() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: T.bgSolid,
+        title: const Text(
+          'Record again?',
+          style: TextStyle(fontSize: T.fsMenu),
+        ),
+        content: const Text(
+          'A new recording replaces the one you have.',
+          style: TextStyle(fontSize: T.fsBody, color: T.muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: T.danger),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   /// Stop, and keep what was said as the draft's recording.

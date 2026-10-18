@@ -975,7 +975,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   back, × to throw it away - and Save keeps it, with whatever you typed or
   with nothing typed at all. It is **recorded, not transcribed**: the
   browser's speech recognition garbled too much to be worth keeping. Saving
-  while it records stops it and keeps what was said.
+  while it records stops it and keeps what was said. A thought holds one
+  recording, so 🎙 again asks before it replaces the one you have.
 - **Listen to it anywhere.** A thought with a recording shows a ▶ with its
   length in the pile, on every device, the desktop app included: the
   recording goes up to your sync server with the next sync and other devices
@@ -1077,11 +1078,19 @@ at the screen gives nothing away) and its lock is **opt-in**.
   History. With a mouse, rest on the row; with a finger, hold on the row for a
   moment and slide across (or long-press it in a held-open menu). Picking
   one switches workspace and opens that view in one go.
-- **A short tap is not for the menu.** On the workspace or the view part it
-  goes to the task list of the workspace you are in; on More and ＋ it does
-  nothing. To pick from a menu without sliding, **hold the part for a moment
-  and let go**: the menu stays up and a second tap picks. Tap anywhere above
-  it to close it.
+- **Hover or hold for the menu, tap or click for the part itself.** A menu
+  opens on a mouse resting on its part, or a finger holding it (or sliding
+  off it); a quick tap shows no menu at all. What a tap or click does:
+  - **the workspace** goes to its task list;
+  - **the view** goes to the top of the view it names - out of a collection
+    to the collections, out of a note to the notes, out of a shelf's review
+    to the shelves;
+  - **More** opens its menu, and a second tap closes it;
+  - **＋** opens the add card.
+
+  To pick from a menu without sliding, **hold the part for a moment and let
+  go**: the menu stays up and a second tap picks. Tap anywhere above it to
+  close it.
 - The pile of side thoughts shows on **More**: its count, and the same tint and
   pulse as it grows that the old bar had. A red dot there means sync needs you.
 - It replaces the workspace pill at the top, the old four-icon bar, the
@@ -1479,9 +1488,12 @@ reminders are both there now**, queued for 0.18.0.
     and a thought or task with a recording plays it on every device. Rows
     gain `audio` / `audio_ms` (client v20, sync protocol 6); the bytes go
     through the server's new `/api/blobs/:sha256`, kept per account.
-  - **Dock taps**: a short tap or click on the workspace or view part goes
-    to the task list; on More and ＋ it does nothing. Holding a part and
-    letting go leaves its menu open.
+  - **Dock taps**: a short tap or click on the workspace goes to its task
+    list, on the view to the top of that view, on More opens its menu, on ＋
+    the add card; no menu flashes on a tap any more, it waits for a hold or a
+    slide. Holding a part and letting go leaves its menu open.
+  - Recording a second voice note in the thought pane asks before it
+    replaces the first.
   - **A new way to add a task**: *Add a task* opens a card in the middle of
     the screen with buttons for priority, a reminder, the workspace and the
     long form; a #workspace (or its shortcut, e.g. *#MT*), a day or a time

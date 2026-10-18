@@ -38,6 +38,18 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-18',
+    title: 'The bar, again',
+    points: [
+      'A tap on the workspace goes to its tasks, on the view to the top of '
+          'that view (from a collection back to Collections), on More opens '
+          'its menu, and on ＋ opens the add card.',
+      'Menus open when you hold a part or hover over it, so a tap no longer '
+          'flashes one.',
+      'Recording a second voice note asks before it replaces the first.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-17',
     title: 'Voice notes',
     points: [

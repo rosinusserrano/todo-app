@@ -12,14 +12,19 @@
 // am I, what am I looking at, what else is there" is one question asked left
 // to right, and it now reads left to right in the place a thumb already rests.
 //
-// **Press, slide, let go.** Touching a segment grows its menu upward out of
-// it; the row under the finger lights as the finger slides up, and letting go
-// goes there. One gesture with nothing to aim at twice - the menu's rows are
-// as wide as a thumb is careless. Letting go anywhere off the menu does
-// nothing, which is how you change your mind. A short tap is not for the
-// menu: the workspace and the view segments go to the task list, the others
-// do nothing (`DockSegment.onClick`). Holding still and letting go leaves the
-// menu open instead, so a careful hand can still tap a row.
+// **Hold, slide, let go.** Holding a segment - or sliding off it - grows its
+// menu upward out of it; the row under the finger lights as the finger slides
+// up, and letting go goes there. One gesture with nothing to aim at twice -
+// the menu's rows are as wide as a thumb is careless. Letting go anywhere off
+// the menu does nothing, which is how you change your mind. Holding still and
+// letting go leaves the menu open instead, so a careful hand can tap a row.
+//
+// **A short tap is the segment's own action** (`DockSegment.onClick`): the
+// workspace goes to its task list, the view to the top of that view, ＋ to
+// the add card. A segment with none - More - opens its menu on a tap, and a
+// second tap puts it away. Nothing opens until the press has been held or
+// has moved, so a tap never flashes a menu on its way somewhere else
+// (Marco, 2026-10-18).
 //
 // **Slide right for the second thing.** A row that has another action keeps it
 // at its right-hand end - edit a workspace, add a task, write a thought - and
@@ -70,7 +75,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, kLongPressTimeout, kTouchSlop;
+    show kLongPressTimeout, kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -186,11 +191,10 @@ class DockSegment {
   /// square.
   final double? extent;
 
-  /// What a short tap or a click on the segment itself does - the workspace
-  /// and the view segments go to the task list. Null does nothing: the menu
-  /// is the press-and-slide's (or the hover's), never a tap's, so a tap that
-  /// was only meant to get somewhere does not leave a menu standing in the
-  /// way (Marco, 2026-10-17).
+  /// What a short tap or a click on the segment itself does: the workspace
+  /// goes to its task list, the view to its top, ＋ to the add card. Null
+  /// means the tap is for the menu - it opens it, and a second tap closes it
+  /// (Marco, 2026-10-18).
   final VoidCallback? onClick;
 }
 
@@ -257,7 +261,6 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   bool _hoverSecondary = false;
 
   int? _pointer;
-  PointerDeviceKind _downKind = PointerDeviceKind.touch;
   Offset _downAt = Offset.zero;
   bool _moved = false;
 
@@ -267,9 +270,15 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   bool _held = false;
   Timer? _holdTimer;
 
-  /// The press landed on a menu the mouse had opened, so a click that does
-  /// nothing gives it back to the hover.
-  bool _wasHover = false;
+  /// The segment the press landed on, and whether its menu was already up
+  /// from a tap or a hold - then a tap on a segment with no action of its own
+  /// puts it away.
+  int? _pressed;
+  bool _wasOpen = false;
+
+  /// Where the pointer was last seen, for the look again after a menu opened
+  /// under a moving finger has been laid out.
+  Offset _lastAt = Offset.zero;
 
   /// Opened by a mouse resting on its segment, and closed by it leaving.
   bool _viaHover = false;
@@ -408,33 +417,59 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     _portal.hide();
   }
 
+  /// A press opens nothing yet: until it has been held or has moved it may
+  /// be a tap, and a tap is the segment's own action.
   void _down(int segment, PointerDownEvent e) {
     if (_pointer != null) return;
     _hoverTimer?.cancel();
-    _pointer = e.pointer;
-    _downKind = e.kind;
+    final pointer = e.pointer;
+    _pointer = pointer;
     _downAt = e.position;
+    _lastAt = e.position;
     _moved = false;
     _held = false;
+    _pressed = segment;
+    _wasOpen = _open == segment && !_viaHover;
     _holdTimer?.cancel();
-    _holdTimer = Timer(kLongPressTimeout, () => _held = true);
-    _wasHover = _open == segment && _viaHover;
-    if (_open != segment) HapticFeedback.selectionClick();
-    _openMenu(segment, sticky: false);
+    _holdTimer = Timer(kLongPressTimeout, () {
+      if (!mounted || _pointer != pointer || _moved) return;
+      _held = true;
+      if (_open != segment) {
+        HapticFeedback.selectionClick();
+        _openMenu(segment, sticky: false);
+      }
+    });
   }
 
   void _move(PointerMoveEvent e) {
     if (e.pointer != _pointer) return;
+    _lastAt = e.position;
     if (!_moved && (e.position - _downAt).distance > kTouchSlop) {
       _moved = true;
       _holdTimer?.cancel();
+      final pressed = _pressed;
+      if (pressed != null && _open != pressed) {
+        HapticFeedback.selectionClick();
+        _openMenu(pressed, sticky: false);
+        // The menu has no rows to ask until it is laid out; a finger that is
+        // already over one then would light nothing until it moved again.
+        final pointer = e.pointer;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pointer == pointer) _track(_lastAt);
+        });
+      }
     }
     if (!_moved) return;
+    _track(e.position);
+  }
 
+  /// What the moving pointer at [position] is over: a segment of the bar, a
+  /// row of the submenu, or a row of the menu.
+  void _track(Offset position) {
     // Back down on the bar: switch to whichever segment is under the finger.
     final dock = context.findRenderObject() as RenderBox?;
     if (dock != null && dock.hasSize) {
-      final local = dock.globalToLocal(e.position);
+      final local = dock.globalToLocal(position);
       if ((Offset.zero & dock.size).contains(local)) {
         final spans = _spans(_vertical ? dock.size.height : dock.size.width);
         final along = _vertical ? local.dy : local.dx;
@@ -456,7 +491,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     }
 
     // The submenu is drawn over everything else, so it is asked first.
-    final sub = _subRowAt(e.position);
+    final sub = _subRowAt(position);
     if (sub != null) {
       _subTimer?.cancel();
       if (sub != _subHover) {
@@ -467,7 +502,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     }
     if (_subHover != null) setState(() => _subHover = null);
 
-    final (row, secondary) = _rowAt(e.position);
+    final (row, secondary) = _rowAt(position);
     if (row != _hover || secondary != _hoverSecondary) {
       if (row != null) HapticFeedback.selectionClick();
       final changedRow = row != _hover;
@@ -483,25 +518,25 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     if (e.pointer != _pointer) return;
     _pointer = null;
     _holdTimer?.cancel();
-    if (!_moved) {
-      final mouse = _downKind == PointerDeviceKind.mouse;
-      // A finger held still: it wanted the menu, so leave it up for a tap.
-      if (!mouse && _held) {
+    final pressed = _pressed;
+    _pressed = null;
+    if (!_moved && pressed != null) {
+      // Held still: it wanted the menu, so leave it up for a tap.
+      if (_held) {
         setState(() => _sticky = true);
         return;
       }
-      final click = _open == null ? null : widget.segments[_open!].onClick;
+      final click = widget.segments[pressed].onClick;
       if (click != null) {
         close();
         click();
-      } else if (mouse && _wasHover) {
-        // Nothing to do: the menu goes back to being the hover's.
-        setState(() {
-          _sticky = true;
-          _viaHover = true;
-        });
-      } else {
+      } else if (_wasOpen) {
         close();
+      } else if (_open == pressed && _viaHover) {
+        // Already showing under the mouse, and it stays the hover's.
+      } else {
+        HapticFeedback.selectionClick();
+        _openMenu(pressed, sticky: true);
       }
       return;
     }
@@ -524,6 +559,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   void _cancel(PointerCancelEvent e) {
     if (e.pointer != _pointer) return;
     _pointer = null;
+    _pressed = null;
     _holdTimer?.cancel();
     if (!_sticky) close();
   }

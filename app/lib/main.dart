@@ -2405,8 +2405,12 @@ class _WidgetShellState extends State<WidgetShell>
           ink: T.text,
           dimmed: global,
           dot: s.groupsDueForReview.isNotEmpty,
-          // The same as the workspace's: a tap is the way back to the list.
-          onClick: () => _dockToView(null),
+          // A tap goes to the top of the view it names: out of a collection
+          // to the collections, out of a note to the notes (Marco,
+          // 2026-10-18).
+          onClick: () => _dockToViewRoot(
+            view == WorkspaceView.thoughts ? null : view,
+          ),
           // Nearest the thumb at the bottom: Tasks is the one you go back to.
           items: [for (final v in kViewOrder.reversed) viewItem(v)],
         ),
@@ -2463,6 +2467,7 @@ class _WidgetShellState extends State<WidgetShell>
           extent: 56,
           fill: Color.lerp(T.bgSolid, T.text, 0.16)!,
           ink: T.text,
+          onClick: _jumpToAddTask,
           items: [
             DockItem(
               icon: Icons.check_circle_outline_rounded,
@@ -2501,6 +2506,22 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _dockToView(WorkspaceView? view) async {
     await _dockClear();
     if (!mounted) return;
+    _selectView(view);
+  }
+
+  /// [view] from its top: whatever was open inside it - a note, a
+  /// collection, a shelf's review - is left. A fresh key on the view is a
+  /// fresh State, which is each view's top rung; the journal still saves an
+  /// open draft as it goes.
+  Future<void> _dockToViewRoot(WorkspaceView? view) async {
+    await _dockClear();
+    if (!mounted) return;
+    if (_openView == view) {
+      setState(() {
+        _secondaryKey = GlobalKey(debugLabel: 'secondary view');
+        _noteOpen = false;
+      });
+    }
     _selectView(view);
   }
 
@@ -2792,7 +2813,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// and the note was gone. A GlobalKey is what lets an element move between
   /// parents with its State intact. [contentSlot] solves the sibling half of
   /// the same problem; this is the parent half.
-  final _secondaryKey = GlobalKey(debugLabel: 'secondary view');
+  var _secondaryKey = GlobalKey(debugLabel: 'secondary view');
 
   /// Whatever has taken the content area over, or null while the tasks have it.
   Widget? _secondaryView(Color ws) {

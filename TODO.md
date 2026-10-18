@@ -48,6 +48,10 @@ Sent 2026-10-16 (screenshot of the shelf); answers and reasons in
 - [x] **62.8** Dock: a short tap / click on the workspace or view segment
       goes to the task list; on More and ＋ it does nothing; hold and let go
       keeps a menu open.
+- [x] **62.10** Dock taps, take two (2026-10-18): workspace → its tasks,
+      view → the top of that view (`_dockToViewRoot`), More → its menu (a
+      second tap closes), ＋ → the add card; a press opens no menu until it
+      is held or moves. Recording again asks before replacing the clip.
 - [ ] **62.9** Try both on the iPhone web app (recording, playback after
       the clip has gone through the server) and the desktop app (playback).
 - [~] **62.6** Merged to `main` (2026-10-16). Left: deploy the server

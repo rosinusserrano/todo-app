@@ -394,12 +394,16 @@ about it that are load-bearing:
   Its rows are destinations (`_dockClear` then go), never toggles, and leaving
   the calendar goes through `_toggleCalendar` so pending blocks commit.
 
-**A short tap or click is the segment's `onClick`, never its menu**:
-the workspace and view segments go to the current task list, More and ＋
-have none and do nothing (Marco, 2026-10-17). A finger held still past
-`kLongPressTimeout` (a timer, `_held` - test pointer events carry no time
-stamps) and let go leaves the menu up for a tap; a mouse click with no
-action hands the menu back to the hover.
+**A short tap or click is the segment's `onClick`**: the workspace goes to
+its task list, the view to its top (`_dockToViewRoot`, which gives the
+secondary view a fresh `GlobalKey` - a fresh State is each view's top rung,
+and the journal saves an open draft in `dispose`), ＋ to the add card. More
+has none, and a segment with none opens its menu on a tap and closes it on
+the next (Marco, 2026-10-18). **A press opens nothing** until it has moved
+past `kTouchSlop` or been held for `kLongPressTimeout` (a timer, `_held` -
+test pointer events carry no time stamps); a held press let go still leaves
+the menu up for a tap. The menu opened by a slide is not laid out yet, so
+`_move` asks `_track` again after the frame or a fast finger lights no row.
 
 **A row can carry a submenu** (`DockItem.children`): the workspace rows carry
 their views. It is drawn in the same overlay Stack as the menu, beside it

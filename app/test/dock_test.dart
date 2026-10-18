@@ -107,7 +107,7 @@ void main() {
     await pump(tester);
     final g = await tester.startGesture(const Offset(60, barY));
     await tester.pump();
-    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Home'), findsNothing, reason: 'it may yet be a tap');
 
     await g.moveTo(rowCentre(1)); // Home: the top of two rows
     await tester.pump();
@@ -159,13 +159,40 @@ void main() {
     expect(find.text('Home'), findsNothing, reason: 'no menu left standing');
   });
 
-  testWidgets('a short tap on a segment with no action does nothing', (
+  testWidgets('a short tap on a segment with no action opens its menu, and '
+      'a second puts it away', (tester) async {
+    await pump(tester);
+    await tester.tapAt(const Offset(200, barY));
+    await tester.pumpAndSettle();
+    expect(fired, isEmpty);
+    expect(find.text('Notes'), findsOneWidget);
+
+    await tester.tapAt(const Offset(200, barY));
+    await tester.pumpAndSettle();
+    expect(fired, isEmpty);
+    expect(find.text('Notes'), findsNothing);
+  });
+
+  testWidgets('a tap shows no menu on its way to the action', (tester) async {
+    await pump(tester);
+    final g = await tester.startGesture(const Offset(60, barY));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Home'), findsNothing);
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(fired, ['click Work']);
+  });
+
+  testWidgets('a tap on a menu another tap opened goes to its own action', (
     tester,
   ) async {
     await pump(tester);
     await tester.tapAt(const Offset(200, barY));
     await tester.pumpAndSettle();
-    expect(fired, isEmpty);
+    expect(find.text('Notes'), findsOneWidget);
+    await tester.tapAt(const Offset(60, barY));
+    await tester.pumpAndSettle();
+    expect(fired, ['click Work']);
     expect(find.text('Notes'), findsNothing);
   });
 

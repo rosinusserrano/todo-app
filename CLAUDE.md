@@ -334,7 +334,13 @@ without touching the stored preference. An open note on its own used to do
 this on a phone and took the dock away from every glance (Marco, 2026-10-18).
 `JournalView` reports it through `onFocusChanged` rather than the shell
 inferring it — `showJournal` says the pane is open, not which rung of its
-ladder you are on, and focus is the panel's own state. That callback is deferred to after the frame, because the shell reacts with
+ladder you are on, and focus is the panel's own state. `onEditingChanged`
+is its twin: a note being *written* hides a **bottom** dock (`_dockShows`),
+one being read keeps it. `_dockShows` also drops the dock while an
+on-screen keyboard is up (`_keyboardUp`, read in the shell's `build`
+*above* the Scaffold - its body gets a MediaQuery with the keyboard taken
+out). The footer's flags read `_takesScreen`, not `_dockShows`, or a
+keyboard would give the footer its own capture button for a moment. That callback is deferred to after the frame, because the shell reacts with
 `setState` and doing that from inside another widget's build is a crash.
 
 `ThoughtSheet` still stops at `TitleBar.height` like every other sheet, and the

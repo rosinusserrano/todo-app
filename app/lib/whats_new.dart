@@ -41,7 +41,8 @@ const kReleaseNotes = <ReleaseNote>[
     id: '2026-10-18-2',
     title: 'Notes in focus',
     points: [
-      'An open note keeps the bar at the bottom.',
+      'The bar at the bottom stays while you read a note, and gets out of '
+          'the way while you write one or the keyboard is up.',
       'The ⛶ beside a note leaves only its title and text on screen; tap it '
           'again to come back.',
     ],

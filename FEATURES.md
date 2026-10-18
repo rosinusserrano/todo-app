@@ -951,8 +951,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   the header, the Save row and, on a phone, the title bar all go, and beside
   a wide split the task list folds away. It stays on between reading and
   writing the one note; ⛶ again or Esc leaves it, and every note opened from
-  the list starts out of it. An open note no longer hides the dock on its
-  own - that used to happen to every note on a phone.
+  the list starts out of it. A note being **read** keeps the dock; one being
+  **written** hides a dock along the bottom, focus or not.
 - **Tombstoned deletes** — removing an entry marks it deleted rather than
   dropping it, so the removal reaches your other devices instead of resurrecting
   on the next sync.
@@ -1092,6 +1092,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   To pick from a menu without sliding, **hold the part for a moment and let
   go**: the menu stays up and a second tap picks. Tap anywhere above it to
   close it.
+- **It steps aside for the keyboard.** While an on-screen keyboard is up the
+  dock is gone, so whatever is being typed into gets that row back.
 - The pile of side thoughts shows on **More**: its count, and the same tint and
   pulse as it grows that the old bar had. A red dot there means sync needs you.
 - It replaces the workspace pill at the top, the old four-icon bar, the
@@ -1495,8 +1497,9 @@ reminders are both there now**, queued for 0.18.0.
     slide. Holding a part and letting go leaves its menu open.
   - Recording a second voice note in the thought pane asks before it
     replaces the first.
-  - **Notes keep the dock**, and get a **focus** button (⛶) that leaves only
-    the title and the text on screen.
+  - **Notes keep the dock** while read and drop a bottom one while written,
+    and get a **focus** button (⛶) that leaves only the title and the text.
+  - The dock hides while an on-screen keyboard is up.
   - **A new way to add a task**: *Add a task* opens a card in the middle of
     the screen with buttons for priority, a reminder, the workspace and the
     long form; a #workspace (or its shortcut, e.g. *#MT*), a day or a time

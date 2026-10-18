@@ -58,12 +58,9 @@ Sent 2026-10-16 (screenshot of the shelf); answers and reasons in
       (bottom dock only) and while an on-screen keyboard is up.
 - [ ] **62.9** Try both on the iPhone web app (recording, playback after
       the clip has gone through the server) and the desktop app (playback).
-- [~] **62.6** Merged to `main` (2026-10-16, again with 62.7-62.11 on
-      2026-10-18). Left, **in this order**: deploy the server (`sudo
-      server/update-server.sh` - link titles, 61's shortcuts, protocol 6 and
-      `/api/blobs`), *then* publish the web app (`server/build-web.sh
-      /srv/todo-web`). A protocol-6 web app against the old server reads
-      "update the server" and stops syncing.
+- [x] **62.6** Merged to `main` (2026-10-16, again with 62.7-62.11 on
+      2026-10-18); server deployed (protocol 6) and the web app published
+      to `/srv/todo-web` on 2026-10-18.
 
 ### 61. The add card  `[~]`
 

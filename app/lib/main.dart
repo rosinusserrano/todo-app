@@ -43,6 +43,7 @@ import 'tray.dart';
 import 'web_keyboard.dart';
 import 'whats_new.dart';
 import 'window_spots.dart';
+import 'ui/archived_projects.dart';
 import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
 import 'ui/calendar/calendar_view.dart';
@@ -59,6 +60,7 @@ import 'ui/journal_panel.dart';
 import 'ui/list_rule.dart';
 import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
+import 'ui/project_row.dart';
 import 'ui/session_view.dart';
 import 'ui/move_picker.dart';
 import 'ui/selection_bar.dart';
@@ -1561,6 +1563,9 @@ class _WidgetShellState extends State<WidgetShell>
             s.toggleSession();
           } else if (s.showHistory) {
             s.toggleHistory();
+          } else if (s.currentProject != null) {
+            // The project's list is one rung above its workspace's.
+            _leaveProject();
           } else {
             return KeyEventResult.ignored;
           }
@@ -1640,16 +1645,22 @@ class _WidgetShellState extends State<WidgetShell>
             open: _adding,
             controller: _addController,
             focusNode: _addFocus,
-            workspaces: s.workspaces,
+            workspaces: s.moveTargets,
             hereUuid: s.currentWorkspaceUuid,
             layout: _layout,
             originOf: _addPromptRect,
-            onSubmit: (r) => s.addTask(
-              r.title,
-              workspaceUuid: r.workspaceUuid,
-              priority: r.priority,
-              remindAt: r.remindAt,
-            ),
+            onSubmit: (r) async {
+              if (r.project) {
+                await s.addProject(r.title, parentUuid: r.workspaceUuid);
+                return;
+              }
+              await s.addTask(
+                r.title,
+                workspaceUuid: r.workspaceUuid,
+                priority: r.priority,
+                remindAt: r.remindAt,
+              );
+            },
             onExpand: _openComposer,
             onClose: _closeAdd,
             onClosed: () {
@@ -1711,6 +1722,8 @@ class _WidgetShellState extends State<WidgetShell>
             startup: isDesktop && StartupSetting.supported ? _startup : null,
             dockEdge: s.wideDock,
             onDockEdge: s.setWideDock,
+            archivedCount: s.archivedProjects.length,
+            archive: () => ArchivedProjectsView(state: s),
           ),
         ),
 
@@ -2349,7 +2362,9 @@ class _WidgetShellState extends State<WidgetShell>
       WorkspaceView.history: (Icons.history_rounded, 'History'),
     };
     final here = views[view == WorkspaceView.thoughts ? null : view]!;
-    final current = s.currentWorkspace;
+    // Inside a project the dock still names its workspace: the project is a
+    // place in it, and its own name heads the list.
+    final current = s.homeWorkspace;
     final syncNeedsYou = switch (widget.sync.status) {
       SyncStatus.blocked || SyncStatus.outdated => true,
       _ => false,
@@ -2394,7 +2409,10 @@ class _WidgetShellState extends State<WidgetShell>
           // to open the add field, which put a caret in front of someone who
           // had only come to look (Marco, 2026-10-16), and on touch it
           // opened the menu, which stood in the way (2026-10-17).
-          onClick: () => _dockToView(null),
+          // Inside a project it is the workspace's list, the one it names.
+          onClick: () => s.currentProject != null && current != null
+              ? _dockToWorkspace(current)
+              : _dockToView(null),
           items: [
             DockItem(
               icon: Icons.add_rounded,
@@ -2405,7 +2423,7 @@ class _WidgetShellState extends State<WidgetShell>
               DockItem(
                 label: w.name,
                 fill: T.parseHex(w.color),
-                current: w.uuid == s.currentWorkspaceUuid,
+                current: w.uuid == current?.uuid,
                 onChoose: () => _dockToWorkspace(w),
                 secondaryIcon: Icons.edit_outlined,
                 secondaryLabel: 'Edit ${w.name}',
@@ -2808,11 +2826,7 @@ class _WidgetShellState extends State<WidgetShell>
             // that makes "Work" mean that workspace. Kept while selecting, so
             // the list below it keeps its place in this Column (and its
             // scroll).
-            PanelHeader(
-              title: s.currentWorkspace?.name ?? 'Tasks',
-              color: ws,
-              count: s.tasks.isEmpty ? null : s.tasks.length,
-            ),
+            _listHeader(ws),
             if (_selectedTasks.isNotEmpty)
               SelectionBar(
                 count: _selectedTasks.length,
@@ -2993,7 +3007,7 @@ class _WidgetShellState extends State<WidgetShell>
       context,
       position: anchor,
       currentWorkspaceUuid: here,
-      workspaces: s.workspaces,
+      workspaces: s.moveTargets,
       groups: groups,
       onCreateGroup: () => _editGroup(null),
     );
@@ -3026,7 +3040,7 @@ class _WidgetShellState extends State<WidgetShell>
       context,
       position: anchor,
       currentWorkspaceUuid: here,
-      workspaces: s.workspaces,
+      workspaces: s.moveTargets,
       groups: groups,
       onCreateGroup: () => _editGroup(null),
       includeHereList: true,
@@ -3231,12 +3245,115 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
+  /// The list's title: the workspace's name, or inside a project the
+  /// project's, with the way back to its workspace and its menu.
+  Widget _listHeader(Color ws) {
+    final p = s.currentProject;
+    final count = s.tasks.isEmpty ? null : s.tasks.length;
+    if (p == null) {
+      return PanelHeader(
+        title: s.currentWorkspace?.name ?? 'Tasks',
+        color: ws,
+        count: count,
+      );
+    }
+    final parent = s.homeWorkspace;
+    return PanelHeader(
+      title: p.name,
+      color: ws,
+      count: count,
+      onBack: _leaveProject,
+      backTooltip: 'Back to ${parent?.name ?? 'the workspace'} (Esc)',
+      actions: [
+        IconButton(
+          key: _projectMenuKey,
+          tooltip: 'Project',
+          iconSize: 18,
+          color: T.muted,
+          icon: const Icon(Icons.more_horiz_rounded),
+          onPressed: () async {
+            final a = await showProjectMenu(context, anchor: _projectMenuKey);
+            if (a != null) await _projectAction(p, a);
+          },
+        ),
+      ],
+    );
+  }
+
+  final _projectMenuKey = GlobalKey();
+
+  Widget _projectRow(Workspace p, int i, Color ws) {
+    return KeyedSubtree(
+      key: ValueKey(p.uuid),
+      child: _layout.touch
+          ? ReorderableDelayedDragStartListener(
+              index: i,
+              child: _projectTile(p, ws, null),
+            )
+          : _projectTile(
+              p,
+              ws,
+              ReorderableDragStartListener(
+                index: i,
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Icon(Icons.drag_indicator, size: 14, color: T.muted),
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _projectTile(Workspace p, Color ws, Widget? handle) => ProjectRow(
+    project: p,
+    accent: ws,
+    openCount: s.projectOpenCounts[p.uuid] ?? 0,
+    onOpen: () => _openProject(p),
+    onAction: (a) => _projectAction(p, a),
+    dragHandle: handle,
+  );
+
+  Future<void> _openProject(Workspace p) async {
+    _clearSelection();
+    await s.selectWorkspace(p.uuid);
+  }
+
+  Future<void> _leaveProject() async {
+    final parent = s.currentProject?.parentUuid;
+    if (parent == null) return;
+    _clearSelection();
+    await s.selectWorkspace(parent);
+  }
+
+  Future<void> _projectAction(Workspace p, ProjectAction a) async {
+    switch (a) {
+      case ProjectAction.open:
+        await _openProject(p);
+      case ProjectAction.rename:
+        final name = await askProjectName(
+          context,
+          accent: s.colorOf(p),
+          initial: p.name,
+        );
+        if (name != null) await s.renameProject(p, name);
+      case ProjectAction.archive:
+        // Not confirmed: Settings' archive gives it back as it was.
+        await s.archiveProject(p);
+      case ProjectAction.delete:
+        if (!await confirmDeleteProject(context, p)) return;
+        await s.deleteWorkspace(p.uuid);
+    }
+  }
+
   Widget _activeView(Color ws) {
-    if (s.tasks.isEmpty) {
-      return const Center(
+    final rows = s.listRows;
+    if (rows.isEmpty) {
+      return Center(
         child: Text(
-          'Nothing left. Nice. ✨',
-          style: TextStyle(color: T.muted, fontSize: T.fsLabel),
+          s.currentProject != null
+              ? 'Nothing in it yet.'
+              : 'Nothing left. Nice. ✨',
+          style: const TextStyle(color: T.muted, fontSize: T.fsLabel),
         ),
       );
     }
@@ -3244,16 +3361,21 @@ class _WidgetShellState extends State<WidgetShell>
     return ReorderableListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: T.s2),
       buildDefaultDragHandles: false,
-      itemCount: s.tasks.length,
+      itemCount: rows.length,
       // onReorderItem (unlike the deprecated onReorder) already accounts for
-      // the removed item, so newIndex needs no adjustment here.
+      // the removed item, so newIndex needs no adjustment here. Projects and
+      // tasks share one order (see AppState.listRows).
       onReorderItem: (oldIndex, newIndex) async {
-        final order = [...s.tasks];
+        final order = [...rows];
         order.insert(newIndex, order.removeAt(oldIndex));
-        await s.reorder(order.map((t) => t.uuid).toList());
+        await s.reorder([
+          for (final r in order) r is Task ? r.uuid : (r as Workspace).uuid,
+        ]);
       },
       itemBuilder: (context, i) {
-        final t = s.tasks[i];
+        final r = rows[i];
+        if (r is Workspace) return _projectRow(r, i, ws);
+        final t = r as Task;
         final key = _rowKeys.putIfAbsent(t.uuid, () => GlobalKey());
         final row = _plannable(
           t,
@@ -3262,12 +3384,17 @@ class _WidgetShellState extends State<WidgetShell>
             key: key,
             task: t,
             accent: ws,
-            divider: i < s.tasks.length - 1,
+            // No rule against a project's block: the block is its own edge.
+            divider: i < rows.length - 1 && rows[i + 1] is Task,
             onComplete: () => s.completeTask(t),
             onDelete: () => s.deleteTask(t),
             onFocus: () => _startFocus(t),
             onSetReminder: (at) => s.setReminder(t, at),
             onPark: (anchor) => _parkTask(t, anchor),
+            // One level only: a project's tasks cannot become projects.
+            onMakeProject: s.currentProject != null
+                ? null
+                : () => s.taskToProject(t),
             // Only ever offered on a task that *is* planned, where the row also
             // draws the mark saying so - the list is otherwise unchanged by
             // planning.

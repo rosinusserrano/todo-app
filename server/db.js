@@ -60,6 +60,8 @@ function init(db) {
       color      TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
       shortcuts  TEXT,
+      parent_uuid TEXT,
+      archived_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       deleted_at TEXT,
@@ -385,6 +387,9 @@ function init(db) {
   addColumn(db, 'attachments', 'event_uuid', 'TEXT');
   // A workspace's other names in a task title (protocol 5).
   addColumn(db, 'workspaces', 'shortcuts', 'TEXT');
+  // Projects: a workspace inside a workspace, and its archive (protocol 7).
+  addColumn(db, 'workspaces', 'parent_uuid', 'TEXT');
+  addColumn(db, 'workspaces', 'archived_at', 'TEXT');
   // A voice note on a thought, and on the task a thought became (protocol 6).
   // The bytes are not a column - see blobs.js.
   addColumn(db, 'side_thoughts', 'audio', 'TEXT');
@@ -413,7 +418,15 @@ function addColumn(db, table, column, type) {
 // Column lists drive the generic merge below. `uuid` and the sync bookkeeping
 // columns are handled separately, so these are the payload fields only.
 export const TABLES = {
-  workspaces: ['name', 'color', 'sort_order', 'shortcuts', 'created_at'],
+  workspaces: [
+    'name',
+    'color',
+    'sort_order',
+    'shortcuts',
+    'parent_uuid',
+    'archived_at',
+    'created_at',
+  ],
   parked_groups: [
     'workspace_uuid',
     'title',
@@ -496,7 +509,7 @@ export const TABLES = {
 // likewise. A client that does not say which protocol it speaks is 1.
 const COLUMN_SINCE = {
   calendar_events: { feed_uuid: 2 },
-  workspaces: { shortcuts: 5 },
+  workspaces: { shortcuts: 5, parent_uuid: 7, archived_at: 7 },
   side_thoughts: { audio: 6, audio_ms: 6 },
   tasks: { audio: 6, audio_ms: 6 },
 };

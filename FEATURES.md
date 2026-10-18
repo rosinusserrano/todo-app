@@ -206,6 +206,49 @@ Documents attached to a task — a quote, a scan, a spec.
 - The stored digest is already the address a future blob-sync endpoint would
   fetch by, so adding one later needs no migration of what is on disk.
 
+## Projects
+
+A **project** is a workspace inside a workspace: its own task list, notes,
+parked shelves, collections and history, sitting as one row in its
+workspace's list.
+
+- **Making one.** In the add card, the folder button on the bar (*Add as a
+  project*) adds the title as a project instead of a task — priority, reminder
+  and the long form step aside while it is lit. A task's action bar has *Make
+  it a project*: the task becomes a project of the same name in its place on
+  the list, and its notes become the project's first note (with the journal
+  locked, the task moves into the project instead, notes and all).
+- **In the list** a project is drawn as a block in the workspace's colour,
+  with a folder where a task's tick box is, its name in the display face and
+  how many tasks are open in it ("4 open"). It shares the list's order with
+  the tasks and is dragged like one. A click or tap opens it; the ⋯ (or a
+  right-click) has Open, Rename, Archive and Delete.
+- **Inside a project** the list is titled with its name, and the arrow beside
+  it — or Esc — goes back to the workspace. The dock still names the
+  workspace; a click on it goes to the workspace's list. Everything the dock's
+  views do (Notes, Parked, Collections, History) is the project's own while it
+  is open. Its tasks are not shown on the workspace's list.
+- **One level only.** A project cannot hold projects; adding one from inside a
+  project puts it on the workspace's list.
+- **A project cannot be ticked, only archived.** Archive takes it off the list
+  as it is, open tasks and all. Nothing in an archived project reminds (on the
+  desktop, the phone or by web push), repeats or turns up in a session, and a
+  task in focus there leaves focus. *Settings → Archived projects* lists them
+  newest first; one opens read-only (its open and done tasks, how many notes
+  and shelves) with **Restore**, which puts it back at the end of its
+  workspace's list with every reminder as it was, and **Delete**.
+- **Delete** asks first, and takes its tasks, notes, shelves and collections
+  with it on every device. Deleting a workspace deletes its projects.
+- **Moving tasks** — the move picker lists each workspace's projects under it
+  ("Work › Launch"), and the add card's workspace menu and `#name` reach them
+  too.
+- A project has its workspace's colour, and recolouring the workspace
+  recolours its projects. A project whose workspace was deleted on another
+  device shows up as a workspace of its own rather than disappearing.
+- Synced: `parent_uuid` and `archived_at` on workspaces (client v21, sync
+  protocol 7). An app or server from before shows a project as an ordinary
+  workspace.
+
 ## Parked groups
 
 Titled shelves inside a workspace — "Backlog", "Future ideas", "Someday" — for
@@ -1483,6 +1526,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Projects**: a workspace inside a workspace, shown as a raised row in
+    its list; opened like a workspace, archived rather than ticked, and kept
+    in *Settings → Archived projects* to read or restore (see *Projects*).
+    Workspaces gain `parent_uuid` / `archived_at` (client v21, sync
+    protocol 7).
   - **From the shelf**: a click on the dock's workspace goes to its task list
     (not the add field); the workspace menu has each workspace's views in a
     submenu; double-click a calendar event to edit it; links in task titles

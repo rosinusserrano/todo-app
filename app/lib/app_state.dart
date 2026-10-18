@@ -110,7 +110,24 @@ class AppState extends ChangeNotifier {
 
   void _mutated() => onMutated?.call();
 
+  /// The workspaces proper - what the dock, the calendar and the add card's
+  /// `#name` list. Projects are not in here; see [projects].
   List<Workspace> workspaces = [];
+
+  /// Every live project not archived, across all workspaces, in list order.
+  /// A project is a workspace with a parent (`Workspace.parentUuid`): opening
+  /// one makes it [currentWorkspaceUuid] and everything per-workspace -
+  /// list, notes, shelves, collections, history - follows with no special
+  /// case. One whose parent has gone (deleted on another device) is treated
+  /// as a workspace instead, so it cannot become unreachable.
+  List<Workspace> projects = [];
+
+  /// Projects put away, newest first, for Settings' archive.
+  List<Workspace> archivedProjects = [];
+
+  /// Open tasks on each project's list, for its row in the parent's list.
+  Map<String, int> projectOpenCounts = {};
+
   String? currentWorkspaceUuid;
 
   List<Task> tasks = [];
@@ -146,11 +163,60 @@ class AppState extends ChangeNotifier {
   bool showCollections = false;
 
   Workspace? get currentWorkspace {
-    for (final w in workspaces) {
+    for (final w in [...workspaces, ...projects]) {
       if (w.uuid == currentWorkspaceUuid) return w;
     }
     return workspaces.isEmpty ? null : workspaces.first;
   }
+
+  /// The open project, or null on a workspace's own list.
+  Workspace? get currentProject {
+    final w = currentWorkspace;
+    return w != null && w.isProject ? w : null;
+  }
+
+  /// The workspace you are in: the current one, or the open project's parent.
+  /// It is what the dock names.
+  Workspace? get homeWorkspace {
+    final p = currentProject;
+    if (p == null) return currentWorkspace;
+    return workspaceByUuid(p.parentUuid) ?? currentWorkspace;
+  }
+
+  Workspace? workspaceByUuid(String? uuid) {
+    if (uuid == null) return null;
+    for (final w in [...workspaces, ...projects, ...archivedProjects]) {
+      if (w.uuid == uuid) return w;
+    }
+    return null;
+  }
+
+  /// The projects on [parentUuid]'s list, in its order.
+  List<Workspace> projectsOf(String? parentUuid) =>
+      [for (final p in projects) if (p.parentUuid == parentUuid) p];
+
+  /// The current list's projects. Empty inside a project: one level only.
+  List<Workspace> get currentProjects =>
+      currentProject != null ? const [] : projectsOf(currentWorkspaceUuid);
+
+  /// What the current list draws, tasks and projects in their shared order.
+  /// A project's `sortOrder` is its place among its parent's tasks, so this
+  /// is a merge rather than projects first.
+  List<Object> get listRows {
+    final here = currentProjects;
+    if (here.isEmpty) return tasks;
+    return [...tasks, ...here]
+      ..sort((a, b) => _rowOrder(a).compareTo(_rowOrder(b)));
+  }
+
+  static int _rowOrder(Object row) =>
+      row is Task ? row.sortOrder : (row as Workspace).sortOrder;
+
+  /// Every place a task can be moved to, each workspace followed by its
+  /// projects - the move picker's and the add card's list.
+  List<Workspace> get moveTargets => [
+        for (final w in workspaces) ...[w, ...projectsOf(w.uuid)],
+      ];
 
   int get thoughtCount => thoughts.length;
 
@@ -283,10 +349,27 @@ class AppState extends ChangeNotifier {
   // ----------------------------------------------------------- workspaces
 
   Future<void> refreshWorkspaces() async {
-    workspaces = await _store.workspaces();
-    final known = workspaces.any((w) => w.uuid == currentWorkspaceUuid);
+    final all = await _store.workspaces();
+    final roots = {for (final w in all) if (w.parentUuid == null) w.uuid};
+    bool isProject(Workspace w) => roots.contains(w.parentUuid);
+    workspaces = [for (final w in all) if (!isProject(w)) w];
+    projects = [for (final w in all) if (isProject(w) && !w.isArchived) w];
+    archivedProjects = [
+      for (final w in all) if (isProject(w) && w.isArchived) w,
+    ]..sort((a, b) => b.archivedAt!.compareTo(a.archivedAt!));
+
+    final known = [...workspaces, ...projects]
+        .any((w) => w.uuid == currentWorkspaceUuid);
     if (!known) {
-      currentWorkspaceUuid = workspaces.isEmpty ? null : workspaces.first.uuid;
+      // A project archived or deleted under you - here or on another device -
+      // hands you back to its parent rather than to the first workspace.
+      final gone = all.where((w) => w.uuid == currentWorkspaceUuid).firstOrNull;
+      final parent = gone?.parentUuid;
+      currentWorkspaceUuid = roots.contains(parent)
+          ? parent
+          : workspaces.isEmpty
+              ? null
+              : workspaces.first.uuid;
     }
     notifyListeners();
   }
@@ -345,6 +428,15 @@ class AppState extends ChangeNotifier {
         updatedAt: nowStamp(),
       ),
     );
+    // Its projects carry its colour too (see [colorOf]); the stored copy is
+    // what the pickers draw, so it is kept in step rather than left behind.
+    if (color != existing.color) {
+      for (final p in [...projects, ...archivedProjects]) {
+        if (p.parentUuid != uuid) continue;
+        await _store
+            .putWorkspace(p.copyWith(color: color, updatedAt: nowStamp()));
+      }
+    }
     await refreshWorkspaces();
   }
 
@@ -352,7 +444,7 @@ class AppState extends ChangeNotifier {
   /// "Master thesis". Stored without the `#`; the caller has already checked
   /// it is free (`shortcutProblem`).
   Future<void> addWorkspaceShortcut(String uuid, String shortcut) async {
-    final existing = workspaces.where((w) => w.uuid == uuid).firstOrNull;
+    final existing = workspaceByUuid(uuid);
     if (existing == null || existing.shortcuts.contains(shortcut)) return;
     await _store.putWorkspace(
       existing.copyWith(
@@ -371,8 +463,31 @@ class AppState extends ChangeNotifier {
   /// devices - and note that it reaches them irreversibly, since there is no
   /// undo once a peer has merged it.
   Future<void> deleteWorkspace(String uuid) async {
-    if (workspaces.length <= 1) return;
+    final target = workspaceByUuid(uuid);
+    if (target == null) return;
+    if (!target.isProject && workspaces.length <= 1) return;
     final stamp = nowStamp();
+
+    // A workspace's projects go with it, each with its own contents.
+    if (!target.isProject) {
+      for (final p in [...projects, ...archivedProjects]) {
+        if (p.parentUuid == uuid) await _tombstoneWorkspace(p.uuid, stamp);
+      }
+    }
+    await _tombstoneWorkspace(uuid, stamp);
+
+    if (focusTask?.workspaceUuid == uuid) focusTask = null;
+    // Deleting the open project lands on its parent; deleting the open
+    // workspace on the first one, as before.
+    if (currentWorkspaceUuid == uuid) {
+      currentWorkspaceUuid = target.isProject ? target.parentUuid : null;
+    }
+    await refreshWorkspaces();
+    await refreshTasks();
+    _mutated();
+  }
+
+  Future<void> _tombstoneWorkspace(String uuid, String stamp) async {
 
     for (final t in await _store.allTasksInWorkspace(uuid)) {
       await _store.putTask(t.copyWith(deletedAt: stamp, updatedAt: stamp));
@@ -402,14 +517,168 @@ class AppState extends ChangeNotifier {
     }
     await _dropFeedsOn(uuid, stamp);
 
-    final ws = workspaces.firstWhere((w) => w.uuid == uuid);
+    final ws = workspaceByUuid(uuid)!;
     await _store.putWorkspace(ws.copyWith(deletedAt: stamp, updatedAt: stamp));
-
     if (focusTask?.workspaceUuid == uuid) focusTask = null;
-    currentWorkspaceUuid = null;
+  }
+
+  // ------------------------------------------------------------- projects
+  //
+  // A project is a workspace with a parent, drawn as a row of the parent's
+  // list. It cannot be ticked, only archived: archiving takes it off the list
+  // whole, open tasks and all, and Settings keeps it to read or restore.
+
+  /// A new project at the end of [parentUuid]'s list, the current one when
+  /// null. Aimed at a project it goes on that project's parent's list
+  /// instead - one level only. Opened when [open].
+  Future<Workspace?> addProject(
+    String name, {
+    String? parentUuid,
+    bool open = false,
+  }) async {
+    var parent = workspaceByUuid(parentUuid) ?? homeWorkspace;
+    if (parent != null && parent.isProject) {
+      parent = workspaceByUuid(parent.parentUuid);
+    }
+    final title = name.trim();
+    if (parent == null || title.isEmpty) return null;
+    final stamp = nowStamp();
+    final p = Workspace(
+      uuid: newId(),
+      name: title,
+      // The parent's: a project has no colour of its own. [colorOf] reads
+      // the parent's, and recolouring the workspace rewrites this copy.
+      color: parent.color,
+      sortOrder: await _store.nextSortOrder(parent.uuid),
+      parentUuid: parent.uuid,
+      createdAt: stamp,
+      updatedAt: stamp,
+    );
+    await _store.putWorkspace(p);
+    await refreshWorkspaces();
+    if (open) {
+      await selectWorkspace(p.uuid);
+    } else {
+      await refreshTasks();
+      _mutated();
+    }
+    return p;
+  }
+
+  /// Turns a task into a project of the same name, in the task's place on the
+  /// list. The task's notes become the project's first note, so nothing
+  /// written on it is lost; the task itself is deleted, not completed - it
+  /// was not done, it became bigger. With the journal encrypted and locked
+  /// there is no way to write that note, so the task moves into the project
+  /// as its first task instead, notes and all.
+  Future<Workspace?> taskToProject(Task t) async {
+    final parent = workspaceByUuid(t.workspaceUuid);
+    if (parent == null || parent.isProject) return null;
+    final stamp = nowStamp();
+    final p = Workspace(
+      uuid: newId(),
+      name: t.text,
+      color: parent.color,
+      sortOrder: t.sortOrder,
+      parentUuid: parent.uuid,
+      createdAt: stamp,
+      updatedAt: stamp,
+    );
+    await _store.putWorkspace(p);
+    final notes = t.notes.trim();
+    if (notes.isNotEmpty && journalLocked) {
+      await _store.putTask(
+        t.copyWith(
+          workspaceUuid: p.uuid,
+          sortOrder: 0,
+          inProgress: false,
+          updatedAt: stamp,
+        ),
+      );
+    } else {
+      if (notes.isNotEmpty) {
+        final (title, body, enc) = await _encodeFields(t.text, notes);
+        await _store.putJournal(
+          JournalEntry(
+            uuid: newId(),
+            workspaceUuid: p.uuid,
+            title: title,
+            text: body,
+            encrypted: enc,
+            createdAt: stamp,
+            updatedAt: stamp,
+          ),
+        );
+      }
+      await _store.putTask(
+        t.copyWith(deletedAt: stamp, inProgress: false, updatedAt: stamp),
+      );
+    }
+    if (focusTask?.uuid == t.uuid) focusTask = null;
     await refreshWorkspaces();
     await refreshTasks();
     _mutated();
+    return p;
+  }
+
+  Future<void> renameProject(Workspace p, String name) async {
+    final title = name.trim();
+    if (title.isEmpty || title == p.name) return;
+    await _store.putWorkspace(p.copyWith(name: title, updatedAt: nowStamp()));
+    await refreshWorkspaces();
+    _mutated();
+  }
+
+  /// Puts a project away, as it is. Its tasks keep their reminders and
+  /// repeats, and the store's queries simply skip them while it is archived
+  /// (`_notArchived`), so [restoreProject] needs to re-arm nothing. The one
+  /// thing dropped is focus, as parking drops it: a task put away is not the
+  /// one you are working on, and a flag left set would drop you back into
+  /// focus on it the moment the project was restored.
+  Future<void> archiveProject(Workspace p) async {
+    final stamp = nowStamp();
+    final focused = focusTask;
+    if (focused != null && focused.workspaceUuid == p.uuid) {
+      focusTask = null;
+      await _store.setInProgress(focused.uuid, false);
+    }
+    await _store.putWorkspace(p.copyWith(archivedAt: stamp, updatedAt: stamp));
+    if (currentWorkspaceUuid == p.uuid) {
+      await selectWorkspace(p.parentUuid!);
+    }
+    await refreshWorkspaces();
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// Back on its parent's list, at the end, where a returning row is seen.
+  Future<void> restoreProject(Workspace p) async {
+    await _store.putWorkspace(
+      p.copyWith(
+        clearArchived: true,
+        sortOrder: await _store.nextSortOrder(p.parentUuid!),
+        updatedAt: nowStamp(),
+      ),
+    );
+    await refreshWorkspaces();
+    await refreshTasks();
+    _mutated();
+  }
+
+  /// What an archived project held, for reading it in Settings. Read
+  /// straight from the store: an archived project is never the current
+  /// workspace, so none of the loaded lists are its.
+  Future<ArchivedProject> archivedContents(Workspace p) async {
+    final all = await _store.allTasksInWorkspace(p.uuid);
+    return ArchivedProject(
+      open: [
+        for (final t in all)
+          if (t.completedAt == null) t,
+      ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)),
+      done: await _store.history(p.uuid),
+      notes: (await _store.journalEntries(p.uuid)).length,
+      shelves: (await _store.parkedGroups(p.uuid)).length,
+    );
   }
 
   // ---------------------------------------------------------------- tasks
@@ -432,6 +701,8 @@ class AppState extends ChangeNotifier {
       parked = await _store.parkedTasks(ws);
       if (showHistory) historyTasks = await _store.history(ws);
     }
+    projectOpenCounts =
+        projects.isEmpty ? const {} : await _store.projectOpenCounts();
     // The journal is loaded separately (see refreshJournal), only while its view
     // is open, so it is not swept up in every task edit. refreshJournal itself
     // handles the locked case by clearing the list.
@@ -1040,7 +1311,7 @@ class AppState extends ChangeNotifier {
   /// A query per workspace: there are a handful, and this is opened by hand.
   Future<Map<String, List<ParkedGroup>>> groupsByWorkspace() async {
     return {
-      for (final w in workspaces) w.uuid: await _store.parkedGroups(w.uuid),
+      for (final w in moveTargets) w.uuid: await _store.parkedGroups(w.uuid),
     };
   }
 
@@ -3028,7 +3299,14 @@ class AppState extends ChangeNotifier {
 
   Color get workspaceColor {
     final ws = currentWorkspace;
-    return ws == null ? T.accent : T.parseHex(ws.color);
+    return ws == null ? T.accent : colorOf(ws);
+  }
+
+  /// A workspace's colour; a project's is its parent's, so the two cannot
+  /// drift apart and a project reads as part of the workspace it is in.
+  Color colorOf(Workspace w) {
+    final parent = w.isProject ? workspaceByUuid(w.parentUuid) : null;
+    return T.parseHex((parent ?? w).color);
   }
 }
 
@@ -3095,4 +3373,19 @@ class FieldDraft {
   final String? uuid;
   final String name;
   final FieldKind kind;
+}
+
+/// An archived project's contents, read for Settings' archive.
+class ArchivedProject {
+  const ArchivedProject({
+    required this.open,
+    required this.done,
+    required this.notes,
+    required this.shelves,
+  });
+
+  final List<Task> open;
+  final List<Task> done;
+  final int notes;
+  final int shelves;
 }

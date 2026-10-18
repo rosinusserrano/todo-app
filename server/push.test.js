@@ -115,6 +115,36 @@ test('a task reminder in the window is due; parked, done and future ones are not
   assert.equal(due[0].title, 'Reminder');
 });
 
+test('a task in an archived project is quiet', () => {
+  const db = subscribed();
+  const ws = (uuid, archived_at) => ({
+    uuid,
+    name: uuid,
+    color: '#888',
+    sort_order: 0,
+    parent_uuid: 'ws-1',
+    archived_at,
+    created_at: STAMP,
+    updated_at: STAMP,
+    deleted_at: null,
+  });
+  sync(
+    db,
+    USER,
+    0,
+    {
+      workspaces: [ws('p-open', null), ws('p-shut', STAMP)],
+      tasks: [
+        task('live', 'in a project', '2026-10-10T09:00:00+02:00', { workspace_uuid: 'p-open' }),
+        task('shut', 'archived', '2026-10-10T09:00:00+02:00', { workspace_uuid: 'p-shut' }),
+      ],
+    },
+    7
+  );
+  const due = dueNotifications(db, USER, at('2026-10-10T06:55:00Z'), at('2026-10-10T07:05:00Z'));
+  assert.deepEqual(due.map((n) => n.body), ['in a project']);
+});
+
 test('stamps are compared as instants, whatever offset wrote them', () => {
   const db = subscribed();
   // 03:00 in New York is 07:00Z - inside the window although its text sorts

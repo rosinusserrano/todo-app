@@ -80,6 +80,7 @@ class TaskRow extends StatefulWidget {
     required this.onFocus,
     this.onSetReminder,
     this.onPark,
+    this.onMakeProject,
     this.onUnplan,
     this.onOpenAttachments,
     this.onSetPriority,
@@ -115,6 +116,10 @@ class TaskRow extends StatefulWidget {
   /// Shelve this task in a parked group. Takes the anchor of the row that
   /// opened it so the picker lands under the task rather than at the pointer.
   final Future<void> Function(RelativeRect anchor)? onPark;
+
+  /// Turn the task into a project of its name, in its place on the list. Null
+  /// inside a project (one level only) and wherever the row is not on a list.
+  final Future<void> Function()? onMakeProject;
 
   /// Take this task back out of the calendar block it is planned into. Offered
   /// only on a task that *is* planned, which is also the only case where the
@@ -339,6 +344,12 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           icon: Icons.inbox_rounded,
           label: 'Park it in a group — off the list, not gone',
         ),
+      if (widget.onMakeProject != null)
+        const TaskActionItem(
+          action: TaskAction.project,
+          icon: Icons.folder_outlined,
+          label: 'Make it a project — a list of its own',
+        ),
       TaskActionItem(
         action: TaskAction.focus,
         icon: Icons.play_arrow_rounded,
@@ -408,6 +419,8 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
         await widget.onUnplan?.call();
       case TaskAction.park:
         await _openParkMenu();
+      case TaskAction.project:
+        await widget.onMakeProject?.call();
       case TaskAction.focus:
         widget.onFocus();
       case TaskAction.expand:

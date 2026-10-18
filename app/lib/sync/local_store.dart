@@ -78,7 +78,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 20,
+        version: 21,
         onCreate: _create,
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
@@ -264,6 +264,16 @@ class LocalStore {
       await db.execute('ALTER TABLE tasks ADD COLUMN audio TEXT');
       await db.execute('ALTER TABLE tasks ADD COLUMN audio_ms INTEGER');
       await db.execute(_blobsTable);
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
+    }
+    if (from < 21) {
+      // Projects: a workspace with a parent, and its archive. Null is "a
+      // workspace" and "not archived", which is every existing row. The
+      // cursor goes back for v16's reason: below protocol 7 the server does
+      // not send the columns.
+      await db.execute('ALTER TABLE workspaces ADD COLUMN parent_uuid TEXT');
+      await db.execute('ALTER TABLE workspaces ADD COLUMN archived_at TEXT');
       await db.update('sync_state', {'value': '0'},
           where: 'key = ?', whereArgs: ['cursor']);
     }
@@ -648,6 +658,8 @@ class LocalStore {
         color      TEXT NOT NULL,
         sort_order INTEGER NOT NULL DEFAULT 0,
         shortcuts  TEXT,
+        parent_uuid TEXT,
+        archived_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -755,6 +767,15 @@ class LocalStore {
 
   // ------------------------------------------------------------------ reads
 
+  /// A `tasks` predicate: not in an archived project. An archived project is
+  /// put away whole, so nothing in it reminds, holds focus, spawns its next
+  /// occurrence or turns up in a session - and restoring it brings all of
+  /// that back with nothing to re-arm, since none of it was touched.
+  static const _notArchived = 'workspace_uuid NOT IN '
+      '(SELECT uuid FROM workspaces WHERE archived_at IS NOT NULL)';
+
+  /// Every live workspace, projects and archived projects included -
+  /// `AppState` splits them.
   Future<List<Workspace>> workspaces() async {
     final rows = await _db.query('workspaces',
         where: 'deleted_at IS NULL', orderBy: 'sort_order, created_at');
@@ -842,7 +863,7 @@ class LocalStore {
     // focus onto a task with no row in the list would strand the focus view.
     final rows = await _db.query('tasks',
         where: 'in_progress = 1 AND completed_at IS NULL '
-            'AND deleted_at IS NULL AND group_uuid IS NULL',
+            'AND deleted_at IS NULL AND group_uuid IS NULL AND $_notArchived',
         orderBy: 'updated_at DESC',
         limit: 1);
     return rows.isEmpty ? null : Task.fromMap(rows.first);
@@ -859,7 +880,7 @@ class LocalStore {
   Future<List<Task>> _armed() async {
     final rows = await _db.query('tasks',
         where: 'remind_at IS NOT NULL AND completed_at IS NULL '
-            'AND deleted_at IS NULL AND group_uuid IS NULL',
+            'AND deleted_at IS NULL AND group_uuid IS NULL AND $_notArchived',
         orderBy: 'remind_at');
     return rows.map(Task.fromMap).toList();
   }
@@ -905,7 +926,7 @@ class LocalStore {
         (now ?? DateTime.now()).subtract(recurringSeedWindow);
     final rows = await _db.query(
       'tasks',
-      where: 'recur IS NOT NULL AND deleted_at IS NULL '
+      where: 'recur IS NOT NULL AND deleted_at IS NULL AND $_notArchived '
           'AND (completed_at IS NULL OR completed_at >= ?)',
       whereArgs: [stampOf(since)],
     );
@@ -1134,7 +1155,7 @@ class LocalStore {
   Future<List<Task>> tasksForEvent(String eventUuid) async {
     final rows = await _db.query('tasks',
         where: 'event_uuid = ? AND completed_at IS NULL '
-            'AND deleted_at IS NULL AND group_uuid IS NULL',
+            'AND deleted_at IS NULL AND group_uuid IS NULL AND $_notArchived',
         whereArgs: [eventUuid],
         orderBy: 'sort_order, created_at');
     return rows.map(Task.fromMap).toList();
@@ -1490,28 +1511,51 @@ class LocalStore {
 
   /// Persist the manual drag order. Writing every row keeps sort_order dense,
   /// so a later insert cannot land ambiguously between two equal values.
+  /// Writes a list's order. A uuid may name a task or a **project** on that
+  /// list: they are rows of one list and share one order, so each uuid is
+  /// tried against both tables and matches exactly one of them.
   Future<void> reorderTasks(List<String> uuids) async {
     final stamp = nowStamp();
     await _db.transaction((txn) async {
       for (var i = 0; i < uuids.length; i++) {
-        await txn.update(
-          'tasks',
-          {'sort_order': i, 'updated_at': stamp, 'dirty': 1},
-          where: 'uuid = ?',
-          whereArgs: [uuids[i]],
-        );
+        final row = {'sort_order': i, 'updated_at': stamp, 'dirty': 1};
+        final n = await txn.update('tasks', row,
+            where: 'uuid = ?', whereArgs: [uuids[i]]);
+        if (n == 0) {
+          await txn.update('workspaces', row,
+              where: 'uuid = ? AND parent_uuid IS NOT NULL',
+              whereArgs: [uuids[i]]);
+        }
       }
     });
   }
 
   /// Next sort_order for a new task, so it appends rather than jumping to the
-  /// top of a manually ordered list.
+  /// top of a manually ordered list. The list's projects count too: they are
+  /// rows of the same list and share its order.
   Future<int> nextSortOrder(String workspaceUuid) async {
     final rows = await _db.rawQuery(
-      'SELECT MAX(sort_order) AS m FROM tasks WHERE workspace_uuid = ?',
-      [workspaceUuid],
+      'SELECT MAX(m) AS m FROM ('
+      'SELECT MAX(sort_order) AS m FROM tasks WHERE workspace_uuid = ? '
+      'UNION ALL '
+      'SELECT MAX(sort_order) AS m FROM workspaces WHERE parent_uuid = ?)',
+      [workspaceUuid, workspaceUuid],
     );
     return ((rows.first['m'] as num?)?.toInt() ?? -1) + 1;
+  }
+
+  /// How many open tasks are on each project's list, keyed by project uuid -
+  /// the count its row in the parent's list shows. Shelved tasks are not on
+  /// the list, so they are not counted.
+  Future<Map<String, int>> projectOpenCounts() async {
+    final rows = await _db.rawQuery(
+      'SELECT t.workspace_uuid AS w, COUNT(*) AS n FROM tasks t '
+      'JOIN workspaces p ON p.uuid = t.workspace_uuid '
+      'WHERE p.parent_uuid IS NOT NULL AND t.completed_at IS NULL '
+      'AND t.deleted_at IS NULL AND t.group_uuid IS NULL '
+      'GROUP BY t.workspace_uuid',
+    );
+    return {for (final r in rows) r['w'] as String: (r['n'] as num).toInt()};
   }
 
   Future<int> nextGroupSortOrder(String workspaceUuid) async {

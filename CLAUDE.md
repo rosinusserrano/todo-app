@@ -262,6 +262,29 @@ dirty so the collapse propagates rather than having to be repeated per device.
 It matches on name *and* colour, so a workspace the user renamed or recoloured
 is theirs and is left alone.
 
+**A project is a workspace with a parent** (`workspaces.parent_uuid`, v21),
+drawn as one row of the parent's list (`ui/project_row.dart`). Opening it makes
+it `currentWorkspaceUuid`, so every per-workspace view is the project's with no
+special case. Things that are load-bearing:
+
+- **`AppState.workspaces` excludes projects**, and that is what keeps them off
+  the dock and out of `ensureWorkspaceCalendars`. They are `projects` /
+  `archivedProjects`; what should reach them asks for `moveTargets` (the move
+  picker, the add card). `currentWorkspace` searches both lists, and
+  `homeWorkspace` is the parent - what the dock names. A project whose parent
+  is gone is put in `workspaces`, so it cannot become unreachable.
+- **`sort_order` on a project is its place among the parent's tasks**, so the
+  list is one order: `AppState.listRows` merges the two, `reorderTasks` writes
+  whichever table a uuid is in, `nextSortOrder` takes the max of both.
+- **Archive (`archived_at`) writes nothing in the project.** The store's
+  reminder, focus, recurrence-seed and session queries carry `_notArchived`,
+  and `server/push.js` the same; change one and change the other. Archive does
+  drop focus (as parking does), or restoring would re-enter it.
+- **One level.** `addProject` aimed at a project goes to its parent, and
+  `currentProjects` is empty inside one.
+- A project's colour is its parent's (`colorOf`); `saveWorkspace` rewrites the
+  stored copy on a recolour because the pickers draw the stored one.
+
 Two scopes that are easy to confuse: **side thoughts are global** (one pile,
 every workspace, no `workspace_uuid` column) while **parked groups and the
 journal are per-workspace** (they carry `workspace_uuid` and are reloaded on

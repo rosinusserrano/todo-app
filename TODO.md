@@ -29,6 +29,25 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 63. Projects  `[~]`
+
+Asked for 2026-10-18; design in `ROADMAP.md` under *Projects*. Built on
+`redesign`.
+
+- [x] **63.1** `workspaces.parent_uuid` / `archived_at` (client v21, protocol
+      7, `COLUMN_SINCE` on the server); archived projects quiet in the
+      store's queries and in `server/push.js`.
+- [x] **63.2** `AppState`: `projects`, `archivedProjects`, `listRows`,
+      `moveTargets`, add / make-from-task / rename / archive / restore /
+      delete; `test/projects_test.dart`, server tests.
+- [x] **63.3** UI: `ui/project_row.dart` (the row, its menu), the list header
+      and Esc inside a project, the add card's folder toggle, *Make it a
+      project* in the task bar, `ui/archived_projects.dart` in Settings.
+- [ ] **63.4** Published to the dev site; Marco tries it (the row's look
+      especially).
+- [ ] **63.5** Merge to `main`; deploy the server (protocol 7) and the web
+      app.
+
 ### 62. Six from the shelf  `[~]`
 
 Sent 2026-10-16 (screenshot of the shelf); answers and reasons in

@@ -458,6 +458,18 @@ class Workspace implements SyncRow {
   /// stored without the `#`. Empty for most workspaces; null in the
   /// database (v19), which is what every older row means.
   final List<String> shortcuts;
+
+  /// The workspace this one is a **project** of, or null for a workspace
+  /// (v21). A project is a whole workspace - list, notes, shelves,
+  /// collections, history - drawn as one row in its parent's list, and
+  /// [sortOrder] is then its place *among that list's tasks*. One level
+  /// only: a project's own parent is never a project.
+  final String? parentUuid;
+
+  /// When the project was put away, or null while it is on its parent's list.
+  /// Archived is frozen as it was, open tasks and all; nothing in it reminds,
+  /// spawns or turns up in a session until it is restored.
+  final String? archivedAt;
   final String createdAt;
   @override
   final String updatedAt;
@@ -470,6 +482,8 @@ class Workspace implements SyncRow {
     required this.color,
     required this.sortOrder,
     this.shortcuts = const [],
+    this.parentUuid,
+    this.archivedAt,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -478,11 +492,16 @@ class Workspace implements SyncRow {
   @override
   bool get isDeleted => deletedAt != null;
 
+  bool get isProject => parentUuid != null;
+  bool get isArchived => archivedAt != null;
+
   Workspace copyWith({
     String? name,
     String? color,
     int? sortOrder,
     List<String>? shortcuts,
+    String? archivedAt,
+    bool clearArchived = false,
     String? updatedAt,
     String? deletedAt,
     bool clearDeleted = false,
@@ -493,6 +512,8 @@ class Workspace implements SyncRow {
         color: color ?? this.color,
         sortOrder: sortOrder ?? this.sortOrder,
         shortcuts: shortcuts ?? this.shortcuts,
+        parentUuid: parentUuid,
+        archivedAt: clearArchived ? null : (archivedAt ?? this.archivedAt),
         createdAt: createdAt,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
@@ -505,6 +526,8 @@ class Workspace implements SyncRow {
         'color': color,
         'sort_order': sortOrder,
         'shortcuts': shortcuts.isEmpty ? null : jsonEncode(shortcuts),
+        'parent_uuid': parentUuid,
+        'archived_at': archivedAt,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -516,6 +539,8 @@ class Workspace implements SyncRow {
         color: m['color']! as String,
         sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
         shortcuts: _decodeShortcuts(m['shortcuts']),
+        parentUuid: m['parent_uuid'] as String?,
+        archivedAt: m['archived_at'] as String?,
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,

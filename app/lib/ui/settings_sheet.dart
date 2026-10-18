@@ -43,6 +43,8 @@ class SettingsSheet extends StatefulWidget {
     this.onOpenHistory,
     this.dockEdge = DockEdge.top,
     this.onDockEdge,
+    this.archivedCount = 0,
+    this.archive,
   });
 
   final SyncService sync;
@@ -67,6 +69,11 @@ class SettingsSheet extends StatefulWidget {
   /// window keeps it at the bottom whatever this says. Null hides the row.
   final DockEdge dockEdge;
   final ValueChanged<DockEdge>? onDockEdge;
+
+  /// How many projects are archived, and the page that shows them
+  /// (archived_projects.dart). The row is drawn only while there is one.
+  final int archivedCount;
+  final Widget Function()? archive;
 
   @override
   State<SettingsSheet> createState() => _SettingsSheetState();
@@ -101,6 +108,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// as a dialog on top of it — a second modal route would put the barrier back
   /// over the title bar, and a 340px window has no room to stack panels anyway.
   bool _showUsers = false;
+
+  /// The archived projects, shown in place the same way.
+  bool _showArchive = false;
 
   @override
   void initState() {
@@ -223,6 +233,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
                       sync: widget.sync,
                       onBack: () => setState(() => _showUsers = false),
                     )
+                  : _showArchive && widget.archive != null
+                  ? widget.archive!()
                   : _settingsBody(),
             ),
           ],
@@ -236,9 +248,12 @@ class _SettingsSheetState extends State<SettingsSheet> {
       padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, 2),
       child: Row(
         children: [
-          if (_showUsers)
+          if (_showUsers || _showArchive)
             InkWell(
-              onTap: () => setState(() => _showUsers = false),
+              onTap: () => setState(() {
+                _showUsers = false;
+                _showArchive = false;
+              }),
               borderRadius: BorderRadius.circular(T.radius),
               child: const Padding(
                 padding: EdgeInsets.only(right: T.s2),
@@ -246,7 +261,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
               ),
             ),
           Text(
-            _showUsers ? 'People on this server' : 'Settings',
+            _showUsers
+                ? 'People on this server'
+                : _showArchive
+                ? 'Archived projects'
+                : 'Settings',
             style: const TextStyle(
               fontSize: T.fsLabel,
               fontWeight: T.wMedium,
@@ -408,6 +427,35 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  Widget _archiveRow() {
+    final n = widget.archivedCount;
+    return InkWell(
+      onTap: () => setState(() => _showArchive = true),
+      borderRadius: BorderRadius.circular(T.radius),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: T.s2),
+        child: Row(
+          children: [
+            const Icon(Icons.archive_outlined, size: 18, color: T.muted),
+            const SizedBox(width: T.s2),
+            const Expanded(
+              child: Text(
+                'Archived projects',
+                style: TextStyle(fontSize: T.fsBody, color: T.text),
+              ),
+            ),
+            Text(
+              '$n',
+              style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+            ),
+            const SizedBox(width: T.s1),
+            const Icon(Icons.chevron_right_rounded, size: 18, color: T.muted),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _historyRow(VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -558,12 +606,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
       padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, T.s3),
       children: [
         if (widget.onOpenHistory != null) _historyRow(widget.onOpenHistory!),
+        if (widget.archive != null && widget.archivedCount > 0) _archiveRow(),
         if (widget.onZoom != null) _zoomRow(widget.onZoom!),
         if (widget.onDockEdge != null) ...[
           const SizedBox(height: T.s2),
           _dockRow(widget.onDockEdge!),
         ],
         if (widget.onOpenHistory != null ||
+            (widget.archive != null && widget.archivedCount > 0) ||
             widget.onZoom != null ||
             widget.onDockEdge != null)
           const SizedBox(height: T.s3),

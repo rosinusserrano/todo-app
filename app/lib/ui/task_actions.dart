@@ -51,6 +51,7 @@ enum TaskAction {
   attach,
   unplan,
   park,
+  project,
   focus,
   expand,
   edit,

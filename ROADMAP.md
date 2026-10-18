@@ -9,6 +9,49 @@ work that is about to happen.
 
 ## In progress
 
+### Projects — asked for 2026-10-18
+
+Marco: "basically like a workspace inside a workspace. If a workspace has a
+project, display it as a normal Task, but elevate it somehow in terms of
+design, and can't check off, only archive (and there in settings there is
+somewhere archived projects that one can consult". Four answers asked for
+and given: a project holds a **whole workspace** (not just tasks); archiving
+with open tasks is allowed and **freezes it as it is**; its tasks show **only
+inside it**; **one level** of nesting.
+
+- **A workspace row with a parent, not a kind of task.** "A whole workspace"
+  is then free: the current workspace becomes the project and every
+  per-workspace query - list, shelves, journal, collections, history - answers
+  for it with no special case. The alternative (a task flagged as a project,
+  its children pointing at it) would have needed a second home for notes,
+  shelves and collections. `workspaces.parent_uuid` + `archived_at`, both
+  null for every existing row.
+- **`sort_order` is reused for its place in the parent's list.** A project
+  never appears in the dock, so the column's old meaning is free, and the
+  list is one order: `reorderTasks` writes whichever table a uuid is in, and
+  `nextSortOrder` takes the maximum of both. A second column would be two
+  orders to reconcile.
+- **`AppState.workspaces` stays the workspaces proper.** Projects are a
+  separate list (`projects`, `archivedProjects`), so the dock, the calendar's
+  lazily provisioned workspace calendars and the workspace form never see
+  them; the places that *should* reach them (move picker, add card) ask for
+  `moveTargets`. Opting in is the safer default - forgetting it leaves a
+  project out of a menu, where opting out would have given every project a
+  calendar of its own.
+- **Archive writes nothing in the project.** The store's task queries for
+  reminders, focus, the recurrence sweep and sessions skip an archived
+  project (`_notArchived`), and the server's push does the same, so restoring
+  re-arms nothing. The one exception is focus, dropped like parking drops it,
+  since a flag left set would re-enter focus on restore.
+- **The archive is read-only.** Consulting is what was asked for; editing an
+  archived project is restoring it. Two rungs inside the settings sheet, the
+  people page's shape.
+- **Colour is the parent's**, read through `AppState.colorOf` and kept in step
+  in the stored column when the workspace is recoloured, because the pickers
+  draw the stored one.
+- **An orphan is a workspace.** A project whose parent was deleted elsewhere
+  is shown as a workspace of its own rather than becoming unreachable.
+
 ### The add card — asked for 2026-10-15
 
 Marco: tapping the field or the dock's ＋ should fly the field to the middle

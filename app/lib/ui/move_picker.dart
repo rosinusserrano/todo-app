@@ -79,7 +79,7 @@ Future<MoveTarget?> showMovePicker(
       ),
       for (final w in others) ...[
         const PopupMenuDivider(),
-        _Header(w.name, color: T.parseHex(w.color)),
+        _Header(_name(w, workspaces), color: T.parseHex(w.color)),
         _item(MoveTarget(w.uuid), 'Its list', icon: Icons.checklist_rounded),
         for (final g in groups[w.uuid] ?? const <ParkedGroup>[])
           _item(MoveTarget(w.uuid, g.uuid), g.title),
@@ -90,6 +90,14 @@ Future<MoveTarget?> showMovePicker(
   if (chosen != _newGroup) return chosen;
   final created = await onCreateGroup();
   return created == null ? null : MoveTarget(currentWorkspaceUuid, created.uuid);
+}
+
+/// A project is named under its workspace - "Work › Launch" - since two
+/// workspaces can each have a project of the same name.
+String _name(Workspace w, List<Workspace> all) {
+  if (!w.isProject) return w.name;
+  final parent = all.where((p) => p.uuid == w.parentUuid).firstOrNull;
+  return parent == null ? w.name : '${parent.name} › ${w.name}';
 }
 
 PopupMenuItem<MoveTarget> _item(

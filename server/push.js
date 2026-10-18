@@ -26,6 +26,8 @@
 // from the native app would be a second definition of "a reminder":
 //
 //   - A parked task does not fire (`group_uuid` set): parking means "not now".
+//   - Nor does a task in an archived project (`workspaces.archived_at`): the
+//     archive is a project put away whole, open tasks and all.
 //   - An event's lead is its own `notify_minutes`, else its calendar's; -1 is
 //     silent; an all-day event does not inherit the calendar's lead (an hour
 //     before midnight is 23:00 the night before every birthday).
@@ -245,7 +247,11 @@ export function dueNotifications(db, userId, from, to) {
     .prepare(
       `SELECT uuid, text, remind_at FROM tasks
        WHERE user_id = ? AND remind_at IS NOT NULL AND completed_at IS NULL
-         AND deleted_at IS NULL AND group_uuid IS NULL`
+         AND deleted_at IS NULL AND group_uuid IS NULL
+         AND workspace_uuid NOT IN (
+           SELECT uuid FROM workspaces
+           WHERE user_id = tasks.user_id AND archived_at IS NOT NULL
+         )`
     )
     .all(userId);
   for (const t of tasks) {

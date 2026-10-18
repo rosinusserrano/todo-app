@@ -63,5 +63,8 @@
 //   6  Voice notes: `audio` and `audio_ms` on `side_thoughts` and `tasks`, in
 //      COLUMN_SINCE on 5's terms. The bytes go through /api/blobs, which an
 //      older server answers with 404 - the client keeps them queued.
-export const PROTOCOL = 6;
+//   7  Projects: `parent_uuid` and `archived_at` on `workspaces`, in
+//      COLUMN_SINCE on 5's terms. An older app shows a project as one more
+//      workspace, which is what it is underneath. MIN_CLIENT stays 1.
+export const PROTOCOL = 7;
 export const MIN_CLIENT = 1;

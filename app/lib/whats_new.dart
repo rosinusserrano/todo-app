@@ -38,6 +38,19 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-18-3',
+    title: 'Projects',
+    points: [
+      'A project is a list of its own inside a workspace, with its own '
+          'notes, shelves and history. It sits in the list as a coloured '
+          'block; tap it to open it.',
+      'Make one with the folder button in the add card, or turn a task into '
+          'one from its menu.',
+      "A project isn't ticked off, it's archived: Settings → Archived "
+          'projects keeps it to look at or bring back.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-18-2',
     title: 'Notes in focus',
     points: [

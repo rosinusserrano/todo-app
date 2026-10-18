@@ -67,12 +67,17 @@ class CaptureResult {
     this.workspaceUuid,
     this.priority = 0,
     this.remindAt,
+    this.project = false,
   });
 
   final String title;
   final String? workspaceUuid;
   final int priority;
   final DateTime? remindAt;
+
+  /// Add a project of this name rather than a task. Priority and reminder
+  /// are not offered then: they belong to the project's tasks.
+  final bool project;
 }
 
 /// A text controller that draws the recognised keywords highlighted.
@@ -207,6 +212,10 @@ class _TaskCaptureState extends State<TaskCapture>
 
   int _priority = 0;
 
+  /// The folder on the bar: what is added is a project, not a task. Forgotten
+  /// after each add, like the priority - a project is the exception.
+  bool _project = false;
+
   /// Chosen by hand. Either one switches its kind of keyword off.
   DateTime? _remindAt;
   String? _workspace;
@@ -339,8 +348,9 @@ class _TaskCaptureState extends State<TaskCapture>
     return CaptureResult(
       title: p.title,
       workspaceUuid: ws,
-      priority: _priority,
-      remindAt: _remindAt ?? p.remindAt,
+      priority: _project ? 0 : _priority,
+      remindAt: _project ? null : _remindAt ?? p.remindAt,
+      project: _project,
     );
   }
 
@@ -348,6 +358,7 @@ class _TaskCaptureState extends State<TaskCapture>
   /// tasks in a row are usually for the same place.
   void _resetForNext() {
     _priority = 0;
+    _project = false;
     _remindAt = null;
     _ignoreWorkspaceWord = false;
     _ignoreDateWords = false;
@@ -566,6 +577,7 @@ class _TaskCaptureState extends State<TaskCapture>
   }
 
   Future<void> _expand() async {
+    if (_project) return;
     final done = await widget.onExpand(_result);
     if (!mounted) return;
     if (done) {
@@ -639,6 +651,8 @@ class _TaskCaptureState extends State<TaskCapture>
             height: 38,
             child: Row(
               children: [
+                // A project sits under its workspace, one step in.
+                if (w.isProject) const SizedBox(width: T.s4),
                 _Dot(T.parseHex(w.color)),
                 const SizedBox(width: T.s2),
                 Expanded(
@@ -874,31 +888,36 @@ class _TaskCaptureState extends State<TaskCapture>
             spacing: T.s1,
             runSpacing: T.s1,
             children: [
-              _BarButton(
-                tooltip: _priority > 0 ? 'High priority' : 'Mark high priority',
-                height: size,
-                lit: _priority > 0,
-                color: T.flagged,
-                icon: _priority > 0
-                    ? Icons.flag_rounded
-                    : Icons.outlined_flag_rounded,
-                onTap: () => setState(() => _priority = _priority > 0 ? 0 : 1),
-              ),
-              _BarButton(
-                key: _reminderKey,
-                tooltip: 'Reminder',
-                height: size,
-                lit: remindAt != null,
-                color: T.accent,
-                icon: remindAt == null
-                    ? Icons.notifications_none_rounded
-                    : Icons.notifications_active_rounded,
-                label: remindAt == null ? null : describeReminder(remindAt),
-                onTap: _pickReminder,
-                onDismiss: remindFromWord
-                    ? () => _setRules(() => _ignoreDateWords = true)
-                    : null,
-              ),
+              if (!_project)
+                _BarButton(
+                  tooltip: _priority > 0
+                      ? 'High priority'
+                      : 'Mark high priority',
+                  height: size,
+                  lit: _priority > 0,
+                  color: T.flagged,
+                  icon: _priority > 0
+                      ? Icons.flag_rounded
+                      : Icons.outlined_flag_rounded,
+                  onTap: () =>
+                      setState(() => _priority = _priority > 0 ? 0 : 1),
+                ),
+              if (!_project)
+                _BarButton(
+                  key: _reminderKey,
+                  tooltip: 'Reminder',
+                  height: size,
+                  lit: remindAt != null,
+                  color: T.accent,
+                  icon: remindAt == null
+                      ? Icons.notifications_none_rounded
+                      : Icons.notifications_active_rounded,
+                  label: remindAt == null ? null : describeReminder(remindAt),
+                  onTap: _pickReminder,
+                  onDismiss: remindFromWord
+                      ? () => _setRules(() => _ignoreDateWords = true)
+                      : null,
+                ),
               _BarButton(
                 key: _workspaceKey,
                 tooltip: 'Workspace',
@@ -912,18 +931,31 @@ class _TaskCaptureState extends State<TaskCapture>
                     ? () => _setRules(() => _ignoreWorkspaceWord = true)
                     : null,
               ),
+              // Last, so the priority and the reminder keep their places.
+              _BarButton(
+                tooltip: _project ? 'Adds a project' : 'Add as a project',
+                height: size,
+                lit: _project,
+                color: wsColor,
+                icon: Icons.folder_outlined,
+                label: _project ? 'Project' : null,
+                onTap: () => setState(() => _project = !_project),
+              ),
             ],
           ),
         ),
-        const SizedBox(width: T.s1),
-        _BarButton(
-          tooltip: 'Notes, repeat and more (Ctrl+D)',
-          height: size,
-          lit: false,
-          color: T.muted,
-          icon: Icons.open_in_full_rounded,
-          onTap: _expand,
-        ),
+        // The composer writes a task; a project has nothing for it to set.
+        if (!_project) ...[
+          const SizedBox(width: T.s1),
+          _BarButton(
+            tooltip: 'Notes, repeat and more (Ctrl+D)',
+            height: size,
+            lit: false,
+            color: T.muted,
+            icon: Icons.open_in_full_rounded,
+            onTap: _expand,
+          ),
+        ],
         const SizedBox(width: T.s1),
         // The one filled block on the card: it is the thing the card is for.
         Tooltip(

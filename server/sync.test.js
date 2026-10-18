@@ -1398,3 +1398,36 @@ test('voice notes sync at protocol 6 and survive an older app', async () => {
   assert.equal(after.resolved_at, '2026-10-17T11:00:00+02:00');
   assert.equal(after.audio_ms, 42000);
 });
+
+test('projects sync at protocol 7 and survive an older app', async () => {
+  const db = freshDb();
+  const project = {
+    uuid: 'w-launch',
+    name: 'Launch',
+    color: '#7c9cff',
+    sort_order: 3,
+    shortcuts: null,
+    parent_uuid: 'w-work',
+    archived_at: '2026-10-18T10:00:00+02:00',
+    created_at: '2026-10-18T09:00:00+02:00',
+    updated_at: '2026-10-18T10:00:00+02:00',
+    deleted_at: null,
+  };
+  sync(db, USER, 0, { workspaces: [project] }, 7);
+  const got = sync(db, USER, 0, {}, 7).changes.workspaces[0];
+  assert.equal(got.parent_uuid, 'w-work');
+  assert.equal(got.archived_at, '2026-10-18T10:00:00+02:00');
+
+  // Below 7 neither column is sent, and a rename pushed back without them
+  // leaves the project a project, and archived.
+  const old = sync(db, USER, 0, {}, 6).changes.workspaces[0];
+  assert.equal('parent_uuid' in old, false);
+  assert.equal('archived_at' in old, false);
+  const renamed = { ...old, name: 'Launch v2', updated_at: '2026-10-18T11:00:00+02:00' };
+  delete renamed.seq;
+  sync(db, USER, 0, { workspaces: [renamed] }, 6);
+  const after = sync(db, USER, 0, {}, 7).changes.workspaces[0];
+  assert.equal(after.name, 'Launch v2');
+  assert.equal(after.parent_uuid, 'w-work');
+  assert.equal(after.archived_at, '2026-10-18T10:00:00+02:00');
+});

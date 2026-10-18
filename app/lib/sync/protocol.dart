@@ -44,7 +44,10 @@
 /// 6 added voice notes, `audio` and `audio_ms` on `side_thoughts` and
 /// `tasks`, on 5's terms. Their bytes go to `/api/blobs`, which an older
 /// server answers with 404; they stay queued in `blobs` until it is updated.
-const kSyncProtocol = 6;
+///
+/// 7 added projects, `parent_uuid` and `archived_at` on `workspaces`, on 5's
+/// terms: the server's number, nothing held back from an older one.
+const kSyncProtocol = 7;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;

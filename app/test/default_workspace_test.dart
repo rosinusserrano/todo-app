@@ -94,6 +94,8 @@ void main() {
       await store.raw.execute('DROP TABLE collection_fields');
       await store.raw.execute('DROP TABLE collection_entries');
       await store.raw.execute('ALTER TABLE workspaces DROP COLUMN shortcuts');
+      await store.raw.execute('ALTER TABLE workspaces DROP COLUMN parent_uuid');
+      await store.raw.execute('ALTER TABLE workspaces DROP COLUMN archived_at');
       await store.raw.execute('DROP TABLE blobs');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN audio');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN audio_ms');
@@ -267,6 +269,8 @@ void main() {
       await store.raw.execute('DROP TABLE collection_fields');
       await store.raw.execute('DROP TABLE collection_entries');
       await store.raw.execute('ALTER TABLE workspaces DROP COLUMN shortcuts');
+      await store.raw.execute('ALTER TABLE workspaces DROP COLUMN parent_uuid');
+      await store.raw.execute('ALTER TABLE workspaces DROP COLUMN archived_at');
       await store.raw.execute('DROP TABLE blobs');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN audio');
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN audio_ms');

@@ -1460,35 +1460,50 @@ class _WidgetShellState extends State<WidgetShell>
   bool get _neutralChrome => s.showCalendar || s.showThoughts || s.showList;
 
   /// The window's background. Translucent for the desktop's frosted window;
-  /// in a browser it is laid **opaque**, on [T.webBackdrop], and the page is
-  /// given that same colour
-  /// ([setWebChromeColor]) - which is what an iPhone paints the strip round
-  /// the clock with in a home-screen app. Opaque so the page's colour can
-  /// change without the app's changing with it.
+  /// in a browser it is laid **opaque** on [T.webBackdrop], so the page's own
+  /// colour ([T.webPage]) cannot show through and change it.
   Color _windowColor(Color ws) {
     final c = _neutralChrome ? T.calendarBackground : T.tintedBackground(ws);
-    if (!isWeb) return c;
-    final solid = Color.alphaBlend(c, T.webBackdrop);
-    if (solid != _pageColor) {
-      _pageColor = solid;
-      final hex = (solid.toARGB32() & 0xFFFFFF)
-          .toRadixString(16)
-          .padLeft(6, '0');
-      // After the frame: a call out of a build is a side effect, and the
-      // page should change with the frame that draws the new colour.
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => setWebChromeColor('#$hex'),
-      );
-    }
-    return solid;
+    return isWeb ? Color.alphaBlend(c, T.webBackdrop) : c;
   }
 
-  Color? _pageColor;
+  /// The top inset, read outside the SafeArea like [_bottomInset]: the strip
+  /// round an iPhone's clock in the home-screen web app, zero anywhere else.
+  double _topInset = 0;
+
+  /// How far below that strip [_statusFade] reaches.
+  static const _statusFadeLength = 72.0;
+
+  /// The strip round the clock is the page's colour, [T.webPage], and iOS
+  /// paints it in one colour - it does not follow the workspace's tint. So
+  /// the window starts in that colour too and fades into its tint below the
+  /// strip, rather than meeting it at an edge (Marco, 2026-10-20). Drawn
+  /// behind the content: in front, it would fade the title bar's text.
+  Widget _statusFade() => Positioned(
+    key: const ValueKey('status fade'),
+    top: 0,
+    left: 0,
+    right: 0,
+    height: _topInset + _statusFadeLength,
+    child: IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [T.webPage, T.webPage, T.webPage.withValues(alpha: 0)],
+            stops: [0, _topInset / (_topInset + _statusFadeLength), 1],
+          ),
+        ),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final ws = s.workspaceColor;
     _bottomInset = isDesktop ? 0 : MediaQuery.paddingOf(context).bottom;
+    _topInset = isWeb ? MediaQuery.paddingOf(context).top : 0;
     // Read here, above the Scaffold: its body is handed a MediaQuery with
     // the keyboard taken out.
     _keyboardUp = !isDesktop && MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -1631,14 +1646,29 @@ class _WidgetShellState extends State<WidgetShell>
             borderRadius: isDesktop
                 ? BorderRadius.circular(T.radius)
                 : BorderRadius.zero,
-            child: _inset(
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  _layout = Layout(constraints.biggest, touch: !isDesktop);
-                  _laidOut = true;
-                  return LayoutScope(layout: _layout, child: _shell(ws));
-                },
-              ),
+            child: Stack(
+              // Always a Stack, the fade or not, and the content keyed: a
+              // parent that comes and goes, or a sibling of the same type
+              // arriving in front of it, rebuilds the whole shell
+              // (content_slot.dart's lesson).
+              children: [
+                if (_topInset > 0) _statusFade(),
+                Positioned.fill(
+                  key: const ValueKey('window content'),
+                  child: _inset(
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        _layout = Layout(
+                          constraints.biggest,
+                          touch: !isDesktop,
+                        );
+                        _laidOut = true;
+                        return LayoutScope(layout: _layout, child: _shell(ws));
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

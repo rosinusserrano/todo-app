@@ -46,6 +46,10 @@ is the app's background. Built on `redesign`.
       app's colour (`setWebChromeColor`), the window opaque on
       `T.webBackdrop`, which makes the web app a little darker (Marco's
       wish). Straight to `main` (2026-10-20).
+- [x] **65.5** The strip is one colour and the window is tinted, so they met
+      at an edge: the page stays untinted (`T.webPage`) and the window fades
+      from it into the tint below the strip (`_statusFade`). Straight to
+      `main` (2026-10-20).
 
 ### 64. A new note from the dock  `[x]`
 

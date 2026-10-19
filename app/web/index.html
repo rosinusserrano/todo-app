@@ -24,10 +24,10 @@
   <meta name="mobile-web-app-capable" content="yes">
   <!-- The strip round the clock is the page's own colour: no
        apple-mobile-web-app-status-bar-style (black or black-translucent both
-       left it white), a theme-color, and html/body painted the app's colour.
-       The app sets both to its window's colour as the workspace tint changes
-       (todoChromeColor below) and keeps its content under the strip with
-       todoSafeTop(). Co-note's recipe, which works. -->
+       left it white), a theme-color, and html/body in the app's untinted
+       colour - T.webPage in theme.dart, keep them equal. The app fades from
+       it into its tint below the strip and keeps its content clear of the
+       strip with todoSafeTop(). Co-note's recipe, which works. -->
   <meta name="theme-color" content="#27272B">
   <style>html, body { background: #27272B; }</style>
   <meta name="apple-mobile-web-app-title" content="Todo">
@@ -242,13 +242,6 @@
       // The status bar's strip, which the page runs under in a home-screen
       // app (black-translucent, above).
       window.todoSafeTop = function () { return inset('top'); };
-      // The app's window colour, for the strip round the clock.
-      window.todoChromeColor = function (hex) {
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', hex);
-        document.documentElement.style.background = hex;
-        document.body.style.background = hex;
-      };
     })();
   </script>
   <script>

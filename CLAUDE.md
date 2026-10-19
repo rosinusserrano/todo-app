@@ -1826,10 +1826,12 @@ publishes it. Three rules keep it compiling and starting:
   no `apple-mobile-web-app-status-bar-style`: `black` and `black-translucent`
   both left the strip white, because the page under the canvas *was* white.
   So on the web the window's background is laid opaque on `T.webBackdrop`
-  (`_windowColor`, which also hands the colour to the page through
-  `setWebChromeColor` as the tint changes); translucent over a page that can
-  change colour, the app would change with it. Co-note does the same and is
-  where the recipe came from.
+  (`_windowColor`), and the page is `T.webPage`, the untinted window - a
+  literal in `index.html` too, keep them equal. iOS paints the strip in one
+  colour and does not follow a tint, so the window starts in that colour and
+  fades into its tint below the strip (`_statusFade`, behind the content,
+  only where there is a top inset). Co-note does the same and is where the
+  recipe came from.
 - **Notifications are pushed by the server** (`server/push.js`), because a
   browser cannot schedule anything: a page that is closed runs no code. The
   server already holds every task and event row, so it reads what is due once

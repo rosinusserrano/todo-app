@@ -20,6 +20,12 @@ class T {
   /// app a light grey (#39393D); mid-grey is a little darker (#27272B), still
   /// lighter than the native app over black (Marco, 2026-10-19).
   static const webBackdrop = Color(0xFF808080);
+
+  /// The untinted window over [webBackdrop], #27272B: the web page's own
+  /// background and theme-color, which is what an iPhone paints the strip
+  /// round the clock with. web/index.html carries the same value as a
+  /// literal; keep the two together.
+  static final webPage = Color.alphaBlend(bg, webBackdrop);
   static const surface = Color(0x0DFFFFFF); // rgba(255,255,255,0.05)
   static const surfaceHover = Color(0x17FFFFFF); // rgba(255,255,255,0.09)
   static const text = Color(0xFFEDEDF0);

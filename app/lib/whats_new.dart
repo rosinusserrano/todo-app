@@ -38,6 +38,16 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-19-2',
+    title: 'The bar round the clock',
+    points: [
+      "On an iPhone's home screen, the strip round the clock and the camera "
+          "is now the app's own colour instead of white.",
+      'iOS only picks this up for a fresh icon: remove Todo from the home '
+          'screen and add it again from Safari (Share → Add to Home Screen).',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-19',
     title: 'A new note from the menu',
     points: [

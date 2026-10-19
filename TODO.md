@@ -29,16 +29,18 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
-### 65. The status bar in the iOS web app  `[~]`
+### 65. The status bar in the iOS web app  `[x]`
 
 Asked for 2026-10-19: the strip round the clock was white. The page now runs
 under it (`black-translucent`) and reads the top inset (`todoSafeTop`), so it
 is the app's background. Built on `redesign`.
 
 - [x] **65.1** `index.html`, `web_safe_area*.dart`, `_withWebSafeArea`.
-- [~] **65.2** On the dev site; Marco tries it as a home-screen app (iOS
-      reads the tag when the icon is added, so add it again).
-- [ ] **65.3** Merge to `main`; publish the web app with a What's new note.
+- [x] **65.2** Straight to `main` at Marco's word (2026-10-19), without a
+      try on the dev site.
+- [x] **65.3** Merged and the web app published to `/srv/todo-web` with a
+      What's new note (2026-10-19). On the phone the icon has to be added to
+      the home screen again for iOS to read the new tag.
 
 ### 64. A new note from the dock  `[x]`
 

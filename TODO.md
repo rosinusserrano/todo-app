@@ -29,7 +29,7 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
-### 64. A new note from the dock  `[~]`
+### 64. A new note from the dock  `[x]`
 
 Asked for 2026-10-19: in the workspace menu's submenu, Notes shows a ＋ on
 hover that opens a blank note. Built on `redesign`.
@@ -37,8 +37,9 @@ hover that opens a blank note. Built on `redesign`.
 - [x] **64.1** Submenu rows take a second action (`dock.dart`, mouse and
       held finger); Notes' ＋ calls `_addNote(w)`; `JournalView.startNew`,
       and the title asks for the caret itself (autofocus lost it on the web).
-- [~] **64.2** On the dev site (2026-10-19); Marco tries it.
-- [ ] **64.3** Merge to `main`; publish the web app.
+- [x] **64.2** On the dev site (2026-10-19); Marco tried it.
+- [x] **64.3** Merged to `main` and the web app published to
+      `/srv/todo-web` (2026-10-19). No server change.
 
 ### 63. Projects  `[x]`
 

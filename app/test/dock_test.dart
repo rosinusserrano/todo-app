@@ -16,7 +16,8 @@ void main() {
     secondaryIcon: second ? Icons.edit : null,
     secondaryLabel: second ? 'Edit $name' : null,
     onSecondary: second ? () => fired.add('edit $name') : null,
-    children: [for (final c in children) item(c)],
+    // A notes row in a submenu carries a second action, as the app's does.
+    children: [for (final c in children) item(c, second: c.endsWith('notes'))],
   );
 
   Future<void> pump(
@@ -448,6 +449,43 @@ void main() {
       await tester.tap(find.text('Home notes'));
       await tester.pumpAndSettle();
       expect(fired, ['Home notes']);
+    });
+
+    testWidgets('a submenu row\'s second action, under the mouse', (
+      tester,
+    ) async {
+      await pump(tester);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(200, 100));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(const Offset(60, barY));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      await mouse.moveTo(rowCentre(1));
+      await tester.pump(const Duration(milliseconds: 250));
+      // Home notes sits level with Home, against the right edge; its ＋ is
+      // the row's last 56.
+      await mouse.moveTo(rowCentre(1, x: 380));
+      await tester.pump();
+      expect(find.text('Edit Home notes'), findsOneWidget);
+      await tester.tapAt(rowCentre(1, x: 380), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(fired, ['edit Home notes']);
+    });
+
+    testWidgets('a held finger slides onto a submenu row\'s end and lets go '
+        'there', (tester) async {
+      await pump(tester);
+      final g = await tester.startGesture(const Offset(60, barY));
+      await tester.pump();
+      await g.moveTo(rowCentre(1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 450));
+      await g.moveTo(rowCentre(1, x: 380));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['edit Home notes']);
     });
 
     testWidgets('a mouse resting on the row opens it, and it stays while the '

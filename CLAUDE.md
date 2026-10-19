@@ -445,6 +445,9 @@ on top, and opens after `_holdForSub` on one row; the mouse opens it after
 `_subDelay` from the row's hover and keeps it while `_overSub`, which
 `_closeAfterHover` also has to respect or the menu closes under a pointer that
 is in its submenu. A held-open menu has no hover, so there it is a long press.
+A submenu row takes a second action too (Notes' ＋, `_addNote`): `_subRowAt`
+answers `(row, secondary)` like `_rowAt`, and under a hovered menu the icon
+shows only on the row the mouse is on.
 
 **Quick actions wait for the first layout** (`_afterLayout` in `main.dart`).
 iOS delivers the shortcut that launched the app as soon as the handler is

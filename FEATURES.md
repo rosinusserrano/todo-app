@@ -1124,6 +1124,11 @@ at the screen gives nothing away) and its lock is **opt-in**.
   History. With a mouse, rest on the row; with a finger, hold on the row for a
   moment and slide across (or long-press it in a held-open menu). Picking
   one switches workspace and opens that view in one go.
+- **A new note, straight from the menu.** Notes in that little menu has a ＋
+  at its right-hand end - shown when the mouse is on the row - and the row
+  says "New note" while you are on it. It opens that workspace's Notes on a
+  blank note with the caret in the title. With a finger, slide onto the ＋
+  and let go, as for the workspace's pencil.
 - **Hover or hold for the menu, tap or click for the part itself.** A menu
   opens on a mouse resting on its part, or a finger holding it (or sliding
   off it); a quick tap shows no menu at all. What a tap or click does:
@@ -1537,6 +1542,10 @@ reminders are both there now**, queued for 0.18.0.
     (not the add field); the workspace menu has each workspace's views in a
     submenu; double-click a calendar event to edit it; links in task titles
     show the page's title (server: `/api/link-title`).
+  - **A new note from the dock**: Notes in a workspace's submenu has a ＋
+    that opens a blank note there (`DockItem.onSecondary` on submenu rows;
+    `JournalView.startNew`). A new note's title now takes the caret on the
+    web too.
   - **Voice notes**: the thought pane's 🎙 records instead of transcribing,
     and a thought or task with a recording plays it on every device. Rows
     gain `audio` / `audio_ms` (client v20, sync protocol 6); the bytes go

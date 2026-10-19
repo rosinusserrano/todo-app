@@ -74,8 +74,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart'
-    show kLongPressTimeout, kTouchSlop;
+import 'package:flutter/gestures.dart' show kLongPressTimeout, kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -299,6 +298,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   /// whether the mouse is in the submenu.
   int? _subFor;
   int? _subHover;
+  bool _subSecondary = false;
   bool _overSub = false;
   Timer? _subTimer;
   final _subKey = GlobalKey();
@@ -375,6 +375,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     _subTimer?.cancel();
     _subFor = null;
     _subHover = null;
+    _subSecondary = false;
     _overSub = false;
   }
 
@@ -491,12 +492,15 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     }
 
     // The submenu is drawn over everything else, so it is asked first.
-    final sub = _subRowAt(position);
+    final (sub, subSecondary) = _subRowAt(position);
     if (sub != null) {
       _subTimer?.cancel();
-      if (sub != _subHover) {
+      if (sub != _subHover || subSecondary != _subSecondary) {
         HapticFeedback.selectionClick();
-        setState(() => _subHover = sub);
+        setState(() {
+          _subHover = sub;
+          _subSecondary = subSecondary;
+        });
       }
       return;
     }
@@ -545,11 +549,12 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     final secondary = _hoverSecondary;
     final subFor = _subFor;
     final subRow = _subHover;
+    final subSecondary = _subSecondary;
     close();
     if (open == null) return;
     if (subFor != null && subRow != null) {
       final children = _drawn(open)[subFor].children;
-      if (subRow < children.length) children[subRow].onChoose();
+      if (subRow < children.length) _fire(children[subRow], subSecondary);
       return;
     }
     if (row == null) return;
@@ -629,19 +634,24 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     return (row, secondary);
   }
 
-  /// Which submenu row is at [global], or null off the submenu.
-  int? _subRowAt(Offset global) {
+  /// Which submenu row is at [global], and whether it is on that row's
+  /// second action - [_rowAt]'s answer for the submenu. Null off it.
+  (int?, bool) _subRowAt(Offset global) {
     final open = _open;
     final subFor = _subFor;
     final box = _subKey.currentContext?.findRenderObject() as RenderBox?;
     if (open == null || subFor == null || box == null || !box.hasSize) {
-      return null;
+      return (null, false);
     }
     final local = box.globalToLocal(global);
-    if (!(Offset.zero & box.size).contains(local)) return null;
+    if (!(Offset.zero & box.size).contains(local)) return (null, false);
     final row = (local.dy / Dock.rowHeight).floor();
-    final count = _drawn(open)[subFor].children.length;
-    return row >= 0 && row < count ? row : null;
+    final children = _drawn(open)[subFor].children;
+    if (row < 0 || row >= children.length) return (null, false);
+    final secondary =
+        children[row].onSecondary != null &&
+        local.dx >= box.size.width - Dock.secondaryWidth;
+    return (row, secondary);
   }
 
   // ------------------------------------------------------------ drawing
@@ -1071,7 +1081,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                   parent.children[i],
                   index: i,
                   hovered: _subHover == i,
-                  secondary: false,
+                  secondary: _subHover == i && _subSecondary,
                   rule: i > 0,
                   sub: true,
                 ),
@@ -1110,7 +1120,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         onHover: (e) {
           if (!_sticky) return;
           if (sub) {
-            if (_subHover != index) setState(() => _subHover = index);
+            final (row, secondary) = _subRowAt(e.position);
+            if (row != _subHover || secondary != _subSecondary) {
+              setState(() {
+                _subHover = row;
+                _subSecondary = secondary;
+              });
+            }
             return;
           }
           final (row, secondary) = _rowAt(e.position);
@@ -1240,7 +1256,16 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                               size: 18,
                               color: secondary
                                   ? fill
-                                  : ink.withValues(alpha: hovered ? 0.9 : 0.4),
+                                  : ink.withValues(
+                                      alpha: hovered
+                                          ? 0.9
+                                          // A submenu under the mouse shows
+                                          // its row's second action on the
+                                          // row it is over, not on every row.
+                                          : sub && _viaHover
+                                          ? 0
+                                          : 0.4,
+                                    ),
                             ),
                           ),
                         )

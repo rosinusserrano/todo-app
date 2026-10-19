@@ -401,6 +401,10 @@ class _WidgetShellState extends State<WidgetShell>
   /// (Marco, 2026-10-18) - see [_dockShows].
   bool _noteEditing = false;
 
+  /// The next journal pane opens on a blank entry ([_addNote]). Cleared after
+  /// the frame that built it, since the pane reads it only once.
+  bool _startNewNote = false;
+
   /// An on-screen keyboard is up, as of the last build. See [_dockShows].
   bool _keyboardUp = false;
 
@@ -2439,6 +2443,17 @@ class _WidgetShellState extends State<WidgetShell>
                           w.uuid == s.currentWorkspaceUuid &&
                           view == v,
                       onChoose: () => _dockToWorkspaceView(w, v),
+                      // Notes carries a ＋ at its end: a new note in this
+                      // workspace, straight from the menu.
+                      secondaryIcon: v == WorkspaceView.notes
+                          ? Icons.add_rounded
+                          : null,
+                      secondaryLabel: v == WorkspaceView.notes
+                          ? 'New note'
+                          : null,
+                      onSecondary: v == WorkspaceView.notes
+                          ? () => _addNote(w)
+                          : null,
                     ),
                 ],
               ),
@@ -2569,6 +2584,27 @@ class _WidgetShellState extends State<WidgetShell>
       });
     }
     _selectView(view);
+  }
+
+  /// The ＋ on a workspace's Notes row in the dock: that workspace's Notes,
+  /// on a blank entry, from wherever you were. A fresh State, as
+  /// [_dockToViewRoot] makes, so it lands on the editor whatever rung Notes
+  /// was on; a draft that was open saves on its way out.
+  Future<void> _addNote(Workspace w) async {
+    // Inside the tap, as for a thought: iOS raises a web page's keyboard
+    // only then, and the title field is built frames later.
+    if (isWeb && _layout.touch) primeWebKeyboard();
+    await _dockClear();
+    if (!mounted) return;
+    if (w.uuid != s.currentWorkspaceUuid) await _switchWorkspace(w);
+    if (!mounted) return;
+    setState(() {
+      _secondaryKey = GlobalKey(debugLabel: 'secondary view');
+      _noteFocused = false;
+      _noteEditing = false;
+      _startNewNote = true;
+    });
+    if (_openView != WorkspaceView.notes) _selectView(WorkspaceView.notes);
   }
 
   Future<void> _dockToWorkspace(Workspace w) async {
@@ -2929,7 +2965,13 @@ class _WidgetShellState extends State<WidgetShell>
       // run from its dispose, after a workspace switch has already moved
       // currentWorkspaceUuid on. See JournalView._saveDraftOnTheWayOut.
       final journalWorkspace = s.currentWorkspaceUuid;
+      if (_startNewNote) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _startNewNote = false,
+        );
+      }
       return JournalView(
+        startNew: _startNewNote,
         onFocusChanged: (focus) {
           if (_noteFocused == focus) return;
           setState(() => _noteFocused = focus);

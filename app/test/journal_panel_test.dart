@@ -56,13 +56,15 @@ Future<void> pumpPanel(
   VoidCallback? onBack,
   ValueChanged<bool>? onFocusChanged,
   ValueChanged<bool>? onEditingChanged,
+  bool startNew = false,
+  bool locked = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: JournalView(
-          configured: false,
-          locked: false,
+          configured: locked,
+          locked: locked,
           items: items,
           onSetup: (_) async {},
           onUnlock: (_) async => true,
@@ -73,6 +75,7 @@ Future<void> pumpPanel(
           onBack: onBack ?? () {},
           onFocusChanged: onFocusChanged,
           onEditingChanged: onEditingChanged,
+          startNew: startNew,
         ),
       ),
     ),
@@ -178,6 +181,43 @@ void main() {
       await tester.tap(find.byIcon(Icons.add));
       await tester.pumpAndSettle();
 
+      expect(find.byType(TextField), findsNWidgets(2));
+    });
+
+    testWidgets('the dock\'s Add a note opens on a blank entry, caret in the '
+        'title', (tester) async {
+      final saves = Saves();
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+        startNew: true,
+      );
+      expect(find.byType(TextField), findsNWidgets(2));
+      final title = tester.widget<TextField>(find.byType(TextField).first);
+      expect(title.focusNode!.hasFocus, isTrue);
+      expect(title.controller!.text, isEmpty);
+
+      // And Esc is the list, as from any new entry.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('Trip'), findsOneWidget);
+    });
+
+    testWidgets('locked, it asks for the password and then opens blank', (
+      tester,
+    ) async {
+      final saves = Saves();
+      await pumpPanel(
+        tester,
+        items: const [],
+        saves: saves,
+        startNew: true,
+        locked: true,
+      );
+      expect(find.byType(TextField), findsOneWidget, reason: 'the password');
+
+      await pumpPanel(tester, items: const [], saves: saves, startNew: true);
       expect(find.byType(TextField), findsNWidgets(2));
     });
   });

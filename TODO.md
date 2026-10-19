@@ -29,6 +29,17 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 64. A new note from the dock  `[~]`
+
+Asked for 2026-10-19: in the workspace menu's submenu, Notes shows a ＋ on
+hover that opens a blank note. Built on `redesign`.
+
+- [x] **64.1** Submenu rows take a second action (`dock.dart`, mouse and
+      held finger); Notes' ＋ calls `_addNote(w)`; `JournalView.startNew`,
+      and the title asks for the caret itself (autofocus lost it on the web).
+- [~] **64.2** On the dev site (2026-10-19); Marco tries it.
+- [ ] **64.3** Merge to `main`; publish the web app.
+
 ### 63. Projects  `[x]`
 
 Asked for 2026-10-18; design in `ROADMAP.md` under *Projects*. Built on

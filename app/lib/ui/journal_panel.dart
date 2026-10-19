@@ -59,7 +59,14 @@ class JournalView extends StatefulWidget {
     required this.onBack,
     this.onFocusChanged,
     this.onEditingChanged,
+    this.startNew = false,
   });
+
+  /// Open on a blank entry rather than the list - the dock's *Add a note*.
+  /// Read once, when the State is made: the shell hands a fresh key with it.
+  /// A locked journal still asks for the password first, and the blank entry
+  /// is what unlocking lands on.
+  final bool startNew;
 
   /// Called when the editor opens and when it closes - the shell hides a
   /// bottom dock while a note is written, and keeps it while one is read.
@@ -125,7 +132,7 @@ class _JournalViewState extends State<JournalView> {
   /// list rung the ladder exists for.
   final _paneFocus = FocusNode(debugLabel: 'journal pane');
 
-  bool _editorOpen = false;
+  late bool _editorOpen = widget.startNew;
   bool _reading = false;
 
   /// The ⛶ in the reader or the editor: everything but the note's title and
@@ -193,6 +200,21 @@ class _JournalViewState extends State<JournalView> {
     widget.onSave(title, body, existing);
   }
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startNew && !widget.locked) _focusTitle();
+  }
+
+  /// The caret into a new entry's title. Asked for outright, after the frame
+  /// that builds the field: the field's `autofocus` gives way to the shell's
+  /// key handler, which always holds focus (ThoughtSheet's reason).
+  void _focusTitle() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _titleFocus.requestFocus();
+    });
+  }
+
   /// Put the keyboard on the pane itself. The state it is being asked for is
   /// built by the setState that calls this, so the request waits for the frame.
   void _focusPane() {
@@ -237,6 +259,7 @@ class _JournalViewState extends State<JournalView> {
       _busy = false;
       _error = ok ? null : 'Wrong password.';
     });
+    if (ok && _editorOpen && _editing == null) _focusTitle();
   }
 
   Future<void> _confirmRemove() async {
@@ -282,6 +305,7 @@ class _JournalViewState extends State<JournalView> {
       _editorOpen = true;
       _reading = false;
     });
+    _focusTitle();
   }
 
   /// Picking one from the list *reads* it.

@@ -1124,7 +1124,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   History. With a mouse, rest on the row; with a finger, hold on the row for a
   moment and slide across (or long-press it in a held-open menu). Picking
   one switches workspace and opens that view in one go.
-- **A new note, straight from the menu.** Notes in that little menu has a ＋
+- **A new note, straight from the menu.** Notes in that little menu - and
+  Notes in the middle part's menu, for where you are now - has a ＋
   at its right-hand end - shown when the mouse is on the row - and the row
   says "New note" while you are on it. It opens that workspace's Notes on a
   blank note with the caret in the title. With a finger, slide onto the ＋

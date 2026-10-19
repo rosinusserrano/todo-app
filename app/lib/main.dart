@@ -2386,6 +2386,13 @@ class _WidgetShellState extends State<WidgetShell>
       current: !global && view == v,
       dot: v == WorkspaceView.parked && s.groupsDueForReview.isNotEmpty,
       onChoose: () => _dockToView(v),
+      // The same ＋ as on Notes in a workspace's submenu: a new note here,
+      // which inside a project is the project's.
+      secondaryIcon: v == WorkspaceView.notes ? Icons.add_rounded : null,
+      secondaryLabel: v == WorkspaceView.notes ? 'New note' : null,
+      onSecondary: v == WorkspaceView.notes && s.currentWorkspace != null
+          ? () => _addNote(s.currentWorkspace!)
+          : null,
     );
 
     final (moreIcon, moreLabel) = s.showCalendar

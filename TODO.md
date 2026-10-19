@@ -53,6 +53,9 @@ hover that opens a blank note. Built on `redesign`.
 - [x] **64.2** On the dev site (2026-10-19); Marco tried it.
 - [x] **64.3** Merged to `main` and the web app published to
       `/srv/todo-web` (2026-10-19). No server change.
+- [x] **64.4** The same ＋ on Notes in the middle segment's menu (the
+      current workspace or project); straight to `main` and published the
+      same day.
 
 ### 63. Projects  `[x]`
 

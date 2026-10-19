@@ -273,19 +273,25 @@ Widget _scoped(Widget child, {LinkTitles? titles, VoiceNotes? voice}) {
   return out;
 }
 
-/// Hands a browser build the bottom safe area its engine leaves out (see
+/// Hands a browser build the safe area its engine leaves out (see
 /// `web_safe_area.dart`), so the shell's SafeArea keeps the view bar off the
-/// home indicator the way it does in the native app. Not while the keyboard is
-/// up: the keyboard covers the indicator, and the gap would sit above it.
+/// home indicator and the title bar out from under the clock, the way it does
+/// in the native app. The bottom is left out while the keyboard is up: the
+/// keyboard covers the indicator, and the gap would sit above it.
 Widget _withWebSafeArea(BuildContext context, Widget child) {
   if (!isWeb) return child;
   final mq = MediaQuery.of(context);
-  final bottom = webSafeBottom();
-  if (bottom <= mq.padding.bottom || mq.viewInsets.bottom > 0) return child;
+  final safeTop = webSafeTop();
+  final top = safeTop > mq.padding.top ? safeTop : mq.padding.top;
+  var bottom = webSafeBottom();
+  if (bottom <= mq.padding.bottom || mq.viewInsets.bottom > 0) {
+    bottom = mq.padding.bottom;
+  }
+  if (top == mq.padding.top && bottom == mq.padding.bottom) return child;
   return MediaQuery(
     data: mq.copyWith(
-      padding: mq.padding.copyWith(bottom: bottom),
-      viewPadding: mq.viewPadding.copyWith(bottom: bottom),
+      padding: mq.padding.copyWith(top: top, bottom: bottom),
+      viewPadding: mq.viewPadding.copyWith(top: top, bottom: bottom),
     ),
     child: child,
   );

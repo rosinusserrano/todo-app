@@ -1820,6 +1820,12 @@ publishes it. Three rules keep it compiling and starting:
   tab it ran the page under the browser's bottom toolbar, and on iOS a tap
   there brings the toolbar back instead of reaching the dock - the whole dock
   was untappable in Firefox. Without it a tab ends above the toolbar.
+  **The top works the same way** (`todoSafeTop()`), because the home-screen
+  app runs *under* the status bar: `apple-mobile-web-app-status-bar-style`
+  is `black-translucent`, so the strip round the clock and the camera is the
+  window's tinted background (painted outside the shell's `SafeArea`) rather
+  than a system bar, which `black` drew white in light mode. iOS reads that
+  tag when the icon is added to the home screen.
 - **Notifications are pushed by the server** (`server/push.js`), because a
   browser cannot schedule anything: a page that is closed runs no code. The
   server already holds every task and event row, so it reads what is due once

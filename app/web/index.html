@@ -22,7 +22,12 @@
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <!-- black-translucent: iOS draws no bar of its own and the app runs up
+       under the clock, so the strip is the app's own background rather than
+       a system bar (white in light mode). The app keeps its content below it
+       with todoSafeTop(). iOS reads this when the app is added to the home
+       screen, so an icon added before it keeps the old bar until re-added. -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Todo">
   <!-- 180px at the root, where iOS also looks on its own: a missing one was
        answered with this page, and the home screen drew a letter instead. -->
@@ -219,17 +224,22 @@
           playerFinish('stopped');
         }
       };
-      var probe;
-      window.todoSafeBottom = function () {
+      var probes = {};
+      function inset(side) {
+        var probe = probes[side];
         if (!probe) {
-          probe = document.createElement('div');
+          probe = probes[side] = document.createElement('div');
           probe.style.cssText =
-            'position:fixed;left:0;bottom:0;width:0;visibility:hidden;' +
-            'pointer-events:none;height:env(safe-area-inset-bottom,0px)';
+            'position:fixed;left:0;' + side + ':0;width:0;visibility:hidden;' +
+            'pointer-events:none;height:env(safe-area-inset-' + side + ',0px)';
           document.documentElement.appendChild(probe);
         }
         return probe.getBoundingClientRect().height;
-      };
+      }
+      window.todoSafeBottom = function () { return inset('bottom'); };
+      // The status bar's strip, which the page runs under in a home-screen
+      // app (black-translucent, above).
+      window.todoSafeTop = function () { return inset('top'); };
     })();
   </script>
   <script>

@@ -41,6 +41,11 @@ is the app's background. Built on `redesign`.
 - [x] **65.3** Merged and the web app published to `/srv/todo-web` with a
       What's new note (2026-10-19). On the phone the icon has to be added to
       the home screen again for iOS to read the new tag.
+- [x] **65.4** Still white: the page under the canvas was white. Co-note's
+      recipe instead - no status-bar tag, `theme-color` and html/body in the
+      app's colour (`setWebChromeColor`), the window opaque on
+      `T.webBackdrop`, which makes the web app a little darker (Marco's
+      wish). Straight to `main` (2026-10-20).
 
 ### 64. A new note from the dock  `[x]`
 

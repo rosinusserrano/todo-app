@@ -14,6 +14,12 @@ class T {
   // --bg, --surface, --text, --muted, --accent, --danger
   static const bg = Color(0xDB18181D); // rgba(24,24,29,0.86)
   static const bgSolid = Color(0xFF18181D);
+
+  /// What the translucent window is laid on in a browser, which has no
+  /// frosted desktop behind it. It was the page's white, which made the web
+  /// app a light grey (#39393D); mid-grey is a little darker (#27272B), still
+  /// lighter than the native app over black (Marco, 2026-10-19).
+  static const webBackdrop = Color(0xFF808080);
   static const surface = Color(0x0DFFFFFF); // rgba(255,255,255,0.05)
   static const surfaceHover = Color(0x17FFFFFF); // rgba(255,255,255,0.09)
   static const text = Color(0xFFEDEDF0);

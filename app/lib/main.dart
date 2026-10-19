@@ -1459,6 +1459,32 @@ class _WidgetShellState extends State<WidgetShell>
   /// bar is still saying which list is on the left.
   bool get _neutralChrome => s.showCalendar || s.showThoughts || s.showList;
 
+  /// The window's background. Translucent for the desktop's frosted window;
+  /// in a browser it is laid **opaque**, on [T.webBackdrop], and the page is
+  /// given that same colour
+  /// ([setWebChromeColor]) - which is what an iPhone paints the strip round
+  /// the clock with in a home-screen app. Opaque so the page's colour can
+  /// change without the app's changing with it.
+  Color _windowColor(Color ws) {
+    final c = _neutralChrome ? T.calendarBackground : T.tintedBackground(ws);
+    if (!isWeb) return c;
+    final solid = Color.alphaBlend(c, T.webBackdrop);
+    if (solid != _pageColor) {
+      _pageColor = solid;
+      final hex = (solid.toARGB32() & 0xFFFFFF)
+          .toRadixString(16)
+          .padLeft(6, '0');
+      // After the frame: a call out of a build is a side effect, and the
+      // page should change with the frame that draws the new colour.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => setWebChromeColor('#$hex'),
+      );
+    }
+    return solid;
+  }
+
+  Color? _pageColor;
+
   @override
   Widget build(BuildContext context) {
     final ws = s.workspaceColor;
@@ -1589,9 +1615,7 @@ class _WidgetShellState extends State<WidgetShell>
           // was a hairline box drawn round the whole app, the one tile left
           // after every other one was taken away.
           decoration: BoxDecoration(
-            color: _neutralChrome
-                ? T.calendarBackground
-                : T.tintedBackground(ws),
+            color: _windowColor(ws),
             borderRadius: isDesktop
                 ? BorderRadius.circular(T.radius)
                 : BorderRadius.zero,

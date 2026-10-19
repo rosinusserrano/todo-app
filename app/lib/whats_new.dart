@@ -38,6 +38,15 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-20',
+    title: 'The bar round the clock, again',
+    points: [
+      "The strip round the iPhone's clock should now really be the app's "
+          'colour, tinted like the rest of the window.',
+      'The web app is a shade darker.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-19-3',
     title: 'A new note from the middle button',
     points: [

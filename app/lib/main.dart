@@ -1471,30 +1471,39 @@ class _WidgetShellState extends State<WidgetShell>
   /// round an iPhone's clock in the home-screen web app, zero anywhere else.
   double _topInset = 0;
 
-  /// How far below that strip [_statusFade] reaches.
-  static const _statusFadeLength = 72.0;
+  /// The home-screen web app, where iOS paints a status bar of its own in
+  /// the page's colour. Asked once: it cannot change while the page lives.
+  static final _homeScreenWeb = isWeb && webStandalone();
 
-  /// The strip round the clock is the page's colour, [T.webPage], and iOS
-  /// paints it in one colour - it does not follow the workspace's tint. So
-  /// the window starts in that colour too and fades into its tint below the
-  /// strip, rather than meeting it at an edge (Marco, 2026-10-20). Drawn
-  /// behind the content: in front, it would fade the title bar's text.
-  Widget _statusFade() => Positioned(
+  /// iOS paints the strip round the clock in the page's colour, [T.webPage],
+  /// and in that one colour - it does not follow the workspace's tint. So the
+  /// whole window fades: the strip's colour at the top, the workspace's tint
+  /// at the bottom, rather than meeting the strip at an edge (Marco,
+  /// 2026-10-20). Behind the content: in front, it would fade the text.
+  ///
+  /// Not on [_topInset]: with no status-bar tag iOS starts the page *below*
+  /// its bar, so there is no inset, and gating on one is why the first try
+  /// drew nothing on the phone. When the page does run under the bar the
+  /// strip is solid first.
+  Widget _statusFade() => Positioned.fill(
     key: const ValueKey('status fade'),
-    top: 0,
-    left: 0,
-    right: 0,
-    height: _topInset + _statusFadeLength,
     child: IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [T.webPage, T.webPage, T.webPage.withValues(alpha: 0)],
-            stops: [0, _topInset / (_topInset + _statusFadeLength), 1],
-          ),
-        ),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final solid = box.maxHeight > 0
+              ? (_topInset / box.maxHeight).clamp(0.0, 1.0)
+              : 0.0;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [T.webPage, T.webPage, T.webPage.withValues(alpha: 0)],
+                stops: [0, solid, 1],
+              ),
+            ),
+          );
+        },
       ),
     ),
   );
@@ -1652,7 +1661,7 @@ class _WidgetShellState extends State<WidgetShell>
               // arriving in front of it, rebuilds the whole shell
               // (content_slot.dart's lesson).
               children: [
-                if (_topInset > 0) _statusFade(),
+                if (_homeScreenWeb) _statusFade(),
                 Positioned.fill(
                   key: const ValueKey('window content'),
                   child: _inset(

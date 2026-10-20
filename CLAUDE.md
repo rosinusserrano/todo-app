@@ -1828,9 +1828,12 @@ publishes it. Three rules keep it compiling and starting:
   So on the web the window's background is laid opaque on `T.webBackdrop`
   (`_windowColor`), and the page is `T.webPage`, the untinted window - a
   literal in `index.html` too, keep them equal. iOS paints the strip in one
-  colour and does not follow a tint, so the window starts in that colour and
-  fades into its tint below the strip (`_statusFade`, behind the content,
-  only where there is a top inset). Co-note does the same and is where the
+  colour and does not follow a tint, so the window fades from that colour
+  at the top to its tint at the bottom (`_statusFade`, behind the content,
+  in the home-screen app only - `webStandalone`). **Not gated on the top
+  inset**: with no status-bar tag iOS starts the page below its own bar, so
+  the inset is zero there, which is why the first fade never drew. The
+  manifest's colours are `T.webPage` too. Co-note does the same and is where the
   recipe came from.
 - **Notifications are pushed by the server** (`server/push.js`), because a
   browser cannot schedule anything: a page that is closed runs no code. The

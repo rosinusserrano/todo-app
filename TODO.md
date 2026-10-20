@@ -50,6 +50,10 @@ is the app's background. Built on `redesign`.
       at an edge: the page stays untinted (`T.webPage`) and the window fades
       from it into the tint below the strip (`_statusFade`). Straight to
       `main` (2026-10-20).
+- [x] **65.6** It drew nothing on the phone: gated on a top inset that is
+      zero once iOS paints its own bar. Now on `webStandalone`, and over the
+      whole window (top: the bar's colour; bottom: the tint), as Marco meant
+      it. Manifest colours to `#27272B`. Straight to `main` (2026-10-20).
 
 ### 64. A new note from the dock  `[x]`
 

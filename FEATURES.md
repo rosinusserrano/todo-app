@@ -1536,8 +1536,9 @@ reminders are both there now**, queued for 0.18.0.
 - **0.29.0** — *(in progress)*
   - **The iPhone's status bar is the app's colour** in the home-screen web
     app: the page's own background and `theme-color` are the window's
-    untinted colour, which fades into the workspace's tint just below the
-    strip, and the content keeps below it. The web app is a
+    untinted colour, and the window fades from it at the top into the
+    workspace's tint at the bottom, so the bar and the app meet without an
+    edge. The web app is a
     little darker for it (`T.webBackdrop`, mid-grey where it was white).
   - **Projects**: a workspace inside a workspace, shown as a raised row in
     its list; opened like a workspace, archived rather than ticked, and kept

@@ -38,6 +38,14 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-20-3',
+    title: 'No edge under the clock',
+    points: [
+      "The background now fades from the colour of the iPhone's bar at the "
+          "top into the workspace's colour, so the two meet without a line.",
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-20-2',
     title: 'No edge under the clock',
     points: [

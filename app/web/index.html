@@ -25,9 +25,9 @@
   <!-- The strip round the clock is the page's own colour: no
        apple-mobile-web-app-status-bar-style (black or black-translucent both
        left it white), a theme-color, and html/body in the app's untinted
-       colour - T.webPage in theme.dart, keep them equal. The app fades from
-       it into its tint below the strip and keeps its content clear of the
-       strip with todoSafeTop(). Co-note's recipe, which works. -->
+       colour - T.webPage in theme.dart, keep them equal. The app's window
+       fades from it at the top into its tint at the bottom (todoStandalone),
+       and keeps its content clear of the strip with todoSafeTop(). Co-note's recipe, which works. -->
   <meta name="theme-color" content="#27272B">
   <style>html, body { background: #27272B; }</style>
   <meta name="apple-mobile-web-app-title" content="Todo">
@@ -242,6 +242,13 @@
       // The status bar's strip, which the page runs under in a home-screen
       // app (black-translucent, above).
       window.todoSafeTop = function () { return inset('top'); };
+      // Opened from the home screen: the app fades its window into the
+      // status bar's colour there.
+      window.todoStandalone = function () {
+        return navigator.standalone === true ||
+          (window.matchMedia &&
+            window.matchMedia('(display-mode: standalone)').matches);
+      };
     })();
   </script>
   <script>

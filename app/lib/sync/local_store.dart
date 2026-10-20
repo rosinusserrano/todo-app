@@ -71,7 +71,16 @@ class LocalStore {
   /// cached handle. sqflite keys its cache on the path, so repeated opens of
   /// `:memory:` otherwise all return the *same* database - which silently
   /// shares state between tests that each believe they are starting clean.
-  static Future<LocalStore> open({String? path, bool singleInstance = true}) async {
+  /// [seedWorkspace] puts a first "Tasks" workspace into a database created
+  /// here. The app opens with it **off** - a new account starts with no
+  /// workspace and the list explains what to make (ui/no_workspace.dart,
+  /// Marco 2026-10-20) - and the test fixtures keep it on, since most of
+  /// them want somewhere to put a task.
+  static Future<LocalStore> open({
+    String? path,
+    bool singleInstance = true,
+    bool seedWorkspace = true,
+  }) async {
     await initDatabaseFactory();
     final dbPath = path ?? await defaultDatabasePath();
 
@@ -79,7 +88,8 @@ class LocalStore {
       dbPath,
       options: OpenDatabaseOptions(
         version: 21,
-        onCreate: _create,
+        onCreate: (db, version) =>
+            _create(db, version, seedWorkspace: seedWorkspace),
         onUpgrade: _upgrade,
         singleInstance: singleInstance,
       ),
@@ -650,7 +660,11 @@ class LocalStore {
   static const _tasksRecurIndex =
       'CREATE INDEX idx_tasks_recur ON tasks (recur)';
 
-  static Future<void> _create(Database db, int version) async {
+  static Future<void> _create(
+    Database db,
+    int version, {
+    bool seedWorkspace = true,
+  }) async {
     await db.execute('''
       CREATE TABLE workspaces (
         uuid       TEXT PRIMARY KEY,
@@ -750,8 +764,8 @@ class LocalStore {
     await db.execute(_collectionFieldsIndex);
     await db.execute(_collectionEntriesIndex);
 
-    // A first workspace, so the app is never in a state with nowhere to add a
-    // task.
+    // A first workspace, for the test fixtures; see [open].
+    if (!seedWorkspace) return;
     final now = nowStamp();
     await db.insert('workspaces', {
       'uuid': defaultWorkspaceUuid,

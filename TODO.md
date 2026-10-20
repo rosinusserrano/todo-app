@@ -29,6 +29,16 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 66. Start with no workspace  `[x]`
+
+Asked for 2026-10-20: a brand-new account should not open on a "Tasks"
+workspace; with none, a short, plain explanation fits on the screen.
+
+- [x] **66.1** `LocalStore.open(seedWorkspace:)`, off in `main()`;
+      `ui/no_workspace.dart` in the task column; `_openAdd` and
+      `_selectView` with no workspace; `test/no_workspace_test.dart`.
+      Straight to `main` and published (2026-10-20).
+
 ### 65. The status bar in the iOS web app  `[x]`
 
 Asked for 2026-10-19: the strip round the clock was white. The page now runs

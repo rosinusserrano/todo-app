@@ -206,6 +206,14 @@ Documents attached to a task — a quote, a scan, a spec.
 - The stored digest is already the address a future blob-sync endpoint would
   fetch by, so adding one later needs no migration of what is on disk.
 
+## Starting out
+
+- **A new account has no workspace.** Until one is made, the list's place
+  names what is where - workspaces, their views in the middle of the bar,
+  projects, the shared things under More, the ＋ - and has a *Create a
+  workspace* button. The ＋'s *Add a task* opens the same form; thoughts work
+  from the start, since they belong to no workspace.
+
 ## Projects
 
 A **project** is a workspace inside a workspace: its own task list, notes,
@@ -1534,6 +1542,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **No "Tasks" workspace to start with**: a new database is empty, and the
+    list explains what to make (`ui/no_workspace.dart`; the store's
+    `seedWorkspace`, off in the app).
   - **The iPhone's status bar is the app's colour** in the home-screen web
     app: the page's own background and `theme-color` are the window's
     untinted colour, and the window fades from it at the top into the

@@ -262,6 +262,17 @@ dirty so the collapse propagates rather than having to be repeated per device.
 It matches on name *and* colour, so a workspace the user renamed or recoloured
 is theirs and is left alone.
 
+**The app no longer seeds that row** (Marco, 2026-10-20): `main()` opens the
+store with `seedWorkspace: false`, so a new account - and a new device, until
+sync brings its workspaces - starts with none, and the task column is
+`ui/no_workspace.dart`, a few lines naming what the bar holds and a *Create a
+workspace* button. With none, `_openAdd` opens the workspace form instead and
+`_selectView` keeps a workspace's views shut (thoughts still open; they are
+global). `LocalStore.open` defaults the flag **on** because the test fixtures
+want somewhere to put a task; `test/no_workspace_test.dart` covers the empty
+start. The derived uuid and `_foldSeededDefaults` stay for every database
+that was ever seeded.
+
 **A project is a workspace with a parent** (`workspaces.parent_uuid`, v21),
 drawn as one row of the parent's list (`ui/project_row.dart`). Opening it makes
 it `currentWorkspaceUuid`, so every per-workspace view is the project's with no

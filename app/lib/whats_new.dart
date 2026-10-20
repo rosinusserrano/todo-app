@@ -38,6 +38,15 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-20-4',
+    title: 'A new account starts empty',
+    points: [
+      'No "Tasks" workspace is made for you any more: a new account opens on '
+          'a short guide to what is where, and a button to make the first '
+          'workspace.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-20-3',
     title: 'No edge under the clock',
     points: [

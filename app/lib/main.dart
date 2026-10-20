@@ -60,6 +60,7 @@ import 'ui/journal_panel.dart';
 import 'ui/list_rule.dart';
 import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
+import 'ui/no_workspace.dart';
 import 'ui/project_row.dart';
 import 'ui/session_view.dart';
 import 'ui/move_picker.dart';
@@ -117,7 +118,7 @@ Future<void> main() async {
     );
   }
 
-  final store = await LocalStore.open();
+  final store = await LocalStore.open(seedWorkspace: false);
 
   // Before the first read, so the Tauri-era history is already there when the
   // UI paints rather than appearing a frame later. It is a no-op on every
@@ -347,6 +348,12 @@ class _WidgetShellState extends State<WidgetShell>
 
   /// Open the card. The caret is the card's to place, once it is built.
   void _openAdd() {
+    // A task needs a list to go on. With none yet, the way to add one is to
+    // make one.
+    if (s.workspaces.isEmpty) {
+      _editWorkspace(null);
+      return;
+    }
     // Inside the tap, when there is one: iOS raises the keyboard only for a
     // focus moved during the touch's own handler (see web_keyboard.dart).
     if (isWeb && _layout.touch) primeWebKeyboard();
@@ -2045,6 +2052,9 @@ class _WidgetShellState extends State<WidgetShell>
   /// backwards half the time.
   void _selectView(WorkspaceView? view) {
     if (_clearOverlays()) return;
+    // A workspace's own views have nothing to show without one; the list's
+    // place then explains what to make. Thoughts are global.
+    if (s.workspaces.isEmpty && view != WorkspaceView.thoughts) view = null;
     _showTasks();
     switch (view) {
       case null:
@@ -2926,6 +2936,14 @@ class _WidgetShellState extends State<WidgetShell>
   /// simply stretching: a tick box 900px from the end of its own line is a
   /// worse checklist, not a bigger one.
   Widget _taskColumn(Color ws) {
+    if (s.workspaces.isEmpty) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),
+          child: NoWorkspace(onCreate: () => _editWorkspace(null)),
+        ),
+      );
+    }
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: Layout.taskColumnMax),

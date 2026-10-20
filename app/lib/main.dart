@@ -62,6 +62,7 @@ import 'ui/panel_header.dart';
 import 'ui/parked_panel.dart';
 import 'ui/no_workspace.dart';
 import 'ui/project_row.dart';
+import 'ui/reminder_menu.dart' show showReminderMenu;
 import 'ui/session_view.dart';
 import 'ui/move_picker.dart';
 import 'ui/selection_bar.dart';
@@ -491,6 +492,7 @@ class _WidgetShellState extends State<WidgetShell>
   late final ReminderService _reminders = ReminderService(
     s.store,
     onDue: _onRemindersDue,
+    onThoughtsDue: (_) => _onThoughtReminderDue(),
     onTick: _onTick,
   );
 
@@ -582,6 +584,7 @@ class _WidgetShellState extends State<WidgetShell>
     _quickActions.install();
     widget.notifications.onTapped = _openTappedReminder;
     widget.notifications.onEventTapped = _openTappedEvent;
+    widget.notifications.onThoughtTapped = (_) => _onThoughtReminderDue();
     // Sweep once before polling starts, so anything that came due while the app
     // was closed lands now rather than up to an interval later.
     _reminders.tick();
@@ -1016,6 +1019,19 @@ class _WidgetShellState extends State<WidgetShell>
 
   // --------------------------------------------------------------- reminders
 
+  /// A thought's reminder came due, or its notification was tapped: the
+  /// thought is in the pile, so that is where to be. Not while something is
+  /// being written - the add card, a capture, a note - which a reminder
+  /// firing would take the screen from; the pile's own mark says it is due.
+  Future<void> _onThoughtReminderDue() async {
+    await _surfaceWindow();
+    if (!mounted) return;
+    if (_adding || _thoughtCapture || _noteEditing) return;
+    if (s.focusTask != null) await _exitFocus();
+    if (!mounted || s.showThoughts) return;
+    await _dockToView(WorkspaceView.thoughts);
+  }
+
   /// A reminder has come due. The widget's whole personality is being in front
   /// of you, so that is the alert: surface the window, switch to where the task
   /// actually lives, and let the row's own due styling carry it from there.
@@ -1229,6 +1245,7 @@ class _WidgetShellState extends State<WidgetShell>
     _shortcuts.dispose();
     widget.notifications.onTapped = null;
     widget.notifications.onEventTapped = null;
+    widget.notifications.onThoughtTapped = null;
     _reminders.dispose();
     if (isDesktop) {
       windowManager.removeListener(this);
@@ -1764,10 +1781,12 @@ class _WidgetShellState extends State<WidgetShell>
           open: _thoughtCapture,
           builder: (_) => ThoughtSheet(
             accent: T.thoughts,
-            onAdd: (text, clip) => s.addThought(text, clip: clip),
+            onAdd: (text, clip, remindAt) =>
+                s.addThought(text, clip: clip, remindAt: remindAt),
             onClose: _closeThoughtCapture,
             enterSaves: !_layout.touch,
             canRecord: true,
+            canRemind: true,
           ),
         ),
 
@@ -1784,7 +1803,7 @@ class _WidgetShellState extends State<WidgetShell>
               glyph: '📝',
               title: task.text,
               hint: 'Add a line to its notes…',
-              onAdd: (text, _) async => s.appendToNotes(task, text),
+              onAdd: (text, _, _) async => s.appendToNotes(task, text),
               onClose: _closeNoteOn,
               enterSaves: !_layout.touch,
             );
@@ -3003,6 +3022,12 @@ class _WidgetShellState extends State<WidgetShell>
         onPromote: s.promoteThought,
         onDiscard: s.resolveThought,
         onMove: _moveThoughts,
+        onRemind: (t, anchor) => showReminderMenu(
+          context: context,
+          position: anchor,
+          armed: t.remindAtTime,
+          onChosen: (at) => s.setThoughtReminder(t, at),
+        ),
       );
     }
     if (s.showParked) {

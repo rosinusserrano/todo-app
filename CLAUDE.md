@@ -156,6 +156,15 @@ State flags rather than separate tables:
 - `in_progress` is the focus flag, and it is **exclusive and global**: setting it
   clears every other row, so at most one task is ever flagged.
 - `resolved_at` on a side thought. Thoughts are *never* hard-deleted.
+- `remind_at` on a side thought (v22, protocol 8) is a reminder with
+  `Task.remindAt`'s stamp. It is armed only while the thought is in the pile
+  (`resolved_at IS NULL`) - resolving is dealing with it - and `moveThoughts`
+  hands it to the task the thought becomes. Every place that fires a task's
+  reminder fires it too: `ReminderService.onThoughtsDue` (the shell opens
+  the pile, unless something is being written), `NotificationService`'s
+  `thought:` payloads, and a third block in `push.js`. `ThoughtSheet` reads
+  it from the words with `parseTaskKeywords` (workspaces off) only where
+  `canRemind` - the note-on-a-task pane keeps its text as text.
 - `group_uuid` on a task is the parked flag: non-null means shelved in a
   `parked_groups` row, and shelved rows are excluded from `activeTasks`,
   `inProgressTask` and the reminder sweep. One nullable column rather than a

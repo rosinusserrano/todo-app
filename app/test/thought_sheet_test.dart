@@ -6,10 +6,16 @@ import 'package:todo_widget/ui/thought_sheet.dart';
 
 void main() {
   late List<String> added;
+  late List<DateTime?> reminders;
   late int closed;
 
-  Future<void> pump(WidgetTester tester, {bool enterSaves = true}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    bool enterSaves = true,
+    bool canRemind = false,
+  }) async {
     added = [];
+    reminders = [];
     closed = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -19,7 +25,11 @@ void main() {
               ThoughtSheet(
                 accent: T.thoughts,
                 enterSaves: enterSaves,
-                onAdd: (t, _) async => added.add(t),
+                canRemind: canRemind,
+                onAdd: (t, _, at) async {
+                  added.add(t);
+                  reminders.add(at);
+                },
                 onClose: () => closed++,
               ),
             ],
@@ -37,6 +47,50 @@ void main() {
     await tester.pump();
     expect(added, ['a book']);
     expect(closed, 1);
+  });
+
+  testWidgets('"in 10 minutes" is a reminder, and out of the thought', (
+    tester,
+  ) async {
+    await pump(tester, canRemind: true);
+    final before = DateTime.now();
+    await tester.enterText(
+      find.byType(TextField),
+      'keys when leaving in 10 minutes',
+    );
+    await tester.pump();
+    expect(find.textContaining('Reminds you in'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(added, ['keys when leaving']);
+    final at = reminders.single!;
+    expect(at.difference(before).inMinutes, inInclusiveRange(9, 10));
+  });
+
+  testWidgets('the reminder line\'s × keeps the words as words', (
+    tester,
+  ) async {
+    await pump(tester, canRemind: true);
+    await tester.enterText(find.byType(TextField), 'call in 2 hours');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Keep those words in the thought'));
+    await tester.pump();
+    expect(find.textContaining('Reminds you'), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(added, ['call in 2 hours']);
+    expect(reminders, [null]);
+  });
+
+  testWidgets('without canRemind the words are only words', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'note in 10 minutes');
+    await tester.pump();
+    expect(find.byTooltip('Remind me'), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(added, ['note in 10 minutes']);
+    expect(reminders, [null]);
   });
 
   testWidgets('Ctrl+Enter saves and stays, empty, for the next one', (
@@ -101,7 +155,7 @@ void main() {
                       ThoughtSheet(
                         accent: T.thoughts,
                         enterSaves: true,
-                        onAdd: (_, _) async {},
+                        onAdd: (_, _, _) async {},
                         onClose: () {},
                       ),
                   ],

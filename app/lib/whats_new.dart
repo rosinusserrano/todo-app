@@ -38,6 +38,17 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-20-5',
+    title: 'Reminders on thoughts',
+    points: [
+      'Write the time into a thought - "keys when leaving in 10 minutes" - '
+          'and it reminds you then. The bell beside the mic picks a time '
+          'instead.',
+      'In the pile, a thought with a reminder says when, and its bell '
+          'changes or clears it.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-20-4',
     title: 'A new account starts empty',
     points: [

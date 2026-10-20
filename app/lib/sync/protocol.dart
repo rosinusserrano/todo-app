@@ -47,7 +47,9 @@
 ///
 /// 7 added projects, `parent_uuid` and `archived_at` on `workspaces`, on 5's
 /// terms: the server's number, nothing held back from an older one.
-const kSyncProtocol = 7;
+///
+/// 8 added `side_thoughts.remind_at`, a reminder on a thought, on 5's terms.
+const kSyncProtocol = 8;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;

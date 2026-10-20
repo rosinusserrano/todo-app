@@ -853,7 +853,14 @@ void main() {
       final now = DateTime(2026, 7, 21, 10);
       expect(
         describeReminder(now.add(const Duration(minutes: 25)), now),
-        'in 26m',
+        'in 25m',
+      );
+      expect(
+        describeReminder(
+          now.add(const Duration(minutes: 24, seconds: 30)),
+          now,
+        ),
+        'in 25m',
       );
       expect(describeReminder(DateTime(2026, 7, 21, 18), now), 'at 18:00');
       expect(describeReminder(DateTime(2026, 7, 22, 9), now), 'tomorrow 09:00');

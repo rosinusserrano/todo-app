@@ -503,6 +503,7 @@ END:VCALENDAR
       await store.raw.execute('ALTER TABLE tasks DROP COLUMN audio_ms');
       await store.raw.execute('ALTER TABLE side_thoughts DROP COLUMN audio');
       await store.raw.execute('ALTER TABLE side_thoughts DROP COLUMN audio_ms');
+      await store.raw.execute('ALTER TABLE side_thoughts DROP COLUMN remind_at');
       await store.raw.execute('DROP INDEX idx_events_feed');
       await store.raw
           .execute('ALTER TABLE calendar_events DROP COLUMN feed_uuid');

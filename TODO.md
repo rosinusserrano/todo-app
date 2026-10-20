@@ -29,6 +29,17 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 67. Reminders on thoughts  `[~]`
+
+Asked for 2026-10-20: "don't forget keys when leaving in 10 minutes".
+
+- [x] **67.1** `side_thoughts.remind_at` (client v22, protocol 8,
+      `COLUMN_SINCE` on the server); `push.js` sends them; the poll, the
+      phone's schedule and the thought sheet / pile; tests both sides.
+- [ ] **67.2** Merge to `main`; Marco runs `sudo server/update-server.sh`
+      (protocol 8); **then** publish the web app - a protocol 8 web app
+      pauses its sync against a protocol 7 server.
+
 ### 66. Start with no workspace  `[x]`
 
 Asked for 2026-10-20: a brand-new account should not open on a "Tasks"

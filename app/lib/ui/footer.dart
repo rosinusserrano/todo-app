@@ -38,6 +38,7 @@ import '../theme.dart';
 import '../voice_notes.dart';
 import 'list_rule.dart';
 import 'panel_header.dart';
+import 'reminder_menu.dart' show describeReminder;
 import 'thought_pressure.dart';
 
 class ThoughtFooter extends StatefulWidget {
@@ -354,6 +355,7 @@ class ThoughtsPanel extends StatefulWidget {
     required this.onPromote,
     required this.onDiscard,
     this.onMove,
+    this.onRemind,
   });
 
   final List<SideThought> thoughts;
@@ -363,6 +365,10 @@ class ThoughtsPanel extends StatefulWidget {
   /// Send one or several thoughts to any workspace's list or shelf, picked
   /// from a menu anchored at the given rect. Null hides the move controls.
   final Future<void> Function(List<SideThought>, RelativeRect anchor)? onMove;
+
+  /// Set, move or clear one thought's reminder, from a menu anchored at the
+  /// rect. Null hides the bell.
+  final Future<void> Function(SideThought, RelativeRect anchor)? onRemind;
 
   @override
   State<ThoughtsPanel> createState() => _ThoughtsPanelState();
@@ -471,6 +477,9 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
                       onMove: widget.onMove == null
                           ? null
                           : (anchor) => widget.onMove!([t], anchor),
+                      onRemind: widget.onRemind == null
+                          ? null
+                          : (anchor) => widget.onRemind!(t, anchor),
                       onDiscard: () => widget.onDiscard(t),
                     ),
                   ],
@@ -575,6 +584,7 @@ class _ThoughtTile extends StatelessWidget {
     required this.onToggleSelect,
     required this.onPromote,
     required this.onMove,
+    required this.onRemind,
     required this.onDiscard,
   });
 
@@ -586,12 +596,15 @@ class _ThoughtTile extends StatelessWidget {
   final VoidCallback onToggleSelect;
   final VoidCallback onPromote;
   final ValueChanged<RelativeRect>? onMove;
+  final ValueChanged<RelativeRect>? onRemind;
   final VoidCallback onDiscard;
 
   @override
   Widget build(BuildContext context) {
     final layout = Layout.of(context);
     final size = layout.actionIcon;
+    final remindAt = thought.remindAtTime;
+    final due = thought.isDue();
 
     // Filled only when selected - see list_rule.dart.
     return Padding(
@@ -633,6 +646,30 @@ class _ThoughtTile extends StatelessWidget {
                             accent: T.thoughts,
                           ),
                         ],
+                        // When it reminds, or since when it has been due -
+                        // in `warn`, the overdue task's colour.
+                        if (remindAt != null) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(
+                                due
+                                    ? Icons.notifications_active_rounded
+                                    : Icons.notifications_none_rounded,
+                                size: 13,
+                                color: due ? T.warn : T.muted,
+                              ),
+                              const SizedBox(width: T.s1),
+                              Text(
+                                describeReminder(remindAt),
+                                style: TextStyle(
+                                  fontSize: T.fsMeta,
+                                  color: due ? T.warn : T.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -645,6 +682,22 @@ class _ThoughtTile extends StatelessWidget {
                     side: layout.tapTarget,
                     onTap: onPromote,
                   ),
+                  if (onRemind != null)
+                    Builder(
+                      builder: (context) => _ThoughtButton(
+                        icon: remindAt == null
+                            ? Icons.notifications_none_rounded
+                            : Icons.notifications_active_rounded,
+                        tooltip: remindAt == null
+                            ? 'Remind me'
+                            : 'Change the reminder',
+                        size: size,
+                        side: layout.tapTarget,
+                        color: remindAt == null ? T.muted : T.thoughts,
+                        onTap: () =>
+                            onRemind!(_ThoughtsPanelState._anchor(context)),
+                      ),
+                    ),
                   if (onMove != null)
                     Builder(
                       builder: (context) => _ThoughtButton(

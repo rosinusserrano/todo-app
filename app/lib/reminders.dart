@@ -18,8 +18,13 @@ import 'sync/local_store.dart';
 import 'sync/models.dart';
 
 class ReminderService {
-  ReminderService(this._store, {required this.onDue, this.onTick, Duration? interval})
-      : _interval = interval ?? const Duration(seconds: 20);
+  ReminderService(
+    this._store, {
+    required this.onDue,
+    this.onThoughtsDue,
+    this.onTick,
+    Duration? interval,
+  }) : _interval = interval ?? const Duration(seconds: 20);
 
   final LocalStore _store;
   final Duration _interval;
@@ -27,6 +32,10 @@ class ReminderService {
   /// Called with the tasks that have just come due. Never called with an empty
   /// list, so the callback can surface the window unconditionally.
   final Future<void> Function(List<Task> due) onDue;
+
+  /// The same for thoughts with a reminder ("keys, in 10 minutes"), which
+  /// are in the pile rather than on a list, so the shell shows them there.
+  final Future<void> Function(List<SideThought> due)? onThoughtsDue;
 
   /// Called on every tick, due reminders or not.
   ///
@@ -61,17 +70,25 @@ class ReminderService {
     await onTick?.call();
 
     final due = await _store.dueReminders(now);
+    final thoughts = onThoughtsDue == null
+        ? const <SideThought>[]
+        : await _store.dueThoughtReminders(now);
 
-    // Forget tasks that are no longer due at all - cleared, completed or
-    // pushed into the future - so re-arming an old task can fire again.
-    final dueIds = due.map((t) => t.uuid).toSet();
+    // Forget rows that are no longer due at all - cleared, completed,
+    // resolved or pushed into the future - so re-arming one can fire again.
+    // Tasks and thoughts share the set: their uuids cannot collide.
+    final dueIds = {...due.map((t) => t.uuid), ...thoughts.map((t) => t.uuid)};
     _announced.removeWhere((id) => !dueIds.contains(id));
 
     final fresh = due.where((t) => !_announced.contains(t.uuid)).toList();
-    if (fresh.isEmpty) return;
-
+    final freshThoughts = thoughts
+        .where((t) => !_announced.contains(t.uuid))
+        .toList();
     _announced.addAll(fresh.map((t) => t.uuid));
-    await onDue(fresh);
+    _announced.addAll(freshThoughts.map((t) => t.uuid));
+
+    if (fresh.isNotEmpty) await onDue(fresh);
+    if (freshThoughts.isNotEmpty) await onThoughtsDue!(freshThoughts);
   }
 
   void dispose() => stop();

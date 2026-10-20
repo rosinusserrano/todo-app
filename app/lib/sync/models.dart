@@ -1388,6 +1388,11 @@ class SideThought implements SyncRow {
   final String? audio;
   final int? audioMs;
 
+  /// A reminder on the thought (v22): "keys, in 10 minutes". The same stamp
+  /// as [Task.remindAt] - a UTC instant from `reminderStamp`. It fires while
+  /// the thought is in the pile; resolving it is what dealing with it means.
+  final String? remindAt;
+
   @override
   final String updatedAt;
   @override
@@ -1400,6 +1405,7 @@ class SideThought implements SyncRow {
     this.resolvedAt,
     this.audio,
     this.audioMs,
+    this.remindAt,
     required this.updatedAt,
     this.deletedAt,
   });
@@ -1407,12 +1413,27 @@ class SideThought implements SyncRow {
   @override
   bool get isDeleted => deletedAt != null;
 
+  DateTime? get remindAtTime {
+    final parsed = remindAt == null ? null : DateTime.tryParse(remindAt!);
+    return parsed?.toLocal();
+  }
+
+  /// Armed and in the past, on a thought still in the pile - [Task.isDue]'s
+  /// rule.
+  bool isDue([DateTime? now]) {
+    final at = remindAtTime;
+    if (at == null || resolvedAt != null || isDeleted) return false;
+    return !at.isAfter(now ?? DateTime.now());
+  }
+
   /// The voice note, or null.
   VoiceNote? get voice => audio == null ? null : VoiceNote(audio!, audioMs);
 
   SideThought copyWith({
     String? text,
     String? resolvedAt,
+    String? remindAt,
+    bool clearRemind = false,
     String? updatedAt,
     String? deletedAt,
   }) =>
@@ -1423,6 +1444,7 @@ class SideThought implements SyncRow {
         resolvedAt: resolvedAt ?? this.resolvedAt,
         audio: audio,
         audioMs: audioMs,
+        remindAt: clearRemind ? null : remindAt ?? this.remindAt,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: deletedAt ?? this.deletedAt,
       );
@@ -1435,6 +1457,7 @@ class SideThought implements SyncRow {
         'resolved_at': resolvedAt,
         'audio': audio,
         'audio_ms': audioMs,
+        'remind_at': remindAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -1446,6 +1469,7 @@ class SideThought implements SyncRow {
         resolvedAt: m['resolved_at'] as String?,
         audio: m['audio'] as String?,
         audioMs: (m['audio_ms'] as num?)?.toInt(),
+        remindAt: m['remind_at'] as String?,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );

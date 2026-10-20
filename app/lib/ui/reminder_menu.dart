@@ -61,7 +61,11 @@ String describeReminder(DateTime at, [DateTime? nowOverride]) {
       '${at.minute.toString().padLeft(2, '0')}';
 
   if (delta.isNegative) return 'due since $hhmm';
-  if (delta.inMinutes < 60) return 'in ${delta.inMinutes + 1}m';
+  // Whole minutes rounded up: 9:30 left is "in 10m", and so is 10:00 - which
+  // the old `inMinutes + 1` called 11, and a browser's millisecond clock
+  // hands "in 10 minutes" over at exactly 10:00.
+  final minutes = (delta.inSeconds + 59) ~/ 60;
+  if (minutes < 60) return 'in ${minutes}m';
 
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(at.year, at.month, at.day);
@@ -121,7 +125,10 @@ Future<void> showReminderMenu({
       const PopupMenuItem<Object>(
         value: _pick,
         height: 34,
-        child: Text('Pick a date and time…', style: TextStyle(fontSize: T.fsLabel)),
+        child: Text(
+          'Pick a date and time…',
+          style: TextStyle(fontSize: T.fsLabel),
+        ),
       ),
     ],
   );

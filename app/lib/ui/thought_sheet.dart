@@ -49,14 +49,24 @@
 // transcripts were too garbled to keep (Marco, 2026-10-17). Saving while it
 // runs stops it and keeps what was said; closing throws it away like the
 // text.
+//
+// **A thought can carry a reminder** ([ThoughtSheet.canRemind]): "keys when
+// leaving in 10 minutes" is read the way the add card reads a task's title -
+// the words are highlighted, a 🔔 line says when, and the thought is stored as
+// "keys when leaving" (task_keywords.dart; workspaces are not read, a thought
+// has none). The bell beside the mic picks one by hand, which outranks the
+// words; the line's × takes the words back into the text.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../task_keywords.dart';
 import '../theme.dart';
 import '../voice_clip.dart';
 import '../voice_notes.dart';
 import '../voice_recorder.dart';
+import 'reminder_menu.dart';
+import 'task_capture.dart' show KeywordController;
 import 'title_bar.dart';
 
 class ThoughtSheet extends StatefulWidget {
@@ -70,7 +80,12 @@ class ThoughtSheet extends StatefulWidget {
     this.hint,
     this.enterSaves = false,
     this.canRecord = false,
+    this.canRemind = false,
   });
+
+  /// Offer a reminder - read from the words or picked with the bell. Only the
+  /// thought pile keeps one; a note on a task is a line of text.
+  final bool canRemind;
 
   /// Draw the mic, where this build can record. Only the thought pile keeps
   /// a recording; a note on a task is text.
@@ -93,9 +108,11 @@ class ThoughtSheet extends StatefulWidget {
   final String? hint;
 
   /// Returns once the thought is stored. [clip] is a recording, and comes
-  /// only from a pane that [canRecord]. Nothing typed and nothing recorded
-  /// is not a submit.
-  final Future<void> Function(String text, VoiceClip? clip) onAdd;
+  /// only from a pane that [canRecord]; [remindAt] only from one that
+  /// [canRemind], and the words that set it are then out of [text]. Nothing
+  /// typed and nothing recorded is not a submit.
+  final Future<void> Function(String text, VoiceClip? clip, DateTime? remindAt)
+  onAdd;
 
   final VoidCallback onClose;
 
@@ -104,7 +121,70 @@ class ThoughtSheet extends StatefulWidget {
 }
 
 class _ThoughtSheetState extends State<ThoughtSheet> {
-  final _controller = TextEditingController();
+  late final _controller = KeywordController()
+    ..parser = _parse
+    ..colorOf = ((_) => widget.accent)
+    ..addListener(_onText);
+
+  /// Picked with the bell; outranks the words.
+  DateTime? _remindAt;
+
+  /// The × on a reminder read from the words: they are text again.
+  bool _ignoreWords = false;
+
+  final _bellKey = GlobalKey();
+
+  KeywordParse _parse(String text) => parseTaskKeywords(
+    text,
+    now: DateTime.now(),
+    matchWorkspaces: false,
+    matchDates: widget.canRemind && _remindAt == null && !_ignoreWords,
+  );
+
+  /// The reminder the thought would be saved with.
+  DateTime? get _reminder => _remindAt ?? _controller.parse.remindAt;
+
+  /// Read from the words rather than picked: what the × hands back.
+  bool get _reminderFromWords =>
+      _remindAt == null && _controller.parse.remindAt != null;
+
+  /// A cleared field starts the next thought with the words read again.
+  void _onText() {
+    if (_controller.text.isEmpty && _ignoreWords) {
+      _ignoreWords = false;
+      _controller.invalidate();
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _setRules(VoidCallback change) {
+    setState(change);
+    _controller.invalidate();
+  }
+
+  Future<void> _pickReminder() async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final box = _bellKey.currentContext?.findRenderObject() as RenderBox?;
+    if (overlay == null || box == null) return;
+    final rect = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+    await showReminderMenu(
+      context: context,
+      position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      armed: _reminder,
+      onChosen: (chosen) async => _setRules(() {
+        _remindAt = chosen;
+        // Cleared by hand: the words do not get to set it again.
+        _ignoreWords = chosen == null;
+      }),
+    );
+    if (mounted) _focus.requestFocus();
+  }
+
+  void _dropReminder() => _setRules(() {
+    _remindAt = null;
+    _ignoreWords = true;
+  });
   late final _focus = FocusNode(onKeyEvent: _onKey);
 
   /// Ahead of the field: a key the focused node handles never reaches the
@@ -263,7 +343,10 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
     // "done" mid-sentence.
     if (_recorder != null) await _stopRecording();
     if (!mounted) return;
-    final text = _controller.text.trim();
+    final remindAt = _reminder;
+    // With the reminder read from the words, the words are out of the text.
+    final text = (remindAt == null ? _controller.text : _controller.parse.title)
+        .trim();
     final clip = _clip;
     if (text.isEmpty && clip == null) {
       if (andClose) widget.onClose();
@@ -274,8 +357,11 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
     setState(() {
       _added++;
       _clip = null;
+      _remindAt = null;
+      _ignoreWords = false;
     });
-    await widget.onAdd(text, clip);
+    _controller.invalidate();
+    await widget.onAdd(text, clip, remindAt);
     if (!mounted) return;
     if (andClose) {
       widget.onClose();
@@ -393,6 +479,47 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                       style: const TextStyle(fontSize: T.fsMeta, color: T.warn),
                     ),
                   ),
+                if (_reminder != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, 0),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.notifications_active_rounded,
+                          size: 16,
+                          color: widget.accent,
+                        ),
+                        const SizedBox(width: T.s2),
+                        Flexible(
+                          child: Text(
+                            'Reminds you ${describeReminder(_reminder!)}',
+                            style: const TextStyle(
+                              fontSize: T.fsLabel,
+                              color: T.text,
+                            ),
+                          ),
+                        ),
+                        Tooltip(
+                          message: _reminderFromWords
+                              ? 'Keep those words in the thought'
+                              : 'No reminder',
+                          child: InkWell(
+                            onTap: _dropReminder,
+                            borderRadius: BorderRadius.circular(T.radius),
+                            child: const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: T.muted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_clip != null || _recordingSince != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, 0),
@@ -455,6 +582,34 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                                   color: _recorder == null
                                       ? T.muted
                                       : T.inkOn(widget.accent),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: T.s1),
+                      ],
+                      if (widget.canRemind) ...[
+                        Tooltip(
+                          message: 'Remind me',
+                          child: Material(
+                            key: _bellKey,
+                            color: Colors.transparent,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _pickReminder,
+                              child: SizedBox(
+                                width: 44,
+                                height: 44,
+                                child: Icon(
+                                  _reminder == null
+                                      ? Icons.notifications_none_rounded
+                                      : Icons.notifications_active_rounded,
+                                  size: 22,
+                                  color: _reminder == null
+                                      ? T.muted
+                                      : widget.accent,
                                 ),
                               ),
                             ),

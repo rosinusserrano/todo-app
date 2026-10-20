@@ -164,6 +164,7 @@ function init(db) {
       resolved_at TEXT,
       audio       TEXT,
       audio_ms    INTEGER,
+      remind_at   TEXT,
       updated_at  TEXT NOT NULL,
       deleted_at  TEXT,
       seq         INTEGER NOT NULL,
@@ -396,6 +397,8 @@ function init(db) {
   addColumn(db, 'side_thoughts', 'audio_ms', 'INTEGER');
   addColumn(db, 'tasks', 'audio', 'TEXT');
   addColumn(db, 'tasks', 'audio_ms', 'INTEGER');
+  // A reminder on a thought (protocol 8): "keys, in 10 minutes".
+  addColumn(db, 'side_thoughts', 'remind_at', 'TEXT');
 
   // Web Push subscriptions and what has been sent - see push.js. Not in
   // TABLES: they are this server's own bookkeeping and never sync.
@@ -463,7 +466,7 @@ export const TABLES = {
     'sha256',
     'created_at',
   ],
-  side_thoughts: ['text', 'created_at', 'resolved_at', 'audio', 'audio_ms'],
+  side_thoughts: ['text', 'created_at', 'resolved_at', 'audio', 'audio_ms', 'remind_at'],
   journal_entries: ['workspace_uuid', 'title', 'text', 'encrypted', 'created_at'],
   calendars: [
     'workspace_uuid',
@@ -510,7 +513,7 @@ export const TABLES = {
 const COLUMN_SINCE = {
   calendar_events: { feed_uuid: 2 },
   workspaces: { shortcuts: 5, parent_uuid: 7, archived_at: 7 },
-  side_thoughts: { audio: 6, audio_ms: 6 },
+  side_thoughts: { audio: 6, audio_ms: 6, remind_at: 8 },
   tasks: { audio: 6, audio_ms: 6 },
 };
 const TABLE_SINCE = {

@@ -87,7 +87,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 21,
+        version: 22,
         onCreate: (db, version) =>
             _create(db, version, seedWorkspace: seedWorkspace),
         onUpgrade: _upgrade,
@@ -284,6 +284,14 @@ class LocalStore {
       // not send the columns.
       await db.execute('ALTER TABLE workspaces ADD COLUMN parent_uuid TEXT');
       await db.execute('ALTER TABLE workspaces ADD COLUMN archived_at TEXT');
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
+    }
+    if (from < 22) {
+      // A reminder on a thought. Null is "none", which is every existing row.
+      // The cursor goes back for v16's reason: below protocol 8 the server
+      // does not send the column.
+      await db.execute('ALTER TABLE side_thoughts ADD COLUMN remind_at TEXT');
       await db.update('sync_state', {'value': '0'},
           where: 'key = ?', whereArgs: ['cursor']);
     }
@@ -733,6 +741,7 @@ class LocalStore {
         resolved_at TEXT,
         audio       TEXT,
         audio_ms    INTEGER,
+        remind_at   TEXT,
         updated_at  TEXT NOT NULL,
         deleted_at  TEXT,
         dirty       INTEGER NOT NULL DEFAULT 1
@@ -911,6 +920,22 @@ class LocalStore {
   /// Reminders still ahead, for handing to the OS scheduler on mobile.
   Future<List<Task>> pendingReminders([DateTime? now]) async =>
       (await _armed()).where((t) => !t.isDue(now)).toList();
+
+  /// Thoughts with a reminder, still in the pile: [_armed]'s twin, with the
+  /// comparison in Dart for the same reason.
+  Future<List<SideThought>> _armedThoughts() async {
+    final rows = await _db.query('side_thoughts',
+        where: 'remind_at IS NOT NULL AND resolved_at IS NULL '
+            'AND deleted_at IS NULL',
+        orderBy: 'remind_at');
+    return rows.map(SideThought.fromMap).toList();
+  }
+
+  Future<List<SideThought>> dueThoughtReminders([DateTime? now]) async =>
+      (await _armedThoughts()).where((t) => t.isDue(now)).toList();
+
+  Future<List<SideThought>> pendingThoughtReminders([DateTime? now]) async =>
+      (await _armedThoughts()).where((t) => !t.isDue(now)).toList();
 
   Future<Task?> taskByUuid(String uuid) async {
     final rows = await _db

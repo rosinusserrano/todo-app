@@ -1399,6 +1399,36 @@ test('voice notes sync at protocol 6 and survive an older app', async () => {
   assert.equal(after.audio_ms, 42000);
 });
 
+test('a thought\'s reminder syncs at protocol 8 and survives an older app', () => {
+  const db = freshDb();
+  const thought = {
+    uuid: 't-keys',
+    text: 'keys',
+    created_at: '2026-10-20T09:00:00+02:00',
+    resolved_at: null,
+    audio: null,
+    audio_ms: null,
+    remind_at: '2026-10-20T09:10:00+02:00',
+    updated_at: '2026-10-20T09:00:00+02:00',
+    deleted_at: null,
+  };
+  sync(db, USER, 0, { side_thoughts: [thought] }, 8);
+  assert.equal(
+    sync(db, USER, 0, {}, 8).changes.side_thoughts[0].remind_at,
+    '2026-10-20T09:10:00+02:00'
+  );
+
+  // Below 8 it is not sent, and an edit pushed back without it keeps it.
+  const old = sync(db, USER, 0, {}, 7).changes.side_thoughts[0];
+  assert.equal('remind_at' in old, false);
+  const edited = { ...old, text: 'keys!', updated_at: '2026-10-20T09:05:00+02:00' };
+  delete edited.seq;
+  sync(db, USER, 0, { side_thoughts: [edited] }, 7);
+  const after = sync(db, USER, 0, {}, 8).changes.side_thoughts[0];
+  assert.equal(after.text, 'keys!');
+  assert.equal(after.remind_at, '2026-10-20T09:10:00+02:00');
+});
+
 test('projects sync at protocol 7 and survive an older app', async () => {
   const db = freshDb();
   const project = {

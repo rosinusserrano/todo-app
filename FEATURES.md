@@ -1039,6 +1039,18 @@ at the screen gives nothing away) and its lock is **opt-in**.
   Turned into a task, the recording goes with it - the task shows a 🎙 mark
   and plays it from its details - and one with nothing typed is called
   *Voice note (0:42)*. Recording is browser-only for now; the apps play.
+- **Remind me.** A thought can carry a reminder - "don't forget the keys
+  when leaving in 10 minutes". Write the time into it the way you would on
+  a task ("in 10 minutes", "in 2 h", "at 18:00", "tomorrow"): the words are
+  highlighted, a line under the field says *Reminds you in 10m*, and the
+  thought is kept as "don't forget the keys when leaving". The × on that line
+  keeps the words as words; the 🔔 beside the 🎙 picks a time instead. In the
+  pile an armed thought says when under its text (in the warning colour once
+  due), and its 🔔 sets, moves or clears it. It fires like a task's reminder
+  - a notification on the phone, a push to the web app, the window in front
+  with the pile open on a desktop - for as long as the thought is in the
+  pile; throwing it away or making it a task ends it, and the task takes the
+  reminder with it.
 - **Not in the workspace's colour.** Thoughts are one pile for every workspace,
   so the Thoughts entry, the capture pane and the footer's meter are drawn in the app's
   own blue, and the window drops its workspace tint while the pile is open — the
@@ -1542,6 +1554,10 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Reminders on thoughts**: read from the words ("in 10 minutes") or
+    picked with the bell; fired by the poll, the phone's schedule and the
+    server's push. `side_thoughts.remind_at` (client v22, sync protocol 8).
+    "In 10 minutes" no longer reads as "in 11m".
   - **No "Tasks" workspace to start with**: a new database is empty, and the
     list explains what to make (`ui/no_workspace.dart`; the store's
     `seedWorkspace`, off in the app).

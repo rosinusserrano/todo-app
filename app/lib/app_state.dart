@@ -733,6 +733,7 @@ class AppState extends ChangeNotifier {
     if (n == null) return;
     await n.reschedule(
       await _store.pendingReminders(),
+      thoughts: await _store.pendingThoughtReminders(),
       events: await _store.upcomingEvents(),
       calendars: {for (final c in await _store.calendars()) c.uuid: c},
     );
@@ -1668,8 +1669,13 @@ class AppState extends ChangeNotifier {
 
   /// A thought, typed or said. A [clip] may come with no text at all; its
   /// bytes go in the device's `blobs` table under their digest, queued for
-  /// the server (see voice_notes.dart), and the row names them.
-  Future<void> addThought(String text, {VoiceClip? clip}) async {
+  /// the server (see voice_notes.dart), and the row names them. [remindAt]
+  /// arms a reminder on it ("keys, in 10 minutes").
+  Future<void> addThought(
+    String text, {
+    VoiceClip? clip,
+    DateTime? remindAt,
+  }) async {
     if (text.trim().isEmpty && clip == null) return;
     String? audio;
     if (clip != null) {
@@ -1683,10 +1689,24 @@ class AppState extends ChangeNotifier {
         createdAt: nowStamp(),
         audio: audio,
         audioMs: clip?.ms,
+        remindAt: remindAt == null ? null : reminderStamp(remindAt),
         updatedAt: nowStamp(),
       ),
     );
     await refreshThoughts();
+    if (remindAt != null) await _rescheduleNotifications();
+    _mutated();
+  }
+
+  /// Arm, move or (null) clear a thought's reminder.
+  Future<void> setThoughtReminder(SideThought t, DateTime? at) async {
+    await _store.putThought(
+      at == null
+          ? t.copyWith(clearRemind: true)
+          : t.copyWith(remindAt: reminderStamp(at)),
+    );
+    await refreshThoughts();
+    await _rescheduleNotifications();
     _mutated();
   }
 
@@ -1734,6 +1754,8 @@ class AppState extends ChangeNotifier {
           groupUuid: groupUuid,
           audio: t.audio,
           audioMs: t.audioMs,
+          // Its reminder goes with it: the task is what it became.
+          remindAt: t.remindAt,
           updatedAt: stamp,
         ),
       );
@@ -1749,6 +1771,7 @@ class AppState extends ChangeNotifier {
       s.copyWith(resolvedAt: nowStamp(), updatedAt: nowStamp()),
     );
     await refreshThoughts();
+    if (s.remindAt != null) await _rescheduleNotifications();
     _mutated();
   }
 

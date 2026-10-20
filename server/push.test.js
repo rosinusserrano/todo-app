@@ -145,6 +145,42 @@ test('a task in an archived project is quiet', () => {
   assert.deepEqual(due.map((n) => n.body), ['in a project']);
 });
 
+test('a thought in the pile fires; a resolved one is quiet', () => {
+  const db = subscribed();
+  const thought = (uuid, text, resolved_at) => ({
+    uuid,
+    text,
+    created_at: STAMP,
+    resolved_at,
+    audio: null,
+    audio_ms: null,
+    remind_at: '2026-10-10T09:00:00+02:00',
+    updated_at: STAMP,
+    deleted_at: null,
+  });
+  sync(
+    db,
+    USER,
+    0,
+    {
+      side_thoughts: [
+        thought('keys', 'keys when leaving', null),
+        thought('done', 'already dealt with', STAMP),
+        thought('said', '', null),
+      ],
+    },
+    8
+  );
+  const due = dueNotifications(db, USER, at('2026-10-10T06:55:00Z'), at('2026-10-10T07:05:00Z'));
+  assert.deepEqual(
+    due.map((n) => [n.title, n.body]),
+    [
+      ['Thought', 'keys when leaving'],
+      ['Thought', 'Voice note'],
+    ]
+  );
+});
+
 test('stamps are compared as instants, whatever offset wrote them', () => {
   const db = subscribed();
   // 03:00 in New York is 07:00Z - inside the window although its text sorts

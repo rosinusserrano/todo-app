@@ -28,6 +28,8 @@
 //   - A parked task does not fire (`group_uuid` set): parking means "not now".
 //   - Nor does a task in an archived project (`workspaces.archived_at`): the
 //     archive is a project put away whole, open tasks and all.
+//   - A thought's reminder fires while the thought is in the pile; resolving
+//     it (or turning it into a task, which resolves it) silences it.
 //   - An event's lead is its own `notify_minutes`, else its calendar's; -1 is
 //     silent; an all-day event does not inherit the calendar's lead (an hour
 //     before midnight is 23:00 the night before every birthday).
@@ -265,6 +267,27 @@ export function dueNotifications(db, userId, from, to) {
       key: `task:${t.uuid}:${t.remind_at}`,
       title: 'Reminder',
       body: t.text,
+    });
+  }
+
+  // A thought with a reminder ("keys, in 10 minutes") fires while it is still
+  // in the pile; a thought resolved or turned into a task is done with.
+  const thoughts = db
+    .prepare(
+      `SELECT uuid, text, audio_ms, remind_at FROM side_thoughts
+       WHERE user_id = ? AND remind_at IS NOT NULL AND resolved_at IS NULL
+         AND deleted_at IS NULL`
+    )
+    .all(userId);
+  for (const t of thoughts) {
+    const at = new Date(t.remind_at);
+    if (Number.isNaN(at.getTime()) || !(at > from && at <= to)) continue;
+    out.push({
+      at,
+      key: `thought:${t.uuid}:${t.remind_at}`,
+      title: 'Thought',
+      // A thought only said aloud has no words to show.
+      body: t.text || 'Voice note',
     });
   }
 

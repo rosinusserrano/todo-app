@@ -28,7 +28,7 @@ import 'sync/models.dart';
 
 class NotificationService {
   NotificationService({FlutterLocalNotificationsPlugin? plugin})
-      : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
 
@@ -44,6 +44,9 @@ class NotificationService {
   /// Called when the user taps a calendar event's notification.
   void Function(String eventUuid)? onEventTapped;
 
+  /// Called when the user taps a thought's reminder.
+  void Function(String thoughtUuid)? onThoughtTapped;
+
   /// Payloads say which kind of row they came from.
   ///
   /// Both live in one notification namespace - `cancelAll` does not know the
@@ -51,6 +54,7 @@ class NotificationService {
   /// path, which silently does nothing when no task has that id.
   static const _taskPrefix = 'task:';
   static const _eventPrefix = 'event:';
+  static const _thoughtPrefix = 'thought:';
 
   static const _channel = AndroidNotificationChannel(
     'reminders',
@@ -88,6 +92,8 @@ class NotificationService {
         if (payload == null || payload.isEmpty) return;
         if (payload.startsWith(_eventPrefix)) {
           onEventTapped?.call(payload.substring(_eventPrefix.length));
+        } else if (payload.startsWith(_thoughtPrefix)) {
+          onThoughtTapped?.call(payload.substring(_thoughtPrefix.length));
         } else if (payload.startsWith(_taskPrefix)) {
           onTapped?.call(payload.substring(_taskPrefix.length));
         } else {
@@ -97,8 +103,10 @@ class NotificationService {
       },
     );
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (android != null) {
       await android.createNotificationChannel(_channel);
       await android.createNotificationChannel(_eventChannel);
@@ -122,6 +130,7 @@ class NotificationService {
   /// and the loser would be whichever ran first.
   Future<void> reschedule(
     List<Task> armed, {
+    List<SideThought> thoughts = const [],
     List<CalendarEvent> events = const [],
     Map<String, Calendar> calendars = const {},
   }) async {
@@ -143,6 +152,22 @@ class NotificationService {
         payload: '$_taskPrefix${t.uuid}',
         channel: _channel,
         describe: 'reminder for ${t.uuid}',
+      );
+    }
+
+    // On the task channel: a thought's reminder is the same interruption.
+    for (final t in thoughts) {
+      final at = t.remindAtTime;
+      if (at == null) continue;
+      await _scheduleOne(
+        id: idFor(t.uuid),
+        title: 'Thought',
+        body: t.text.isEmpty ? 'Voice note' : t.text,
+        at: at,
+        now: now,
+        payload: '$_thoughtPrefix${t.uuid}',
+        channel: _channel,
+        describe: 'thought ${t.uuid}',
       );
     }
 

@@ -375,7 +375,9 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
   /// Below this the action row is two buttons stacked on the right and the
   /// mic and bell folded behind a ⋯ - the widget's own window is 340 wide,
   /// and everything in one line left the buttons squeezed (Marco,
-  /// 2026-10-21).
+  /// 2026-10-21). The fold is with a keyboard only ([ThoughtSheet.enterSaves]):
+  /// a phone is where voice notes are recorded, so there the mic and bell
+  /// stay out and only the buttons stack.
   static const compactWidth = 440.0;
 
   List<Widget> get _tools => [
@@ -476,17 +478,19 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
   /// The narrow row: the tools behind a ⋯, Save & another over Save, and no
   /// Shift+Enter line - that line was what pushed the buttons together, and
   /// the key works the same without it.
-  Widget _compactActions() {
+  Widget _compactActions({required bool fold}) {
     final tools = _tools;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (tools.isNotEmpty)
+        if (tools.isNotEmpty && fold)
           HoverReveal(
             // A recording has to stay stoppable.
             pinned: _recorder != null,
             children: tools,
-          ),
+          )
+        else
+          for (final tool in tools) ...[tool, const SizedBox(width: T.s1)],
         const Spacer(),
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -685,7 +689,7 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                   padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s3),
                   child: LayoutBuilder(
                     builder: (context, box) => box.maxWidth < compactWidth
-                        ? _compactActions()
+                        ? _compactActions(fold: widget.enterSaves)
                         : _actions(),
                   ),
                 ),

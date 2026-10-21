@@ -216,6 +216,14 @@ void main() {
       expect(find.byTooltip('Remind me'), findsNothing);
     });
 
+    testWidgets('on touch the bell stays out', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(T.designWidth, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await pump(tester, canRemind: true, enterSaves: false);
+      expect(find.byTooltip('Remind me'), findsOneWidget);
+      expect(find.byTooltip('More'), findsNothing);
+    });
+
     testWidgets('a wide one keeps everything in one row', (tester) async {
       await sized(tester, 800);
       expect(find.text('Shift+Enter: new line'), findsOneWidget);

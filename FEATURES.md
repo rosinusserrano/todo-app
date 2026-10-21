@@ -1288,8 +1288,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
   line. Esc closes it without saving. On a phone the keyboard's return is
   still a new line, with *Save* and *Save & another* under the thumb. It opens
   ready to type: the caret is in the field, and on a phone the keyboard comes
-  up with it. In a narrow pane (the widget at its own size, a phone)
-  *Save & another* sits over *Save*, the Shift+Enter hint is left out, and
+  up with it. In a narrow pane *Save & another* sits over *Save*; with a
+  keyboard (the widget at its own size) the Shift+Enter hint is left out and
   the mic and the bell are behind a **⋯** that opens under the mouse (or on
   a tap) - while recording, the stop button stays out.
 - **Esc** unwinds one layer at a time — the sound sheet, then the focus-mode

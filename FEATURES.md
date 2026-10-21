@@ -988,16 +988,34 @@ at the screen gives nothing away) and its lock is **opt-in**.
   plaintext notes.
 - **Title + body editor** — creating an entry replaces the list with a plain
   full-pane editor: a title line, a body area, and **Cancel / Save** (plus
-  **Delete** when editing).
+  **Delete** when editing). The body is set in a **fixed-pitch face** (Space
+  Mono, bundled - the display face's sibling), since it is Markdown being
+  written. **Lists continue**: Enter after "- milk" starts "- ", after "2."
+  starts "3.", after a box starts an empty box, at the same indent; Enter on
+  an item with nothing in it ends the list. (A task's notes box does the
+  same, in the same face.)
+- **Preview beside it** — the ▥ beside the title shows the note rendered
+  next to the one being written, live, or under it when the pane is narrow.
+  It stays on until it is turned off (per device).
+- **Code editor keys** (Settings, off by default, keyboards only) — VS
+  Code's: **Ctrl+D** selects the word and then each next occurrence, and
+  typing changes all of them at once (Esc lets the others go);
+  **Alt+↑/↓** moves the line, **Shift+Alt+↑/↓** copies it, **Ctrl+Shift+K**
+  deletes it, **Ctrl+L** selects it, **Ctrl+Enter** opens a line below, and
+  Tab indents any line.
 - **Opening an entry reads it.** Picking one from the list renders its body as
   Markdown (see **Markdown & maths**) under its title; the ✎ in the header, or a
   tap on the text, turns it back into the two fields. **Double-click** an entry
-  in the list to go straight to the fields. A *new* entry skips
+  in the list to go straight to the fields; with a mouse, hovering a row swaps
+  its date for **Read** and **Edit**. A *new* entry skips
   straight to the fields, because there is nothing to read yet. Esc walks back
   down the same ladder it walked up — editor → reader → list → tasks.
 - **Keys, for writing without reaching for the mouse:**
-  - **Ctrl+Enter** — from the title down to the body. (Enter does the same, and
-    Tab is left to ordinary focus traversal.)
+  - **Tab** — from the title down to the body (Enter and Ctrl+Enter too).
+    In the body, Tab nests a list item and Shift+Tab takes it back out.
+  - **Ctrl+F** (or Ctrl+H) — find and replace in the body: every match is
+    shaded, **Enter** / **Shift+Enter** step through them, *Replace* and
+    *All* replace, **Esc** closes the bar with the caret on the match.
   - **Ctrl+S** — save and read what you just wrote. The **Save** button does
     this too.
   - **Ctrl+Alt+S** — save and go back to the list, for an entry that is finished
@@ -1572,6 +1590,12 @@ reminders are both there now**, queued for 0.18.0.
     and bell behind a ⋯; and Ctrl+Alt+H / Ctrl+Alt+T / a reminder no longer
     open the shopping list on the way - only the tray and un-minimising do -
     so a thought added over a note lands back on the note.
+  - **A richer note editor**: Space Mono for the body (bundled,
+    `T.fontMono`, also code spans), lists that continue, Tab from the
+    title to the body and to nest items, Ctrl+F find and replace, a live
+    preview beside the note, Read / Edit on a hovered row, and an opt-in set
+    of VS Code keys including Ctrl+D multi-edit (`ui/note_editor.dart`,
+    `markdown_editing.dart`, `code_keys.dart`).
   - **One occurrence of a repeating event, on its own**: edit, delete, drag or
     stretch a block of a series and it asks *Only this one* or *Whole series*.
     A changed or skipped occurrence is an event row of its own pointing back

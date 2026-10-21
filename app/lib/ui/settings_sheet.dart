@@ -46,7 +46,13 @@ class SettingsSheet extends StatefulWidget {
     this.onDockEdge,
     this.archivedCount = 0,
     this.archive,
+    this.codeKeys = false,
+    this.onCodeKeys,
   });
+
+  /// The code editor's keys in notes (code_keys.dart). Null hides the row.
+  final bool codeKeys;
+  final ValueChanged<bool>? onCodeKeys;
 
   final SyncService sync;
   final Color accent;
@@ -606,6 +612,29 @@ class _SettingsSheetState extends State<SettingsSheet> {
     );
   }
 
+  Widget _codeKeysRow(ValueChanged<bool> onChanged) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Code editor keys in notes',
+              style: TextStyle(fontSize: T.fsLabel),
+            ),
+          ),
+          Switch(value: widget.codeKeys, onChanged: onChanged),
+        ],
+      ),
+      const Text(
+        'Ctrl+D selects the next match to edit them all at once; Alt+↑/↓ '
+        'moves a line, Shift+Alt+↑/↓ copies it, Ctrl+Shift+K deletes it, '
+        'Ctrl+L selects it.',
+        style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
+      ),
+    ],
+  );
+
   Widget _settingsBody() {
     final sync = widget.sync;
     final config = _authConfig;
@@ -620,10 +649,15 @@ class _SettingsSheetState extends State<SettingsSheet> {
           const SizedBox(height: T.s2),
           _dockRow(widget.onDockEdge!),
         ],
+        if (widget.onCodeKeys != null) ...[
+          const SizedBox(height: T.s2),
+          _codeKeysRow(widget.onCodeKeys!),
+        ],
         if (widget.onOpenHistory != null ||
             (widget.archive != null && widget.archivedCount > 0) ||
             widget.onZoom != null ||
-            widget.onDockEdge != null)
+            widget.onDockEdge != null ||
+            widget.onCodeKeys != null)
           const SizedBox(height: T.s3),
         Text(switch (config?.mode) {
           'oidc' =>

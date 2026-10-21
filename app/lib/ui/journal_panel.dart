@@ -23,14 +23,20 @@
 // back down a ladder rather than out of one door - editor to reader, reader to
 // list, list to the tasks - and each rung is where you just came from.
 //
-// Three shortcuts, all in the editor, all of them about not reaching for the
-// mouse mid-sentence:
+// The editor's own shortcuts, all of them about not reaching for the mouse
+// mid-sentence:
 //
-//   Ctrl+Enter    title to body, because Enter in a one-line field does nothing
-//                 and Tab is taken by focus traversal.
+//   Tab           title to body (Enter and Ctrl+Enter too). In the body Tab
+//                 nests a list item instead (note_editor.dart).
 //   Ctrl+S        save and read what you wrote - the same thing Save does.
 //   Ctrl+Alt+S    save and go back to the list, for when the entry is finished
 //                 rather than being re-read.
+//   Ctrl+F        find and replace in the body.
+//
+// The body is a [NoteBody] (note_editor.dart): monospaced, lists that continue,
+// and the code editor's keys when Settings has them on. Beside it, when
+// [JournalView.preview] is on, the note as it will read - side by side where
+// there is room, one above the other where there is not.
 
 import 'dart:async' show Timer;
 
@@ -42,6 +48,7 @@ import '../app_state.dart';
 import '../theme.dart';
 import 'list_rule.dart';
 import 'markdown_text.dart';
+import 'note_editor.dart';
 import 'panel_header.dart';
 
 class JournalView extends StatefulWidget {
@@ -60,7 +67,18 @@ class JournalView extends StatefulWidget {
     this.onFocusChanged,
     this.onEditingChanged,
     this.startNew = false,
+    this.codeKeys = false,
+    this.preview = false,
+    this.onPreview,
   });
+
+  /// The code editor's keys in the body (code_keys.dart), from Settings.
+  final bool codeKeys;
+
+  /// The rendered note beside the one being written, and how to turn it on
+  /// and off - a standing choice, so the shell keeps it (device-local).
+  final bool preview;
+  final ValueChanged<bool>? onPreview;
 
   /// Open on a blank entry rather than the list - the dock's *Add a note*.
   /// Read once, when the State is made: the shell hands a fresh key with it.
@@ -119,8 +137,21 @@ class _JournalViewState extends State<JournalView> {
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   final _title = TextEditingController();
-  final _body = TextEditingController();
-  final _titleFocus = FocusNode();
+  final _body = NoteController();
+
+  /// Tab from the title goes to the body, not to the next button along: the
+  /// body is the only place anyone tabbing out of a title is going.
+  late final _titleFocus = FocusNode(
+    onKeyEvent: (node, e) {
+      if (e is! KeyDownEvent ||
+          e.logicalKey != LogicalKeyboardKey.tab ||
+          HardwareKeyboard.instance.isShiftPressed) {
+        return KeyEventResult.ignored;
+      }
+      _bodyFocus.requestFocus();
+      return KeyEventResult.handled;
+    },
+  );
   final _bodyFocus = FocusNode();
 
   /// The pane's own node, so the reader can hold focus.
@@ -338,6 +369,21 @@ class _JournalViewState extends State<JournalView> {
       _reading = true;
     });
     _focusPane();
+  }
+
+  /// The pencil on a list row: straight into the fields, caret in the body.
+  void _editFromList(JournalItem item) {
+    _title.text = item.title;
+    _body.text = item.body;
+    setState(() {
+      _focused = false;
+      _editing = item;
+      _editorOpen = true;
+      _reading = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _bodyFocus.requestFocus();
+    });
   }
 
   /// The pencil, from the reader.
@@ -628,44 +674,11 @@ class _JournalViewState extends State<JournalView> {
     );
   }
 
-  Widget _row(JournalItem item) {
-    final untitled = item.title.trim().isEmpty;
-    final label = item.locked
-        ? 'Locked'
-        : (untitled ? 'Untitled' : item.title.trim());
-    // No tile: the entry is its text on the pane's colour, and a ListRule
-    // between two says where one ends.
-    return InkWell(
-      onTap: () => _clickRow(item),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s3),
-        child: Row(
-          children: [
-            if (item.locked) ...[
-              const Icon(Icons.lock_outline, size: 12, color: T.muted),
-              const SizedBox(width: 6),
-            ],
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: T.fsLabel,
-                  color: (untitled || item.locked) ? T.muted : T.text,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              _stamp(item.createdAtTime),
-              style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _row(JournalItem item) => _NoteRow(
+    item: item,
+    onRead: () => _clickRow(item),
+    onEdit: item.locked ? null : () => _editFromList(item),
+  );
 
   // ----------------------------------------------------------------- reader
 
@@ -775,32 +788,21 @@ class _JournalViewState extends State<JournalView> {
                   onSubmitted: (_) => _bodyFocus.requestFocus(),
                 ),
               ),
+              if (widget.onPreview != null)
+                _iconButton(
+                  widget.preview
+                      ? Icons.vertical_split_rounded
+                      : Icons.vertical_split_outlined,
+                  widget.preview ? 'Hide the preview' : 'Preview beside it',
+                  () => widget.onPreview!(!widget.preview),
+                  size: 17,
+                  lit: widget.preview,
+                ),
               _focusButton(),
             ],
           ),
           const Divider(height: 8, thickness: 0.5, color: T.surfaceHover),
-          Expanded(
-            child: TextField(
-              controller: _body,
-              focusNode: _bodyFocus,
-              autofocus: _editing != null,
-              expands: true,
-              maxLines: null,
-              minLines: null,
-              textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(
-                fontSize: T.fsBody,
-                color: T.text,
-                height: 1.4,
-              ),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Markdown, if you want it.',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: T.s2),
-              ),
-            ),
-          ),
+          Expanded(child: _bodyWithPreview()),
           if (!focus) const SizedBox(height: 6),
           if (!focus)
             Row(
@@ -833,6 +835,52 @@ class _JournalViewState extends State<JournalView> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _bodyWithPreview() {
+    final body = NoteBody(
+      controller: _body,
+      focusNode: _bodyFocus,
+      codeKeys: widget.codeKeys,
+      autofocus: _editing != null,
+      hint: 'Markdown, if you want it.',
+    );
+    if (!widget.preview) return body;
+    final preview = ListenableBuilder(
+      listenable: _body,
+      builder: (context, _) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: T.s2),
+        child: MarkdownText(
+          _body.text,
+          style: const TextStyle(fontSize: T.fsBody, color: T.text, height: 1.4),
+        ),
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Side by side once each half is still a column of text; below
+        // that, the preview under the field.
+        final beside = box.maxWidth >= 2 * 260;
+        const rule = T.surfaceHover;
+        return beside
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: body),
+                  const VerticalDivider(width: T.s4, thickness: 0.5, color: rule),
+                  Expanded(child: preview),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: body),
+                  const Divider(height: T.s3, thickness: 0.5, color: rule),
+                  Expanded(child: preview),
+                ],
+              );
+      },
     );
   }
 
@@ -896,6 +944,7 @@ class _JournalViewState extends State<JournalView> {
     String tooltip,
     VoidCallback onTap, {
     double size = 15,
+    bool lit = false,
   }) => Tooltip(
     message: tooltip,
     child: InkWell(
@@ -903,7 +952,7 @@ class _JournalViewState extends State<JournalView> {
       borderRadius: BorderRadius.circular(T.radius),
       child: Padding(
         padding: const EdgeInsets.all(T.s1),
-        child: Icon(icon, size: size, color: T.muted),
+        child: Icon(icon, size: size, color: lit ? T.accent : T.muted),
       ),
     ),
   );
@@ -942,5 +991,101 @@ class _JournalViewState extends State<JournalView> {
     final hh = when.hour.toString().padLeft(2, '0');
     final mm = when.minute.toString().padLeft(2, '0');
     return '${_months[when.month - 1]} ${when.day}, $hh:$mm';
+  }
+}
+
+/// One note in the list. A click reads it; under a mouse, hovering swaps the
+/// date for *Read* and *Edit* (Marco, 2026-10-21), so editing is one click
+/// rather than read-then-pencil. In place of the date rather than beside it:
+/// what appears on hover must not move the title.
+class _NoteRow extends StatefulWidget {
+  const _NoteRow({required this.item, required this.onRead, this.onEdit});
+
+  final JournalItem item;
+  final VoidCallback onRead;
+  final VoidCallback? onEdit;
+
+  @override
+  State<_NoteRow> createState() => _NoteRowState();
+}
+
+class _NoteRowState extends State<_NoteRow> {
+  bool _hovered = false;
+
+  Widget _button(IconData icon, String tip, VoidCallback onTap) => Tooltip(
+    message: tip,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(T.radius),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: T.s1),
+        child: Icon(icon, size: 16, color: T.muted),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final untitled = item.title.trim().isEmpty;
+    final label = item.locked
+        ? 'Locked'
+        : (untitled ? 'Untitled' : item.title.trim());
+    final actions = widget.onEdit != null && _hovered;
+    // No tile: the entry is its text on the pane's colour, and a ListRule
+    // between two says where one ends.
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: InkWell(
+        onTap: widget.onRead,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s3),
+          child: Row(
+            children: [
+              if (item.locked) ...[
+                const Icon(Icons.lock_outline, size: 12, color: T.muted),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: T.fsLabel,
+                    color: (untitled || item.locked) ? T.muted : T.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Stack(
+                alignment: Alignment.centerRight,
+                children: [
+                  Visibility(
+                    visible: !actions,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: Text(
+                      _JournalViewState._stamp(item.createdAtTime),
+                      style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+                    ),
+                  ),
+                  if (actions)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _button(Icons.visibility_outlined, 'Read', widget.onRead),
+                        _button(Icons.edit_outlined, 'Edit', widget.onEdit!),
+                      ],
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

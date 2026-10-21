@@ -1841,6 +1841,9 @@ class _WidgetShellState extends State<WidgetShell>
             startup: isDesktop && StartupSetting.supported ? _startup : null,
             dockEdge: s.wideDock,
             onDockEdge: s.setWideDock,
+            // Only where there is a keyboard to press them on.
+            codeKeys: s.codeKeys,
+            onCodeKeys: isDesktop || isWeb ? s.setCodeKeys : null,
             archivedCount: s.archivedProjects.length,
             archive: (key) => ArchivedProjectsView(key: key, state: s),
           ),
@@ -3131,6 +3134,9 @@ class _WidgetShellState extends State<WidgetShell>
             : s.editJournalEntry(existing, title, body),
         onDelete: s.deleteJournalEntry,
         onBack: _toggleJournal,
+        codeKeys: s.codeKeys,
+        preview: s.notePreview,
+        onPreview: s.setNotePreview,
       );
     }
     return null;

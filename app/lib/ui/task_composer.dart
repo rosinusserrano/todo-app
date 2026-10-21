@@ -38,6 +38,7 @@ import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'form_sheet.dart';
+import 'markdown_editing.dart';
 import 'markdown_text.dart';
 import 'reminder_menu.dart';
 import 'reminder_picker.dart';
@@ -418,7 +419,15 @@ class _ComposerSheetState extends State<_ComposerSheet> {
             autofocus: true,
             minLines: 4,
             maxLines: 10,
-            style: const TextStyle(fontSize: T.fsLabel, height: 1.35),
+            // Written as Markdown, so set like the note editor's body: fixed
+            // pitch, and a list that continues on Enter.
+            style: const TextStyle(
+              fontFamily: T.fontMono,
+              fontFamilyFallback: T.fontMonoFallback,
+              fontSize: T.fsLabel - 0.5,
+              height: 1.4,
+            ),
+            inputFormatters: [ListContinuation()],
             decoration: const InputDecoration(
               hintText: 'Notes — Markdown, links, what "done" means…',
             ),

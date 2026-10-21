@@ -349,6 +349,16 @@ before the shell closes the pane. Two things there are load-bearing:
   first one minted instead of writing a sibling. Null means nothing was saved
   (an entry cleared to nothing deletes), and the list is then the only honest
   place to land.
+- **The body is a `NoteBody`** (`ui/note_editor.dart`): still one
+  `TextField`, with its own keys on the field's `FocusNode.onKeyEvent` (so
+  they run before the field and the app's shortcuts), list continuation as
+  a `TextInputFormatter` (`markdown_editing.dart` - a phone's return key is
+  text, not a key event), and find's matches and Ctrl+D's extra selections
+  drawn by `NoteController.buildTextSpan`. **Every change to the text goes
+  through `NoteController.value`'s setter**, which is where `applyMulti`
+  (`code_keys.dart`) repeats an edit at each extra selection; set value and
+  extras together with `setWithExtras`, or the setter reads your change as
+  an edit to repeat.
 - The pane owns a `FocusNode` of its own. The editor never needed one — a text
   field inside it takes primary focus and key events bubble up through the
   `Focus` on their way out — but the reader has no field, so without it the pane

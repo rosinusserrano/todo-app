@@ -100,14 +100,14 @@ class MarkdownText extends StatelessWidget {
 
   static MarkdownStyleSheet _styleSheet(TextStyle base) {
     final size = base.fontSize ?? T.fsLabel;
-    // Monospace for code, by family list rather than by name: the three
-    // platforms this runs on do not agree on one, and naming a font that is not
-    // there gets the proportional default back, which is the one thing a code
-    // span must not be.
+    // Monospace for code, in the bundled face: the platforms this runs on do
+    // not agree on one, and the web build has none of theirs - naming a font
+    // that is not there gets the proportional default back, which is the one
+    // thing a code span must not be.
     final code = base.copyWith(
       fontSize: size - 0.5,
-      fontFamily: 'Cascadia Mono',
-      fontFamilyFallback: const ['Consolas', 'Menlo', 'monospace'],
+      fontFamily: T.fontMono,
+      fontFamilyFallback: T.fontMonoFallback,
       color: T.text,
     );
     TextStyle heading(double scale) => base.copyWith(

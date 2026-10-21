@@ -8,13 +8,14 @@
 // by one modifier and land in different places, and a Ctrl+Enter that stopped
 // moving the caret would be invisible until someone reached for it mid-note.
 
-import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_widget/app_state.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/ui/journal_panel.dart';
+import 'package:todo_widget/ui/note_editor.dart';
 
 JournalItem item(String uuid, String title, String body) => JournalItem(
   entry: JournalEntry(
@@ -58,6 +59,9 @@ Future<void> pumpPanel(
   ValueChanged<bool>? onEditingChanged,
   bool startNew = false,
   bool locked = false,
+  bool codeKeys = false,
+  bool preview = false,
+  ValueChanged<bool>? onPreview,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -76,6 +80,9 @@ Future<void> pumpPanel(
           onFocusChanged: onFocusChanged,
           onEditingChanged: onEditingChanged,
           startNew: startNew,
+          codeKeys: codeKeys,
+          preview: preview,
+          onPreview: onPreview,
         ),
       ),
     ),
@@ -575,5 +582,153 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(told.last, isFalse);
+  });
+
+  group('the editor', () {
+    Future<NoteController> openNew(
+      WidgetTester tester, {
+      bool codeKeys = false,
+    }) async {
+      await pumpPanel(
+        tester,
+        items: const [],
+        saves: Saves(),
+        startNew: true,
+        codeKeys: codeKeys,
+      );
+      return tester
+          .widget<TextField>(find.byType(TextField).last)
+          .controller! as NoteController;
+    }
+
+    FocusNode? focused() => FocusManager.instance.primaryFocus;
+
+    testWidgets('Tab goes from the title to the body', (tester) async {
+      final body = await openNew(tester);
+      await tester.enterText(find.byType(TextField).first, 'Trip');
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      final field = tester.widget<TextField>(find.byType(TextField).last);
+      expect(field.focusNode!.hasFocus, isTrue);
+      expect(field.controller, body);
+    });
+
+    testWidgets('the body is monospaced and continues a list', (tester) async {
+      final body = await openNew(tester);
+      final field = find.byType(TextField).last;
+      expect(tester.widget<TextField>(field).style!.fontFamily, 'Space Mono');
+      await tester.enterText(field, '- milk');
+      await tester.enterText(field, '- milk\n');
+      await tester.pump();
+      expect(body.text, '- milk\n- ');
+    });
+
+    testWidgets('Ctrl+F finds, steps and replaces', (tester) async {
+      final body = await openNew(tester);
+      final field = find.byType(TextField).last;
+      await tester.enterText(field, 'milk and Milk');
+      await chord(tester, LogicalKeyboardKey.keyF);
+      expect(find.text('Find'), findsOneWidget);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Find'), 'milk');
+      await tester.pump();
+      expect(body.matches.length, 2);
+      expect(find.textContaining('of 2'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Replace with'),
+        'oat',
+      );
+      await tester.tap(find.text('All'));
+      await tester.pump();
+      expect(body.text, 'oat and oat');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(find.text('Find'), findsNothing);
+      expect(find.byType(TextField), findsNWidgets(2), reason: 'still editing');
+    });
+
+    testWidgets('with the code keys, Ctrl+D edits every match at once', (
+      tester,
+    ) async {
+      final body = await openNew(tester, codeKeys: true);
+      final field = find.byType(TextField).last;
+      await tester.enterText(field, 'cat cat dog');
+      body.selection = const TextSelection.collapsed(offset: 1);
+      await tester.pump();
+      expect(focused(), isNotNull);
+
+      await chord(tester, LogicalKeyboardKey.keyD); // the word
+      await chord(tester, LogicalKeyboardKey.keyD); // and the next
+      expect(body.selection.start, 4);
+      expect(body.extras.single, const TextRange(start: 0, end: 3));
+
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'cat x dog',
+          selection: TextSelection.collapsed(offset: 5),
+        ),
+      );
+      await tester.pump();
+      expect(body.text, 'x x dog');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(body.extras, isEmpty);
+      expect(find.byType(TextField), findsNWidgets(2), reason: 'Esc was spent');
+    });
+
+    testWidgets('without them, Ctrl+D is not taken', (tester) async {
+      final body = await openNew(tester);
+      await tester.enterText(find.byType(TextField).last, 'cat cat');
+      body.selection = const TextSelection.collapsed(offset: 1);
+      await chord(tester, LogicalKeyboardKey.keyD);
+      expect(body.selection.isCollapsed, isTrue);
+    });
+
+    testWidgets('the preview shows the note as it reads, beside it', (
+      tester,
+    ) async {
+      final asked = <bool>[];
+      await pumpPanel(
+        tester,
+        items: const [],
+        saves: Saves(),
+        startNew: true,
+        preview: true,
+        onPreview: asked.add,
+      );
+      await tester.enterText(find.byType(TextField).last, '**bold** move');
+      await tester.pump();
+      expect(find.text('bold move'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Hide the preview'));
+      expect(asked, [false]);
+    });
+
+    testWidgets('a hovered row offers Edit, straight into the fields', (
+      tester,
+    ) async {
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: Saves(),
+      );
+      expect(find.byTooltip('Edit'), findsNothing);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(find.text('Trip')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Edit'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNWidgets(2));
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).focusNode!.hasFocus,
+        isTrue,
+      );
+    });
   });
 }

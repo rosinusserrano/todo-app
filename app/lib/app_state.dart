@@ -47,6 +47,8 @@ const _kSplitFraction = 'ui:split-fraction';
 const _kCalendarSplitFraction = 'ui:calendar-split-fraction';
 const _kTasksPaneCollapsed = 'ui:tasks-pane-collapsed';
 const _kZoom = 'ui:zoom';
+const _kNotePreview = 'notes:preview';
+const _kCodeKeys = 'notes:code-keys';
 
 /// The three grids. There is deliberately no month view: the year view is
 /// twelve months drawn at once, so a single month would be the same thing with
@@ -1614,6 +1616,29 @@ class AppState extends ChangeNotifier {
     calendarSplitFraction =
         double.tryParse(await _store.setting(_kCalendarSplitFraction) ?? '');
     windowModes = decodeWindowModes(await _store.setting(_kWindowModes));
+    notePreview = (await _store.setting(_kNotePreview)) == '1';
+    codeKeys = (await _store.setting(_kCodeKeys)) == '1';
+  }
+
+  /// The rendered note beside the one being written. A standing choice,
+  /// device-local: a phone has no room for it that a desktop does.
+  bool notePreview = false;
+
+  /// The code editor's keys in the note editor (code_keys.dart) - Ctrl+D and
+  /// friends. Off by default, because they take keys the platform already
+  /// means something by. Device-local, like the keyboard it is about.
+  bool codeKeys = false;
+
+  Future<void> setNotePreview(bool on) async {
+    notePreview = on;
+    notifyListeners();
+    await _store.setSetting(_kNotePreview, on ? '1' : '0');
+  }
+
+  Future<void> setCodeKeys(bool on) async {
+    codeKeys = on;
+    notifyListeners();
+    await _store.setSetting(_kCodeKeys, on ? '1' : '0');
   }
 
   /// The window arrangements saved from the title bar (window_spots.dart).

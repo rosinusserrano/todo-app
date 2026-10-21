@@ -235,6 +235,14 @@ class T {
   /// only two weights chrome is allowed.
   static const fontDisplay = 'Space Grotesk';
 
+  /// The fixed-pitch face, bundled for the same reason: Space Grotesk's
+  /// sibling, for text that is *written as* Markdown - the note editor, and
+  /// code spans where it is rendered. Bundled rather than named from the
+  /// platform, because the web build draws only the fonts it was given and
+  /// "monospace" there is the proportional default. Regular only.
+  static const fontMono = 'Space Mono';
+  static const fontMonoFallback = ['Cascadia Mono', 'Consolas', 'Menlo'];
+
   /// The eight, at roughly 60% of the chroma they carried.
   ///
   /// The hues are unchanged and in the same order, which is the whole point:

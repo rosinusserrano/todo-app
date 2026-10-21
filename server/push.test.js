@@ -334,3 +334,41 @@ test('a notification to a user with no subscriptions sends nothing', async () =>
     subscriptions: 0,
   });
 });
+
+test('an occurrence skipped or moved on its own fires as it now is', () => {
+  const db = subscribed();
+  sync(db, USER, 0, {
+    calendars: [calendar(0)],
+    calendar_events: [
+      event('daily', '2026-10-05T07:00:00.000Z', '2026-10-05T07:30:00.000Z', { recur: 'daily' }),
+      // The 10th is skipped...
+      event('skip', '2026-10-10T07:00:00.000Z', '2026-10-10T07:30:00.000Z', {
+        series_uuid: 'daily',
+        occurrence_at: '2026-10-10T07:00:00.000Z',
+        cancelled: 1,
+      }),
+      // ...and the 11th moved to the afternoon.
+      event('moved', '2026-10-11T13:00:00.000Z', '2026-10-11T13:30:00.000Z', {
+        series_uuid: 'daily',
+        occurrence_at: '2026-10-11T07:00:00.000Z',
+      }),
+      // An exception to an occurrence the series does not have is let go.
+      event('stray', '2026-10-12T15:00:00.000Z', '2026-10-12T15:30:00.000Z', {
+        series_uuid: 'daily',
+        occurrence_at: '2026-10-12T07:05:00.000Z',
+      }),
+    ],
+  });
+  const keys = (from, to) =>
+    dueNotifications(db, USER, at(from), at(to)).map((d) => d.key);
+
+  assert.deepEqual(keys('2026-10-10T06:55:00Z', '2026-10-10T07:05:00Z'), []);
+  assert.deepEqual(keys('2026-10-11T06:55:00Z', '2026-10-11T07:05:00Z'), []);
+  assert.deepEqual(keys('2026-10-11T12:55:00Z', '2026-10-11T13:05:00Z'), [
+    'event:moved:2026-10-11T13:00:00.000Z',
+  ]);
+  assert.deepEqual(keys('2026-10-12T06:55:00Z', '2026-10-12T07:05:00Z'), [
+    'event:daily:2026-10-12T07:00:00.000Z',
+  ]);
+  assert.deepEqual(keys('2026-10-12T14:55:00Z', '2026-10-12T15:05:00Z'), []);
+});

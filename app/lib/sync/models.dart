@@ -1667,6 +1667,35 @@ class CalendarEvent implements SyncRow {
   /// for a feed to land in a calendar that has events of your own on it.
   final String? feedUuid;
 
+  /// The series this row stands in for one occurrence of, or null for a row
+  /// that is not an exception (v23).
+  ///
+  /// An occurrence changed on its own - "only this one" - is written as a row
+  /// of its own, and [occurrenceAt] says which occurrence it replaces. The
+  /// series keeps every other one. Rows rather than a list on the series, so
+  /// that moving Tuesday's on one device and skipping Thursday's on another
+  /// are two writes that both survive a merge; and an ordinary event row, so
+  /// that everything which reads a block - the grid, the session, the
+  /// notification schedule, attachments - reads this one with no second path.
+  /// The id is derived ([exceptionUuid]) because two devices changing the same
+  /// occurrence offline must be writing the same row.
+  ///
+  /// An exception counts only while [occurrenceAt] is still an occurrence of
+  /// a live series (see `LocalStore._exceptions`). Moving the series or
+  /// changing its rule therefore lets go of them all, rather than leaving a
+  /// moved Tuesday standing beside a series that no longer has a Tuesday.
+  final String? seriesUuid;
+
+  /// The start the occurrence had in the series, as a [reminderStamp] - the
+  /// one this row replaces. Not when the row now starts: that is [startAt].
+  final String? occurrenceAt;
+
+  /// The occurrence is skipped: "delete only this one". The row is kept
+  /// rather than tombstoned, because a tombstone would put the occurrence
+  /// back. Nullable in both databases for `recur_from`'s reason - an older
+  /// peer's push carries no value - and null reads as false.
+  final bool cancelled;
+
   final String createdAt;
   @override
   final String updatedAt;
@@ -1685,6 +1714,9 @@ class CalendarEvent implements SyncRow {
     this.recur,
     this.series,
     this.feedUuid,
+    this.seriesUuid,
+    this.occurrenceAt,
+    this.cancelled = false,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -1702,6 +1734,48 @@ class CalendarEvent implements SyncRow {
   /// True for a row that repeats - the series itself, or one of its
   /// occurrences.
   bool get repeats => recur != null;
+
+  /// True for a row standing in for one occurrence of a series.
+  bool get isException => seriesUuid != null;
+
+  /// Part of a series one way or the other: an occurrence of it, the series
+  /// itself, or one occurrence changed on its own. What decides whether a
+  /// change has to ask "this one, or all of them".
+  bool get inSeries => repeats || isException;
+
+  /// The uuid of the series this belongs to, or null for a one-off.
+  String? get seriesId => isException ? seriesUuid : (repeats ? uuid : null);
+
+  /// Namespace for [exceptionUuid]. A fixed constant, so two devices agree.
+  static const exceptionNamespace = '0b7e4f52-91c3-5d6a-a8e2-7c4d1f3b6e90';
+
+  /// The id of the row that replaces the occurrence of [seriesUuid] starting
+  /// at [occurrenceAt]. Derived, never generated - see [seriesUuid].
+  static String exceptionUuid(String seriesUuid, String occurrenceAt) =>
+      _uuid.v5(exceptionNamespace, '$seriesUuid|$occurrenceAt');
+
+  /// This occurrence as a row of its own, not yet written: what "only this
+  /// one" edits. Same times, title and everything else as the occurrence on
+  /// screen, no rule, and pointing back at its series. An exception is
+  /// already that row and returns itself.
+  CalendarEvent detached({String? stamp}) {
+    if (isException || !repeats) return this;
+    final now = stamp ?? nowStamp();
+    return CalendarEvent(
+      uuid: exceptionUuid(uuid, startAt),
+      calendarUuid: calendarUuid,
+      title: title,
+      description: description,
+      startAt: startAt,
+      endAt: endAt,
+      notifyMinutes: notifyMinutes,
+      allDay: allDay,
+      seriesUuid: uuid,
+      occurrenceAt: startAt,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
 
   /// The row to write when a change is made through this event. For an
   /// occurrence that is the series it came from; for anything else, itself.
@@ -1762,7 +1836,15 @@ class CalendarEvent implements SyncRow {
   /// [Recur.next], which is calendar arithmetic in local time - so a 09:00
   /// block is still at 09:00 on the far side of a DST boundary rather than
   /// sliding to 08:00 for half the year.
-  List<CalendarEvent> occurrencesBetween(DateTime from, DateTime to) {
+  ///
+  /// [except] holds the starts ([startAt] stamps) of occurrences that have an
+  /// exception row standing in for them, which are left out - the exception
+  /// is drawn instead, or nothing is when it skips the occurrence.
+  List<CalendarEvent> occurrencesBetween(
+    DateTime from,
+    DateTime to, {
+    Set<String> except = const {},
+  }) {
     final rule = recur;
     if (rule == null) {
       return start.isBefore(to) && end.isAfter(from) ? [this] : const [];
@@ -1787,7 +1869,8 @@ class CalendarEvent implements SyncRow {
       final at = n == 0 ? anchor : Recur.nth(anchor, rule, n);
       if (at == null) break;
       if (!at.isBefore(to)) break;
-      if (at.add(length).isAfter(from)) {
+      if (at.add(length).isAfter(from) &&
+          !except.contains(n == 0 ? startAt : reminderStamp(at))) {
         out.add(n == 0 ? this : _occurrenceAt(at, length));
         if (out.length >= _maxOccurrences) break;
       }
@@ -1818,12 +1901,30 @@ class CalendarEvent implements SyncRow {
   /// The first occurrence that has not finished by [now], or null for a series
   /// whose rule is unknown. This is what the notification schedule arms: only
   /// ever one instant per series, because handing the OS a year of them would
-  /// be a year of alarms to cancel every time the row is touched.
-  CalendarEvent? nextOccurrence([DateTime? now]) {
+  /// be a year of alarms to cancel every time the row is touched. [except] is
+  /// [occurrencesBetween]'s.
+  CalendarEvent? nextOccurrence([
+    DateTime? now,
+    Set<String> except = const {},
+  ]) {
     final at = now ?? DateTime.now();
     if (recur == null) return end.isAfter(at) ? this : null;
-    final found = occurrencesBetween(at, at.add(const Duration(days: 366)));
+    final found = occurrencesBetween(
+      at,
+      at.add(const Duration(days: 366)),
+      except: except,
+    );
     return found.isEmpty ? null : found.first;
+  }
+
+  /// Whether the series has an occurrence starting exactly at [stamp] - which
+  /// is what keeps an exception attached to it. False for a one-off.
+  bool hasOccurrenceAt(String stamp) {
+    if (recur == null) return false;
+    final at = DateTime.tryParse(stamp)?.toLocal();
+    if (at == null) return false;
+    return occurrencesBetween(at, at.add(const Duration(milliseconds: 1)))
+        .any((o) => o.startAt == stamp);
   }
 
   DateTime get start => DateTime.tryParse(startAt)?.toLocal() ?? DateTime.now();
@@ -1897,6 +1998,7 @@ class CalendarEvent implements SyncRow {
     bool? allDay,
     String? recur,
     bool clearRecur = false,
+    bool? cancelled,
     String? updatedAt,
     String? deletedAt,
     bool clearDeleted = false,
@@ -1914,6 +2016,9 @@ class CalendarEvent implements SyncRow {
       allDay: allDay ?? base.allDay,
       recur: clearRecur ? null : (recur ?? base.recur),
       feedUuid: base.feedUuid,
+      seriesUuid: base.seriesUuid,
+      occurrenceAt: base.occurrenceAt,
+      cancelled: cancelled ?? base.cancelled,
       createdAt: base.createdAt,
       updatedAt: updatedAt ?? nowStamp(),
       deletedAt: clearDeleted ? null : (deletedAt ?? base.deletedAt),
@@ -1932,6 +2037,9 @@ class CalendarEvent implements SyncRow {
         'all_day': allDay ? 1 : 0,
         'recur': recur,
         'feed_uuid': feedUuid,
+        'series_uuid': seriesUuid,
+        'occurrence_at': occurrenceAt,
+        'cancelled': cancelled ? 1 : 0,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -1948,6 +2056,9 @@ class CalendarEvent implements SyncRow {
         allDay: ((m['all_day'] as num?)?.toInt() ?? 0) != 0,
         recur: m['recur'] as String?,
         feedUuid: m['feed_uuid'] as String?,
+        seriesUuid: m['series_uuid'] as String?,
+        occurrenceAt: m['occurrence_at'] as String?,
+        cancelled: ((m['cancelled'] as num?)?.toInt() ?? 0) != 0,
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,

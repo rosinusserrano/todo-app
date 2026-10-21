@@ -733,11 +733,18 @@ Three tiers, none of which need an account, an API key, or a licence:
   with a ↻ on it and its rule named on the details card. It stays **one entry**:
   the occurrences are drawn from the rule rather than written out, so renaming
   a stand-up renames all of them and nothing has to be tidied up afterwards.
-  Editing or deleting any occurrence therefore applies to the whole series, and
-  both say so — the form under the rule, and a confirmation before a delete
-  that names how it repeats. Changing a single occurrence is not in this
-  version; it needs somewhere to record the exception, and silently editing the
-  series instead would be the version of that you find out about late.
+  **One occurrence can be changed or deleted on its own.** Editing, deleting,
+  moving or stretching any block of a series first asks *Only this one* or
+  *Whole series* (Cancel does nothing). *Only this one* changes that day alone
+  — a stand-up moved to the afternoon this Tuesday, or skipped for a holiday —
+  and every other occurrence stays as the series says; the form for it has no
+  repeat rule and says the rest of the series is left as it is. A changed
+  occurrence still carries the ↻, its details card says it was changed on its
+  own, and the todos planned into the series stay with it. Renaming the series
+  keeps the occurrences changed on their own; **moving its start or changing
+  how it repeats undoes them** (the form says so), because the Tuesday they
+  were changed from no longer exists. Deleting the whole series takes them
+  with it.
   A monthly block on the 31st stays on the 31st — February does not drag it
   back to the 28th for good — and a 09:00 block still reads 09:00 on the far
   side of a daylight-saving change.
@@ -1554,6 +1561,12 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **One occurrence of a repeating event, on its own**: edit, delete, drag or
+    stretch a block of a series and it asks *Only this one* or *Whole series*.
+    A changed or skipped occurrence is an event row of its own pointing back
+    at the series (`series_uuid`, `occurrence_at`, `cancelled` on
+    `calendar_events`; client v23, sync protocol 9, withheld from older apps
+    and servers). Web push follows it.
   - **Reminders on thoughts**: read from the words ("in 10 minutes") or
     picked with the bell; fired by the poll, the phone's schedule and the
     server's push. `side_thoughts.remind_at` (client v22, sync protocol 8).

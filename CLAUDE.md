@@ -652,8 +652,8 @@ time on one. The rules that are not obvious from the schema:
     is ever written.
   - `copyWith` and `toMap` always build from `stored`, so a write reached
     through an occurrence cannot move the series onto whichever Tuesday was on
-    screen. `_editEvent` opens `event.stored` for the same reason, and the
-    form says the change applies to the series.
+    screen. `_editEvent` opens `event.stored` for *Whole series* for the
+    same reason, and `occurrence.detached()` for *Only this one*.
   - **The window query cannot filter a series on `end_at`.** A series has no
     end; the stored end only says how long one occurrence lasts. `eventsBetween`
     and `liveEvents` therefore have two predicates, and `upcomingEvents`
@@ -665,6 +665,19 @@ time on one. The rules that are not obvious from the schema:
     on the 31st meets February and becomes the 28th *for ever*. Tasks keep
     using `next` because a completed task has no anchor left - the row in
     front of you is the series.
+- **One occurrence changed on its own is a row of its own** (v23, protocol
+  9): `series_uuid`, `occurrence_at` (the start it had) and `cancelled` on
+  `calendar_events`, uuid derived (`CalendarEvent.exceptionUuid`), built by
+  `CalendarEvent.detached`. Every read goes through `LocalStore._exceptions`,
+  which says which exceptions count and which occurrences they replace
+  (`occurrencesBetween(except:)`) - **an exception counts only while its live
+  series still has an occurrence at `occurrence_at`**, so moving the series
+  lets go of them without anything being rewritten. `push.js` `exceptions` is
+  the port; change one and change the other. A skip is `cancelled`, never a
+  tombstone (that would put the occurrence back). The rows are withheld from
+  older clients (`ROW_SINCE` in db.js) and older servers (`syncOnce`),
+  because without the columns they read as one-offs. Edit, delete, drag and
+  stretch ask first (`ui/calendar/series_scope.dart`).
 - **`all_day` (v14) says how to draw an event, not when it is.** The instants
   still carry the whole answer: midnight on the first day to midnight on the
   day *after* the last, which is .ics's exclusive end and is what lets

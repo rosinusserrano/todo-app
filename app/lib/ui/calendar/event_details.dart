@@ -332,6 +332,11 @@ class _DetailsDialogState extends State<_DetailsDialog> {
                   icon: Icons.repeat_rounded,
                   text: Recur.label(e.recur!),
                 ),
+              if (e.isException)
+                const _Line(
+                  icon: Icons.repeat_rounded,
+                  text: 'One occurrence of a series, changed on its own',
+                ),
               if (e.description.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 // Markdown, like a task's notes. This card is already the

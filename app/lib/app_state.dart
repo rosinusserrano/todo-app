@@ -321,7 +321,7 @@ class AppState extends ChangeNotifier {
 
     liveEvents = await _store.liveEvents(now);
     sessionTasks = {
-      for (final e in liveEvents) e.uuid: await _store.tasksForEvent(e.uuid),
+      for (final e in liveEvents) e.uuid: await tasksForBlock(e),
     };
     // [calendars] is normally loaded by opening the calendar view, and the
     // banner can appear on a run where that never happened - a block needs its
@@ -1091,6 +1091,24 @@ class AppState extends ChangeNotifier {
 
   Future<List<Task>> tasksForEvent(String eventUuid) =>
       _store.tasksForEvent(eventUuid);
+
+  /// What is planned into [e] as it is on screen. An occurrence changed on
+  /// its own is a row with an id of its own, but a stand-up's todos were
+  /// planned into the stand-up - the series - and moving one Tuesday to the
+  /// afternoon must not leave them behind, so it has both.
+  Future<List<Task>> tasksForBlock(CalendarEvent e) async {
+    final series = e.seriesUuid;
+    return [
+      ...await _store.tasksForEvent(e.uuid),
+      if (series != null) ...await _store.tasksForEvent(series),
+    ];
+  }
+
+  /// [eventTaskCounts] for a block on screen, counted the way [tasksForBlock]
+  /// lists them.
+  int taskCountFor(CalendarEvent e) =>
+      (eventTaskCounts[e.uuid] ?? 0) +
+      (e.isException ? eventTaskCounts[e.seriesUuid] ?? 0 : 0);
 
   /// Release everything planned into an event that is going away.
   ///
@@ -2512,6 +2530,13 @@ class AppState extends ChangeNotifier {
           : from.add(const Duration(days: 1));
     }
 
+    // An exception is one occurrence and cannot have a rule of its own; a
+    // rule here would make it a second series hanging off the first.
+    if (existing != null && existing.isException) {
+      recur = null;
+      clearRecur = true;
+    }
+
     final stamp = nowStamp();
     final row = existing == null
         ? CalendarEvent(
@@ -2549,31 +2574,39 @@ class AppState extends ChangeNotifier {
   }
 
   /// A block was dragged on the grid: the piece that started at [from] was
-  /// let go at [to]. Moves the event - its series, for an occurrence - by
-  /// that distance and keeps its length. A feed's event is the feed's to
-  /// move, so it is left alone (the grid does not offer it either).
+  /// let go at [to]. Moves the event - its series, for an occurrence, unless
+  /// [onlyThis] - by that distance and keeps its length. A feed's event is
+  /// the feed's to move, so it is left alone (the grid does not offer it
+  /// either).
   Future<void> moveEvent(
     CalendarEvent e, {
     required DateTime from,
     required DateTime to,
+    bool onlyThis = false,
   }) async {
     if (e.fromFeed || from == to) return;
-    await _store.putEvent(e.shiftedBy(from, to, stamp: nowStamp()));
+    final stamp = nowStamp();
+    final target = onlyThis ? e.detached(stamp: stamp) : e;
+    await _store.putEvent(target.shiftedBy(from, to, stamp: stamp));
     await refreshEvents();
     await _rescheduleNotifications();
     _mutated();
   }
 
   /// Drag one end of a block: its start ([start]) or its end, from the instant
-  /// it was at to [to]. The series when [e] is an occurrence, like a move.
+  /// it was at to [to]. The series when [e] is an occurrence, like a move,
+  /// and like a move [onlyThis] makes it that occurrence alone.
   Future<void> resizeEvent(
     CalendarEvent e, {
     required bool start,
     required DateTime from,
     required DateTime to,
+    bool onlyThis = false,
   }) async {
     if (e.fromFeed || from == to) return;
-    final resized = e.resizedBy(from, to, start: start, stamp: nowStamp());
+    final stamp = nowStamp();
+    final target = onlyThis ? e.detached(stamp: stamp) : e;
+    final resized = target.resizedBy(from, to, start: start, stamp: stamp);
     if (resized == null) return;
     await _store.putEvent(resized);
     await refreshEvents();
@@ -2622,26 +2655,56 @@ class AppState extends ChangeNotifier {
     return added;
   }
 
-  Future<void> deleteEvent(CalendarEvent e) async {
+  /// Delete a block. Reached through an occurrence it is the series, unless
+  /// [onlyThis], which skips that one occurrence and leaves the rest.
+  Future<void> deleteEvent(CalendarEvent e, {bool onlyThis = false}) async {
     final stamp = nowStamp();
-    // The attachments go with it, for the same reason a deleted task's do: a
-    // row pointing at an event that no longer exists is unreachable, and its
-    // bytes would never be collected.
-    for (final a in await _store.eventAttachments(e.uuid)) {
-      await _store.putAttachment(
-        a.copyWith(deletedAt: stamp, updatedAt: stamp),
+    if (onlyThis && e.inSeries) {
+      // Skipped, not tombstoned: the row is what keeps the occurrence away,
+      // and a tombstone would put it back. What was attached to this one
+      // occurrence goes, as it would with any deleted block; the series'
+      // own attachments and todos stay with the series.
+      if (e.isException) await _dropEventContents(e.uuid, stamp);
+      await _store.putEvent(
+        e.detached(stamp: stamp).copyWith(cancelled: true, updatedAt: stamp),
       );
+    } else {
+      // Through an exception, "all of them" is the series it belongs to.
+      final series = e.isException
+          ? await _store.eventByUuid(e.seriesUuid!)
+          : e.stored;
+      for (final row in [
+        if (series != null && !series.isDeleted) series,
+        // Its exceptions go with it. They would stop counting on their own
+        // (see LocalStore._exceptions), but their attachments would not.
+        if (series != null && series.repeats)
+          ...await _store.exceptionsOf(series.uuid),
+        if (e.isException && series == null) e,
+      ]) {
+        await _dropEventContents(row.uuid, stamp);
+        await _store.putEvent(row.copyWith(deletedAt: stamp, updatedAt: stamp));
+      }
     }
-    // The tasks do *not* go with it - they are still things to do, they have
-    // simply lost the time that was set aside for them. Only the pointer goes.
-    await _releaseEventTasks(e.uuid);
-    await _store.putEvent(e.copyWith(deletedAt: stamp, updatedAt: stamp));
     await refreshEvents();
     // The rows that were just released are on the list with a stale "planned"
     // mark until this runs.
     await refreshTasks();
     await _rescheduleNotifications();
     _mutated();
+  }
+
+  /// What goes with a deleted block. The attachments go, for the same reason
+  /// a deleted task's do: a row pointing at an event that no longer exists
+  /// is unreachable, and its bytes would never be collected. The tasks do
+  /// *not* - they are still things to do, they have simply lost the time
+  /// that was set aside for them. Only the pointer goes.
+  Future<void> _dropEventContents(String eventUuid, String stamp) async {
+    for (final a in await _store.eventAttachments(eventUuid)) {
+      await _store.putAttachment(
+        a.copyWith(deletedAt: stamp, updatedAt: stamp),
+      );
+    }
+    await _releaseEventTasks(eventUuid);
   }
 
   Future<List<Attachment>> eventAttachments(CalendarEvent e) =>

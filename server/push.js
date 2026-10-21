@@ -37,6 +37,11 @@
 //     anchor in **local time** (`nth`, a port of `Recur.nth`), so a 09:00 block
 //     stays at 09:00 across a DST change. "Local" is this process's timezone -
 //     set TZ in the service environment if the server is not where you are.
+//   - One occurrence changed on its own is a row of its own (`series_uuid`,
+//     `occurrence_at`), and the series' occurrence it stands in for does not
+//     fire; a skipped one (`cancelled`) fires nothing. It counts only while
+//     the series still has that occurrence (`exceptions`, a port of
+//     `LocalStore._exceptions`).
 //
 // What it does not do: write anything users see. A rule-based repeating task
 // spawns its next occurrence on a device (the reminder poll); with no device
@@ -224,6 +229,33 @@ function startsIn(ev, from, to) {
   return out;
 }
 
+/**
+ * Which exception rows count and which occurrences they stand in for: per
+ * series uuid, the starts (ms) to leave out, and the uuids of the exceptions
+ * that are drawn. A port of `LocalStore._exceptions` - an exception counts
+ * only while its series is live and still has an occurrence at
+ * `occurrence_at`, so moving the series lets go of them.
+ */
+export function exceptions(events) {
+  const series = new Map(
+    events.filter((e) => e.recur != null && e.series_uuid == null).map((e) => [e.uuid, e])
+  );
+  const skip = new Map();
+  const shown = new Set();
+  for (const ex of events) {
+    if (ex.series_uuid == null) continue;
+    const s = series.get(ex.series_uuid);
+    const at = new Date(ex.occurrence_at);
+    const t = at.getTime();
+    if (!s || Number.isNaN(t)) continue;
+    if (!startsIn(s, new Date(t - 1), at).some((d) => d.getTime() === t)) continue;
+    if (!skip.has(s.uuid)) skip.set(s.uuid, new Set());
+    skip.get(s.uuid).add(t);
+    if (!ex.cancelled) shown.add(ex.uuid);
+  }
+  return { skip, shown };
+}
+
 /** An event's resolved lead in minutes, or null for silent. Mirrors
  *  `CalendarEvent.notifyLead`. */
 export function eventLead(ev, calendar) {
@@ -300,11 +332,14 @@ export function dueNotifications(db, userId, from, to) {
   const events = db
     .prepare(
       `SELECT uuid, calendar_uuid, title, description, start_at, end_at,
-              notify_minutes, recur, all_day
+              notify_minutes, recur, all_day, series_uuid, occurrence_at,
+              cancelled
        FROM calendar_events WHERE user_id = ? AND deleted_at IS NULL`
     )
     .all(userId);
+  const { skip, shown } = exceptions(events);
   for (const ev of events) {
+    if (ev.series_uuid != null && !shown.has(ev.uuid)) continue;
     const calendar = calendars.get(ev.calendar_uuid);
     if (calendar?.deleted_at) continue;
     const lead = eventLead(ev, calendar);
@@ -317,6 +352,7 @@ export function dueNotifications(db, userId, from, to) {
       new Date(from.getTime() + leadMs),
       new Date(to.getTime() + leadMs)
     )) {
+      if (skip.get(ev.uuid)?.has(start.getTime())) continue;
       const end = new Date(start.getTime() + (Number.isFinite(length) ? length : 0));
       const when = ev.all_day ? 'All day' : `${hhmm(start)} – ${hhmm(end)}`;
       out.push({

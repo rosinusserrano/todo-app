@@ -468,40 +468,55 @@ class _EventDialogState extends State<_EventDialog> {
                     ),
                 ],
               ),
-              const SizedBox(height: 14),
-              const Text('Repeats',
-                  style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  ChoiceChip(
-                    label: const Text('Once',
-                        style: TextStyle(fontSize: T.fsMeta)),
-                    selected: _recur == null,
-                    onSelected: (_) => setState(() => _recur = null),
-                  ),
-                  for (final r in Recur.rules)
+              // One occurrence changed on its own has no rule to pick: it is
+              // a single block standing in for one of the series'.
+              if (widget.existing?.isException ?? false) ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'Only this occurrence - the rest of the series is left as '
+                  'it is.',
+                  style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+                ),
+              ] else ...[
+                const SizedBox(height: 14),
+                const Text('Repeats',
+                    style: TextStyle(fontSize: T.fsMeta, color: T.muted)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
                     ChoiceChip(
-                      label: Text(Recur.label(r),
-                          style: const TextStyle(fontSize: T.fsMeta)),
-                      selected: _recur == r,
-                      onSelected: (_) => setState(() => _recur = r),
+                      label: const Text('Once',
+                          style: TextStyle(fontSize: T.fsMeta)),
+                      selected: _recur == null,
+                      onSelected: (_) => setState(() => _recur = null),
                     ),
-                ],
-              ),
-              // Said once, here, rather than on every occurrence: this form is
-              // always the series - see _editEvent, which opens `event.stored`
-              // - so the times above are the first occurrence's and a change to
-              // any of it changes every one of them. Editing a single
-              // occurrence needs somewhere to record the exception and is
-              // deliberately not in this version.
+                    for (final r in Recur.rules)
+                      ChoiceChip(
+                        label: Text(Recur.label(r),
+                            style: const TextStyle(fontSize: T.fsMeta)),
+                        selected: _recur == r,
+                        onSelected: (_) => setState(() => _recur = r),
+                      ),
+                  ],
+                ),
+              ],
+              // Said once, here, rather than on every occurrence: a repeating
+              // block opened for "the whole series" is the series - see
+              // _editEvent - so the times above are the first occurrence's and
+              // a change to any of it changes every one of them. An occurrence
+              // changed on its own is attached to the start it had, so moving
+              // the series lets go of those (LocalStore._exceptions).
               if (_recur != null) ...[
                 const SizedBox(height: 6),
-                const Text(
-                  'Changes apply to the whole series.',
-                  style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+                Text(
+                  widget.existing?.repeats ?? false
+                      ? 'Changes apply to the whole series. Moving its start '
+                          'or changing how it repeats undoes any occurrence '
+                          'changed on its own.'
+                      : 'Changes apply to the whole series.',
+                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
                 ),
               ],
               if (editing && widget.loadTasks != null) ...[

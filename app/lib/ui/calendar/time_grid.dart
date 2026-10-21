@@ -1563,7 +1563,7 @@ class EventBlock extends StatelessWidget {
       ],
       if (!compact && hasAttachment)
         Icon(Icons.attach_file, size: 9, color: soft),
-      if (!compact && event.repeats)
+      if (!compact && event.inSeries)
         Icon(Icons.repeat_rounded, size: 9, color: soft),
     ];
     final description = !compact && event.description.isNotEmpty

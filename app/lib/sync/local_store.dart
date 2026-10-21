@@ -87,7 +87,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 22,
+        version: 23,
         onCreate: (db, version) =>
             _create(db, version, seedWorkspace: seedWorkspace),
         onUpgrade: _upgrade,
@@ -295,6 +295,19 @@ class LocalStore {
       await db.update('sync_state', {'value': '0'},
           where: 'key = ?', whereArgs: ['cursor']);
     }
+    if (from < 23) {
+      // One occurrence of a series changed or skipped on its own: a row that
+      // stands in for it (see CalendarEvent.seriesUuid). Null is "not an
+      // exception", which is every existing row; `cancelled` is nullable for
+      // recur_from's reason. The cursor goes back for v16's reason: below
+      // protocol 9 the server sends neither the columns nor the rows.
+      await db.execute('ALTER TABLE calendar_events ADD COLUMN series_uuid TEXT');
+      await db.execute(
+          'ALTER TABLE calendar_events ADD COLUMN occurrence_at TEXT');
+      await db.execute('ALTER TABLE calendar_events ADD COLUMN cancelled INTEGER');
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
+    }
   }
 
   /// Collapse every seeded "Tasks" workspace onto [defaultWorkspaceUuid].
@@ -415,6 +428,9 @@ class LocalStore {
         recur          TEXT,
         all_day        INTEGER NOT NULL DEFAULT 0,
         feed_uuid      TEXT,
+        series_uuid    TEXT,
+        occurrence_at  TEXT,
+        cancelled      INTEGER,
         created_at     TEXT NOT NULL,
         updated_at     TEXT NOT NULL,
         deleted_at     TEXT,
@@ -1107,7 +1123,7 @@ class LocalStore {
       whereArgs: [toStamp, reminderStamp(from), toStamp],
       orderBy: 'start_at',
     );
-    return _expand(rows, from, to);
+    return _expand(rows, from, to, await _exceptions());
   }
 
   /// Every event that has not finished yet, for the notification schedule.
@@ -1125,9 +1141,11 @@ class LocalStore {
       whereArgs: [reminderStamp(at)],
       orderBy: 'start_at',
     );
+    final ex = await _exceptions();
     final out = <CalendarEvent>[];
     for (final row in rows.map(CalendarEvent.fromMap)) {
-      final next = row.nextOccurrence(at);
+      if (!ex.shows(row)) continue;
+      final next = row.nextOccurrence(at, ex.skipFor(row));
       if (next != null) out.add(next);
     }
     out.sort((a, b) => a.startAt.compareTo(b.startAt));
@@ -1142,10 +1160,12 @@ class LocalStore {
     List<Map<String, Object?>> rows,
     DateTime from,
     DateTime to,
+    _Exceptions ex,
   ) {
     final out = <CalendarEvent>[];
     for (final row in rows.map(CalendarEvent.fromMap)) {
-      out.addAll(row.occurrencesBetween(from, to));
+      if (!ex.shows(row)) continue;
+      out.addAll(row.occurrencesBetween(from, to, except: ex.skipFor(row)));
     }
     out.sort((a, b) => a.startAt.compareTo(b.startAt));
     return out;
@@ -1169,20 +1189,69 @@ class LocalStore {
       orderBy: 'start_at',
     );
 
+    final ex = await _exceptions();
     final out = <CalendarEvent>[];
     for (final row in rows.map(CalendarEvent.fromMap)) {
+      if (!ex.shows(row)) continue;
       // The window starts one occurrence-length back, because the occurrence
       // covering this instant is one that *began* before it. Overlap is then
       // narrowed to the same half-open test the SQL uses for a one-off.
       for (final e in row.occurrencesBetween(
         at.subtract(row.duration),
         at.add(const Duration(milliseconds: 1)),
+        except: ex.skipFor(row),
       )) {
         if (!e.start.isAfter(at) && e.end.isAfter(at)) out.add(e);
       }
     }
     out.sort((a, b) => a.startAt.compareTo(b.startAt));
     return out;
+  }
+
+  /// Which exception rows count, and which occurrences they stand in for.
+  ///
+  /// Every read of the calendar goes through this, so there is one answer to
+  /// "is Tuesday's stand-up on". An exception counts only while its series is
+  /// live and still has an occurrence at [CalendarEvent.occurrenceAt]: moving
+  /// the series or changing its rule lets go of them, instead of leaving a
+  /// moved Tuesday standing beside a series with no Tuesday in it any more.
+  /// That is decided here, on the way out, rather than by rewriting the
+  /// exceptions when the series changes - a write would have to be repeated
+  /// by whichever device merged the change, and this cannot disagree with
+  /// itself. Few rows, so they are all read each time.
+  Future<_Exceptions> _exceptions() async {
+    final rows = await _db.query('calendar_events',
+        where: 'series_uuid IS NOT NULL AND deleted_at IS NULL');
+    if (rows.isEmpty) return const _Exceptions({}, {});
+    final exceptions = rows.map(CalendarEvent.fromMap).toList();
+    final ids = {for (final e in exceptions) e.seriesUuid!}.toList();
+    final series = {
+      for (final r in await _db.query('calendar_events',
+          where: 'deleted_at IS NULL AND recur IS NOT NULL '
+              'AND uuid IN (${List.filled(ids.length, '?').join(',')})',
+          whereArgs: ids))
+        r['uuid']! as String: CalendarEvent.fromMap(r),
+    };
+
+    final skip = <String, Set<String>>{};
+    final shown = <String>{};
+    for (final e in exceptions) {
+      final at = e.occurrenceAt;
+      final s = series[e.seriesUuid];
+      if (at == null || s == null || !s.hasOccurrenceAt(at)) continue;
+      skip.putIfAbsent(s.uuid, () => {}).add(at);
+      if (!e.cancelled) shown.add(e.uuid);
+    }
+    return _Exceptions(skip, shown);
+  }
+
+  /// The live exception rows of one series, skipped ones included - for
+  /// deleting the series, which takes them with it.
+  Future<List<CalendarEvent>> exceptionsOf(String seriesUuid) async {
+    final rows = await _db.query('calendar_events',
+        where: 'series_uuid = ? AND deleted_at IS NULL',
+        whereArgs: [seriesUuid]);
+    return rows.map(CalendarEvent.fromMap).toList();
   }
 
   /// What is still to be done in one block.
@@ -1790,4 +1859,20 @@ class LocalStore {
   }
 
   Future<void> close() => _db.close();
+}
+
+/// What [LocalStore._exceptions] found: per series, the occurrence starts that
+/// an exception stands in for, and which exception rows are drawn.
+class _Exceptions {
+  const _Exceptions(this._skip, this._shown);
+
+  final Map<String, Set<String>> _skip;
+  final Set<String> _shown;
+
+  /// Whether a stored row is drawn at all. Every row is, except an exception
+  /// that skips its occurrence or no longer belongs to a live one.
+  bool shows(CalendarEvent row) => !row.isException || _shown.contains(row.uuid);
+
+  /// The occurrences of [row] to leave out, for [CalendarEvent.occurrencesBetween].
+  Set<String> skipFor(CalendarEvent row) => _skip[row.uuid] ?? const {};
 }

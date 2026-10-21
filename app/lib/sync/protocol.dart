@@ -49,7 +49,18 @@
 /// terms: the server's number, nothing held back from an older one.
 ///
 /// 8 added `side_thoughts.remind_at`, a reminder on a thought, on 5's terms.
-const kSyncProtocol = 8;
+///
+/// 9 added one occurrence of a series changed on its own: `series_uuid`,
+/// `occurrence_at` and `cancelled` on `calendar_events`. Those columns are
+/// held back from an older *client* on 5's terms, and so are the rows that
+/// carry them - to a build that cannot read them, a skipped Tuesday is one
+/// more block on Tuesday. The rows are held back from an older *server*
+/// too ([kExceptionsProtocol]), which would keep them without the columns
+/// and hand them on as exactly that.
+const kSyncProtocol = 9;
+
+/// The first server wire that keeps an exception row as one.
+const kExceptionsProtocol = 9;
 
 /// The first server wire that has the `calendar_feeds` table.
 const kFeedsProtocol = 2;

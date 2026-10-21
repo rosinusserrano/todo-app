@@ -217,6 +217,10 @@ class SyncClient {
         ..remove('collection_fields')
         ..remove('collection_entries');
     }
+    if (server.speaks < kExceptionsProtocol) {
+      outgoing['calendar_events']
+          ?.removeWhere((row) => row['series_uuid'] != null);
+    }
 
     final http.Response res;
     try {

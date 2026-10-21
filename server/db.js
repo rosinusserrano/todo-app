@@ -229,6 +229,9 @@ function init(db) {
       recur          TEXT,
       all_day        INTEGER NOT NULL DEFAULT 0,
       feed_uuid      TEXT,
+      series_uuid    TEXT,
+      occurrence_at  TEXT,
+      cancelled      INTEGER,
       created_at     TEXT NOT NULL,
       updated_at     TEXT NOT NULL,
       deleted_at     TEXT,
@@ -399,6 +402,12 @@ function init(db) {
   addColumn(db, 'tasks', 'audio_ms', 'INTEGER');
   // A reminder on a thought (protocol 8): "keys, in 10 minutes".
   addColumn(db, 'side_thoughts', 'remind_at', 'TEXT');
+  // One occurrence of a series changed or skipped on its own (protocol 9):
+  // a row standing in for it. Nullable, cancelled included - an older
+  // client's push carries none of the three.
+  addColumn(db, 'calendar_events', 'series_uuid', 'TEXT');
+  addColumn(db, 'calendar_events', 'occurrence_at', 'TEXT');
+  addColumn(db, 'calendar_events', 'cancelled', 'INTEGER');
 
   // Web Push subscriptions and what has been sent - see push.js. Not in
   // TABLES: they are this server's own bookkeeping and never sync.
@@ -486,6 +495,9 @@ export const TABLES = {
     'recur',
     'all_day',
     'feed_uuid',
+    'series_uuid',
+    'occurrence_at',
+    'cancelled',
     'created_at',
   ],
   calendar_feeds: ['calendar_uuid', 'name', 'url', 'alerts', 'created_at'],
@@ -511,7 +523,7 @@ export const TABLES = {
 // protocol 2 on is listed here with the protocol that brought it; a table
 // likewise. A client that does not say which protocol it speaks is 1.
 const COLUMN_SINCE = {
-  calendar_events: { feed_uuid: 2 },
+  calendar_events: { feed_uuid: 2, series_uuid: 9, occurrence_at: 9, cancelled: 9 },
   workspaces: { shortcuts: 5, parent_uuid: 7, archived_at: 7 },
   side_thoughts: { audio: 6, audio_ms: 6, remind_at: 8 },
   tasks: { audio: 6, audio_ms: 6 },
@@ -527,6 +539,19 @@ const TABLE_SINCE = {
 
 function knows(table, field, protocol) {
   return (COLUMN_SINCE[table]?.[field] ?? 1) <= protocol;
+}
+
+// Rows an older client must not be sent at all, because without the columns
+// that say what they are they read as something else. An exception to a
+// series (protocol 9) stripped of series_uuid is a one-off: a skipped Tuesday
+// would arrive as a second block on Tuesday. Such a client goes on drawing the
+// series as it was, which is behind but not wrong.
+const ROW_SINCE = {
+  calendar_events: [{ since: 9, holds: (row) => row.series_uuid != null }],
+};
+
+function withheld(table, row, protocol) {
+  return (ROW_SINCE[table] ?? []).some((r) => r.since > protocol && r.holds(row));
 }
 
 function nextSeq(db) {
@@ -736,6 +761,7 @@ export function sync(db, userId, since, incoming, protocol = PROTOCOL) {
       changes[table] = db
         .prepare(`SELECT * FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq`)
         .all(userId, since)
+        .filter((row) => !withheld(table, row, protocol))
         .map(({ user_id, ...rest }) => {
           for (const f of Object.keys(COLUMN_SINCE[table] ?? {})) {
             if (!knows(table, f, protocol)) delete rest[f];

@@ -51,6 +51,7 @@ import 'ui/calendar/ics_import.dart';
 import 'ui/calendar/subscribe_form.dart';
 import 'ui/calendar/event_details.dart';
 import 'ui/calendar/event_editor.dart';
+import 'ui/calendar/series_scope.dart';
 import 'ui/calendar/time_grid.dart' show hhmm, kGutter;
 import 'ui/collections.dart';
 import 'ui/content_slot.dart';
@@ -762,7 +763,7 @@ class _WidgetShellState extends State<WidgetShell>
       event: event,
       calendarName: _calendarNameForEvent(event),
       color: s.colorForEvent(event),
-      loadTasks: () => s.tasksForEvent(event.uuid),
+      loadTasks: () => s.tasksForBlock(event),
       loadAttachments: () => s.eventAttachments(event),
       offerWorkspace: s.workspaceForEvent(event) != null,
       feedName: _feedNameFor(event),
@@ -887,57 +888,47 @@ class _WidgetShellState extends State<WidgetShell>
     await s.selectWorkspace(ws);
   }
 
-  /// Deleting a repeating block deletes **the series**, so it says so first.
-  ///
-  /// The same rule as activating a parked group: one press that removes a row
-  /// you can see is its own confirmation, but one press that removes fifty-two
-  /// Tuesdays you cannot see is not, and there is no undo behind either.
+  /// Deleting a block that repeats asks which: this occurrence, or the
+  /// series. The same rule as activating a parked group - one press that
+  /// removes a row you can see is its own confirmation, but one press that
+  /// removes fifty-two Tuesdays you cannot see is not, and there is no undo
+  /// behind either - so the question doubles as the confirmation.
   Future<void> _deleteEvent(CalendarEvent event) async {
-    if (event.repeats) {
-      final yes = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: T.bgSolid,
-          title: const Text(
-            'Delete every occurrence?',
-            style: TextStyle(fontSize: T.fsMenu),
-          ),
-          content: Text(
-            '"${event.title}" repeats ${Recur.label(event.recur!).toLowerCase()}. '
-            'Deleting it removes the whole series, not just this one.',
-            style: const TextStyle(
-              fontSize: T.fsLabel,
-              color: T.muted,
-              height: 1.4,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete series'),
-            ),
-          ],
-        ),
-      );
-      if (yes != true) return;
+    var onlyThis = false;
+    if (event.inSeries) {
+      final scope =
+          await askSeriesScope(context, event: event, deleting: true);
+      if (scope == null || !mounted) return;
+      onlyThis = scope == SeriesScope.one;
     }
-    await s.deleteEvent(event);
+    await s.deleteEvent(event, onlyThis: onlyThis);
   }
 
   Future<void> _editEvent(CalendarEvent occurrence) async {
     final calendars = s.calendars;
     if (calendars.isEmpty) return;
 
-    // The form always edits the **series**, times included. Opening the third
-    // Tuesday of a weekly block and changing its title would otherwise save
-    // that Tuesday's start as the series start, quietly moving every
-    // occurrence; there is nowhere yet to record "this one is different". The
-    // form says so, and for a one-off `stored` is the row itself.
-    final event = occurrence.stored;
+    // Through an occurrence the form edits either that occurrence, as a row of
+    // its own (an exception), or the **series**, times included - never the
+    // series with this occurrence's times, which would quietly move every
+    // one of them to whichever Tuesday was open. For a one-off `stored` is the
+    // row itself and nothing is asked.
+    var event = occurrence.stored;
+    if (occurrence.inSeries) {
+      final scope = await askSeriesScope(context, event: occurrence);
+      if (scope == null || !mounted) return;
+      if (scope == SeriesScope.one) {
+        event = occurrence.detached();
+      } else if (occurrence.isException) {
+        final series = await s.store.eventByUuid(occurrence.seriesUuid!);
+        if (series == null || series.isDeleted || !mounted) return;
+        event = series;
+      }
+    }
+    // An exception that is not written yet has nothing attached and nothing
+    // planned into it, and anything added before Save would point at a row
+    // that Cancel never writes - so the form offers neither until it exists.
+    final saved = !event.isException || occurrence.isException;
 
     final edit = await showEventForm(
       context,
@@ -948,18 +939,25 @@ class _WidgetShellState extends State<WidgetShell>
       initialCalendarUuid: event.calendarUuid,
       initialStart: event.start,
       initialEnd: event.end,
-      loadAttachments: () => s.eventAttachments(event),
-      onAddAttachment: s.blobs == null
+      loadAttachments: saved ? () => s.eventAttachments(event) : null,
+      onAddAttachment: s.blobs == null || !saved
           ? null
           : (file) => s.attachFileToEvent(event, file),
       onRemoveAttachment: s.removeEventAttachment,
-      loadTasks: () => s.plannableTasks(event),
+      loadTasks: saved ? () => s.plannableTasks(event) : null,
       onPlanTask: (task, on) => s.setTaskEvent(task, on ? event.uuid : null),
     );
     if (edit == null) return;
 
     if (edit.delete) {
-      await _deleteEvent(event);
+      // One occurrence, or a one-off, is the block on screen and the press is
+      // its own confirmation. The series is not, so it asks - with the
+      // occurrence that was opened as the "only this one".
+      if (event.repeats) {
+        await _deleteEvent(occurrence);
+      } else {
+        await s.deleteEvent(event, onlyThis: event.isException);
+      }
       return;
     }
     await s.saveEvent(

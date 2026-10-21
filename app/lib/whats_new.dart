@@ -38,6 +38,15 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-21',
+    title: 'One day of a repeating event',
+    points: [
+      'Editing, deleting or dragging a block that repeats now asks: only '
+          'this one, or the whole series. Move this Tuesday\'s stand-up, or '
+          'skip it, and every other one stays put.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-20-5',
     title: 'Reminders on thoughts',
     points: [

@@ -39,6 +39,7 @@ import '../../layout.dart';
 import '../../sync/models.dart';
 import '../../theme.dart';
 import 'agenda_view.dart';
+import 'series_scope.dart';
 import 'time_grid.dart';
 import 'time_swipe.dart';
 import 'year_view.dart';
@@ -208,9 +209,9 @@ class CalendarView extends StatelessWidget {
                       // be two more, loaded for a glance. It keeps sliding.
                       delta != 0 && state.calendarMode == CalendarViewMode.year
                       ? null
-                      : _grid(layout, delta: delta, scroll: scroll),
+                      : _grid(context, layout, delta: delta, scroll: scroll),
                 )
-              : _grid(layout),
+              : _grid(context, layout),
         ),
       ],
     );
@@ -224,7 +225,12 @@ class CalendarView extends StatelessWidget {
   ///
   /// [delta] draws a neighbouring page for the swipe: the same view, shifted
   /// by that many steps, reading the same events (they were loaded for it).
-  Widget _grid(Layout layout, {int delta = 0, ValueNotifier<double>? scroll}) {
+  Widget _grid(
+    BuildContext context,
+    Layout layout, {
+    int delta = 0,
+    ValueNotifier<double>? scroll,
+  }) {
     final days = _daysAt(delta);
     // The year is for finding the week that has something in it; the day view
     // is where you then work. Both of the drill-downs below say that.
@@ -243,7 +249,7 @@ class CalendarView extends StatelessWidget {
         events: state.events,
         colorFor: state.colorForEvent,
         hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
-        taskCountFor: (e) => state.eventTaskCounts[e.uuid] ?? 0,
+        taskCountFor: state.taskCountFor,
         onOpenEvent: onOpenEvent,
         onEventMenu: onEventMenu,
         onCreate: onCreate,
@@ -258,7 +264,7 @@ class CalendarView extends StatelessWidget {
       events: state.events,
       colorFor: state.colorForEvent,
       hasAttachment: (e) => state.eventsWithAttachments.contains(e.uuid),
-      taskCountFor: (e) => state.eventTaskCounts[e.uuid] ?? 0,
+      taskCountFor: state.taskCountFor,
       onOpenEvent: onOpenEvent,
       onEventMenu: onEventMenu,
       onCreate: onCreate,
@@ -266,13 +272,24 @@ class CalendarView extends StatelessWidget {
       // Carrying a block somewhere else, and stretching one by an end - in
       // edit mode only. Pages drawn beside this one for the swipe are not
       // touchable, so only the page on screen ever changes one.
+      // An occurrence of a series asks first whether it is the one being
+      // moved or all of them, once it has been let go - the block goes back
+      // to where it was while the question is up.
       onMoveEvent: block == null
           ? null
-          : (e, from, to) => state.moveEvent(e, from: from, to: to),
+          : (e, from, to) async {
+              final one = await _onlyThis(context, e);
+              if (one == null) return;
+              await state.moveEvent(e, from: from, to: to, onlyThis: one);
+            },
       onResizeEvent: block == null
           ? null
-          : (e, start, from, to) =>
-                state.resizeEvent(e, start: start, from: from, to: to),
+          : (e, start, from, to) async {
+              final one = await _onlyThis(context, e);
+              if (one == null) return;
+              await state.resizeEvent(e,
+                  start: start, from: from, to: to, onlyThis: one);
+            },
       // What the drag is about to become. In block mode the editor never opens,
       // so the draft is the only chance to see what is being saved.
       blockTitle: block == null ? null : state.calendarName(block),
@@ -309,6 +326,16 @@ class CalendarView extends StatelessWidget {
 /// between "meetings" and "deep work". It lists [AppState.visibleCalendars], so
 /// what you can block onto is exactly what you can see - blocking time onto a
 /// calendar that is filtered out would produce an event that vanishes.
+/// Whether a change made through [e] is to that occurrence alone: false for
+/// the series, and for a one-off or an exception without asking (an
+/// exception already is the one occurrence). Null when the question was
+/// dismissed, which is "do nothing".
+Future<bool?> _onlyThis(BuildContext context, CalendarEvent e) async {
+  if (!e.repeats) return e.isException;
+  final scope = await askSeriesScope(context, event: e);
+  return scope == null ? null : scope == SeriesScope.one;
+}
+
 class _BlockStrip extends StatelessWidget {
   const _BlockStrip({
     required this.calendars,

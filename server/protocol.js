@@ -68,5 +68,11 @@
 //      workspace, which is what it is underneath. MIN_CLIENT stays 1.
 //   8  `side_thoughts.remind_at`, a reminder on a thought, in COLUMN_SINCE on
 //      5's terms. MIN_CLIENT stays 1.
-export const PROTOCOL = 8;
+//   9  One occurrence of a series changed on its own: `series_uuid`,
+//      `occurrence_at` and `cancelled` on `calendar_events`, in COLUMN_SINCE
+//      on 5's terms - and the rows carrying them in ROW_SINCE, not sent to a
+//      client below 9 at all, since stripped of the columns they read as
+//      one-offs. A 9 client does not push them to a server below 9 either.
+//      MIN_CLIENT stays 1.
+export const PROTOCOL = 9;
 export const MIN_CLIENT = 1;

@@ -9,6 +9,53 @@ work that is about to happen.
 
 ## In progress
 
+### One occurrence of a series — asked for 2026-10-21
+
+Marco: "delete or edit single calendar events of a series". Since 0.24.0 a
+change made through an occurrence was the series, and said so; the missing
+piece was somewhere to record that one occurrence is different.
+
+- **An exception is an ordinary `calendar_events` row**, with `series_uuid`
+  (its series), `occurrence_at` (the start it had in the series) and
+  `cancelled` (skipped). The alternative, a list of exceptions on the series
+  row, would make the series and all of its exceptions one last-write-wins
+  value: moving Tuesday's on one device and skipping Thursday's on another
+  would lose one. As a row, the grid, the session, the notification schedule,
+  attachments and the server's push read it like any block. This is iCal's
+  shape too (RECURRENCE-ID and a cancelled instance).
+- **The id is derived** (v5 over the series uuid and `occurrence_at`): two
+  devices changing the same occurrence offline write the same row, not
+  siblings - the rule `Task.nextOccurrence` and `Calendar.forWorkspace`
+  follow.
+- **Deleting one is a cancelled row, not a tombstone**, because a tombstone
+  would put the occurrence back. Deleting an exception that had been moved
+  makes it a cancelled one for the same reason.
+- **An exception counts only while its series still has that occurrence** -
+  decided when reading (`LocalStore._exceptions`, `exceptions` in push.js),
+  never by rewriting rows when the series changes. Renaming the series keeps
+  them; moving its start or changing its rule lets go of them, which is what
+  a moved Tuesday beside a series with no Tuesday any more would otherwise
+  be. A write-time cleanup would have to be repeated by whichever device
+  merged the change; a read-time rule cannot disagree with itself.
+- **The question is asked before anything is written**: edit, delete, drag
+  and stretch of an occurrence ask *Only this one* / *Whole series*. It
+  replaced the series-delete confirmation, since naming both answers is
+  already one. An exception being moved is already the one occurrence and
+  asks nothing.
+- **Todos planned into the series stay with a changed occurrence**
+  (`tasksForBlock`, `taskCountFor`): they were planned into the stand-up, not
+  into a 09:00 slot. An unsaved exception offers no attachments or todos in
+  its form - anything added before Save would point at a row Cancel never
+  writes.
+- **Protocol 9, and the rows are withheld both ways.** Stripped of the
+  columns, an exception is a one-off: a skipped Tuesday would arrive at an
+  older app as a second block on Tuesday. So the server sends an older client
+  neither the columns nor the rows (`ROW_SINCE` in db.js), and the client
+  does not push them to an older server, which would keep them without the
+  columns and hand them on as exactly that.
+- **Not built: "this and following".** Splitting a series in two is a second
+  step; nothing here stands in its way.
+
 ### Projects — asked for 2026-10-18
 
 Marco: "basically like a workspace inside a workspace. If a workspace has a

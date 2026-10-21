@@ -29,6 +29,21 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 68. One occurrence of a repeating event  `[~]`
+
+Asked for 2026-10-21: "delete or edit single calendar events of a series".
+Design in `ROADMAP.md` under *One occurrence of a series*.
+
+- [x] **68.1** Exception rows on `calendar_events` (`series_uuid`,
+      `occurrence_at`, `cancelled`; client v23, protocol 9, `COLUMN_SINCE`
+      and `ROW_SINCE` on the server); every read through
+      `LocalStore._exceptions`; `push.js` the same; the "Only this one /
+      Whole series" question on edit, delete, drag and stretch
+      (`ui/calendar/series_scope.dart`); `test/event_exceptions_test.dart`,
+      server tests both files.
+- [ ] **68.2** Marco runs `sudo server/update-server.sh` (protocol 9);
+      **then** publish the web app with a What's new note.
+
 ### 67. Reminders on thoughts  `[~]`
 
 Asked for 2026-10-20: "don't forget keys when leaving in 10 minutes".

@@ -1461,3 +1461,56 @@ test('projects sync at protocol 7 and survive an older app', async () => {
   assert.equal(after.parent_uuid, 'w-work');
   assert.equal(after.archived_at, '2026-10-18T10:00:00+02:00');
 });
+
+test('an occurrence changed on its own syncs at protocol 9 and is withheld below it', () => {
+  const db = freshDb();
+  const stamp = '2026-10-21T09:00:00+02:00';
+  const row = (uuid, extra) => ({
+    uuid,
+    calendar_uuid: 'cal-1',
+    title: 'Standup',
+    description: '',
+    start_at: '2026-10-12T07:00:00.000Z',
+    end_at: '2026-10-12T07:15:00.000Z',
+    notify_minutes: null,
+    recur: null,
+    all_day: 0,
+    feed_uuid: null,
+    created_at: stamp,
+    updated_at: stamp,
+    deleted_at: null,
+    ...extra,
+  });
+  sync(
+    db,
+    USER,
+    0,
+    {
+      calendar_events: [
+        row('series', { recur: 'weekly' }),
+        row('skip', {
+          start_at: '2026-10-19T07:00:00.000Z',
+          end_at: '2026-10-19T07:15:00.000Z',
+          series_uuid: 'series',
+          occurrence_at: '2026-10-19T07:00:00.000Z',
+          cancelled: 1,
+        }),
+      ],
+    },
+    9
+  );
+
+  const now = sync(db, USER, 0, {}, 9).changes.calendar_events;
+  assert.equal(now.length, 2);
+  const skip = now.find((e) => e.uuid === 'skip');
+  assert.equal(skip.series_uuid, 'series');
+  assert.equal(skip.occurrence_at, '2026-10-19T07:00:00.000Z');
+  assert.equal(skip.cancelled, 1);
+
+  // Below 9 the exception would read as a one-off - a second Standup on the
+  // day it was skipped - so it is not sent at all, and the series is sent
+  // without the columns.
+  const old = sync(db, USER, 0, {}, 8).changes.calendar_events;
+  assert.deepEqual(old.map((e) => e.uuid), ['series']);
+  assert.equal('series_uuid' in old[0], false);
+});

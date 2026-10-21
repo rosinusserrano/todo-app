@@ -150,10 +150,8 @@ class TitleBar extends StatelessWidget {
         const Spacer(),
         if (onToggleList != null)
           _Btn(
-            tooltip: listOpen ? 'Back to tasks' : 'Shopping list',
-            icon: listOpen
-                ? Icons.shopping_basket
-                : Icons.shopping_basket_outlined,
+            tooltip: listOpen ? 'Back to tasks' : 'Checklist',
+            icon: Icons.checklist_rounded,
             tint: listOpen ? accent : null,
             onPressed: onToggleList!,
           ),

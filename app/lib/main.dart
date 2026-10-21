@@ -43,6 +43,7 @@ import 'tray.dart';
 import 'web_keyboard.dart';
 import 'whats_new.dart';
 import 'window_spots.dart';
+import 'ui/shell_keys.dart';
 import 'ui/archived_projects.dart';
 import 'ui/attachment_sheet.dart';
 import 'ui/calendar/calendar_form.dart';
@@ -1589,8 +1590,9 @@ class _WidgetShellState extends State<WidgetShell>
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Focus(
-        autofocus: true,
+      // A scope, so a field letting go of focus hands it back here - see
+      // shell_keys.dart.
+      body: ShellKeys(
         onKeyEvent: (node, event) {
           // N opens the add field, from anywhere a key is not being typed
           // into something - the keyboard's way to the ＋. Checked through
@@ -2539,7 +2541,7 @@ class _WidgetShellState extends State<WidgetShell>
     final (moreIcon, moreLabel) = s.showCalendar
         ? (Icons.calendar_month_outlined, 'Calendar')
         : s.showList
-        ? (Icons.shopping_basket_outlined, 'List')
+        ? (Icons.checklist_rounded, 'Checklist')
         : view == WorkspaceView.thoughts
         ? (Icons.cloud_outlined, 'Thoughts')
         : (Icons.more_horiz_rounded, 'More');
@@ -2646,8 +2648,8 @@ class _WidgetShellState extends State<WidgetShell>
               },
             ),
             DockItem(
-              icon: Icons.shopping_basket_outlined,
-              label: 'List',
+              icon: Icons.checklist_rounded,
+              label: 'Checklist',
               current: s.showList,
               onChoose: _dockToList,
             ),

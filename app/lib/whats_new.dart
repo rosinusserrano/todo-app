@@ -47,12 +47,14 @@ const kReleaseNotes = <ReleaseNote>[
           'it.',
       'Hover a note in the list for Read and Edit. Settings has code editor '
           'keys for notes, Ctrl+D and friends, if you want them.',
-      'The shopping list has sections: type "Rewe" and press ▤ in Edit. '
-          'Ctrl+Enter leaves Edit.',
+      'The shopping list is the Checklist now, and it has sections: type '
+          '"Rewe" and press ▤ in Edit. Ctrl+Enter leaves Edit.',
       'A shelf reminds you at nine on the morning its review is due, and a '
           'shelved task opens for editing when you tap it.',
-      'Adding a thought from anywhere no longer drops you on the shopping '
-          'list afterwards; you land back where you were.',
+      'Adding a thought from anywhere no longer drops you on the Checklist '
+          'afterwards; you land back where you were.',
+      'Ctrl+E, N and Esc no longer stop working after you click away from a '
+          'text field.',
     ],
   ),
   ReleaseNote(

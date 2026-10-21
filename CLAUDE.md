@@ -111,7 +111,12 @@ notify*. Reads are cheap (local SQLite, small lists) and it keeps the UI a pure
 function of the database — which is what makes focus mode survive restarts.
 
 `WidgetShell` in `app/lib/main.dart` is the one stateful shell; it owns the
-window, the focus flight, the tray and the overlays.
+window, the focus flight, the tray and the overlays. **Its keys (Ctrl+E, N,
+Esc, Ctrl +/−) are heard by `ShellKeys`, which must stay a `FocusScope`**:
+`unfocus()` - a desktop click outside a text field, the add card closing -
+hands focus to the nearest scope, and with a plain `Focus` that was the
+route's, above the handler, so the keys stopped arriving
+(`test/shell_keys_test.dart`).
 
 ### Data model — SQLite is the source of truth
 
@@ -981,7 +986,10 @@ time on one. The rules that are not obvious from the schema:
   sizing each tile to its own month left a `Wrap` run ragged. Don't make it
   adaptive again to save a row of pixels.
 
-### The shopping list (`app/lib/ui/shopping_list.dart`)
+### The checklist (`app/lib/ui/shopping_list.dart`)
+
+Called the shopping list until 2026-10-21; the user-visible name is
+*Checklist* now, the code kept its names.
 
 One throwaway list on the title bar beside the calendar; design in ROADMAP.md
 *The shopping list*. The rules that are not obvious from the code:

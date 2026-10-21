@@ -890,9 +890,12 @@ Three tiers, none of which need an account, an API key, or a licence:
   addresses unless `TODO_FEED_ALLOW_PRIVATE=1`, and anything that is not a
   calendar.
 
-## Shopping list
+## Checklist
 
-One throwaway list - a shopping list, a packing list - behind the basket on the
+(Called the shopping list until 2026-10-21; the code still says
+`shopping_list.dart`.)
+
+One throwaway list - a shopping list, a packing list - behind the ☑ on the
 title bar, beside the calendar. It belongs to no workspace and takes the whole
 window while it is open.
 
@@ -1603,6 +1606,14 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **The shopping list is the Checklist** (dock, title bar, a new list's
+    default name; ☑ rather than a basket).
+  - **Ctrl+E, N, Esc and Ctrl +/− keep working after a text field lets go
+    of focus.** A click outside a field on a desktop (and the add card
+    closing) unfocused it into the route's focus scope, above the shell's
+    key handler, so the keys stopped arriving until something inside was
+    focused again - Ctrl+E "works, but only sometimes". The handler is a
+    focus scope of its own now (`ui/shell_keys.dart`).
   - **From the shelf, 2026-10-21**: Ctrl+Enter leaves the shopping list's
     Edit; the thought pane's buttons stack in a narrow window, with the mic
     and bell behind a ⋯; and Ctrl+Alt+H / Ctrl+Alt+T / a reminder no longer

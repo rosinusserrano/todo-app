@@ -3033,9 +3033,10 @@ class AppState extends ChangeNotifier {
   /// [currentList]'s items, in their order, ticked and unticked alike.
   List<ListItem> listItems = [];
 
-  /// Default name for a new list. It is a shopping list nine times out of ten,
-  /// and the tenth is one tap in Edit away.
-  static const defaultListName = 'Shopping';
+  /// Default name for a new list - the feature's own name since it stopped
+  /// being only for shopping (Marco, 2026-10-21: "call it checklist"). A
+  /// list's own name is one tap in Edit away.
+  static const defaultListName = 'Checklist';
 
   Future<void> loadList() async {
     final open = await _store.openLists();

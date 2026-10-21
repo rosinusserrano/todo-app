@@ -51,8 +51,11 @@ the following ... save questions for the end". Design notes in
       shelved task's text opens the composer.
 - [x] **69.6** Shopping list sections (`list_items.section`, client v24,
       protocol 9).
-- [ ] **69.7** Marco's answers: Ctrl+E (already there - what was meant?),
-      geo reminders, the shopping list's new name.
+- [x] **69.7** Marco's answers. Ctrl+E "works, but only sometimes": the
+      shell's key handler lost every key once a text field was unfocused
+      (now a `FocusScope`, `ui/shell_keys.dart`). Geo reminders: on the
+      roadmap until there is an Apple developer account. The shopping list
+      is called **Checklist**.
 - [ ] **69.8** Ships with 68.2: server to protocol 9, then the web app
       (What's new `2026-10-21-2` is written).
 

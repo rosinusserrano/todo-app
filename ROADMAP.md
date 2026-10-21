@@ -579,6 +579,28 @@ only to end in `parseIcs` + `showImportIcs`.
 
 ## Next
 
+### Geo reminders — parked 2026-10-21, until there is an Apple developer account
+
+From the shelf: "Geo reminders?". Marco: on the roadmap for now, to be built
+once he has an Apple developer account. Why that is the gate:
+
+- **The web app cannot do it.** A page that is not open runs no code, and
+  iOS gives a home-screen web app no background location and no geofences.
+  The server cannot help either - it does not know where the phone is.
+- **A native iOS build can**, through region monitoring (`CLCircularRegion`,
+  about 20 regions per app), which wakes a suspended or killed app on
+  entering or leaving. That needs a signed build with the location
+  entitlement on a real device, i.e. the developer account. Android can do
+  the same with geofences; the desktop has nothing to watch.
+
+Shape when it is picked up, to be agreed then: a reminder *where* beside the
+reminder *when* - "milk, when I'm at Rewe" - stored on the task (and the
+thought) as a place (lat, lon, radius, name) and an arriving/leaving flag,
+synced like `remind_at` (a column, a protocol bump), armed on the phone only.
+The Checklist's sections ("Rewe") are an obvious second use. Open questions:
+picking a place without a map provider's API key, and what a desktop shows
+for a reminder it cannot fire.
+
 ### `[[ ]]` links between tasks and notes — design, for Marco to read
 
 Asked for on 2026-10-08 ("like `[[ ]]` from Obsidian"). Nothing is built; this

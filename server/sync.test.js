@@ -1514,3 +1514,28 @@ test('an occurrence changed on its own syncs at protocol 9 and is withheld below
   assert.deepEqual(old.map((e) => e.uuid), ['series']);
   assert.equal('series_uuid' in old[0], false);
 });
+
+test('a list section heading syncs at protocol 9 and is withheld below', () => {
+  const db = openDb(':memory:');
+  const stamp = '2026-10-21T10:00:00.000Z';
+  const item = (uuid, text, section) => ({
+    uuid,
+    list_uuid: 'list-1',
+    text,
+    checked_at: null,
+    sort_order: 0,
+    section,
+    created_at: stamp,
+    updated_at: stamp,
+    deleted_at: null,
+  });
+  sync(db, USER, 0, { list_items: [item('h', 'Rewe', 1), item('m', 'Milk', 0)] }, 9);
+
+  const now = sync(db, USER, 0, {}, 9).changes.list_items;
+  assert.equal(now.find((i) => i.uuid === 'h').section, 1);
+
+  // Below 9 a heading is an item to buy called "Rewe".
+  const old = sync(db, USER, 0, {}, 8).changes.list_items;
+  assert.deepEqual(old.map((i) => i.uuid), ['m']);
+  assert.equal('section' in old[0], false);
+});

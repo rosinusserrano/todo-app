@@ -916,6 +916,15 @@ window while it is open.
   with whatever is typed in the add field added first.
 - **Ticked items slide down** into a greyed *Ticked* section below what is
   left, newest first. Tap one to untick it and it slides back to its place.
+- **Sections** — a heading such as "Rewe", "Market" or "tonight", with the
+  items under it until the next heading. In Edit, type the name in the add
+  field and press its ▤ to add a heading; a heading's ＋ aims the add field
+  at that section ("Add to Rewe"), and its handle moves it, items and all
+  stay where they are. In Use a heading shows only while something under it
+  is still to get. Ticked items still all go to the one *Ticked* section,
+  and come back to their own section when unticked. Needs the server on
+  sync protocol 9; until then headings stay on the device they were made
+  on, and an older app never receives them.
 - **Finished** archives the list as it is, and the next list starts empty. It
   is the green button once everything is ticked, and quieter before. Finished
   lists are under a small *Archived lists →* at the top: read-only, deletable.
@@ -1599,6 +1608,10 @@ reminders are both there now**, queued for 0.18.0.
     and bell behind a ⋯; and Ctrl+Alt+H / Ctrl+Alt+T / a reminder no longer
     open the shopping list on the way - only the tray and un-minimising do -
     so a thought added over a note lands back on the note.
+  - **Shopping list sections**: a heading row (`list_items.section`,
+    client v24, folded into sync protocol 9 with the same withholding as
+    an exception row), items added into a section from its ＋, ticked
+    items following the row they came after when the list is reordered.
   - **Shelves**: a review reminds you the morning it falls due (the poll on
     a desktop, a scheduled notification on a phone, `push.js` on the web;
     `ParkedGroup.reviewRemindAt`), and a shelved task's text opens the task

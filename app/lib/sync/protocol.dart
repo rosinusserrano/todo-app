@@ -56,10 +56,13 @@
 /// carry them - to a build that cannot read them, a skipped Tuesday is one
 /// more block on Tuesday. The rows are held back from an older *server*
 /// too ([kExceptionsProtocol]), which would keep them without the columns
-/// and hand them on as exactly that.
+/// and hand them on as exactly that. 9 also added `list_items.section`, a
+/// shopping list's section heading, on the same terms: to a build without
+/// the column a heading is one more thing to buy.
 const kSyncProtocol = 9;
 
-/// The first server wire that keeps an exception row as one.
+/// The first server wire that keeps an exception row as one - and a list's
+/// section heading as a heading.
 const kExceptionsProtocol = 9;
 
 /// The first server wire that has the `calendar_feeds` table.

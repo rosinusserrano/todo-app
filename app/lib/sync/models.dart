@@ -2286,6 +2286,14 @@ class ListItem implements SyncRow {
   final String? checkedAt;
 
   final int sortOrder;
+
+  /// A section's heading - "Rewe", "for tonight" - rather than a thing to get.
+  /// It is a row in the order like any item, and the items after it, up to
+  /// the next heading, are its section; a heading is never ticked. A row
+  /// rather than a column on every item, so a section is renamed in one
+  /// write and an item moves between sections by being dragged.
+  final bool isSection;
+
   final String createdAt;
   @override
   final String updatedAt;
@@ -2298,6 +2306,7 @@ class ListItem implements SyncRow {
     required this.text,
     this.checkedAt,
     this.sortOrder = 0,
+    this.isSection = false,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -2325,6 +2334,7 @@ class ListItem implements SyncRow {
         text: text ?? this.text,
         checkedAt: clearChecked ? null : checkedAt ?? this.checkedAt,
         sortOrder: sortOrder ?? this.sortOrder,
+        isSection: isSection,
         createdAt: createdAt,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: deletedAt ?? this.deletedAt,
@@ -2337,6 +2347,7 @@ class ListItem implements SyncRow {
         'text': text,
         'checked_at': checkedAt,
         'sort_order': sortOrder,
+        'section': isSection ? 1 : 0,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -2348,10 +2359,25 @@ class ListItem implements SyncRow {
         text: (m['text'] as String?) ?? '',
         checkedAt: m['checked_at'] as String?,
         sortOrder: (m['sort_order'] as num?)?.toInt() ?? 0,
+        isSection: (m['section'] as num?) == 1,
         createdAt: (m['created_at'] as String?) ?? m['updated_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );
+}
+
+/// [items] (in their order) as runs: the items before the first heading
+/// under a null heading, then each heading with the items after it.
+List<(ListItem?, List<ListItem>)> listSections(List<ListItem> items) {
+  final out = <(ListItem?, List<ListItem>)>[(null, [])];
+  for (final i in items) {
+    if (i.isSection) {
+      out.add((i, []));
+    } else {
+      out.last.$2.add(i);
+    }
+  }
+  return out;
 }
 
 /// What a [CollectionField] holds. The kind is an input hint, not a storage

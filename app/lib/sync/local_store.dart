@@ -87,7 +87,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 23,
+        version: 24,
         onCreate: (db, version) =>
             _create(db, version, seedWorkspace: seedWorkspace),
         onUpgrade: _upgrade,
@@ -241,7 +241,7 @@ class LocalStore {
       // reset v16 does is not needed again here, since no server below
       // protocol 3 has these tables to have held anything back.
       await db.execute(_listsTable);
-      await db.execute(_listItemsTable);
+      await db.execute(_listItemsTableV17);
       await db.execute(_listItemsIndex);
     }
     if (from < 18) {
@@ -307,6 +307,12 @@ class LocalStore {
       await db.execute('ALTER TABLE calendar_events ADD COLUMN cancelled INTEGER');
       await db.update('sync_state', {'value': '0'},
           where: 'key = ?', whereArgs: ['cursor']);
+    }
+    if (from < 24) {
+      // A list item that is a section's heading (ListItem.isSection), also
+      // protocol 9. No cursor reset: v23 already went back for protocol 9,
+      // and no server has held a heading back from anybody yet.
+      await db.execute('ALTER TABLE list_items ADD COLUMN section INTEGER');
     }
   }
 
@@ -466,6 +472,21 @@ class LocalStore {
       )''';
 
   static const _listItemsTable = '''
+      CREATE TABLE list_items (
+        uuid       TEXT PRIMARY KEY,
+        list_uuid  TEXT,
+        text       TEXT,
+        checked_at TEXT,
+        sort_order INTEGER,
+        section    INTEGER,
+        created_at TEXT,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        dirty      INTEGER NOT NULL DEFAULT 1
+      )''';
+
+  /// list_items as v17 made it, before v24 added `section`.
+  static const _listItemsTableV17 = '''
       CREATE TABLE list_items (
         uuid       TEXT PRIMARY KEY,
         list_uuid  TEXT,
@@ -1380,11 +1401,12 @@ class LocalStore {
     return rows.map(ListItem.fromMap).toList();
   }
 
-  /// Live items per list, for the archive's counts.
+  /// Live items per list, for the archive's counts. Headings are not items.
   Future<Map<String, int>> listItemCounts() async {
     final rows = await _db.rawQuery(
         'SELECT list_uuid, COUNT(*) AS n FROM list_items '
-        'WHERE deleted_at IS NULL GROUP BY list_uuid');
+        'WHERE deleted_at IS NULL AND (section IS NULL OR section = 0) '
+        'GROUP BY list_uuid');
     return {
       for (final r in rows)
         if (r['list_uuid'] != null)

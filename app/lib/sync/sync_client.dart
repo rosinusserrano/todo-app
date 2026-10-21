@@ -220,6 +220,7 @@ class SyncClient {
     if (server.speaks < kExceptionsProtocol) {
       outgoing['calendar_events']
           ?.removeWhere((row) => row['series_uuid'] != null);
+      outgoing['list_items']?.removeWhere((row) => row['section'] == 1);
     }
 
     final http.Response res;

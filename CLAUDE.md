@@ -1006,6 +1006,12 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
 - **It owns the content area like the calendar**: `showList` is cleared by
   `_closeOtherViews`, so every other view and `toggleCalendar` close it, and
   `setListOpen` commits quick-add blocks when it closes the calendar.
+- **A section is a row** (`list_items.section`, client v24, protocol 9):
+  a heading, and the items after it up to the next one are its section
+  (`listSections`). Headings are withheld from older clients and servers
+  like exception rows (`ROW_SINCE`, `syncOnce`) - without the column one
+  is an item to buy. `reorderListItems` moves each ticked item with the
+  row it came after, so unticking puts it back in its section.
 - **Use mode places rows with `AnimatedPositioned` keyed on uuid** at a
   position computed from the row's index (to get, header, ticked), which is
   the whole slide animation. It needs a fixed row height, so an item is one

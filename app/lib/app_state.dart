@@ -3094,22 +3094,56 @@ class AppState extends ChangeNotifier {
     await _listChanged();
   }
 
-  /// Add an item at the end of what is still to get.
-  Future<void> addListItem(String text) async {
+  /// Add an item at the end of what is still to get - or, with [section],
+  /// at the end of that section. [asSection] adds a section heading instead,
+  /// at the end.
+  Future<void> addListItem(
+    String text, {
+    String? section,
+    bool asSection = false,
+  }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     final list = await _ensureList();
-    final last = listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m);
     final stamp = nowStamp();
-    await _store.putListItem(ListItem(
+    final item = ListItem(
       uuid: newId(),
       listUuid: list.uuid,
       text: trimmed,
-      sortOrder: last + 1,
+      isSection: asSection,
       createdAt: stamp,
       updatedAt: stamp,
-    ));
+    );
+    final at = section == null || asSection ? -1 : _endOfSection(section);
+    if (at < 0) {
+      final last = listItems.fold<int>(
+        -1,
+        (m, i) => i.sortOrder > m ? i.sortOrder : m,
+      );
+      await _store.putListItem(item.copyWith(sortOrder: last + 1));
+    } else {
+      // Into the middle: everything from there moves down one.
+      await _writeOrder([...listItems.take(at), item, ...listItems.skip(at)]);
+    }
     await _listChanged();
+  }
+
+  /// Where an item added to [sectionUuid] goes: just before the next
+  /// heading. -1 for the end of the list (the section is the last one, or
+  /// gone).
+  int _endOfSection(String sectionUuid) {
+    final start = listItems.indexWhere((i) => i.uuid == sectionUuid);
+    if (start < 0) return -1;
+    final next = listItems.indexWhere((i) => i.isSection, start + 1);
+    return next;
+  }
+
+  /// Number [items] 0, 1, 2... in the order given, writing only what moved.
+  Future<void> _writeOrder(List<ListItem> items) async {
+    for (final (index, item) in items.indexed) {
+      if (item.sortOrder == index && listItems.contains(item)) continue;
+      await _store.putListItem(item.copyWith(sortOrder: index));
+    }
   }
 
   /// Retitle an item; clearing it to nothing deletes it, as a task's does.
@@ -3137,14 +3171,30 @@ class AppState extends ChangeNotifier {
     await _listChanged();
   }
 
-  /// Put the still-to-get items in this order. Ticked ones keep theirs.
+  /// Put the still-to-get items (and the headings among them) in this order.
+  /// A ticked item travels with the row it came after, so it stays in the
+  /// section it was in and unticking it puts it back there.
   Future<void> reorderListItems(List<String> uuids) async {
     final byUuid = {for (final i in listItems) i.uuid: i};
-    for (final (index, uuid) in uuids.indexed) {
-      final item = byUuid[uuid];
-      if (item == null || item.sortOrder == index) continue;
-      await _store.putListItem(item.copyWith(sortOrder: index));
+    final named = uuids.where(byUuid.containsKey).toSet();
+    final head = <ListItem>[]; // ticked rows before any named one
+    final after = <String, List<ListItem>>{};
+    String? last;
+    for (final i in listItems) {
+      if (named.contains(i.uuid)) {
+        last = i.uuid;
+        after[i.uuid] = [];
+      } else if (last == null) {
+        head.add(i);
+      } else {
+        after[last]!.add(i);
+      }
     }
+    await _writeOrder([
+      ...head,
+      for (final u in uuids)
+        if (named.contains(u)) ...[byUuid[u]!, ...after[u]!],
+    ]);
     await _listChanged();
   }
 

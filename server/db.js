@@ -279,6 +279,7 @@ function init(db) {
       text       TEXT,
       checked_at TEXT,
       sort_order INTEGER,
+      section    INTEGER,
       created_at TEXT,
       updated_at TEXT NOT NULL,
       deleted_at TEXT,
@@ -408,6 +409,8 @@ function init(db) {
   addColumn(db, 'calendar_events', 'series_uuid', 'TEXT');
   addColumn(db, 'calendar_events', 'occurrence_at', 'TEXT');
   addColumn(db, 'calendar_events', 'cancelled', 'INTEGER');
+  // A list item that is a section's heading ("Rewe", "evening"), protocol 9.
+  addColumn(db, 'list_items', 'section', 'INTEGER');
 
   // Web Push subscriptions and what has been sent - see push.js. Not in
   // TABLES: they are this server's own bookkeeping and never sync.
@@ -502,7 +505,7 @@ export const TABLES = {
   ],
   calendar_feeds: ['calendar_uuid', 'name', 'url', 'alerts', 'created_at'],
   lists: ['name', 'archived_at', 'created_at'],
-  list_items: ['list_uuid', 'text', 'checked_at', 'sort_order', 'created_at'],
+  list_items: ['list_uuid', 'text', 'checked_at', 'sort_order', 'created_at', 'section'],
   collections: ['workspace_uuid', 'name', 'sort_order', 'created_at'],
   collection_fields: [
     'collection_uuid',
@@ -527,6 +530,7 @@ const COLUMN_SINCE = {
   workspaces: { shortcuts: 5, parent_uuid: 7, archived_at: 7 },
   side_thoughts: { audio: 6, audio_ms: 6, remind_at: 8 },
   tasks: { audio: 6, audio_ms: 6 },
+  list_items: { section: 9 },
 };
 const TABLE_SINCE = {
   calendar_feeds: 2,
@@ -545,9 +549,11 @@ function knows(table, field, protocol) {
 // that say what they are they read as something else. An exception to a
 // series (protocol 9) stripped of series_uuid is a one-off: a skipped Tuesday
 // would arrive as a second block on Tuesday. Such a client goes on drawing the
-// series as it was, which is behind but not wrong.
+// series as it was, which is behind but not wrong. A list's section heading
+// (protocol 9) stripped of `section` is an item to buy called "Rewe".
 const ROW_SINCE = {
   calendar_events: [{ since: 9, holds: (row) => row.series_uuid != null }],
+  list_items: [{ since: 9, holds: (row) => row.section === 1 }],
 };
 
 function withheld(table, row, protocol) {

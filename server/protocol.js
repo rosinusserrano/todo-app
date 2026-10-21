@@ -73,6 +73,8 @@
 //      on 5's terms - and the rows carrying them in ROW_SINCE, not sent to a
 //      client below 9 at all, since stripped of the columns they read as
 //      one-offs. A 9 client does not push them to a server below 9 either.
-//      MIN_CLIENT stays 1.
+//      Also `list_items.section`, a shopping list's section heading, on the
+//      same terms: the column in COLUMN_SINCE and the heading rows in
+//      ROW_SINCE. MIN_CLIENT stays 1.
 export const PROTOCOL = 9;
 export const MIN_CLIENT = 1;

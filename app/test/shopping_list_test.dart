@@ -3,14 +3,17 @@
 // starting a list offline lose nothing.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:todo_widget/app_state.dart';
 import 'package:todo_widget/sync/local_store.dart';
+import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/sync/protocol.dart';
 import 'package:todo_widget/sync/sync_client.dart';
 
@@ -158,5 +161,94 @@ void main() {
       server: const ServerProtocol(speaks: kListsProtocol, minClient: 1),
     );
     expect((sent.last['changes'] as Map)['list_items'], hasLength(1));
+  });
+
+  group('sections', () {
+    List<String> order(AppState s) => [
+          for (final i in s.listItems) i.isSection ? '# ${i.text}' : i.text,
+        ];
+
+    test('a heading, and items added into a section go to its end', () async {
+      final s = await fresh();
+      await s.addListItem('Bread');
+      await s.addListItem('Rewe', asSection: true);
+      await s.addListItem('Milk');
+      await s.addListItem('Market', asSection: true);
+      await s.addListItem('Apples');
+      final rewe = s.listItems.firstWhere((i) => i.text == 'Rewe');
+      await s.addListItem('Eggs', section: rewe.uuid);
+
+      expect(order(s),
+          ['Bread', '# Rewe', 'Milk', 'Eggs', '# Market', 'Apples']);
+      final sections = listSections(s.listItems);
+      expect(sections.map((x) => x.$1?.text), [null, 'Rewe', 'Market']);
+      expect(sections[1].$2.map((i) => i.text), ['Milk', 'Eggs']);
+      expect(await s.listItemCounts(), {s.currentList!.uuid: 4},
+          reason: 'a heading is not an item');
+    });
+
+    test('a ticked item keeps its section through a reorder', () async {
+      final s = await fresh();
+      await s.addListItem('Rewe', asSection: true);
+      await s.addListItem('Milk');
+      await s.addListItem('Eggs');
+      await s.addListItem('Market', asSection: true);
+      await s.addListItem('Apples');
+      await s.setListItemChecked(
+          s.listItems.firstWhere((i) => i.text == 'Eggs'), true);
+
+      // Edit's list is what is still to get, headings included: Market first.
+      final open = [for (final i in s.listItems) if (!i.isChecked) i];
+      final ids = [for (final i in open) i.uuid];
+      final moved = [...ids.skip(2), ...ids.take(2)];
+      await s.reorderListItems(moved);
+
+      expect(order(s), ['# Market', 'Apples', '# Rewe', 'Milk', 'Eggs']);
+      expect(s.listItems.last.isChecked, isTrue, reason: 'still after Milk');
+      await s.setListItemChecked(
+          s.listItems.firstWhere((i) => i.text == 'Eggs'), false);
+      expect(listSections(s.listItems)[2].$2.map((i) => i.text),
+          ['Milk', 'Eggs']);
+    });
+
+    test('a heading is not pushed to a server below protocol 9', () async {
+      final s = await fresh();
+      await s.addListItem('Milk');
+      await s.addListItem('Rewe', asSection: true);
+      final sent = <Map<String, dynamic>>[];
+      final client = SyncClient(
+        baseUrl: 'http://x',
+        token: 't',
+        client: MockClient((req) async {
+          sent.add(jsonDecode(req.body) as Map<String, dynamic>);
+          return http.Response(jsonEncode({'cursor': 1, 'changes': {}}), 200);
+        }),
+      );
+      await client.syncOnce(
+        s.store,
+        server: const ServerProtocol(speaks: 8, minClient: 1),
+      );
+      final items = (sent.last['changes'] as Map)['list_items'] as List;
+      expect(items.map((r) => r['text']), ['Milk']);
+      expect((await s.store.dirtyRows())['list_items'], hasLength(1),
+          reason: 'the heading waits for a server that keeps it');
+    });
+
+    test('a v23 database gains the column', () async {
+      final dir = await Directory.systemTemp.createTemp('todo_list_migrate');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = p.join(dir.path, 'todo.db');
+      final store = await LocalStore.open(path: path, singleInstance: false);
+      await store.raw.execute('ALTER TABLE list_items DROP COLUMN section');
+      await store.raw.setVersion(23);
+      await store.close();
+
+      final upgraded = await LocalStore.open(path: path, singleInstance: false);
+      final s = AppState(upgraded);
+      await s.load();
+      await s.addListItem('Rewe', asSection: true);
+      expect(s.listItems.single.isSection, isTrue);
+      await upgraded.close();
+    });
   });
 }

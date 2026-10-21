@@ -14,6 +14,13 @@
 //     passes glide out of its way - no list diffing, no per-row controllers.
 //     That needs a fixed row height, which is why an item is one line: they
 //     are "2× milk", not paragraphs.
+//   - **Sections are rows.** A heading ("Rewe", "tonight") is a list item
+//     with `isSection`, and the items after it up to the next heading are
+//     its section ([listSections]). Use draws a heading only over a section
+//     with something still to get in it; ticked items all go to the one
+//     Ticked section, since what is in the basket no longer needs a shop.
+//     Edit adds one from the add field's ▤, and a heading's ＋ aims the
+//     add field into that section.
 //   - **The archive is quiet on purpose.** Finishing archives the list and you
 //     are not expected to go back; the way in is a small muted line, and what
 //     is behind it is read-only.
@@ -52,6 +59,10 @@ class _ShoppingListViewState extends State<ShoppingListView> {
   final _addFocus = FocusNode();
   final _name = TextEditingController();
 
+  /// The section the add field is putting items into, or null for the end
+  /// of the list. Set by a heading's ＋ in Edit; leaving Edit forgets it.
+  String? _addTo;
+
   /// One controller per item while editing, so a retitle typed into one row
   /// survives the list being reloaded under it.
   final _edits = <String, TextEditingController>{};
@@ -68,7 +79,10 @@ class _ShoppingListViewState extends State<ShoppingListView> {
   }
 
   void _setEditing(bool editing) {
-    if (!editing) _saveEdits();
+    if (!editing) {
+      _saveEdits();
+      _addTo = null;
+    }
     setState(() => _editingChoice = editing);
     if (editing) {
       _name.text = s.currentList?.name ?? AppState.defaultListName;
@@ -104,7 +118,20 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     if (_editingChoice == null) _setEditing(true);
     _add.clear();
     _addFocus.requestFocus();
-    await s.addListItem(text);
+    await s.addListItem(text, section: _addTo);
+  }
+
+  /// The ▤ beside the add field: what is typed becomes a section heading.
+  Future<void> _submitSection() async {
+    final text = _add.text;
+    if (text.trim().isEmpty) {
+      _addFocus.requestFocus();
+      return;
+    }
+    if (_editingChoice == null) _setEditing(true);
+    _add.clear();
+    _addFocus.requestFocus();
+    await s.addListItem(text, asSection: true);
   }
 
   Future<void> _doneFromKeyboard() async {
@@ -187,11 +214,11 @@ class _ShoppingListViewState extends State<ShoppingListView> {
   Widget _list(Layout layout) {
     final current = s.currentList;
     final items = s.listItems;
-    final open = [
+    final things = [
       for (final i in items)
-        if (!i.isChecked) i,
+        if (!i.isSection) i,
     ];
-    final allTicked = items.isNotEmpty && open.isEmpty;
+    final allTicked = things.isNotEmpty && things.every((i) => i.isChecked);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, 0),
@@ -233,6 +260,15 @@ class _ShoppingListViewState extends State<ShoppingListView> {
                       () => TextEditingController(text: item.text),
                     ),
                     onTick: _tick,
+                    addTo: _addTo,
+                    onAddTo: (section) {
+                      setState(
+                        () => _addTo = _addTo == section.uuid
+                            ? null
+                            : section.uuid,
+                      );
+                      _addFocus.requestFocus();
+                    },
                   )
                 : _UseItems(items: items, layout: layout, onTick: _tick),
           ),
@@ -313,34 +349,44 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     );
   }
 
-  Widget _addField(Layout layout) => Padding(
-    padding: const EdgeInsets.only(bottom: T.s2),
-    child: TextField(
-      controller: _add,
-      focusNode: _addFocus,
-      autofocus: s.listItems.isEmpty,
-      textInputAction: TextInputAction.done,
-      style: const TextStyle(fontSize: T.fsMenu, color: T.text),
-      decoration: InputDecoration(
-        hintText: 'Add an item',
-        hintStyle: const TextStyle(color: T.muted),
-        // A line like the task list's "Add a task", not a filled box:
-        // the field is the first row of the list, not a form above it.
-        prefixIcon: const Padding(
-          padding: EdgeInsets.only(right: T.s3),
-          child: Icon(Icons.add, color: T.muted),
+  Widget _addField(Layout layout) {
+    final target = _addTo == null
+        ? null
+        : s.listItems.where((i) => i.uuid == _addTo).firstOrNull;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: T.s2),
+      child: TextField(
+        controller: _add,
+        focusNode: _addFocus,
+        autofocus: s.listItems.isEmpty,
+        textInputAction: TextInputAction.done,
+        style: const TextStyle(fontSize: T.fsMenu, color: T.text),
+        decoration: InputDecoration(
+          hintText: target == null ? 'Add an item' : 'Add to ${target.text}',
+          suffixIcon: IconButton(
+            tooltip: 'Add as a section heading',
+            onPressed: _submitSection,
+            icon: const Icon(Icons.segment_rounded, color: T.muted, size: 20),
+          ),
+          hintStyle: const TextStyle(color: T.muted),
+          // A line like the task list's "Add a task", not a filled box:
+          // the field is the first row of the list, not a form above it.
+          prefixIcon: const Padding(
+            padding: EdgeInsets.only(right: T.s3),
+            child: Icon(Icons.add, color: T.muted),
+          ),
+          prefixIconConstraints: const BoxConstraints(),
+          isDense: !layout.touch,
+          border: InputBorder.none,
         ),
-        prefixIconConstraints: const BoxConstraints(),
-        isDense: !layout.touch,
-        border: InputBorder.none,
+        // Enter adds and keeps the caret, as the task add field does. On
+        // editing-complete rather than submitted: the default for a "done"
+        // key is to drop focus first, which on a phone folds the keyboard away
+        // and back between every item.
+        onEditingComplete: _submitAdd,
       ),
-      // Enter adds and keeps the caret, as the task add field does. On
-      // editing-complete rather than submitted: the default for a "done"
-      // key is to drop focus first, which on a phone folds the keyboard away
-      // and back between every item.
-      onEditingComplete: _submitAdd,
-    ),
-  );
+    );
+  }
 }
 
 /// Use mode: tap to tick, and every row slides to where it now belongs.
@@ -362,22 +408,41 @@ class _UseItems extends StatelessWidget {
     final rowHeight = layout.touch ? 52.0 : 40.0;
     const headerHeight = 36.0;
 
-    final open = [
-      for (final i in items)
-        if (!i.isChecked) i,
-    ];
     // Newest tick first: the thing just put in the basket is the one most
     // likely to be unticked again.
     final ticked = [
       for (final i in items)
-        if (i.isChecked) i,
+        if (i.isChecked && !i.isSection) i,
     ]..sort((a, b) => b.checkedAt!.compareTo(a.checkedAt!));
 
     final placed = <Widget>[];
     var y = 0.0;
-    for (final item in open) {
-      placed.add(_place(item, y, rowHeight));
-      y += rowHeight;
+    for (final (heading, members) in listSections(items)) {
+      final open = [
+        for (final i in members)
+          if (!i.isChecked) i,
+      ];
+      // A section with nothing left to get has nothing to say in a shop.
+      if (open.isEmpty) continue;
+      if (heading != null) {
+        placed.add(
+          AnimatedPositioned(
+            key: ValueKey(heading.uuid),
+            duration: _slide,
+            curve: T.heroEase,
+            top: y,
+            left: 0,
+            right: 0,
+            height: headerHeight,
+            child: _SectionHeader(text: heading.text),
+          ),
+        );
+        y += headerHeight;
+      }
+      for (final item in open) {
+        placed.add(_place(item, y, rowHeight));
+        y += rowHeight;
+      }
     }
     if (ticked.isNotEmpty) {
       placed.add(
@@ -419,6 +484,32 @@ class _UseItems extends StatelessWidget {
     right: 0,
     height: height,
     child: _ItemRow(item: item, onTap: () => onTick(item)),
+  );
+}
+
+/// A section's heading in Use: the shop's name over what to get there.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.bottomLeft,
+    child: Padding(
+      padding: const EdgeInsets.only(bottom: T.s1),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: T.fsLabel,
+          fontFamily: T.fontDisplay,
+          fontWeight: T.wMedium,
+          color: T.muted,
+        ),
+      ),
+    ),
   );
 }
 
@@ -501,12 +592,18 @@ class _EditItems extends StatelessWidget {
     required this.layout,
     required this.controllerFor,
     required this.onTick,
+    required this.addTo,
+    required this.onAddTo,
   });
 
   final AppState state;
   final Layout layout;
   final TextEditingController Function(ListItem) controllerFor;
   final void Function(ListItem) onTick;
+
+  /// The heading the add field is aimed at, and how to aim it.
+  final String? addTo;
+  final void Function(ListItem section) onAddTo;
 
   @override
   Widget build(BuildContext context) {
@@ -516,41 +613,93 @@ class _EditItems extends StatelessWidget {
     ];
     final ticked = [
       for (final i in state.listItems)
-        if (i.isChecked) i,
+        if (i.isChecked && !i.isSection) i,
     ];
 
-    Widget row(ListItem item, {Widget? handle}) => Row(
-      children: [
-        IconButton(
-          tooltip: item.isChecked ? 'Untick' : 'Tick',
-          onPressed: () => onTick(item),
-          icon: Icon(
-            item.isChecked ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: item.isChecked ? T.ok.withValues(alpha: 0.6) : T.muted,
-          ),
-        ),
-        Expanded(
-          child: TextField(
-            controller: controllerFor(item),
-            style: TextStyle(
-              fontSize: T.fsMenu,
-              color: item.isChecked ? T.muted : T.text,
+    // A heading: its name in the display face, a ＋ that aims the add field
+    // here, and the same ✕ and handle as an item. Deleting it leaves its
+    // items where they are, in the section above.
+    Widget heading(ListItem item, {Widget? handle}) {
+      final aimed = addTo == item.uuid;
+      return Padding(
+        padding: const EdgeInsets.only(top: T.s2),
+        child: Row(
+          children: [
+            const SizedBox(width: T.s3),
+            Expanded(
+              child: TextField(
+                controller: controllerFor(item),
+                style: const TextStyle(
+                  fontSize: T.fsMenu,
+                  fontFamily: T.fontDisplay,
+                  fontWeight: T.wMedium,
+                  color: T.text,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (text) => state.editListItem(item, text),
+              ),
             ),
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
+            IconButton(
+              tooltip: aimed
+                  ? 'Add to the end of the list'
+                  : 'Add to this section',
+              onPressed: () => onAddTo(item),
+              icon: Icon(
+                Icons.add_rounded,
+                color: aimed ? T.accent : T.muted,
+                size: 20,
+              ),
             ),
-            onSubmitted: (text) => state.editListItem(item, text),
-          ),
+            IconButton(
+              tooltip: 'Delete the heading',
+              onPressed: () => state.deleteListItem(item),
+              icon: const Icon(Icons.close, color: T.muted, size: 20),
+            ),
+            ?handle,
+          ],
         ),
-        IconButton(
-          tooltip: 'Delete',
-          onPressed: () => state.deleteListItem(item),
-          icon: const Icon(Icons.close, color: T.muted, size: 20),
-        ),
-        ?handle,
-      ],
-    );
+      );
+    }
+
+    Widget row(ListItem item, {Widget? handle}) => item.isSection
+        ? heading(item, handle: handle)
+        : Row(
+            children: [
+              IconButton(
+                tooltip: item.isChecked ? 'Untick' : 'Tick',
+                onPressed: () => onTick(item),
+                icon: Icon(
+                  item.isChecked
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: item.isChecked ? T.ok.withValues(alpha: 0.6) : T.muted,
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: controllerFor(item),
+                  style: TextStyle(
+                    fontSize: T.fsMenu,
+                    color: item.isChecked ? T.muted : T.text,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                  ),
+                  onSubmitted: (text) => state.editListItem(item, text),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Delete',
+                onPressed: () => state.deleteListItem(item),
+                icon: const Icon(Icons.close, color: T.muted, size: 20),
+              ),
+              ?handle,
+            ],
+          );
 
     return CustomScrollView(
       slivers: [
@@ -764,34 +913,40 @@ class _ArchivedListView extends StatelessWidget {
       builder: (context, snap) => ListView(
         children: [
           for (final i in snap.data ?? const <ListItem>[])
-            SizedBox(
-              height: 40,
-              child: Row(
-                children: [
-                  Icon(
-                    i.isChecked
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: T.muted,
-                    size: 20,
-                  ),
-                  const SizedBox(width: T.s3),
-                  Expanded(
-                    child: Text(
-                      i.text,
-                      style: TextStyle(
-                        color: T.muted,
-                        fontSize: T.fsMenu,
-                        decoration: i.isChecked
-                            ? TextDecoration.lineThrough
-                            : null,
-                        decorationColor: T.muted,
+            if (i.isSection)
+              Padding(
+                padding: const EdgeInsets.only(top: T.s3),
+                child: _SectionHeader(text: i.text),
+              )
+            else
+              SizedBox(
+                height: 40,
+                child: Row(
+                  children: [
+                    Icon(
+                      i.isChecked
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color: T.muted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: T.s3),
+                    Expanded(
+                      child: Text(
+                        i.text,
+                        style: TextStyle(
+                          color: T.muted,
+                          fontSize: T.fsMenu,
+                          decoration: i.isChecked
+                              ? TextDecoration.lineThrough
+                              : null,
+                          decorationColor: T.muted,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
         ],
       ),
     ),

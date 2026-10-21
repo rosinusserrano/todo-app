@@ -179,4 +179,63 @@ void main() {
     expect(find.text(AppState.defaultListName), findsOneWidget);
     expect(find.textContaining('1 item'), findsOneWidget);
   });
+
+  testWidgets('sections: a heading over what is left to get there', (
+    tester,
+  ) async {
+    final s = await fresh(tester, ['Bread']);
+    await tester.runAsync(() async {
+      await s.addListItem('Rewe', asSection: true);
+      await s.addListItem('Milk');
+      await s.addListItem('Market', asSection: true);
+      await s.addListItem('Apples');
+    });
+    await show(tester, s);
+    expect(find.text('Rewe'), findsOneWidget);
+    expect(find.text('Market'), findsOneWidget);
+
+    // Everything at the market ticked: its heading has nothing to say.
+    await tester.tap(find.text('Apples'));
+    await settle(tester);
+    expect(find.text('Market'), findsNothing);
+    expect(find.text('Apples'), findsOneWidget, reason: 'under Ticked');
+  });
+
+  testWidgets('Edit adds a heading, and a heading aims the add field', (
+    tester,
+  ) async {
+    final s = await fresh(tester, ['Milk']);
+    await show(tester, s);
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    final addField = find.byWidgetPredicate(
+      (w) => w is TextField && (w.decoration?.hintText ?? '').startsWith('Add'),
+    );
+
+    await tester.enterText(addField, 'Rewe');
+    await tester.tap(find.byTooltip('Add as a section heading'));
+    await settle(tester);
+    expect(s.listItems.last.isSection, isTrue);
+
+    await tester.enterText(addField, 'Bread');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+    await tester.enterText(addField, 'Apples');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+    // A second heading, then aim back at Rewe - no longer the last section,
+    // so an add there lands in the middle of the list.
+    await tester.enterText(addField, 'Market');
+    await tester.tap(find.byTooltip('Add as a section heading'));
+    await settle(tester);
+    await tester.tap(find.byTooltip('Add to this section').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Add to Rewe'), findsOneWidget);
+    await tester.enterText(addField, 'Eggs');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+
+    expect([for (final i in s.listItems) i.text],
+        ['Milk', 'Rewe', 'Bread', 'Apples', 'Eggs', 'Market']);
+  });
 }

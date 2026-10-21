@@ -57,6 +57,8 @@
 // has none). The bell beside the mic picks one by hand, which outranks the
 // words; the line's × takes the words back into the text.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -370,6 +372,131 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
     }
   }
 
+  /// Below this the action row is two buttons stacked on the right and the
+  /// mic and bell folded behind a ⋯ - the widget's own window is 340 wide,
+  /// and everything in one line left the buttons squeezed (Marco,
+  /// 2026-10-21).
+  static const compactWidth = 440.0;
+
+  List<Widget> get _tools => [
+    if (widget.canRecord && VoiceRecorder.supported)
+      Tooltip(
+        message: _recorder == null ? 'Record a voice note' : 'Stop recording',
+        child: Material(
+          color: _recorder == null ? Colors.transparent : widget.accent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _toggleRecording,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                _recorder == null ? Icons.mic_none_rounded : Icons.stop_rounded,
+                size: 22,
+                color: _recorder == null ? T.muted : T.inkOn(widget.accent),
+              ),
+            ),
+          ),
+        ),
+      ),
+    if (widget.canRemind)
+      Tooltip(
+        message: 'Remind me',
+        child: Material(
+          key: _bellKey,
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _pickReminder,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                _reminder == null
+                    ? Icons.notifications_none_rounded
+                    : Icons.notifications_active_rounded,
+                size: 22,
+                color: _reminder == null ? T.muted : widget.accent,
+              ),
+            ),
+          ),
+        ),
+      ),
+  ];
+
+  // Chaining, for the case this exists for: somebody lists three books at
+  // you and closing between each is three taps you do not have time for.
+  Widget get _saveAnother => Tooltip(
+    message: widget.enterSaves ? 'Ctrl+Enter' : '',
+    child: TextButton(
+      onPressed: () => _submit(andClose: false),
+      style: TextButton.styleFrom(
+        foregroundColor: T.muted,
+        minimumSize: const Size(0, 44),
+      ),
+      child: const Text(
+        'Save & another',
+        style: TextStyle(fontSize: T.fsLabel),
+      ),
+    ),
+  );
+
+  Widget get _save => FilledButton(
+    onPressed: _submit,
+    style: FilledButton.styleFrom(
+      backgroundColor: widget.accent,
+      foregroundColor: T.bgSolid,
+      minimumSize: const Size(96, 44),
+    ),
+    child: const Text(
+      'Save',
+      style: TextStyle(fontSize: T.fsLabel, fontWeight: T.wMedium),
+    ),
+  );
+
+  Widget _actions() => Row(
+    children: [
+      for (final tool in _tools) ...[tool, const SizedBox(width: T.s1)],
+      _saveAnother,
+      const Spacer(),
+      if (widget.enterSaves)
+        const Padding(
+          padding: EdgeInsets.only(right: T.s2),
+          child: Text(
+            'Shift+Enter: new line',
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+          ),
+        ),
+      _save,
+    ],
+  );
+
+  /// The narrow row: the tools behind a ⋯, Save & another over Save, and no
+  /// Shift+Enter line - that line was what pushed the buttons together, and
+  /// the key works the same without it.
+  Widget _compactActions() {
+    final tools = _tools;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (tools.isNotEmpty)
+          HoverReveal(
+            // A recording has to stay stoppable.
+            pinned: _recorder != null,
+            children: tools,
+          ),
+        const Spacer(),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [_saveAnother, _save],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final keyboard = MediaQuery.of(context).viewInsets.bottom;
@@ -556,112 +683,10 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                   ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s3),
-                  child: Row(
-                    children: [
-                      if (widget.canRecord && VoiceRecorder.supported) ...[
-                        Tooltip(
-                          message: _recorder == null
-                              ? 'Record a voice note'
-                              : 'Stop recording',
-                          child: Material(
-                            color: _recorder == null
-                                ? Colors.transparent
-                                : widget.accent,
-                            shape: const CircleBorder(),
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: _toggleRecording,
-                              child: SizedBox(
-                                width: 44,
-                                height: 44,
-                                child: Icon(
-                                  _recorder == null
-                                      ? Icons.mic_none_rounded
-                                      : Icons.stop_rounded,
-                                  size: 22,
-                                  color: _recorder == null
-                                      ? T.muted
-                                      : T.inkOn(widget.accent),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: T.s1),
-                      ],
-                      if (widget.canRemind) ...[
-                        Tooltip(
-                          message: 'Remind me',
-                          child: Material(
-                            key: _bellKey,
-                            color: Colors.transparent,
-                            shape: const CircleBorder(),
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: _pickReminder,
-                              child: SizedBox(
-                                width: 44,
-                                height: 44,
-                                child: Icon(
-                                  _reminder == null
-                                      ? Icons.notifications_none_rounded
-                                      : Icons.notifications_active_rounded,
-                                  size: 22,
-                                  color: _reminder == null
-                                      ? T.muted
-                                      : widget.accent,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: T.s1),
-                      ],
-                      // Chaining, for the case this exists for: somebody lists
-                      // three books at you and closing between each is three
-                      // taps you do not have time for.
-                      Tooltip(
-                        message: widget.enterSaves ? 'Ctrl+Enter' : '',
-                        child: TextButton(
-                          onPressed: () => _submit(andClose: false),
-                          style: TextButton.styleFrom(
-                            foregroundColor: T.muted,
-                            minimumSize: const Size(0, 44),
-                          ),
-                          child: const Text(
-                            'Save & another',
-                            style: TextStyle(fontSize: T.fsLabel),
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      if (widget.enterSaves)
-                        const Padding(
-                          padding: EdgeInsets.only(right: T.s2),
-                          child: Text(
-                            'Shift+Enter: new line',
-                            style: TextStyle(
-                              fontSize: T.fsMeta,
-                              color: T.muted,
-                            ),
-                          ),
-                        ),
-                      FilledButton(
-                        onPressed: _submit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: widget.accent,
-                          foregroundColor: T.bgSolid,
-                          minimumSize: const Size(96, 44),
-                        ),
-                        child: const Text(
-                          'Save',
-                          style: TextStyle(
-                            fontSize: T.fsLabel,
-                            fontWeight: T.wMedium,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: LayoutBuilder(
+                    builder: (context, box) => box.maxWidth < compactWidth
+                        ? _compactActions()
+                        : _actions(),
                   ),
                 ),
               ],
@@ -713,6 +738,90 @@ class _Recording extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// A ⋯ that opens into [children] - on hover with a mouse, the way the
+/// dock's segments open (a short delay, so crossing it opens nothing, and a
+/// grace on the way out), and on a tap anywhere. A tap outside folds it.
+class HoverReveal extends StatefulWidget {
+  const HoverReveal({super.key, required this.children, this.pinned = false});
+
+  final List<Widget> children;
+
+  /// Held open whatever the pointer does.
+  final bool pinned;
+
+  @override
+  State<HoverReveal> createState() => _HoverRevealState();
+}
+
+class _HoverRevealState extends State<HoverReveal> {
+  static const _openDelay = Duration(milliseconds: 150);
+  static const _closeDelay = Duration(milliseconds: 300);
+
+  bool _open = false;
+  Timer? _timer;
+
+  void _later(Duration delay, bool open) {
+    _timer?.cancel();
+    _timer = Timer(delay, () {
+      if (mounted) setState(() => _open = open);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final open = _open || widget.pinned;
+    return TapRegion(
+      onTapOutside: (_) {
+        _timer?.cancel();
+        if (_open) setState(() => _open = false);
+      },
+      child: MouseRegion(
+        onEnter: (_) => _later(_openDelay, true),
+        onExit: (_) => _later(_closeDelay, false),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 150),
+          alignment: Alignment.centerLeft,
+          child: open
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final c in widget.children) ...[
+                      c,
+                      const SizedBox(width: T.s1),
+                    ],
+                  ],
+                )
+              : Tooltip(
+                  message: 'More',
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () {
+                      _timer?.cancel();
+                      setState(() => _open = true);
+                    },
+                    child: const SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 22,
+                        color: T.muted,
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }

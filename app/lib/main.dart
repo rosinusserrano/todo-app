@@ -475,13 +475,16 @@ class _WidgetShellState extends State<WidgetShell>
   /// happened. Both quick actions were dead from a cold start for that reason.
   Future<void> Function() _afterLayout(Future<void> Function() action) {
     return () async {
+      // A quick action is a return with a purpose: the list-on-return that
+      // the same resume asks for would take the screen it is aimed at.
+      _holdList();
       if (!_laidOut) await WidgetsBinding.instance.endOfFrame;
       if (mounted) await action();
     };
   }
 
   late final AppTray _tray = AppTray(
-    onShow: _surfaceWindow,
+    onShow: () => _surfaceWindow(openList: true),
     onHide: _hideToTray,
     onAddTask: _jumpToAddTask,
     // Not destroy(): the close guard decides whether the app may go.
@@ -663,6 +666,9 @@ class _WidgetShellState extends State<WidgetShell>
   /// is already "the app opens on this one thing", and leaving it is an edit.
   Future<void> _openListOnReturn() async {
     if (!mounted || s.showList || s.currentList == null) return;
+    if (_listHeldUntil != null && DateTime.now().isBefore(_listHeldUntil!)) {
+      return;
+    }
     if (ModalRoute.of(context)?.isCurrent == false) return;
     if (_adding || _thoughtCapture || _noteOn != null || _focusThoughtOpen) {
       return;
@@ -673,6 +679,17 @@ class _WidgetShellState extends State<WidgetShell>
     _collapseTask();
     await s.setListOpen(true);
   }
+
+  /// Until when a return does not open the list: the window was surfaced
+  /// for something else - a capture, a reminder, a quick action - and an
+  /// un-minimise of our own reports itself as a restore a moment later
+  /// ([onWindowRestore]). Opening the list there took the screen from a note
+  /// being read, and closing the thought landed on the list rather than
+  /// where it was opened from (Marco, 2026-10-21).
+  DateTime? _listHeldUntil;
+
+  void _holdList() =>
+      _listHeldUntil = DateTime.now().add(const Duration(seconds: 2));
 
   // --------------------------------------------------------------- calendar
 
@@ -1054,13 +1071,18 @@ class _WidgetShellState extends State<WidgetShell>
   // -------------------------------------------------------------------- tray
 
   /// Bring the window back from hidden, minimised or simply buried.
-  Future<void> _surfaceWindow() async {
+  ///
+  /// [openList] only from the tray: that is somebody coming back to the app.
+  /// Everything else surfaces it *for* something - a hotkey's capture, a
+  /// reminder - and the list would be in front of it.
+  Future<void> _surfaceWindow({bool openList = false}) async {
     if (!isDesktop) return;
+    if (!openList) _holdList();
     if (await windowManager.isMinimized()) await windowManager.restore();
     await windowManager.show();
     await windowManager.focus();
     _taskbar.refresh();
-    await _openListOnReturn();
+    if (openList) await _openListOnReturn();
   }
 
   /// The taskbar toolbar cannot be set while the window is hidden - Windows
@@ -1080,7 +1102,7 @@ class _WidgetShellState extends State<WidgetShell>
   }
 
   @override
-  void onTrayIconMouseDown() => _surfaceWindow();
+  void onTrayIconMouseDown() => _surfaceWindow(openList: true);
 
   @override
   void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();

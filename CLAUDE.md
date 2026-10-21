@@ -987,7 +987,10 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
   lifecycle `resumed` that followed `hidden`/`paused` (`_wentAway` - plain
   `inactive` is a blink, not a return), and on desktop from `_surfaceWindow`
   and `onWindowRestore` only, because the widget is always open and focus
-  changes would drag you to the list every click. It refuses while something
+  changes would drag you to the list every click. `_surfaceWindow` opens it
+  only for the tray (`openList: true`); a surface for a capture, a reminder
+  or a quick action calls `_holdList` instead, which also covers the
+  restore event our own un-minimise sends a moment later. It refuses while something
   is being written (a route on top, the add field, a capture) and in focus
   mode. Moving inside the app never calls it.
 - **It owns the content area like the calendar**: `showList` is cleared by

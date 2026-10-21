@@ -107,6 +107,16 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     await s.addListItem(text);
   }
 
+  Future<void> _doneFromKeyboard() async {
+    final text = _add.text;
+    if (text.trim().isNotEmpty) {
+      _add.clear();
+      await s.addListItem(text);
+    }
+    if (!mounted || s.listItems.isEmpty) return;
+    _setEditing(false);
+  }
+
   void _tick(ListItem item) {
     HapticFeedback.selectionClick();
     s.setListItemChecked(item, !item.isChecked);
@@ -123,7 +133,18 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     final layout = Layout.of(context);
     return Focus(
       // Esc walks back down the rungs before the shell closes the screen.
+      // Ctrl+Enter is Done: whatever is in the add field goes in first, so
+      // the last item typed is not left behind in a field that is going.
       onKeyEvent: (node, event) {
+        if (event is KeyDownEvent &&
+            (event.logicalKey == LogicalKeyboardKey.enter ||
+                event.logicalKey == LogicalKeyboardKey.numpadEnter) &&
+            HardwareKeyboard.instance.isControlPressed &&
+            _rung == _Rung.list &&
+            _editing) {
+          _doneFromKeyboard();
+          return KeyEventResult.handled;
+        }
         if (event is! KeyDownEvent ||
             event.logicalKey != LogicalKeyboardKey.escape) {
           return KeyEventResult.ignored;

@@ -1,6 +1,7 @@
 // The shopping list screen: what a person in a shop actually touches.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -93,6 +94,26 @@ void main() {
     await tester.tap(find.text('Done'));
     await settle(tester);
     expect(addField, findsNothing, reason: 'Done is what settles it');
+    expect(find.text('Edit'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+Enter adds what is typed and leaves Edit', (tester) async {
+    final s = await fresh(tester, ['Milk']);
+    await show(tester, s);
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    final addField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.hintText == 'Add an item',
+    );
+    await tester.enterText(addField, 'Eggs');
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await settle(tester);
+
+    expect([for (final i in s.listItems) i.text], ['Milk', 'Eggs']);
+    expect(addField, findsNothing);
     expect(find.text('Edit'), findsOneWidget);
   });
 

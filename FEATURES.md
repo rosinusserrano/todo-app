@@ -892,7 +892,9 @@ window while it is open.
   another app or browser tab. Moving around *inside* the app does not: go to
   Tasks and come back when you like. On the desktop widget, which is always
   open, it is launching and bringing the window back from the tray or from
-  being minimised that count, not clicking on it. It never takes the screen
+  being minimised that count, not clicking on it - and not the window
+  surfacing for something else (Ctrl+Alt+H, Ctrl+Alt+T, a reminder), which
+  used to put the list over the note you were reading. It never takes the screen
   from something being written (an open form, a half-typed task, a thought),
   nor from focus mode.
 - **Two modes.** *Use* shows only the items, with large rows: a tap ticks.
@@ -901,7 +903,8 @@ window while it is open.
   reorder, and the list's name. The big **Edit / Done** button switches; Done
   saves. An empty list opens in Edit, and **stays there while you type the
   list**: Enter, next item, Enter, until Done. It used to drop into Use the
-  moment the first item was in.
+  moment the first item was in. **Ctrl+Enter** is Done from the keyboard,
+  with whatever is typed in the add field added first.
 - **Ticked items slide down** into a greyed *Ticked* section below what is
   left, newest first. Tap one to untick it and it slides back to its place.
 - **Finished** archives the list as it is, and the next list starts empty. It
@@ -1249,7 +1252,10 @@ at the screen gives nothing away) and its lock is **opt-in**.
   line. Esc closes it without saving. On a phone the keyboard's return is
   still a new line, with *Save* and *Save & another* under the thumb. It opens
   ready to type: the caret is in the field, and on a phone the keyboard comes
-  up with it.
+  up with it. In a narrow pane (the widget at its own size, a phone)
+  *Save & another* sits over *Save*, the Shift+Enter hint is left out, and
+  the mic and the bell are behind a **⋯** that opens under the mouse (or on
+  a tap) - while recording, the stop button stays out.
 - **Esc** unwinds one layer at a time — the sound sheet, then the focus-mode
   thought field, then focus mode, then the parked-thoughts panel.
   **Ctrl+Enter** in any capture field
@@ -1561,6 +1567,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **From the shelf, 2026-10-21**: Ctrl+Enter leaves the shopping list's
+    Edit; the thought pane's buttons stack in a narrow window, with the mic
+    and bell behind a ⋯; and Ctrl+Alt+H / Ctrl+Alt+T / a reminder no longer
+    open the shopping list on the way - only the tray and un-minimising do -
+    so a thought added over a note lands back on the note.
   - **One occurrence of a repeating event, on its own**: edit, delete, drag or
     stretch a block of a series and it asks *Only this one* or *Whole series*.
     A changed or skipped occurrence is an event row of its own pointing back

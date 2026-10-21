@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,5 +174,53 @@ void main() {
     await tester.pump();
     final field = tester.widget<EditableText>(find.byType(EditableText));
     expect(field.focusNode.hasPrimaryFocus, isTrue);
+  });
+
+  group('a narrow pane', () {
+    Future<void> sized(WidgetTester tester, double width) async {
+      await tester.binding.setSurfaceSize(Size(width, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await pump(tester, canRemind: true);
+    }
+
+    testWidgets('stacks the buttons and folds the bell behind a ⋯', (
+      tester,
+    ) async {
+      await sized(tester, T.designWidth);
+      expect(find.text('Shift+Enter: new line'), findsNothing);
+      expect(find.byTooltip('Remind me'), findsNothing);
+      final another = tester.getCenter(find.text('Save & another'));
+      final save = tester.getCenter(find.text('Save'));
+      expect(another.dy, lessThan(save.dy), reason: 'over Save');
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Remind me'), findsOneWidget);
+    });
+
+    testWidgets('a mouse over the ⋯ opens it, and leaving folds it', (
+      tester,
+    ) async {
+      await sized(tester, T.designWidth);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(find.byTooltip('More')));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Remind me'), findsOneWidget);
+
+      await mouse.moveTo(const Offset(200, 100));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Remind me'), findsNothing);
+    });
+
+    testWidgets('a wide one keeps everything in one row', (tester) async {
+      await sized(tester, 800);
+      expect(find.text('Shift+Enter: new line'), findsOneWidget);
+      expect(find.byTooltip('Remind me'), findsOneWidget);
+      expect(find.byTooltip('More'), findsNothing);
+    });
   });
 }

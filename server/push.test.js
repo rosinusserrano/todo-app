@@ -181,6 +181,45 @@ test('a thought in the pile fires; a resolved one is quiet', () => {
   );
 });
 
+test('a shelf reminds of its review the morning it falls due', () => {
+  const db = subscribed();
+  const group = (uuid, title, last_reviewed_at) => ({
+    uuid,
+    workspace_uuid: 'ws-1',
+    title,
+    review_every_days: 30,
+    last_reviewed_at,
+    sort_order: 0,
+    created_at: '2026-08-01T10:00:00+02:00',
+    updated_at: STAMP,
+    deleted_at: null,
+  });
+  // Reviewed at 22:30 on 10 September: due 22:30 on 10 October, reminded at
+  // 09:00 the next morning rather than at bedtime.
+  const late = '2026-09-10T22:30:00+02:00';
+  sync(db, USER, 0, {
+    parked_groups: [
+      group('shelf', 'Backlog', late),
+      group('empty', 'Nothing on it', late),
+      group('fresh', 'Looked at', '2026-10-05T10:00:00+02:00'),
+    ],
+    tasks: [
+      task('a', 'someday', null, { group_uuid: 'shelf' }),
+      task('b', 'someday too', null, { group_uuid: 'fresh' }),
+    ],
+  });
+  const due = dueNotifications(db, USER, at('2026-10-11T06:55:00Z'), at('2026-10-11T07:05:00Z'));
+  assert.deepEqual(
+    due.map((n) => [n.title, n.body]),
+    [['Time to review', '"Backlog" is due for a look']]
+  );
+  assert.equal(
+    dueNotifications(db, USER, at('2026-10-10T20:25:00Z'), at('2026-10-10T20:35:00Z')).length,
+    0,
+    'not when it falls due at night'
+  );
+});
+
 test('stamps are compared as instants, whatever offset wrote them', () => {
   const db = subscribed();
   // 03:00 in New York is 07:00Z - inside the window although its text sorts

@@ -13,6 +13,7 @@
 // dependency and nothing to configure per platform.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'sync/local_store.dart';
 import 'sync/models.dart';
@@ -22,6 +23,7 @@ class ReminderService {
     this._store, {
     required this.onDue,
     this.onThoughtsDue,
+    this.onReviewsDue,
     this.onTick,
     Duration? interval,
   }) : _interval = interval ?? const Duration(seconds: 20);
@@ -36,6 +38,15 @@ class ReminderService {
   /// The same for thoughts with a reminder ("keys, in 10 minutes"), which
   /// are in the pile rather than on a list, so the shell shows them there.
   final Future<void> Function(List<SideThought> due)? onThoughtsDue;
+
+  /// Parked shelves whose review has come round
+  /// ([ParkedGroup.reviewRemindAt]). Announced once per review **per device,
+  /// restarts included** - unlike a task's reminder, which nags again after a
+  /// restart. A shelf left unreviewed for a fortnight would otherwise open
+  /// Parked on every start of a widget that starts with Windows, and the
+  /// dock's dot already says it is waiting. The key carries when the shelf
+  /// was last reviewed, so reviewing it starts a new one.
+  final Future<void> Function(List<ParkedGroup> due)? onReviewsDue;
 
   /// Called on every tick, due reminders or not.
   ///
@@ -73,6 +84,21 @@ class ReminderService {
     final thoughts = onThoughtsDue == null
         ? const <SideThought>[]
         : await _store.dueThoughtReminders(now);
+    final reviews = onReviewsDue == null
+        ? const <ParkedGroup>[]
+        : await _store.dueGroupReviews(now);
+    String reviewKey(ParkedGroup g) => '${g.uuid}:${g.lastReviewedAt ?? ''}';
+    final announcedReviews =
+        onReviewsDue == null ? <String>{} : await _announcedReviews();
+    final freshReviews = reviews
+        .where((g) => !announcedReviews.contains(reviewKey(g)))
+        .toList();
+    final keepReviews = reviews.map(reviewKey).toSet();
+    if (freshReviews.isNotEmpty ||
+        announcedReviews.length != keepReviews.length) {
+      // Pruned to what is still due, so the setting stays a handful of keys.
+      await _store.setSetting(_kReviewsAnnounced, jsonEncode([...keepReviews]));
+    }
 
     // Forget rows that are no longer due at all - cleared, completed,
     // resolved or pushed into the future - so re-arming one can fire again.
@@ -89,6 +115,18 @@ class ReminderService {
 
     if (fresh.isNotEmpty) await onDue(fresh);
     if (freshThoughts.isNotEmpty) await onThoughtsDue!(freshThoughts);
+    if (freshReviews.isNotEmpty) await onReviewsDue!(freshReviews);
+  }
+
+  static const _kReviewsAnnounced = 'reminders:reviews-announced';
+
+  Future<Set<String>> _announcedReviews() async {
+    try {
+      final raw = await _store.setting(_kReviewsAnnounced);
+      return raw == null ? {} : {...(jsonDecode(raw) as List).cast<String>()};
+    } on FormatException {
+      return {};
+    }
   }
 
   void dispose() => stop();

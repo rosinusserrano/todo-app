@@ -612,6 +612,21 @@ class ParkedGroup implements SyncRow {
     return from.toLocal().add(Duration(days: reviewEveryDays));
   }
 
+  /// The hour a review reminder goes off.
+  static const reviewHour = 9;
+
+  /// When to be reminded of the review: the first [reviewHour] at or after
+  /// it falls due. A morning nudge, rather than whatever hour of the night
+  /// the shelf was last looked at (Marco, 2026-10-21).
+  DateTime? get reviewRemindAt {
+    final due = reviewDueAt;
+    if (due == null) return null;
+    final same = DateTime(due.year, due.month, due.day, reviewHour);
+    return same.isBefore(due)
+        ? DateTime(due.year, due.month, due.day + 1, reviewHour)
+        : same;
+  }
+
   bool isReviewDue([DateTime? now]) {
     final at = reviewDueAt;
     if (at == null) return false;

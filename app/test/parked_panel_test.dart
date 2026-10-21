@@ -42,6 +42,7 @@ class Calls {
   final completed = <String>[];
   final deleted = <String>[];
   final reviewed = <String>[];
+  final edited = <String>[];
 }
 
 /// The panel, optionally with a draggable task beside it - which is the split
@@ -88,6 +89,7 @@ Future<void> pumpPanel(
                 onCreateGroup: () {},
                 onBack: () {},
                 onActivateGroup: (g) async => calls.activated.add(g.uuid),
+                onEditTask: (t) async => calls.edited.add(t.uuid),
                 onPark: droppable
                     ? (g, t) async =>
                         calls.parked.add((group: g.uuid, task: t.uuid))
@@ -405,5 +407,22 @@ void main() {
       expect(find.text('Nothing on this shelf.'), findsOneWidget);
       expect(calls.reviewed, ['g1']);
     });
+  });
+
+  testWidgets('a shelved task opens for editing from its text', (tester) async {
+    final calls = Calls();
+    await pumpPanel(
+      tester,
+      groups: [shelf('g1', 'Backlog')],
+      parked: {
+        'g1': [task('t1', 'paint the shed', groupUuid: 'g1')],
+      },
+      calls: calls,
+    );
+    await tester.tap(find.text('Backlog'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('paint the shed'));
+    await tester.pumpAndSettle();
+    expect(calls.edited, ['t1']);
   });
 }

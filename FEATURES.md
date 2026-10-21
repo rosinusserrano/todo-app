@@ -294,6 +294,9 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   handfuls.
 - **Unpark one** — ↗ on a parked task puts it back at the *bottom* of the current
   list. ✓ checks it off from where it sits, straight into history.
+- **Edit one** — a tap or click on a parked task's text opens the same form
+  a task on the list gets (title, notes, priority, reminder, repeat), and it
+  stays on its shelf.
 - **A task coming off a shelf keeps the shelf's name** — "Todo Widget: bigger
   buttons" — whichever way it leaves for a list: its ↗, the shelf's ↗, the move
   picker, the review, or the shelf being deleted. On the shelf the shelf was the
@@ -321,6 +324,12 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   "review due", and the dock's second part gains a red dot,
   which is the only sign visible while the panel is closed. Opening the panel
   expands every overdue group automatically.
+- **And a reminder says so** — at 9:00 on the morning a review falls due (or
+  the next morning, if it falls due later in the day): the desktop widget
+  comes forward on that workspace's Parked view, a phone shows a notification
+  that opens it, and the web app gets a push. Once per review on each device -
+  a restart does not repeat it - and only for a shelf with something on it,
+  in a workspace that is not archived.
 - **Reviewing is a funnel, not a button.** "Review" on a shelf's header takes over
   the pane and shows **one task at a time**: its title, its notes, how long it
   has been sitting there ("parked 47 days ago"), an armed reminder, and a
@@ -1590,6 +1599,10 @@ reminders are both there now**, queued for 0.18.0.
     and bell behind a ⋯; and Ctrl+Alt+H / Ctrl+Alt+T / a reminder no longer
     open the shopping list on the way - only the tray and un-minimising do -
     so a thought added over a note lands back on the note.
+  - **Shelves**: a review reminds you the morning it falls due (the poll on
+    a desktop, a scheduled notification on a phone, `push.js` on the web;
+    `ParkedGroup.reviewRemindAt`), and a shelved task's text opens the task
+    form.
   - **A richer note editor**: Space Mono for the body (bundled,
     `T.fontMono`, also code spans), lists that continue, Tab from the
     title to the body and to nest items, Ctrl+F find and replace, a live

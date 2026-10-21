@@ -497,6 +497,11 @@ class _WidgetShellState extends State<WidgetShell>
     s.store,
     onDue: _onRemindersDue,
     onThoughtsDue: (_) => _onThoughtReminderDue(),
+    // The poll's half is the desktop's: a phone has the notification, and a
+    // review is not worth taking a phone's screen for while it is in use.
+    onReviewsDue: (due) async {
+      if (isDesktop) await _onReviewDue(due.first.workspaceUuid);
+    },
     onTick: _onTick,
   );
 
@@ -589,6 +594,10 @@ class _WidgetShellState extends State<WidgetShell>
     widget.notifications.onTapped = _openTappedReminder;
     widget.notifications.onEventTapped = _openTappedEvent;
     widget.notifications.onThoughtTapped = (_) => _onThoughtReminderDue();
+    widget.notifications.onReviewTapped = (uuid) async {
+      final g = await s.store.groupByUuid(uuid);
+      if (g != null) await _onReviewDue(g.workspaceUuid);
+    };
     // Sweep once before polling starts, so anything that came due while the app
     // was closed lands now rather than up to an interval later.
     _reminders.tick();
@@ -1047,6 +1056,22 @@ class _WidgetShellState extends State<WidgetShell>
     await _dockToView(WorkspaceView.thoughts);
   }
 
+  /// A shelf's review came round, or its notification was tapped: that
+  /// workspace's Parked view, where the shelf is marked and its Review button
+  /// is. Not over something being written, like a thought's reminder.
+  Future<void> _onReviewDue(String workspaceUuid) async {
+    await _surfaceWindow();
+    if (!mounted) return;
+    if (_adding || _thoughtCapture || _noteEditing) return;
+    if (s.focusTask != null) await _exitFocus();
+    if (!mounted) return;
+    if (s.currentWorkspaceUuid != workspaceUuid) {
+      await s.selectWorkspace(workspaceUuid);
+    }
+    if (!mounted || s.showParked) return;
+    await _dockToView(WorkspaceView.parked);
+  }
+
   /// A reminder has come due. The widget's whole personality is being in front
   /// of you, so that is the alert: surface the window, switch to where the task
   /// actually lives, and let the row's own due styling carry it from there.
@@ -1266,6 +1291,7 @@ class _WidgetShellState extends State<WidgetShell>
     widget.notifications.onTapped = null;
     widget.notifications.onEventTapped = null;
     widget.notifications.onThoughtTapped = null;
+    widget.notifications.onReviewTapped = null;
     _reminders.dispose();
     if (isDesktop) {
       windowManager.removeListener(this);
@@ -3070,6 +3096,7 @@ class _WidgetShellState extends State<WidgetShell>
         // Only where there is a list beside it to drag out of - the same rule
         // the calendar's onPlanTask follows, for the same reason.
         onPark: _layout.splitsContent ? _parkDropped : null,
+        onEditTask: _openTask,
       );
     }
     if (s.showCollections) {

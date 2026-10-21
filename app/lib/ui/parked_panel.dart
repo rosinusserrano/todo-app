@@ -61,7 +61,13 @@ class ParkedPanel extends StatefulWidget {
     required this.onBack,
     required this.onActivateGroup,
     this.onPark,
+    this.onEditTask,
   });
+
+  /// The task's long form, the composer - opened by a tap on a shelved
+  /// task's text, as on the list (Marco, 2026-10-21: a shelf's tasks could be
+  /// moved and ticked but not changed). Null leaves the text inert.
+  final Future<void> Function(Task)? onEditTask;
 
   final List<ParkedGroup> groups;
   final Map<String, List<Task>> parked;
@@ -243,6 +249,7 @@ class _ParkedPanelState extends State<ParkedPanel>
             ),
             onUnpark: widget.onUnpark,
             onComplete: widget.onComplete,
+            onEditTask: widget.onEditTask,
             onAdd: (text) => widget.onAddTask(g, text),
             onReview: () => _startReview(g),
             onEdit: () => widget.onEditGroup(g),
@@ -334,8 +341,10 @@ class _Group extends StatelessWidget {
     required this.onEdit,
     required this.onActivate,
     required this.onDrop,
+    this.onEditTask,
   });
 
+  final Future<void> Function(Task)? onEditTask;
   final ParkedGroup group;
   final List<Task> tasks;
   final Color accent;
@@ -486,6 +495,7 @@ class _Group extends StatelessWidget {
               accent: accent,
               onUnpark: () => onUnpark(t),
               onComplete: () => onComplete(t),
+              onEdit: onEditTask == null ? null : () => onEditTask!(t),
             ),
           ],
           // The way in that needs nothing else on screen. Under the shelf's
@@ -604,12 +614,14 @@ class _ParkedRow extends StatelessWidget {
     required this.accent,
     required this.onUnpark,
     required this.onComplete,
+    this.onEdit,
   });
 
   final Task task;
   final Color accent;
   final VoidCallback onUnpark;
   final VoidCallback onComplete;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -618,12 +630,23 @@ class _ParkedRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              task.text,
-              style: const TextStyle(
-                fontSize: T.fsBody,
-                color: T.text,
-                height: 1.35,
+            child: Tooltip(
+              message: onEdit == null ? '' : 'Edit',
+              waitDuration: const Duration(milliseconds: 600),
+              child: InkWell(
+                onTap: onEdit,
+                borderRadius: BorderRadius.circular(T.radius),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: T.s1),
+                  child: Text(
+                    task.text,
+                    style: const TextStyle(
+                      fontSize: T.fsBody,
+                      color: T.text,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

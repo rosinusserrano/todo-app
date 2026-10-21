@@ -47,6 +47,9 @@ class NotificationService {
   /// Called when the user taps a thought's reminder.
   void Function(String thoughtUuid)? onThoughtTapped;
 
+  /// Called when the user taps a shelf's review reminder.
+  void Function(String groupUuid)? onReviewTapped;
+
   /// Payloads say which kind of row they came from.
   ///
   /// Both live in one notification namespace - `cancelAll` does not know the
@@ -55,6 +58,7 @@ class NotificationService {
   static const _taskPrefix = 'task:';
   static const _eventPrefix = 'event:';
   static const _thoughtPrefix = 'thought:';
+  static const _reviewPrefix = 'review:';
 
   static const _channel = AndroidNotificationChannel(
     'reminders',
@@ -94,6 +98,8 @@ class NotificationService {
           onEventTapped?.call(payload.substring(_eventPrefix.length));
         } else if (payload.startsWith(_thoughtPrefix)) {
           onThoughtTapped?.call(payload.substring(_thoughtPrefix.length));
+        } else if (payload.startsWith(_reviewPrefix)) {
+          onReviewTapped?.call(payload.substring(_reviewPrefix.length));
         } else if (payload.startsWith(_taskPrefix)) {
           onTapped?.call(payload.substring(_taskPrefix.length));
         } else {
@@ -131,6 +137,7 @@ class NotificationService {
   Future<void> reschedule(
     List<Task> armed, {
     List<SideThought> thoughts = const [],
+    List<ParkedGroup> reviews = const [],
     List<CalendarEvent> events = const [],
     Map<String, Calendar> calendars = const {},
   }) async {
@@ -168,6 +175,23 @@ class NotificationService {
         payload: '$_thoughtPrefix${t.uuid}',
         channel: _channel,
         describe: 'thought ${t.uuid}',
+      );
+    }
+
+    // A shelf's review: quieter than a reminder in what it asks, but the same
+    // channel - it is something you asked to be told about.
+    for (final g in reviews) {
+      final at = g.reviewRemindAt;
+      if (at == null) continue;
+      await _scheduleOne(
+        id: idFor('review:${g.uuid}'),
+        title: 'Time to review',
+        body: '"${g.title}" is due for a look',
+        at: at,
+        now: now,
+        payload: '$_reviewPrefix${g.uuid}',
+        channel: _channel,
+        describe: 'review of ${g.uuid}',
       );
     }
 

@@ -953,6 +953,44 @@ class LocalStore {
   Future<List<SideThought>> pendingThoughtReminders([DateTime? now]) async =>
       (await _armedThoughts()).where((t) => !t.isDue(now)).toList();
 
+  /// Shelves whose review is worth a reminder: live, in a workspace that is
+  /// not archived, with something still on them. An empty shelf's review is
+  /// over the moment it opens, so reminding about one would be a nudge to do
+  /// nothing.
+  Future<List<ParkedGroup>> _reviewableGroups() async {
+    final rows = await _db.rawQuery(
+      'SELECT * FROM parked_groups g WHERE deleted_at IS NULL '
+      'AND review_every_days > 0 AND $_notArchived '
+      'AND EXISTS (SELECT 1 FROM tasks t WHERE t.group_uuid = g.uuid '
+      'AND t.completed_at IS NULL AND t.deleted_at IS NULL)',
+    );
+    return rows.map(ParkedGroup.fromMap).toList();
+  }
+
+  Future<ParkedGroup?> groupByUuid(String uuid) async {
+    final rows = await _db.query('parked_groups',
+        where: 'uuid = ? AND deleted_at IS NULL', whereArgs: [uuid], limit: 1);
+    return rows.isEmpty ? null : ParkedGroup.fromMap(rows.first);
+  }
+
+  /// Shelves whose review reminder ([ParkedGroup.reviewRemindAt]) has passed.
+  Future<List<ParkedGroup>> dueGroupReviews([DateTime? now]) async {
+    final at = now ?? DateTime.now();
+    return [
+      for (final g in await _reviewableGroups())
+        if (!g.reviewRemindAt!.isAfter(at)) g,
+    ];
+  }
+
+  /// Shelves whose review reminder is still to come - the phone's schedule.
+  Future<List<ParkedGroup>> pendingGroupReviews([DateTime? now]) async {
+    final at = now ?? DateTime.now();
+    return [
+      for (final g in await _reviewableGroups())
+        if (g.reviewRemindAt!.isAfter(at)) g,
+    ];
+  }
+
   Future<Task?> taskByUuid(String uuid) async {
     final rows = await _db
         .query('tasks', where: 'uuid = ?', whereArgs: [uuid], limit: 1);

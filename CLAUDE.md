@@ -1701,7 +1701,8 @@ frameless (`TitleBarStyle.hidden`), transparent, always-on-top, acrylic.
   view's name and nothing else, and two weights. Two faces: the platform one
   for body text and `T.fontDisplay` (Space Grotesk, bundled in
   `assets/fonts`, Regular and Medium only) for what names things - view
-  titles, counts, the dock, group titles. Text on a solid colour is
+  titles, counts, the dock, group titles - and `T.fontMono` (Space Mono,
+  Regular) for Markdown being written and code spans. Text on a solid colour is
   `T.inkOn(fill)`, a deep shade of the fill's hue, never black. There
   were six radii and six sizes inside a 4.5-point range before 0.27.0, which is
   what "too standard productivity app" turned out to mean. Two escapes exist
@@ -1887,7 +1888,8 @@ publishes it. Three rules keep it compiling and starting:
   a minute and sends a Web Push to every subscription of that account,
   claiming each `row:instant` key in `push_sent` first so a restart or an
   overlapping tick never sends twice. Its rules are the client's - parked
-  tasks are quiet, `eventLead` is `CalendarEvent.notifyLead`, and `nth` is a
+  tasks are quiet, a shelf's review reminds at `reviewRemindAt` (09:00 on
+  or after it falls due, only with something on the shelf), `eventLead` is `CalendarEvent.notifyLead`, and `nth` is a
   port of `Recur.nth` counted in the server's local time. **Change one and
   change the other.** The browser half: `web/push_sw.js` (the site's only
   service worker - `web/flutter_bootstrap.js` exists to stop Flutter

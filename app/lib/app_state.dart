@@ -736,6 +736,7 @@ class AppState extends ChangeNotifier {
     await n.reschedule(
       await _store.pendingReminders(),
       thoughts: await _store.pendingThoughtReminders(),
+      reviews: await _store.pendingGroupReviews(),
       events: await _store.upcomingEvents(),
       calendars: {for (final c in await _store.calendars()) c.uuid: c},
     );

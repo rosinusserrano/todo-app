@@ -30,6 +30,9 @@
 //     archive is a project put away whole, open tasks and all.
 //   - A thought's reminder fires while the thought is in the pile; resolving
 //     it (or turning it into a task, which resolves it) silences it.
+//   - A parked shelf's review reminds at the first 09:00 at or after it falls
+//     due (`reviewRemindAt`, `ParkedGroup.reviewRemindAt`), only while
+//     something is open on it and its workspace is not archived.
 //   - An event's lead is its own `notify_minutes`, else its calendar's; -1 is
 //     silent; an all-day event does not inherit the calendar's lead (an hour
 //     before midnight is 23:00 the night before every birthday).
@@ -270,6 +273,24 @@ export function eventLead(ev, calendar) {
 const hhmm = (d) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
+/** Review hour, in this process's local time - `ParkedGroup.reviewHour`. */
+export const REVIEW_HOUR = 9;
+
+/**
+ * When a shelf's review reminds: due is the last review (or the shelf's
+ * creation) plus its interval in whole days, and the reminder is the first
+ * REVIEW_HOUR at or after that. A port of `ParkedGroup.reviewRemindAt`.
+ */
+export function reviewRemindAt(g) {
+  const from = new Date(g.last_reviewed_at ?? g.created_at);
+  if (Number.isNaN(from.getTime()) || !(g.review_every_days > 0)) return null;
+  const due = new Date(from.getTime() + g.review_every_days * 86_400_000);
+  const same = new Date(due.getFullYear(), due.getMonth(), due.getDate(), REVIEW_HOUR);
+  return same < due
+    ? new Date(due.getFullYear(), due.getMonth(), due.getDate() + 1, REVIEW_HOUR)
+    : same;
+}
+
 /**
  * Everything that should notify in (from, to], oldest first, as the payloads
  * to send. Pure over the database, so the tests need no clock and no network.
@@ -320,6 +341,33 @@ export function dueNotifications(db, userId, from, to) {
       title: 'Thought',
       // A thought only said aloud has no words to show.
       body: t.text || 'Voice note',
+    });
+  }
+
+  const groups = db
+    .prepare(
+      `SELECT uuid, title, review_every_days, last_reviewed_at, created_at
+       FROM parked_groups g
+       WHERE user_id = ? AND deleted_at IS NULL AND review_every_days > 0
+         AND workspace_uuid NOT IN (
+           SELECT uuid FROM workspaces
+           WHERE user_id = g.user_id AND archived_at IS NOT NULL
+         )
+         AND EXISTS (
+           SELECT 1 FROM tasks t
+           WHERE t.user_id = g.user_id AND t.group_uuid = g.uuid
+             AND t.completed_at IS NULL AND t.deleted_at IS NULL
+         )`
+    )
+    .all(userId);
+  for (const g of groups) {
+    const at = reviewRemindAt(g);
+    if (at == null || !(at > from && at <= to)) continue;
+    out.push({
+      at,
+      key: `review:${g.uuid}:${g.last_reviewed_at ?? ''}`,
+      title: 'Time to review',
+      body: `"${g.title}" is due for a look`,
     });
   }
 

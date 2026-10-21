@@ -29,6 +29,33 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 69. The shelf, 2026-10-21  `[~]`
+
+Fifteen rows from "Todo Widget" (Meine Apps), sent with "implement all of
+the following ... save questions for the end". Design notes in
+`ROADMAP.md` under *The shelf, 2026-10-21*.
+
+- [x] **69.1** Shopping list: Ctrl+Enter leaves Edit (adds what is typed).
+- [x] **69.2** Thought pane in a narrow window: Save & another over Save,
+      no Shift+Enter hint, mic and bell behind a hover/tap ⋯.
+- [x] **69.3** Adding a thought keeps the view: surfacing the window for a
+      capture / reminder / quick action no longer opens the shopping list
+      (`_surfaceWindow(openList:)`, `_holdList`). Covers "when opening
+      thought panel while viewing note, dont close the note view" and
+      "generally stay where i was when adding a thought".
+- [x] **69.4** Note editor: Space Mono (`T.fontMono`), list continuation,
+      Tab title → body and nesting, Ctrl+F/H find and replace, live preview
+      beside the note, Read/Edit on hover, opt-in code editor keys
+      (Ctrl+D multi-edit, line moves).
+- [x] **69.5** Shelves: review reminders (poll, phone, `push.js`); a
+      shelved task's text opens the composer.
+- [x] **69.6** Shopping list sections (`list_items.section`, client v24,
+      protocol 9).
+- [ ] **69.7** Marco's answers: Ctrl+E (already there - what was meant?),
+      geo reminders, the shopping list's new name.
+- [ ] **69.8** Ships with 68.2: server to protocol 9, then the web app
+      (What's new `2026-10-21-2` is written).
+
 ### 68. One occurrence of a repeating event  `[~]`
 
 Asked for 2026-10-21: "delete or edit single calendar events of a series".

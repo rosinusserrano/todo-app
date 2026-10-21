@@ -38,6 +38,24 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-21-2',
+    title: 'From your shelf',
+    points: [
+      'Notes are written in a fixed-width font, lists carry on when you press '
+          'Enter, Tab goes from the title to the text, and Ctrl+F finds and '
+          'replaces. The ▥ beside the title shows the note rendered next to '
+          'it.',
+      'Hover a note in the list for Read and Edit. Settings has code editor '
+          'keys for notes, Ctrl+D and friends, if you want them.',
+      'The shopping list has sections: type "Rewe" and press ▤ in Edit. '
+          'Ctrl+Enter leaves Edit.',
+      'A shelf reminds you at nine on the morning its review is due, and a '
+          'shelved task opens for editing when you tap it.',
+      'Adding a thought from anywhere no longer drops you on the shopping '
+          'list afterwards; you land back where you were.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-21',
     title: 'One day of a repeating event',
     points: [

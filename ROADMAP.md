@@ -9,6 +9,38 @@ work that is about to happen.
 
 ## In progress
 
+### The shelf, 2026-10-21
+
+Fifteen rows at once, built the same afternoon. What needed a decision:
+
+- **"Stay where I was when adding a thought"** turned out to be one bug:
+  `_surfaceWindow` ran the shopping list's open-on-return, so Ctrl+Alt+H over
+  a note put the list on screen before the pane opened, and closing the pane
+  landed there. Only the tray opens the list now; everything else that
+  surfaces the window does it for a reason the list would cover.
+- **The note editor stays one `TextField`.** A real editor widget (multiple
+  carets, a document model) would have cost the IME, selection handles and
+  the phone keyboard. Instead everything is around it: keys on the field's
+  node, a formatter for list continuation (a phone's return is text), and
+  the controller drawing find's matches and Ctrl+D's extra selections as
+  spans, with `applyMulti` repeating each edit at them. Multi-cursor is
+  therefore Ctrl+D's kind only - occurrences of one string - which is the
+  case asked for.
+- **Space Mono** for Markdown being written: bundled because the web build
+  has no system monospace, and the display face's sibling, so the pairing
+  is designed rather than whatever Consolas looks like next to Space
+  Grotesk.
+- **Review reminders at 09:00 on or after the due instant**, not at the
+  instant: the clock runs from when the shelf was last reviewed, which is
+  often late in the evening. Once per review per device, persisted, because
+  the widget starts with Windows and a fortnight of opening on Parked is a
+  nag, not a reminder. Shelves with nothing open on them stay quiet.
+- **Sections are rows, not a column per item**, so a rename is one write and
+  moving an item between shops is a drag. Ticked items stay in one Ticked
+  section - in a shop the basket does not care which shop - and go back
+  to their own section when unticked. Folded into protocol 9, since 9 was
+  not deployed yet.
+
 ### One occurrence of a series — asked for 2026-10-21
 
 Marco: "delete or edit single calendar events of a series". Since 0.24.0 a

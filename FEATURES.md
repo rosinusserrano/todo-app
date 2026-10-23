@@ -285,7 +285,9 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   grip still reorders; only a drag *towards the panel* means "put this away".
   Narrower windows keep the 📥 picker, which works at every size.
 - **Or add straight to a shelf.** Every open group has a one-line field at the
-  foot of its own list — "Add to Backlog" — and Enter drops a new task onto that
+  foot of its own list — "Add to Backlog" — and the ＋ on a group's line brings
+  that field up on a *closed* shelf too, caret in it, without opening the
+  contents (Esc, or leaving it empty, puts it away). Enter drops a new task onto that
   shelf without it ever touching the current list. This is the commonest thing
   anybody does with a backlog: think of something that is explicitly *not* for
   today and write it down. Doing that used to mean adding the task, finding it
@@ -558,11 +560,16 @@ Three tiers, none of which need an account, an API key, or a licence:
 - **Always visible once set** — an armed bell stays on the row (it is state the
   task is carrying, not an action offered on demand). What it says is in the
   action bar and in the expanded view: "in 26m", "tomorrow 09:00".
-- **When it comes due, on desktop** — the widget puts *itself* in front of you:
-  the window surfaces (from the tray, from minimised, from behind whatever you
-  were doing), switches to the workspace the task lives in, and leaves focus
-  mode if that would hide the task. No toast, no notification permissions —
-  being on top of the screen is what this app is for.
+- **When it comes due, on Windows** — a Windows notification, like every other
+  app's (since 2026-10-23): a toast with the task, and several due at once are
+  one toast naming them. Clicking it brings the window up on the task, in its
+  workspace. A thought's reminder and a shelf's review come the same way, and
+  a calendar event's notification is handed to Windows ahead of time, so it
+  arrives with the app closed.
+- **When it comes due, on macOS and Linux** — the widget puts *itself* in front
+  of you: the window surfaces (from the tray, from minimised, from behind
+  whatever you were doing), switches to the workspace the task lives in, and
+  leaves focus mode if that would hide the task.
 - **When it comes due, on mobile** — a real OS notification, because the desktop
   answer does not carry to a phone: iOS and Android suspend the app's timers the
   moment it goes to the background and never let it raise itself to the front,
@@ -641,15 +648,16 @@ Three tiers, none of which need an account, an API key, or a licence:
   block starts or ends there, on the nearest quarter hour. An end cannot be
   dragged past the other one. A repeating event stretches as a whole series;
   one from a subscribed calendar has no handles.
-- **Move an event by carrying it** (in edit mode). With a mouse, **drag** a
-  block anywhere - another hour, another day; on a phone, **press and hold**
-  it until it lifts (it ticks), then drag. An outline under it shows the quarter hour and day it
+- **Move an event by carrying it.** **Press and hold** a block until it
+  lifts (on a phone it ticks), then drag - with a finger or a mouse, edit mode
+  or not; in edit mode a mouse can also just **drag** it straight away. A
+  plain mouse drag outside edit mode still moves nothing. An outline under it shows the quarter hour and day it
   will land on, with the new times; let go and it is moved, the same length as
   before. Hold it against the left or right edge to carry it into the next or
   previous week. A repeating event moves as a whole series, by the same
   distance; one from a subscribed calendar stays where its feed puts it. On a
-  phone, a held block let go without moving still opens its menu, which is
-  what a long press on it always did.
+  held block let go without moving still opens its menu, which is what a long
+  press on it always did.
 - **The event form and the details card are the app's own panel**, not a
   Material dialog: full width against the bottom edge on a phone, a centred
   card on a desktop, in the colour of the calendar they belong to. On a phone
@@ -1039,6 +1047,8 @@ at the screen gives nothing away) and its lock is **opt-in**.
     *All* replace, **Esc** closes the bar with the caret on the match.
   - **Ctrl+S** — save and read what you just wrote. The **Save** button does
     this too.
+  - **Ctrl+E**, while reading a note, edits it, caret in the text - the
+    pencil's key.
   - **Ctrl+Alt+S** — save and go back to the list, for an entry that is finished
     rather than one you want to re-read.
 
@@ -1265,8 +1275,9 @@ at the screen gives nothing away) and its lock is **opt-in**.
   the screen the window is on. Kept per device.
 - **Close guard** (✕ / Alt+F4) — the window *refuses to close* while any task or
   side thought remains, so you're forced to move everything into your real
-  planner (or check it off) first. The footer shakes red ("Clear it all first")
-  when a close is refused; once the list and thoughts are empty, it closes.
+  planner (or check it off) first. A refused close puts the thought pile in
+  front of you, with a line under its header saying they are why ("These 3
+  thoughts are still waiting…"); once the pile is empty, it closes.
 - **A "Closing…" state while it goes.** Tearing the window down is not instant —
   the engine, the acrylic surface and the audio player all come down with it —
   and the widget used to spend that time sitting there looking alive and
@@ -1606,6 +1617,14 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **From the shelf, 2026-10-23**: reminders on **Windows are Windows
+    notifications** (toasts from the poll; events scheduled with the OS;
+    `NotificationService.toastsFromPoll`), no longer the window jumping
+    forward. **Ctrl+E** edits the note being read. A shelf's **＋** adds to
+    it without opening it. A **refused close opens the thought pile** and
+    says why - the footer it used to flash had been reduced to nothing by
+    the dock. A calendar block **moves by press-and-hold outside edit mode**
+    too (`TimeGridView.moveNeedsHold`), with a mouse as well as a finger.
   - **The shopping list is the Checklist** (dock, title bar, a new list's
     default name; ☑ rather than a basket).
   - **Ctrl+E, N, Esc and Ctrl +/− keep working after a text field lets go

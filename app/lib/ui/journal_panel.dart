@@ -33,6 +33,10 @@
 //                 rather than being re-read.
 //   Ctrl+F        find and replace in the body.
 //
+// And one from the reader: Ctrl+E edits the note being read, caret in the
+// body - the pencil's key. The calendar's Ctrl+E is the shell's and cannot
+// collide: the calendar replaces the pane.
+//
 // The body is a [NoteBody] (note_editor.dart): monospaced, lists that continue,
 // and the code editor's keys when Settings has them on. Beside it, when
 // [JournalView.preview] is on, the note as it will read - side by side where
@@ -386,11 +390,16 @@ class _JournalViewState extends State<JournalView> {
     });
   }
 
-  /// The pencil, from the reader.
+  /// The pencil, from the reader, and Ctrl+E. The caret goes in the body,
+  /// as from a list row's pencil: editing a note you were reading is
+  /// changing what it says, not its name.
   void _edit() {
     setState(() {
       _editorOpen = true;
       _reading = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _bodyFocus.requestFocus();
     });
   }
 
@@ -488,8 +497,18 @@ class _JournalViewState extends State<JournalView> {
           return KeyEventResult.ignored;
         }
 
-        if (!_editorOpen || _busy) return KeyEventResult.ignored;
         final ctrl = HardwareKeyboard.instance.isControlPressed;
+        if (_reading &&
+            !_editorOpen &&
+            ctrl &&
+            key == LogicalKeyboardKey.keyE &&
+            !HardwareKeyboard.instance.isShiftPressed &&
+            !HardwareKeyboard.instance.isAltPressed) {
+          _edit();
+          return KeyEventResult.handled;
+        }
+
+        if (!_editorOpen || _busy) return KeyEventResult.ignored;
         if (!ctrl) return KeyEventResult.ignored;
 
         if (key == LogicalKeyboardKey.enter) {
@@ -701,7 +720,7 @@ class _JournalViewState extends State<JournalView> {
             backTooltip: 'Back to the list (Esc)',
             actions: [
               _focusButton(),
-              _iconButton(Icons.edit_outlined, 'Edit', _edit),
+              _iconButton(Icons.edit_outlined, 'Edit (Ctrl+E)', _edit),
               if (_editing != null)
                 _iconButton(
                   Icons.delete_outline,
@@ -730,7 +749,7 @@ class _JournalViewState extends State<JournalView> {
                       ),
                     ),
                     if (focus) ...[
-                      _iconButton(Icons.edit_outlined, 'Edit', _edit, size: 20),
+                      _iconButton(Icons.edit_outlined, 'Edit (Ctrl+E)', _edit, size: 20),
                       _focusButton(),
                     ],
                   ],

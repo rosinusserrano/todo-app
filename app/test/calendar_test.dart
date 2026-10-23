@@ -1201,7 +1201,7 @@ void main() {
     late List<(CalendarEvent, DateTime, DateTime)> moved;
 
     Future<void> pump(WidgetTester tester, CalendarEvent e,
-        {bool editing = true}) async {
+        {bool editing = true, bool holdOnly = false}) async {
       await tester.binding.setSurfaceSize(const Size(800, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       resized = [];
@@ -1217,8 +1217,10 @@ void main() {
             onOpenEvent: (_) {},
             onEventMenu: (_, _) {},
             onCreate: (_, _) {},
-            onMoveEvent:
-                editing ? (e, from, to) => moved.add((e, from, to)) : null,
+            onMoveEvent: editing || holdOnly
+                ? (e, from, to) => moved.add((e, from, to))
+                : null,
+            moveNeedsHold: holdOnly,
             onResizeEvent: editing
                 ? (e, start, from, to) => resized.add((start, from, to))
                 : null,
@@ -1285,6 +1287,33 @@ void main() {
       await drag(tester, box.center, const Offset(0, kHourHeight));
       expect(resized, isEmpty);
       expect(moved, isEmpty);
+    });
+
+    testWidgets('outside edit mode a held block moves, a mouse\'s too',
+        (tester) async {
+      final e = event('e1', wed10, wed10.add(const Duration(hours: 2)));
+      await pump(tester, e, editing: false, holdOnly: true);
+      final box = tester.getRect(find.byType(EventBlock));
+
+      // A plain mouse drag still does nothing, and there are no grips.
+      await drag(tester, box.center, const Offset(0, kHourHeight));
+      await drag(tester, box.bottomCenter - const Offset(0, 3),
+          const Offset(0, kHourHeight));
+      expect(moved, isEmpty);
+      expect(resized, isEmpty);
+
+      for (final kind in [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+        final g = await tester.startGesture(box.center, kind: kind);
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+        for (var i = 1; i <= 8; i++) {
+          await g.moveTo(box.center + const Offset(0, kHourHeight) * (i / 8));
+          await tester.pump();
+        }
+        await g.up();
+        await tester.pumpAndSettle();
+      }
+      expect(moved, hasLength(2));
+      expect(moved.first.$3, e.start.add(const Duration(hours: 1)));
     });
 
     test('stretching an occurrence stretches the series', () async {

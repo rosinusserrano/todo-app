@@ -77,8 +77,10 @@ void main() {
     }
   });
 
-  test('the service is inert off mobile, so desktop keeps its own alert', () {
-    // Desktop surfaces the always-on-top window instead - see reminders.dart.
+  test('the service is inert on Linux, which keeps its own alert', () {
+    // Mobile and Windows only; Linux and macOS surface the window instead -
+    // see notifications.dart. (The tests run on Linux.)
     expect(NotificationService.supported, isFalse);
+    expect(NotificationService.toastsFromPoll, isFalse);
   });
 }

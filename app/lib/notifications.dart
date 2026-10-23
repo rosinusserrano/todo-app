@@ -1,8 +1,20 @@
-// OS notifications for reminders, on mobile only.
+// OS notifications for reminders, on mobile and on Windows.
 //
-// [ReminderService] is the alert on desktop: it surfaces the always-on-top
-// window, which is the strongest thing this widget can do and needs no
-// notification permission. That does not carry to a phone. iOS and Android
+// **Windows** (Marco, 2026-10-23: "as other apps do, not just opening the
+// app") shows toasts in two ways. A calendar event is scheduled with the OS
+// ahead of time, like on a phone, so it arrives even with the app closed.
+// A task's, a thought's and a shelf's reminder are toasted by the poll the
+// moment it finds them due ([showDue]), instead of the window being pulled
+// to the front: the poll already owns "due", including what came due while
+// the app was closed, and a scheduled toast as well would be a second
+// announcement of the same thing twenty seconds later. Clicking a toast
+// lands on what it was about, as a tap does on a phone. Unpackaged (no MSIX)
+// Windows cannot take back a toast already shown - only scheduled ones -
+// which is fine: the cancel here exists to rewrite the schedule.
+//
+// [ReminderService] is the alert on the other desktops: it surfaces the
+// always-on-top window, which needs no notification permission. That does
+// not carry to a phone. iOS and Android
 // suspend an app's timers the moment it goes to the background and never let it
 // raise itself to the foreground, so on mobile a reminder that is not handed to
 // the OS ahead of time simply does not arrive until the app is next opened.
@@ -16,6 +28,8 @@
 // any change. A per-write hook would miss the case that matters most - a
 // reminder set on the desktop and merged in by sync, which no local write path
 // ever sees.
+
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -32,8 +46,26 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _plugin;
 
-  /// Desktop deliberately gets nothing - see the file header.
-  static bool get supported => isMobile;
+  /// Mobile and Windows; the other desktops surface the window instead - see
+  /// the file header.
+  static bool get supported => isMobile || isWindows;
+
+  /// Task, thought and review reminders are toasted by the poll
+  /// ([showDue]) rather than scheduled ahead - see the file header.
+  static bool get toastsFromPoll => isWindows;
+
+  /// Who the toasts say they are from. The GUID names the activation
+  /// callback the plugin registers; it must never change, or Windows routes
+  /// clicks on old toasts to nothing.
+  static const _windowsAppName = 'Todo Widget';
+  static const _windowsAumid = 'Marco.TodoWidget';
+  static const _windowsGuid = '4c1a4bf2-b30b-43f2-843a-4174b5c38b5b';
+
+  /// The tray's icon, by path out of the bundle beside the exe - a toast's
+  /// icon is read from disk.
+  static String _windowsIcon() =>
+      '${File(Platform.resolvedExecutable).parent.path}'
+      r'\data\flutter_assets\assets\tray_icon.png';
 
   bool _ready = false;
 
@@ -77,37 +109,53 @@ class NotificationService {
     importance: Importance.high,
   );
 
+  /// Never throws: it runs in `main()`, and notifications failing to start
+  /// must not be why the app does not.
   Future<void> init() async {
     if (!supported || _ready) return;
+    try {
+      await _init();
+    } catch (e) {
+      debugPrint('Notifications are off: $e');
+    }
+  }
 
+  Future<void> _init() async {
     // zonedSchedule needs a real location, not just an offset: an offset fixed
     // at scheduling time would fire an hour out across a DST boundary.
     tzdata.initializeTimeZones();
     final local = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(local.identifier));
+    try {
+      tz.setLocalLocation(tz.getLocation(local.identifier));
+    } on tz.LocationNotFoundException {
+      // Windows answers "Etc/Unknown" for a zone it cannot map. The instants
+      // scheduled are still right (TZDateTime.from keeps the instant); only
+      // nothing here repeats by wall clock, so UTC is a safe stand-in.
+      debugPrint('Unknown time zone ${local.identifier}; scheduling in UTC');
+    }
 
     await _plugin.initialize(
-      settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
+      settings: InitializationSettings(
+        android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: const DarwinInitializationSettings(),
+        windows: isWindows
+            ? WindowsInitializationSettings(
+                appName: _windowsAppName,
+                appUserModelId: _windowsAumid,
+                guid: _windowsGuid,
+                iconPath: _windowsIcon(),
+              )
+            : null,
       ),
-      onDidReceiveNotificationResponse: (r) {
-        final payload = r.payload;
-        if (payload == null || payload.isEmpty) return;
-        if (payload.startsWith(_eventPrefix)) {
-          onEventTapped?.call(payload.substring(_eventPrefix.length));
-        } else if (payload.startsWith(_thoughtPrefix)) {
-          onThoughtTapped?.call(payload.substring(_thoughtPrefix.length));
-        } else if (payload.startsWith(_reviewPrefix)) {
-          onReviewTapped?.call(payload.substring(_reviewPrefix.length));
-        } else if (payload.startsWith(_taskPrefix)) {
-          onTapped?.call(payload.substring(_taskPrefix.length));
-        } else {
-          // A notification scheduled by a build that predates the prefixes.
-          onTapped?.call(payload);
-        }
-      },
+      onDidReceiveNotificationResponse: (r) => _route(r.payload),
     );
+
+    // Launched by a click on a toast (or a notification) while it was not
+    // running: land where that click meant, once the shell is listening.
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp ?? false) {
+      _launchPayload = launch!.notificationResponse?.payload;
+    }
 
     final android = _plugin
         .resolvePlatformSpecificImplementation<
@@ -122,6 +170,33 @@ class NotificationService {
     }
 
     _ready = true;
+  }
+
+  /// A click on a notification, by its payload.
+  void _route(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    if (payload.startsWith(_eventPrefix)) {
+      onEventTapped?.call(payload.substring(_eventPrefix.length));
+    } else if (payload.startsWith(_thoughtPrefix)) {
+      onThoughtTapped?.call(payload.substring(_thoughtPrefix.length));
+    } else if (payload.startsWith(_reviewPrefix)) {
+      onReviewTapped?.call(payload.substring(_reviewPrefix.length));
+    } else if (payload.startsWith(_taskPrefix)) {
+      onTapped?.call(payload.substring(_taskPrefix.length));
+    } else {
+      // A notification scheduled by a build that predates the prefixes.
+      onTapped?.call(payload);
+    }
+  }
+
+  String? _launchPayload;
+
+  /// Hands over the click that launched the app, if one did - called by the
+  /// shell once its handlers are set. Once.
+  void deliverLaunch() {
+    final payload = _launchPayload;
+    _launchPayload = null;
+    _route(payload);
   }
 
   /// Rewrite the whole schedule: task reminders and calendar events together.
@@ -146,6 +221,13 @@ class NotificationService {
     await _plugin.cancelAll();
 
     final now = tz.TZDateTime.now(tz.local);
+
+    // On Windows the poll toasts these as they fall due ([showDue]).
+    if (toastsFromPoll) {
+      armed = const [];
+      thoughts = const [];
+      reviews = const [];
+    }
 
     for (final t in armed) {
       final at = t.remindAtTime;
@@ -254,6 +336,7 @@ class NotificationService {
             priority: Priority.high,
           ),
           iOS: const DarwinNotificationDetails(),
+          windows: const WindowsNotificationDetails(),
         ),
         // A reminder is a moment the user picked, so it should not be
         // deferred into a doze window. Falls back to inexact automatically
@@ -263,6 +346,63 @@ class NotificationService {
     } catch (e) {
       // One bad row must not cost the rest their notifications.
       debugPrint('Could not schedule $describe: $e');
+    }
+  }
+
+  /// Toasts what the poll just found due, now - Windows, see the file header.
+  /// Several tasks at once (the first tick after a night off) are one toast
+  /// naming them, not a stack of them.
+  Future<void> showDue({
+    List<Task> tasks = const [],
+    List<SideThought> thoughts = const [],
+    List<ParkedGroup> reviews = const [],
+  }) async {
+    if (!supported || !_ready) return;
+    if (tasks.isNotEmpty) {
+      await _showNow(
+        key: 'tasks:${tasks.first.uuid}',
+        title: tasks.length == 1 ? 'Reminder' : '${tasks.length} reminders',
+        body: tasks.map((t) => t.text).join(' · '),
+        payload: '$_taskPrefix${tasks.first.uuid}',
+      );
+    }
+    if (thoughts.isNotEmpty) {
+      String text(SideThought t) => t.text.isEmpty ? 'Voice note' : t.text;
+      await _showNow(
+        key: 'thoughts:${thoughts.first.uuid}',
+        title: thoughts.length == 1 ? 'Thought' : '${thoughts.length} thoughts',
+        body: thoughts.map(text).join(' · '),
+        payload: '$_thoughtPrefix${thoughts.first.uuid}',
+      );
+    }
+    for (final g in reviews) {
+      await _showNow(
+        key: 'review:${g.uuid}',
+        title: 'Time to review',
+        body: '"${g.title}" is due for a look',
+        payload: '$_reviewPrefix${g.uuid}',
+      );
+    }
+  }
+
+  Future<void> _showNow({
+    required String key,
+    required String title,
+    required String body,
+    required String payload,
+  }) async {
+    try {
+      await _plugin.show(
+        id: idFor('now:$key'),
+        title: title,
+        body: body,
+        payload: payload,
+        notificationDetails: const NotificationDetails(
+          windows: WindowsNotificationDetails(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Could not show $key: $e');
     }
   }
 

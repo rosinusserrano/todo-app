@@ -356,9 +356,14 @@ class ThoughtsPanel extends StatefulWidget {
     required this.onDiscard,
     this.onMove,
     this.onRemind,
+    this.notice,
   });
 
   final List<SideThought> thoughts;
+
+  /// A line under the header saying why the pile was put in front of you -
+  /// the close guard's refusal. Null draws nothing.
+  final String? notice;
   final Future<void> Function(SideThought) onPromote;
   final Future<void> Function(SideThought) onDiscard;
 
@@ -462,6 +467,7 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
               )
             else
               _selectionBar(selection.length, layout),
+            if (widget.notice != null) _notice(widget.notice!),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: T.s2),
@@ -491,6 +497,31 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
       ),
     );
   }
+
+  Widget _notice(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s2),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 1),
+          child: Icon(Icons.block_rounded, size: 16, color: T.warn),
+        ),
+        const SizedBox(width: T.s2),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: T.fsLabel,
+              color: T.warn,
+              fontWeight: T.wMedium,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _selectionBar(int count, Layout layout) {
     final size = layout.actionIcon;

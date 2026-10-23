@@ -111,6 +111,7 @@ class TimeGridView extends StatefulWidget {
     this.onZoom,
     this.sharedScroll,
     this.onMoveEvent,
+    this.moveNeedsHold = false,
     this.onResizeEvent,
   });
 
@@ -190,6 +191,11 @@ class TimeGridView extends StatefulWidget {
   /// finger - see [EventBlock.movable] for why the two differ.
   final void Function(CalendarEvent event, DateTime from, DateTime to)?
   onMoveEvent;
+
+  /// A block is lifted only by holding it, whatever the pointer - outside
+  /// edit mode, where a mouse's plain drag over a block must not move a
+  /// meeting by accident, but a deliberate hold still may.
+  final bool moveNeedsHold;
 
   /// One end of a block was dragged: its start when [start], else its end,
   /// from the instant it was at to [to] (see [AppState.resizeEvent]). Null
@@ -840,6 +846,7 @@ class _TimeGridViewState extends State<TimeGridView> {
                           _endMove();
                         },
                         canMove: widget.onMoveEvent != null,
+                        moveNeedsHold: widget.moveNeedsHold,
                         onResizeUpdate: widget.onResizeEvent == null
                             ? null
                             : _resizeUpdate,
@@ -910,6 +917,7 @@ class _GridBody extends StatelessWidget {
     required this.onEdge,
     required this.onEdgeEnd,
     required this.canMove,
+    required this.moveNeedsHold,
     required this.onResizeUpdate,
     required this.onResizeEnd,
     required this.onHoverEvent,
@@ -979,6 +987,9 @@ class _GridBody extends StatelessWidget {
   /// Whether blocks can be picked up at all, and what happens while one is
   /// carried over the grid and when it is let go.
   final bool canMove;
+
+  /// See [TimeGridView.moveNeedsHold].
+  final bool moveNeedsHold;
   final void Function(EventDrag drag, Offset local) onHoverEvent;
   final void Function(EventDrag drag, Offset local) onDropEvent;
 
@@ -1281,6 +1292,7 @@ class _GridBody extends StatelessWidget {
                 continuesBefore: p.event.start.isBefore(day),
                 continuesAfter: p.event.end.isAfter(next),
                 movable: canMove && !p.event.fromFeed,
+                moveNeedsHold: moveNeedsHold,
                 pieceStart: pieceStart,
                 pieceEnd: pieceEnd,
                 onResizeUpdate: onResizeUpdate == null || p.event.fromFeed
@@ -1399,6 +1411,7 @@ class EventBlock extends StatelessWidget {
     this.continuesBefore = false,
     this.continuesAfter = false,
     this.movable = false,
+    this.moveNeedsHold = false,
     this.pieceStart,
     this.pieceEnd,
     this.onResizeUpdate,
@@ -1420,6 +1433,10 @@ class EventBlock extends StatelessWidget {
   /// how the day scrolls. A long press that never moves is still the actions
   /// menu, which is what it was before blocks could be carried.
   final bool movable;
+
+  /// Lifted only by a hold, a mouse's included - see
+  /// [TimeGridView.moveNeedsHold].
+  final bool moveNeedsHold;
 
   /// What part of the event this block draws - all of it, unless midnight
   /// cut it - which is what a move measures from.
@@ -1504,6 +1521,7 @@ class EventBlock extends StatelessWidget {
               pieceEnd: pieceEnd ?? event.end,
               ghost: blob,
               onMenu: onMenu,
+              holdOnly: moveNeedsHold,
               child: target,
             )
           : target,
@@ -1868,11 +1886,15 @@ class _MovableBlock extends StatefulWidget {
     required this.ghost,
     required this.onMenu,
     required this.child,
+    this.holdOnly = false,
   });
 
   final CalendarEvent event;
   final DateTime pieceStart;
   final DateTime pieceEnd;
+
+  /// No immediate drag for a mouse: it holds, like a finger.
+  final bool holdOnly;
 
   /// What follows the pointer: the block as drawn, without its drop target.
   final Widget ghost;
@@ -1934,6 +1956,7 @@ class _MovableBlockState extends State<_MovableBlock> {
         Widget draggable(Widget child, {required bool touch}) =>
             _DeviceDraggable(
               touch: touch,
+              mouseHolds: widget.holdOnly,
               data: _drag,
               feedback: ghost,
               childWhenDragging: left,
@@ -1959,7 +1982,9 @@ class _MovableBlockState extends State<_MovableBlock> {
               ..pressedAt = e.position
               ..moved = false;
           },
-          child: draggable(draggable(widget.child, touch: true), touch: false),
+          child: widget.holdOnly
+              ? draggable(widget.child, touch: true)
+              : draggable(draggable(widget.child, touch: true), touch: false),
         );
       },
     );
@@ -1973,6 +1998,7 @@ class _MovableBlockState extends State<_MovableBlock> {
 class _DeviceDraggable extends Draggable<EventDrag> {
   const _DeviceDraggable({
     required this.touch,
+    this.mouseHolds = false,
     required super.child,
     required super.feedback,
     super.data,
@@ -1983,6 +2009,10 @@ class _DeviceDraggable extends Draggable<EventDrag> {
   });
 
   final bool touch;
+
+  /// The long press answers to a mouse as well (see
+  /// [TimeGridView.moveNeedsHold]).
+  final bool mouseHolds;
 
   @override
   MultiDragGestureRecognizer createRecognizer(
@@ -1995,11 +2025,12 @@ class _DeviceDraggable extends Draggable<EventDrag> {
       )..onStart = onStart;
     }
     return DelayedMultiDragGestureRecognizer(
-        supportedDevices: const {
+        supportedDevices: {
           PointerDeviceKind.touch,
           PointerDeviceKind.stylus,
           PointerDeviceKind.invertedStylus,
           PointerDeviceKind.unknown,
+          if (mouseHolds) PointerDeviceKind.mouse,
         },
         allowedButtonsFilter: allowedButtonsFilter,
       )

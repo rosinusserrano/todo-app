@@ -858,9 +858,12 @@ time on one. The rules that are not obvious from the schema:
 - **Edit mode is one nullable uuid**, `AppState.timeBlockCalendarUuid` (the
   names are from when it was "time-block" or "quick add" mode, a ⚡; it is the
   ✎ now, and Ctrl+E in the shell's key handler, both through
-  `AppState.toggleCalendarEditing`). **Moving and stretching blocks exist only
-  while it is on**: `CalendarView` hands `onMoveEvent` / `onResizeEvent` to the
-  grid only then, so outside it a stray drag cannot move a meeting. The uuid
+  `AppState.toggleCalendarEditing`). **Stretching blocks, and carrying one by
+  a plain mouse drag, exist only while it is on**: `CalendarView` hands
+  `onResizeEvent` to the grid only then, and outside it sets
+  `moveNeedsHold`, so a block is lifted only by press-and-hold - with a
+  mouse too (`_DeviceDraggable.mouseHolds`) - and a stray drag cannot move a
+  meeting (Marco, 2026-10-23). The uuid
   is the calendar new blocks go on,
   resolved through `visibleCalendars` rather than `calendars` — the
   target can go away underneath the setting (unticked, scope narrowed, workspace
@@ -1334,11 +1337,17 @@ this is the second thing that is; a copy would have drifted.
 
 ### Reminders fire differently per platform
 
-`ReminderService` polls the database and surfaces the window — that is the whole
-alert on desktop, and it needs no permissions. It does not carry to a phone,
-which suspends timers in the background and never lets an app raise itself, so
-`NotificationService` (`app/lib/notifications.dart`, mobile only) hands the OS
-the armed reminders in advance. It **reconciles from a query** rather than
+`ReminderService` polls the database; what a due row *does* is the shell's.
+**On Windows it is a toast** (Marco, 2026-10-23): `_onRemindersDue` and the
+thought / review callbacks call `NotificationService.showDue`
+(`toastsFromPoll`), and `reschedule` hands Windows only the calendar events -
+the poll already owns "due", and a scheduled toast as well would announce it
+twice. A click comes back through the same payload router a phone's tap
+does, and `deliverLaunch` replays one that started the app. On macOS and
+Linux the poll surfaces the window, which needs no permissions. That does not
+carry to a phone, which suspends timers in the background and never lets an
+app raise itself, so `NotificationService` (`app/lib/notifications.dart`)
+hands the OS the armed reminders in advance there. It **reconciles from a query** rather than
 hooking the writes: `AppState.refreshTasks` rebuilds the whole schedule, which
 is the only way a reminder merged in by sync gets scheduled at all. The poll
 keeps running alongside it.

@@ -6,11 +6,10 @@
 // matter. A poll over the database catches those on the next tick, because the
 // database - not a timer - is what holds the state.
 //
-// Firing is deliberately not a toast. This app is an always-on-top widget that
-// can hide itself in the tray; the strongest thing it can do is *be there* -
-// so a due reminder pulls the window back in front of you and the row keeps
-// showing as due until it is dealt with. That also means no notification
-// dependency and nothing to configure per platform.
+// What firing *does* is the shell's. On Windows it is a toast, like every
+// other app there (notifications.dart, `showDue`); on the other desktops the
+// always-on-top widget pulls itself back in front of you. Either way the row
+// keeps showing as due until it is dealt with.
 
 import 'dart:async';
 import 'dart:convert';

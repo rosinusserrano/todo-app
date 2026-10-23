@@ -497,11 +497,23 @@ class _WidgetShellState extends State<WidgetShell>
   late final ReminderService _reminders = ReminderService(
     s.store,
     onDue: _onRemindersDue,
-    onThoughtsDue: (_) => _onThoughtReminderDue(),
+    // Windows toasts what comes due (notifications.dart); the other desktops
+    // pull the window to the front.
+    onThoughtsDue: (due) async {
+      if (NotificationService.toastsFromPoll) {
+        await widget.notifications.showDue(thoughts: due);
+      } else {
+        await _onThoughtReminderDue();
+      }
+    },
     // The poll's half is the desktop's: a phone has the notification, and a
     // review is not worth taking a phone's screen for while it is in use.
     onReviewsDue: (due) async {
-      if (isDesktop) await _onReviewDue(due.first.workspaceUuid);
+      if (NotificationService.toastsFromPoll) {
+        await widget.notifications.showDue(reviews: due);
+      } else if (isDesktop) {
+        await _onReviewDue(due.first.workspaceUuid);
+      }
     },
     onTick: _onTick,
   );
@@ -568,6 +580,11 @@ class _WidgetShellState extends State<WidgetShell>
   String? _blockedMessage;
   bool _pinned = true;
 
+  /// A close was just refused for the thoughts still waiting, and the pile
+  /// was put on screen to say so ([ThoughtsPanel.notice]). Let go of in
+  /// [_onState] once the pile is closed or empty.
+  bool _closeRefused = false;
+
   /// The close was accepted and teardown is running. Tearing the window down
   /// is not instant - see [_closeNow] - and without this the widget just sat
   /// there looking alive and ignoring the ✕, which reads as a hang.
@@ -599,6 +616,9 @@ class _WidgetShellState extends State<WidgetShell>
       final g = await s.store.groupByUuid(uuid);
       if (g != null) await _onReviewDue(g.workspaceUuid);
     };
+    // A click on a toast that started the app, now there is somewhere for it
+    // to land.
+    widget.notifications.deliverLaunch();
     // Sweep once before polling starts, so anything that came due while the app
     // was closed lands now rather than up to an interval later.
     _reminders.tick();
@@ -1039,7 +1059,7 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _openTappedReminder(String taskUuid) async {
     final task = await s.store.taskByUuid(taskUuid);
     if (task == null || !mounted) return;
-    await _onRemindersDue([task]);
+    await _landOnReminder(task);
   }
 
   // --------------------------------------------------------------- reminders
@@ -1073,14 +1093,24 @@ class _WidgetShellState extends State<WidgetShell>
     await _dockToView(WorkspaceView.parked);
   }
 
-  /// A reminder has come due. The widget's whole personality is being in front
-  /// of you, so that is the alert: surface the window, switch to where the task
-  /// actually lives, and let the row's own due styling carry it from there.
+  /// A reminder has come due. On Windows that is a toast, as it is for every
+  /// other app there, and clicking it lands on the task. Elsewhere the
+  /// widget's whole personality is being in front of you, so that is the
+  /// alert.
   Future<void> _onRemindersDue(List<Task> due) async {
+    if (NotificationService.toastsFromPoll) {
+      await widget.notifications.showDue(tasks: due);
+      return;
+    }
+    await _landOnReminder(due.first);
+  }
+
+  /// Surface the window, switch to where the task actually lives, and let
+  /// the row's own due styling carry it from there.
+  Future<void> _landOnReminder(Task first) async {
     await _surfaceWindow();
     if (!mounted) return;
 
-    final first = due.first;
     // A reminder can belong to a workspace that is not on screen. Showing the
     // window without switching would surface a list the task is not even in.
     if (first.workspaceUuid != s.currentWorkspaceUuid) {
@@ -1313,6 +1343,9 @@ class _WidgetShellState extends State<WidgetShell>
     // has moved - and there is no single write to hang it off instead, since a
     // task can leave focus by being completed, deleted, parked or merged away.
     _quickActions.setActiveTask(s.focusTask?.text);
+    if (_closeRefused && (!s.showThoughts || s.thoughts.isEmpty)) {
+      _closeRefused = false;
+    }
     setState(() {});
   }
 
@@ -1331,15 +1364,31 @@ class _WidgetShellState extends State<WidgetShell>
       return;
     }
     // The refusal has to be visible, or a quit from the tray while the window
-    // is hidden looks like the app simply ignoring the click. Surface first,
-    // then leave focus - the footer flash sits behind the focus overlay too.
+    // is hidden looks like the app simply ignoring the click. So the window
+    // comes up and the pile itself is put in front of you, with a line saying
+    // why: it used to be a flash in the footer, which the dock had long since
+    // reduced to nothing, so a refused close looked like a ✕ that was broken.
     await _surfaceWindow();
     if (!mounted) return;
     _closeSound();
     _closeSettings();
+    if (_adding) _closeAdd();
+    _collapseTask();
     if (s.focusTask != null) await _exitFocus();
     if (!mounted) return;
+    // Through the toggle, so blocks laid out in edit mode are kept.
+    if (s.showCalendar) await _toggleCalendar();
+    if (!mounted) return;
+    if (!s.showThoughts) s.toggleThoughts();
+    setState(() => _closeRefused = true);
     _flashBlocked();
+  }
+
+  String get _refusalNotice {
+    final n = s.thoughts.length;
+    final what = n == 1 ? 'This thought is' : 'These $n thoughts are';
+    return '$what still waiting. Make each a task, shelve it or let it go, '
+        'and then the window will close.';
   }
 
   /// Actually go, with something on screen while it happens.
@@ -3070,6 +3119,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (s.showThoughts) {
       return ThoughtsPanel(
         thoughts: s.thoughts,
+        notice: _closeRefused ? _refusalNotice : null,
         onPromote: s.promoteThought,
         onDiscard: s.resolveThought,
         onMove: _moveThoughts,

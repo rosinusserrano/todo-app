@@ -29,7 +29,30 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
-### 69. The shelf, 2026-10-21  `[~]`
+### 70. The shelf, 2026-10-23  `[~]`
+
+Five rows from "Todo Widget" plus one sent alongside: "on windows the
+notifications should come as normal notifications as do other apps".
+
+- [x] **70.1** Ctrl+E in the note reader edits it, caret in the body.
+- [x] **70.2** A shelf's ＋ brings up its add line without opening it.
+- [x] **70.3** A refused close opens the thought pile with a line saying
+      why (`ThoughtsPanel.notice`).
+- [x] **70.4** Press-and-hold moves a calendar block outside edit mode, a
+      mouse's too (`moveNeedsHold`); a plain mouse drag still needs edit
+      mode.
+- [x] **70.5** Windows toasts: the poll's reminders through
+      `NotificationService.showDue`, events scheduled with the OS, a click
+      routed like a phone's tap (`deliverLaunch` for one that started the
+      app). Not tried on Windows from here - Marco to rebuild with
+      `install-windows.ps1` and check a reminder.
+- [x] **70.6** "thoughts textfield doesnt react to Pos1 and End": not
+      reproducible in tests, and gone for Marco after the 2026-10-21 web
+      deploy. Nothing changed.
+- [ ] **70.7** Marco: rebuild the Windows app and check a toast arrives
+      and a click lands on the task.
+
+### 69. The shelf, 2026-10-21  `[x]`
 
 Fifteen rows from "Todo Widget" (Meine Apps), sent with "implement all of
 the following ... save questions for the end". Design notes in
@@ -56,10 +79,10 @@ the following ... save questions for the end". Design notes in
       (now a `FocusScope`, `ui/shell_keys.dart`). Geo reminders: on the
       roadmap until there is an Apple developer account. The shopping list
       is called **Checklist**.
-- [ ] **69.8** Ships with 68.2: server to protocol 9, then the web app
-      (What's new `2026-10-21-2` is written).
+- [x] **69.8** Ships with 68.2: server to protocol 9, then the web app
+      (published 2026-10-23).
 
-### 68. One occurrence of a repeating event  `[~]`
+### 68. One occurrence of a repeating event  `[x]`
 
 Asked for 2026-10-21: "delete or edit single calendar events of a series".
 Design in `ROADMAP.md` under *One occurrence of a series*.
@@ -71,8 +94,8 @@ Design in `ROADMAP.md` under *One occurrence of a series*.
       Whole series" question on edit, delete, drag and stretch
       (`ui/calendar/series_scope.dart`); `test/event_exceptions_test.dart`,
       server tests both files.
-- [ ] **68.2** Marco runs `sudo server/update-server.sh` (protocol 9);
-      **then** publish the web app with a What's new note.
+- [x] **68.2** Marco runs `sudo server/update-server.sh` (protocol 9);
+      **then** publish the web app with a What's new note (2026-10-23).
 
 ### 67. Reminders on thoughts  `[~]`
 

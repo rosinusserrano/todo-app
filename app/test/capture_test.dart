@@ -106,6 +106,7 @@ void main() {
       required List<SideThought> thoughts,
       required Future<void> Function(List<SideThought>, RelativeRect) onMove,
       bool touch = true,
+      String? notice,
     }) =>
         MaterialApp(
           home: Scaffold(
@@ -116,10 +117,27 @@ void main() {
                 onPromote: (_) async {},
                 onDiscard: (_) async {},
                 onMove: onMove,
+                notice: notice,
               ),
             ),
           ),
         );
+
+    testWidgets('a refused close says why under the header', (tester) async {
+      await tester.pumpWidget(panel(
+        thoughts: [thought('a', 'one')],
+        onMove: (_, _) async {},
+      ));
+      expect(find.byIcon(Icons.block_rounded), findsNothing);
+
+      await tester.pumpWidget(panel(
+        thoughts: [thought('a', 'one')],
+        onMove: (_, _) async {},
+        notice: 'This thought is still waiting.',
+      ));
+      expect(find.text('This thought is still waiting.'), findsOneWidget);
+      expect(find.byIcon(Icons.block_rounded), findsOneWidget);
+    });
 
     testWidgets('a long press selects, and the bar moves the selection',
         (tester) async {

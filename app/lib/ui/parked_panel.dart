@@ -116,6 +116,11 @@ class _ParkedPanelState extends State<ParkedPanel>
       if (g.isReviewDue()) g.uuid,
   };
 
+  /// Shelves whose add line is showing while they are closed - the ＋ on a
+  /// group's line. Adding to a shelf is not reading it, so it does not open
+  /// the contents; the line goes again when it is left empty.
+  final Set<String> _adding = {};
+
   /// The shelf being reviewed, and the queue as it stood when that started.
   /// Null is the ordinary list of shelves. See parked_review.dart for why the
   /// queue is a snapshot rather than a live read of [widget.parked].
@@ -242,6 +247,9 @@ class _ParkedPanelState extends State<ParkedPanel>
             tasks: widget.parked[g.uuid] ?? const [],
             accent: widget.accent,
             open: _open.contains(g.uuid),
+            adding: _adding.contains(g.uuid),
+            onStartAdd: () => setState(() => _adding.add(g.uuid)),
+            onStopAdd: () => setState(() => _adding.remove(g.uuid)),
             onToggle: () => setState(
               () => _open.contains(g.uuid)
                   ? _open.remove(g.uuid)
@@ -333,6 +341,9 @@ class _Group extends StatelessWidget {
     required this.tasks,
     required this.accent,
     required this.open,
+    required this.adding,
+    required this.onStartAdd,
+    required this.onStopAdd,
     required this.onToggle,
     required this.onUnpark,
     required this.onComplete,
@@ -349,6 +360,12 @@ class _Group extends StatelessWidget {
   final List<Task> tasks;
   final Color accent;
   final bool open;
+
+  /// The add line is wanted (its ＋ was pressed): shown even while closed, and
+  /// given the caret.
+  final bool adding;
+  final VoidCallback onStartAdd;
+  final VoidCallback onStopAdd;
   final VoidCallback onToggle;
   final Future<void> Function(Task) onUnpark;
   final Future<void> Function(Task) onComplete;
@@ -454,6 +471,10 @@ class _Group extends StatelessWidget {
                   ),
                 ),
               ),
+              Tooltip(
+                message: 'Add to this shelf',
+                child: _ShelfButton(icon: Icons.add, onTap: onStartAdd),
+              ),
               _ReviewButton(
                 empty: tasks.isEmpty,
                 due: due,
@@ -484,7 +505,7 @@ class _Group extends StatelessWidget {
             ],
           ),
         ),
-        if (open) ...[
+        if (open)
           for (final t in tasks) ...[
             const Padding(
               padding: EdgeInsets.only(left: _indent - T.s4),
@@ -498,6 +519,7 @@ class _Group extends StatelessWidget {
               onEdit: onEditTask == null ? null : () => onEditTask!(t),
             ),
           ],
+        if (open || adding) ...[
           // The way in that needs nothing else on screen. Under the shelf's
           // own contents rather than above them, so it reads as the end of
           // this list and not as a second add field competing with the one at
@@ -506,7 +528,13 @@ class _Group extends StatelessWidget {
             padding: EdgeInsets.only(left: _indent - T.s4),
             child: ListRule(),
           ),
-          _AddToShelf(group: group, accent: accent, onAdd: onAdd),
+          _AddToShelf(
+            group: group,
+            accent: accent,
+            onAdd: onAdd,
+            focus: adding,
+            onLeave: onStopAdd,
+          ),
         ],
         const SizedBox(height: T.s1),
       ],
@@ -544,11 +572,21 @@ class _AddToShelf extends StatefulWidget {
     required this.group,
     required this.accent,
     required this.onAdd,
+    required this.focus,
+    required this.onLeave,
   });
 
   final ParkedGroup group;
   final Color accent;
   final Future<void> Function(String) onAdd;
+
+  /// Take the caret - on being built, or on turning true (the ＋ pressed on a
+  /// shelf whose line was already showing).
+  final bool focus;
+
+  /// Called when the caret leaves an empty line, so a line the ＋ brought up
+  /// on a closed shelf goes away again.
+  final VoidCallback onLeave;
 
   @override
   State<_AddToShelf> createState() => _AddToShelfState();
@@ -556,13 +594,48 @@ class _AddToShelf extends StatefulWidget {
 
 class _AddToShelfState extends State<_AddToShelf> {
   final _controller = TextEditingController();
-  final _focus = FocusNode();
+  late final _focus = FocusNode(onKeyEvent: _onKey)
+    ..addListener(_focusChanged);
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.focus) _takeCaret();
+  }
+
+  @override
+  void didUpdateWidget(_AddToShelf old) {
+    super.didUpdateWidget(old);
+    if (widget.focus && !old.focus) _takeCaret();
+  }
+
+  void _takeCaret() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted) _focus.requestFocus();
+  });
+
+  void _focusChanged() {
+    if (!_focus.hasFocus && !_busy && _controller.text.trim().isEmpty) {
+      widget.onLeave();
+    }
+  }
+
+  /// Esc lets go of the line rather than going on up to close the pane; an
+  /// empty one then goes (see [_focusChanged]).
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.escape) {
+      return KeyEventResult.ignored;
+    }
+    _focus.unfocus();
+    return KeyEventResult.handled;
+  }
 
   @override
   void dispose() {
     _controller.dispose();
-    _focus.dispose();
+    _focus
+      ..removeListener(_focusChanged)
+      ..dispose();
     super.dispose();
   }
 

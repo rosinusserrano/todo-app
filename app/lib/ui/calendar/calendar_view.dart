@@ -269,19 +269,19 @@ class CalendarView extends StatelessWidget {
       onEventMenu: onEventMenu,
       onCreate: onCreate,
       onPlanTask: onPlanTask,
-      // Carrying a block somewhere else, and stretching one by an end - in
-      // edit mode only. Pages drawn beside this one for the swipe are not
+      // Carrying a block somewhere else: by holding it, always, and in edit
+      // mode by a plain mouse drag too. Stretching one by an end is edit
+      // mode's only. Pages drawn beside this one for the swipe are not
       // touchable, so only the page on screen ever changes one.
       // An occurrence of a series asks first whether it is the one being
       // moved or all of them, once it has been let go - the block goes back
       // to where it was while the question is up.
-      onMoveEvent: block == null
-          ? null
-          : (e, from, to) async {
-              final one = await _onlyThis(context, e);
-              if (one == null) return;
-              await state.moveEvent(e, from: from, to: to, onlyThis: one);
-            },
+      moveNeedsHold: block == null,
+      onMoveEvent: (e, from, to) async {
+        final one = await _onlyThis(context, e);
+        if (one == null) return;
+        await state.moveEvent(e, from: from, to: to, onlyThis: one);
+      },
       onResizeEvent: block == null
           ? null
           : (e, start, from, to) async {

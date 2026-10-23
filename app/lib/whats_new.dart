@@ -38,6 +38,20 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-23',
+    title: 'Five more from your shelf',
+    points: [
+      'Ctrl+E while reading a note edits it.',
+      'The ＋ on a shelf adds to it without opening it.',
+      'Hold a calendar block to move it, edit mode or not - with the mouse '
+          'too.',
+      'A close refused for waiting thoughts now shows you the thoughts, and '
+          'says so.',
+      'On Windows, reminders are Windows notifications. Click one to land on '
+          'the task.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-21-2',
     title: 'From your shelf',
     points: [

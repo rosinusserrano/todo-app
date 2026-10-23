@@ -271,6 +271,27 @@ void main() {
   });
 
   group('shortcuts', () {
+    testWidgets('Ctrl+E edits the note being read, caret in the body', (
+      tester,
+    ) async {
+      final saves = Saves();
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: saves,
+      );
+      await tester.tap(find.text('Trip'));
+      await tester.pumpAndSettle();
+
+      await chord(tester, LogicalKeyboardKey.keyE);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNWidgets(2));
+      final focused = FocusManager.instance.primaryFocus!.context!;
+      final field = focused.findAncestorWidgetOfExactType<TextField>()!;
+      expect(field.controller!.text, 'Leaves at nine');
+    });
+
     testWidgets('Ctrl+Enter moves from the title to the body', (tester) async {
       final saves = Saves();
       await pumpPanel(tester, items: const [], saves: saves);

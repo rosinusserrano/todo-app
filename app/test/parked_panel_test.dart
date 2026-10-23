@@ -319,6 +319,60 @@ void main() {
     });
   });
 
+  group('adding to a closed shelf', () {
+    testWidgets('the ＋ brings up the line without opening the shelf',
+        (tester) async {
+      final calls = Calls();
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog'), shelf('g2', 'Someday')],
+        parked: {
+          'g1': [task('t1', 'rewrite the importer', groupUuid: 'g1')],
+        },
+        calls: calls,
+      );
+
+      await tester.tap(find.byTooltip('Add to this shelf').first);
+      await tester.pumpAndSettle();
+
+      // The line, with the caret in it - and not the shelf's contents.
+      final field = find.byType(TextField);
+      expect(find.text('Add to Backlog'), findsOneWidget);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      expect(find.text('rewrite the importer'), findsNothing);
+
+      await tester.enterText(field, 'read the Erlang book');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(calls.added, [(group: 'g1', text: 'read the Erlang book')]);
+      expect(find.text('Add to Backlog'), findsOneWidget); // ready for more
+
+      // Esc lets go of the empty line, and the line goes.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    testWidgets('on an open shelf it puts the caret in the line',
+        (tester) async {
+      final calls = Calls();
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog')],
+        parked: const {},
+        calls: calls,
+      );
+      await tester.tap(find.text('Backlog'));
+      await tester.pumpAndSettle();
+      final field = find.byType(TextField);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isFalse);
+
+      await tester.tap(find.byTooltip('Add to this shelf'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+    });
+  });
+
   group('reviewing a shelf', () {
     Future<void> openReview(WidgetTester tester, Calls calls) async {
       await pumpPanel(

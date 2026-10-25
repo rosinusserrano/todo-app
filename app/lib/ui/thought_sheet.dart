@@ -501,6 +501,22 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
     );
   }
 
+  static const _fieldStyle = TextStyle(fontSize: T.fsMenu, height: 1.35);
+
+  /// How many lines of [_fieldStyle] fit in [height], less the decoration's
+  /// padding above and below the text.
+  static int _linesIn(BuildContext context, double height) {
+    if (!height.isFinite) return 1;
+    final painter = TextPainter(
+      text: const TextSpan(text: ' ', style: _fieldStyle),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    final line = painter.preferredLineHeight;
+    painter.dispose();
+    return ((height - 32) / line).floor().clamp(1, 200);
+  }
+
   @override
   Widget build(BuildContext context) {
     final keyboard = MediaQuery.of(context).viewInsets.bottom;
@@ -581,24 +597,32 @@ class _ThoughtSheetState extends State<ThoughtSheet> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s3, T.s1),
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focus,
-                      autofocus: true,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      style: const TextStyle(fontSize: T.fsMenu, height: 1.35),
-                      decoration: InputDecoration(
-                        hintText: widget.hint,
-                        border: InputBorder.none,
+                    // Lines enough to fill the pane, not `expands`: the text
+                    // box Flutter's web build lays over the field is the
+                    // size of the text, and `expands` leaves that one line.
+                    // A tap below it reached only the canvas, whose focus
+                    // iOS will not raise a keyboard for; a tap on the box
+                    // itself it always does (Marco, 2026-10-25).
+                    child: LayoutBuilder(
+                      builder: (context, box) => TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        autofocus: true,
+                        maxLines: null,
+                        minLines: _linesIn(context, box.maxHeight),
+                        textAlignVertical: TextAlignVertical.top,
+                        style: _fieldStyle,
+                        decoration: InputDecoration(
+                          hintText: widget.hint,
+                          border: InputBorder.none,
+                        ),
+                        // Several lines are welcome: this is a box you were
+                        // given the whole screen for. On a phone Enter is the
+                        // new line; with a keyboard it is Shift+Enter, and
+                        // Enter saves (see _onKey).
+                        keyboardType: TextInputType.multiline,
+                        textCapitalization: TextCapitalization.sentences,
                       ),
-                      // Several lines are welcome: this is a box you were
-                      // given the whole screen for. On a phone Enter is the
-                      // new line; with a keyboard it is Shift+Enter, and
-                      // Enter saves (see _onKey).
-                      keyboardType: TextInputType.multiline,
-                      textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
                 ),

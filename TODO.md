@@ -29,6 +29,16 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 71. The thought pane's keyboard on an iPhone  `[x]`
+
+"the keyboard on mobile doesnt appear automatically anymore when adding a
+thought" (Firefox for iOS, from the ＋ menu). Firefox raises no keyboard
+for a focus the page moves itself, in pointerup or touchend alike, so the
+automatic keyboard is not to be had there. Fixed what can be: the field
+fills the pane with `minLines`, so the engine's text box does too and one
+tap anywhere brings the keyboard; the prime goes inside the flutter-view.
+Published 2026-10-25.
+
 ### 70. The shelf, 2026-10-23  `[~]`
 
 Five rows from "Todo Widget" plus one sent alongside: "on windows the

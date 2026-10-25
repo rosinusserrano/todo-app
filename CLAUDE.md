@@ -1931,8 +1931,13 @@ publishes it. Three rules keep it compiling and starting:
   keyboard only for a focus moved during a touch's own event handler, and a
   pane's field is built a frame later; the page focuses a throwaway 16px
   input inside the tap so the keyboard is already up when the real field
-  takes over. `_openThoughtCapture` does it (web + touch only). The field
-  itself must still ask for focus outright, after its first frame -
+  takes over. `_openThoughtCapture` does it (web + touch only). The input
+  goes inside the flutter-view, or the engine focuses its view first and
+  the keyboard goes. **Firefox for iOS ignores all of it** (no keyboard for
+  any focus the page moves), so the pane's field fills it with `minLines`,
+  not `expands`: the engine's text box is the size of the `RenderEditable`,
+  and only a tap that lands on that box natively is sure of a keyboard.
+  The field itself must still ask for focus outright, after its first frame -
   `autofocus` gives way to the shell's key handler, which always has focus
   (`ThoughtSheet.initState`; `test/thought_sheet_test.dart` pins it).
 - **Native-only features are switched off at their entry point, not stubbed.**

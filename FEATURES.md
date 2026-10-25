@@ -1617,6 +1617,13 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **The thought pane's keyboard on an iPhone**: a tap anywhere in the
+    pane's writing area brings it up. Firefox for iOS raises no keyboard for
+    a focus the page moves itself, so the pane opened with none; the
+    field's real text box was one line tall, and a tap below it reached only
+    the canvas. The field now takes as many lines as fill the pane, so the
+    box does too. The keyboard helper also sits inside the app's view now,
+    where the engine does not take focus back from it.
   - **From the shelf, 2026-10-23**: reminders on **Windows are Windows
     notifications** (toasts from the poll; events scheduled with the OS;
     `NotificationService.toastsFromPoll`), no longer the window jumping

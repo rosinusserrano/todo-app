@@ -38,6 +38,14 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-10-25',
+    title: 'Writing a thought on the phone',
+    points: [
+      'Tap anywhere in the thought pane to bring the keyboard up - not just '
+          'the first line.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-23',
     title: 'Five more from your shelf',
     points: [

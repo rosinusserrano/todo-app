@@ -96,6 +96,14 @@
       // this brings the keyboard up so the field built a frame later can
       // take it over. 16px so iOS does not zoom to it; off-screen and
       // transparent so nothing is seen; gone once the real field has focus.
+      //
+      // It goes *inside* the flutter-view: when the real field asks for
+      // focus the engine first focuses its view if the focused element is
+      // outside it (changeViewFocus in view_focus_binding.dart), and a div
+      // taking focus puts the keyboard away. Firefox for iOS raises no
+      // keyboard for this at all (Marco, 2026-10-25), which is why the
+      // thought pane's field fills it: a tap anywhere on it lands on the
+      // engine's real text box, and that iOS always honours.
       window.todoPrimeKeyboard = function () {
         var input = document.createElement('input');
         input.setAttribute('aria-hidden', 'true');
@@ -103,7 +111,8 @@
         input.style.cssText =
           'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;' +
           'font-size:16px;border:0;padding:0;pointer-events:none';
-        document.body.appendChild(input);
+        (document.querySelector('flutter-view') || document.body)
+            .appendChild(input);
         input.focus();
         setTimeout(function () { input.remove(); }, 1000);
       };

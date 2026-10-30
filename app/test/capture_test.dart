@@ -6,7 +6,9 @@
 // where it was, and a moved thought must be resolved rather than deleted:
 // thoughts are never hard-removed.
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -107,6 +109,7 @@ void main() {
       required Future<void> Function(List<SideThought>, RelativeRect) onMove,
       bool touch = true,
       String? notice,
+      Future<void> Function(SideThought, String)? onEdit,
     }) =>
         MaterialApp(
           home: Scaffold(
@@ -117,6 +120,7 @@ void main() {
                 onPromote: (_) async {},
                 onDiscard: (_) async {},
                 onMove: onMove,
+                onEdit: onEdit,
                 notice: notice,
               ),
             ),
@@ -179,6 +183,67 @@ void main() {
       expect(moved, [
         ['b'],
       ]);
+    });
+
+    group('a double click', () {
+      Future<List<String>> open(WidgetTester tester) async {
+        final edits = <String>[];
+        await tester.pumpWidget(panel(
+          thoughts: [thought('a', 'one'), thought('b', 'two')],
+          onMove: (_, _) async {},
+          touch: false,
+          onEdit: (t, text) async => edits.add('${t.uuid}:$text'),
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('two'));
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.text('two'));
+        await tester.pumpAndSettle();
+        return edits;
+      }
+
+      testWidgets('opens the words, and Enter keeps them', (tester) async {
+        final edits = await open(tester);
+        expect(find.byType(TextField), findsOneWidget);
+
+        await tester.enterText(find.byType(TextField), 'two, rewritten');
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(edits, ['b:two, rewritten']);
+        expect(find.byType(TextField), findsNothing);
+      });
+
+      testWidgets('Esc puts them back', (tester) async {
+        final edits = await open(tester);
+        await tester.enterText(find.byType(TextField), 'nothing');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(edits, isEmpty);
+        expect(find.text('two'), findsOneWidget);
+      });
+
+      testWidgets('cleared words are not a way to throw it away',
+          (tester) async {
+        final edits = await open(tester);
+        await tester.enterText(find.byType(TextField), '  ');
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(edits, isEmpty);
+      });
+
+      testWidgets('two clicks apart are two clicks', (tester) async {
+        await tester.pumpWidget(panel(
+          thoughts: [thought('a', 'one')],
+          onMove: (_, _) async {},
+          touch: false,
+          onEdit: (_, _) async {},
+        ));
+        await tester.tap(find.text('one'));
+        await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
+        await tester.tap(find.text('one'));
+        await tester.pumpAndSettle();
+        expect(find.byType(TextField), findsNothing);
+      });
     });
 
     testWidgets('its controls are a fingertip on touch', (tester) async {

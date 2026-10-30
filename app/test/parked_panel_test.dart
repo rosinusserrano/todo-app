@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_widget/sync/models.dart';
 import 'package:todo_widget/ui/parked_panel.dart';
+import 'package:todo_widget/ui/parked_review.dart';
 
 const _stamp = '2026-08-11T09:00:00.000Z';
 
@@ -411,6 +412,18 @@ void main() {
       expect(calls.deleted, isEmpty);
       // And the clock has not restarted, because the shelf is not finished.
       expect(calls.reviewed, isEmpty);
+    });
+
+    testWidgets('the card sits in the middle of the pane', (tester) async {
+      await openReview(tester, Calls());
+
+      final pane = tester.getRect(find.byType(ParkedReview));
+      final title = tester.getRect(find.text('rewrite the importer'));
+      final keep = tester.getRect(find.text('Keep'));
+      expect(title.center.dx, closeTo(pane.center.dx, 1));
+      // Below the header's half and above the bottom: centred, not top-left.
+      expect(title.top, greaterThan(pane.top + pane.height / 4));
+      expect(keep.bottom, lessThan(pane.bottom - pane.height / 4));
     });
 
     testWidgets('the clock restarts only at the end', (tester) async {

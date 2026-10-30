@@ -333,9 +333,9 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   a restart does not repeat it - and only for a shelf with something on it,
   in a workspace that is not archived.
 - **Reviewing is a funnel, not a button.** "Review" on a shelf's header takes over
-  the pane and shows **one task at a time**: its title, its notes, how long it
-  has been sitting there ("parked 47 days ago"), an armed reminder, and a
-  progress line — "3 of 11", with a dot per task. Four answers, and exactly one
+  the pane and shows **one task at a time**, centred in the pane: its title,
+  its notes, how long it has been sitting there ("parked 47 days ago"), an
+  armed reminder, and a progress line — "3 of 11", with a dot per task. Four answers, and exactly one
   of them leaves the task where it is:
   - **Keep** — still parked. Also the **Enter** key, because the safe answer
     should be the cheap one.
@@ -1131,6 +1131,10 @@ at the screen gives nothing away) and its lock is **opt-in**.
   another workspace's list, or any shelf. **Select several** — Ctrl+click, or a
   long press on a phone, then plain clicks add more — and move or discard them
   together. A moved thought becomes a task there and is resolved, not deleted.
+- **Double-click a thought to rewrite it** (a double tap on a phone): its words
+  open in place, **Enter** keeps them, **Shift+Enter** is a new line, **Esc**
+  puts them back. Clearing the words does not throw it away - the × does. Its
+  recording and reminder stay as they were.
 - **Review them on demand** — the 💭 count on the *right* of the footer (the
   Thoughts entry in the bottom bar, on a phone) opens the parked-thoughts panel, which slides up and **takes over the content area
   in place of the tasks**. Thoughts are not shown otherwise: a parked thought is
@@ -1617,6 +1621,10 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **From the shelf, 2026-10-30**: a **double click rewrites a thought** in
+    place (hand-rolled, like the task row's, so a single click that toggles a
+    selection is not held back), and **a shelf's review is centred** in the
+    pane rather than starting at its top-left.
   - **The thought pane's keyboard on an iPhone**: a tap anywhere in the
     pane's writing area brings it up. Firefox for iOS raises no keyboard for
     a focus the page moves itself, so the pane opened with none; the

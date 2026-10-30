@@ -173,86 +173,108 @@ class ParkedReviewState extends State<ParkedReview> {
     final notes = markdownPlainText(task.notes);
     final remind = task.remindAtTime;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Progress(
-            index: _index,
-            total: widget.tasks.length,
-            accent: widget.accent,
-          ),
-          const SizedBox(height: T.s4),
-          Text(
-            task.text,
-            style: TextStyle(
-              fontSize: T.fsMenu,
-              color: T.text,
-              height: 1.3,
-              fontWeight: task.isHighPriority ? T.wStrong : T.wMedium,
+    // Centred in the pane, like the summary it ends on and the focus tile it
+    // resembles: one task, held up to be looked at, rather than the first
+    // line of a list that happens to have only one row. Still a scroll view,
+    // so long notes in a short window can be read to the buttons.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s4),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight - T.s4),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: Layout.focusTileMax),
+              child: _cardBody(task, notes, remind, layout),
             ),
           ),
-          if (notes.isNotEmpty) ...[
-            const SizedBox(height: T.s2),
-            Text(
-              notes,
-              maxLines: 8,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: T.fsLabel,
-                color: T.muted,
-                height: 1.45,
-              ),
-            ),
-          ],
-          const SizedBox(height: T.s3),
-          Text(
-            [
-              _shelvedFor(task),
-              if (remind != null) 'reminder ${describeReminder(remind)}',
-            ].join(' - '),
-            style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+        ),
+      ),
+    );
+  }
+
+  Widget _cardBody(Task task, String notes, DateTime? remind, Layout layout) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _Progress(
+          index: _index,
+          total: widget.tasks.length,
+          accent: widget.accent,
+        ),
+        const SizedBox(height: T.s4),
+        Text(
+          task.text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: T.fsMenu,
+            color: T.text,
+            height: 1.3,
+            fontWeight: task.isHighPriority ? T.wStrong : T.wMedium,
           ),
-          const SizedBox(height: T.s5),
-          Wrap(
-            spacing: T.s2,
-            runSpacing: T.s2,
-            children: [
-              _Choice(
-                label: 'Keep',
-                hint: layout.touch ? null : 'Enter',
-                icon: Icons.inventory_2_outlined,
-                color: widget.accent,
-                filled: true,
-                touch: layout.touch,
-                onTap: _busy ? null : () => choose(ReviewChoice.keep),
-              ),
-              _Choice(
-                label: 'Do it now',
-                icon: Icons.north_east_rounded,
-                color: widget.accent,
-                touch: layout.touch,
-                onTap: _busy ? null : () => choose(ReviewChoice.activate),
-              ),
-              _Choice(
-                label: 'Done',
-                icon: Icons.check_rounded,
-                color: T.ok,
-                touch: layout.touch,
-                onTap: _busy ? null : () => choose(ReviewChoice.complete),
-              ),
-              _Choice(
-                label: 'Drop',
-                icon: Icons.close_rounded,
-                color: T.danger,
-                touch: layout.touch,
-                onTap: _busy ? null : () => choose(ReviewChoice.drop),
-              ),
-            ],
+        ),
+        if (notes.isNotEmpty) ...[
+          const SizedBox(height: T.s2),
+          Text(
+            notes,
+            maxLines: 8,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: T.fsLabel,
+              color: T.muted,
+              height: 1.45,
+            ),
           ),
         ],
-      ),
+        const SizedBox(height: T.s3),
+        Text(
+          [
+            _shelvedFor(task),
+            if (remind != null) 'reminder ${describeReminder(remind)}',
+          ].join(' - '),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+        ),
+        const SizedBox(height: T.s5),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: T.s2,
+          runSpacing: T.s2,
+          children: [
+            _Choice(
+              label: 'Keep',
+              hint: layout.touch ? null : 'Enter',
+              icon: Icons.inventory_2_outlined,
+              color: widget.accent,
+              filled: true,
+              touch: layout.touch,
+              onTap: _busy ? null : () => choose(ReviewChoice.keep),
+            ),
+            _Choice(
+              label: 'Do it now',
+              icon: Icons.north_east_rounded,
+              color: widget.accent,
+              touch: layout.touch,
+              onTap: _busy ? null : () => choose(ReviewChoice.activate),
+            ),
+            _Choice(
+              label: 'Done',
+              icon: Icons.check_rounded,
+              color: T.ok,
+              touch: layout.touch,
+              onTap: _busy ? null : () => choose(ReviewChoice.complete),
+            ),
+            _Choice(
+              label: 'Drop',
+              icon: Icons.close_rounded,
+              color: T.danger,
+              touch: layout.touch,
+              onTap: _busy ? null : () => choose(ReviewChoice.drop),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -286,7 +308,7 @@ class ParkedReviewState extends State<ParkedReview> {
               widget.tasks.isEmpty
                   ? 'Nothing on this shelf.'
                   : 'Reviewed ${widget.tasks.length} '
-                      '${widget.tasks.length == 1 ? "todo" : "todos"}.',
+                        '${widget.tasks.length == 1 ? "todo" : "todos"}.',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: T.fsBody, color: T.text),
             ),
@@ -338,33 +360,32 @@ class _Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: T.s2,
+      runSpacing: T.s1,
       children: [
         if (total <= maxDots)
-          Expanded(
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                for (var i = 0; i < total; i++)
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: i < index
-                          ? accent
-                          : i == index
-                              ? accent.withValues(alpha: 0.55)
-                              : T.surfaceHover,
-                    ),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (var i = 0; i < total; i++)
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < index
+                        ? accent
+                        : i == index
+                        ? accent.withValues(alpha: 0.55)
+                        : T.surfaceHover,
                   ),
-              ],
-            ),
-          )
-        else
-          const Spacer(),
-        const SizedBox(width: T.s2),
+                ),
+            ],
+          ),
         Text(
           '${index + 1} of $total',
           style: const TextStyle(fontSize: T.fsMeta, color: T.muted),

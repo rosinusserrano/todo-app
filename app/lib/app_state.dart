@@ -1754,6 +1754,14 @@ class AppState extends ChangeNotifier {
     _mutated();
   }
 
+  /// New words for a thought still in the pile. Its recording and reminder
+  /// stay as they were.
+  Future<void> editThought(SideThought t, String text) async {
+    await _store.putThought(t.copyWith(text: text.trim()));
+    await refreshThoughts();
+    _mutated();
+  }
+
   /// Tidy a thought into a real task on this list - [moveThoughts] for one.
   Future<void> promoteThought(SideThought s) async {
     final ws = currentWorkspaceUuid;

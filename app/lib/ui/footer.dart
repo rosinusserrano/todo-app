@@ -27,8 +27,10 @@
 // there is the refusal message, which is a desktop close guard and so never
 // fires, and the field itself, which the desktop hotkey can still open.
 
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -36,6 +38,7 @@ import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import '../voice_notes.dart';
+import '../web_keyboard.dart';
 import 'list_rule.dart';
 import 'panel_header.dart';
 import 'reminder_menu.dart' show describeReminder;
@@ -356,6 +359,7 @@ class ThoughtsPanel extends StatefulWidget {
     required this.onDiscard,
     this.onMove,
     this.onRemind,
+    this.onEdit,
     this.notice,
   });
 
@@ -374,6 +378,10 @@ class ThoughtsPanel extends StatefulWidget {
   /// Set, move or clear one thought's reminder, from a menu anchored at the
   /// rect. Null hides the bell.
   final Future<void> Function(SideThought, RelativeRect anchor)? onRemind;
+
+  /// Rewrite a thought's words, from a double click (or tap) on it. Null
+  /// leaves them as they were written.
+  final Future<void> Function(SideThought, String text)? onEdit;
 
   @override
   State<ThoughtsPanel> createState() => _ThoughtsPanelState();
@@ -475,6 +483,9 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
                   for (final (i, t) in widget.thoughts.indexed) ...[
                     if (i > 0) const ListRule(),
                     _ThoughtTile(
+                      // Keyed: a thought arriving above one being edited
+                      // must not hand the open field to its neighbour.
+                      key: ValueKey(t.uuid),
                       thought: t,
                       selected: _selected.contains(t.uuid),
                       selecting: _selected.isNotEmpty,
@@ -487,6 +498,9 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
                           ? null
                           : (anchor) => widget.onRemind!(t, anchor),
                       onDiscard: () => widget.onDiscard(t),
+                      onEdit: widget.onEdit == null
+                          ? null
+                          : (text) => widget.onEdit!(t, text),
                     ),
                   ],
                 ],
@@ -607,8 +621,15 @@ class _ThoughtButton extends StatelessWidget {
   }
 }
 
-class _ThoughtTile extends StatelessWidget {
+/// One thought in the pile. A double click (a double tap on touch) rewrites
+/// its words in place: Enter keeps them, Shift+Enter is a new line, Esc
+/// puts them back. Hand-rolled from [kDoubleTapTimeout] rather than
+/// `onDoubleTap`, for [TaskRow]'s reason - a double-tap recogniser holds
+/// every single tap back until its window has passed, and the single tap is
+/// what toggles a selection.
+class _ThoughtTile extends StatefulWidget {
   const _ThoughtTile({
+    super.key,
     required this.thought,
     required this.selected,
     required this.selecting,
@@ -617,6 +638,7 @@ class _ThoughtTile extends StatelessWidget {
     required this.onMove,
     required this.onRemind,
     required this.onDiscard,
+    required this.onEdit,
   });
 
   final SideThought thought;
@@ -629,9 +651,128 @@ class _ThoughtTile extends StatelessWidget {
   final ValueChanged<RelativeRect>? onMove;
   final ValueChanged<RelativeRect>? onRemind;
   final VoidCallback onDiscard;
+  final Future<void> Function(String text)? onEdit;
+
+  @override
+  State<_ThoughtTile> createState() => _ThoughtTileState();
+}
+
+class _ThoughtTileState extends State<_ThoughtTile> {
+  Timer? _clickWindow;
+
+  /// Non-null while the words are being rewritten.
+  TextEditingController? _editing;
+  late final _editFocus = FocusNode(
+    debugLabel: 'thought edit',
+    onKeyEvent: _onEditKey,
+  );
+
+  @override
+  void dispose() {
+    _clickWindow?.cancel();
+    _editing?.dispose();
+    _editFocus.dispose();
+    super.dispose();
+  }
+
+  void _onTap() {
+    final ctrl = HardwareKeyboard.instance.isControlPressed;
+    if (widget.selecting || ctrl) {
+      widget.onToggleSelect();
+      return;
+    }
+    if (_clickWindow?.isActive ?? false) {
+      _clickWindow!.cancel();
+      _startEdit();
+      return;
+    }
+    _clickWindow = Timer(kDoubleTapTimeout, () {});
+  }
+
+  void _startEdit() {
+    if (widget.onEdit == null || _editing != null) return;
+    // Inside the tap, or an iPhone shows no keyboard for the field.
+    primeWebKeyboard();
+    final text = widget.thought.text;
+    setState(() {
+      _editing = TextEditingController(text: text)
+        ..selection = TextSelection.collapsed(offset: text.length);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _editFocus.requestFocus();
+    });
+  }
+
+  /// Keep what is typed. Clearing the words is not a way to throw a thought
+  /// away - the × is - so an empty field on a typed thought changes nothing;
+  /// a recording may lose its words, since it still says something.
+  Future<void> _commit() async {
+    final controller = _editing;
+    if (controller == null) return;
+    final text = controller.text.trim();
+    _close(controller);
+    if (text == widget.thought.text) return;
+    if (text.isEmpty && widget.thought.audio == null) return;
+    await widget.onEdit?.call(text);
+  }
+
+  void _cancel() {
+    final controller = _editing;
+    if (controller != null) _close(controller);
+  }
+
+  /// The field still holds the controller until the frame that drops it.
+  void _close(TextEditingController controller) {
+    setState(() => _editing = null);
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  }
+
+  KeyEventResult _onEditKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      _cancel();
+      return KeyEventResult.handled;
+    }
+    if ((key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter) &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      _commit();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Widget _words(SideThought thought) {
+    const style = TextStyle(fontSize: T.fsBody, color: T.text);
+    final editing = _editing;
+    if (editing == null) {
+      return thought.text.isEmpty
+          ? const SizedBox.shrink()
+          : Text(thought.text, style: style);
+    }
+    return TextField(
+      controller: editing,
+      focusNode: _editFocus,
+      style: style,
+      minLines: 1,
+      maxLines: null,
+      cursorColor: T.thoughts,
+      decoration: const InputDecoration.collapsed(hintText: 'The thought'),
+      onTapOutside: (_) => _commit(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final thought = widget.thought;
+    final selected = widget.selected;
+    final selecting = widget.selecting;
+    final onToggleSelect = widget.onToggleSelect;
+    final onPromote = widget.onPromote;
+    final onMove = widget.onMove;
+    final onRemind = widget.onRemind;
+    final onDiscard = widget.onDiscard;
     final layout = Layout.of(context);
     final size = layout.actionIcon;
     final remindAt = thought.remindAtTime;
@@ -645,12 +786,8 @@ class _ThoughtTile extends StatelessWidget {
             ? T.thoughts.withValues(alpha: 0.18)
             : Colors.transparent,
         child: InkWell(
-          onTap: () {
-            if (selecting || HardwareKeyboard.instance.isControlPressed) {
-              onToggleSelect();
-            }
-          },
-          onLongPress: onToggleSelect,
+          onTap: _editing == null ? _onTap : null,
+          onLongPress: _editing == null ? onToggleSelect : null,
           child: Padding(
             padding: const EdgeInsets.only(left: T.s2),
             child: Row(
@@ -661,16 +798,9 @@ class _ThoughtTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (thought.text.isNotEmpty)
-                          Text(
-                            thought.text,
-                            style: const TextStyle(
-                              fontSize: T.fsBody,
-                              color: T.text,
-                            ),
-                          ),
+                        _words(thought),
                         if (thought.voice != null) ...[
-                          if (thought.text.isNotEmpty)
+                          if (thought.text.isNotEmpty || _editing != null)
                             const SizedBox(height: T.s1),
                           VoiceNoteButton(
                             note: thought.voice,
@@ -726,7 +856,7 @@ class _ThoughtTile extends StatelessWidget {
                         side: layout.tapTarget,
                         color: remindAt == null ? T.muted : T.thoughts,
                         onTap: () =>
-                            onRemind!(_ThoughtsPanelState._anchor(context)),
+                            onRemind(_ThoughtsPanelState._anchor(context)),
                       ),
                     ),
                   if (onMove != null)
@@ -737,7 +867,7 @@ class _ThoughtTile extends StatelessWidget {
                         size: size,
                         side: layout.tapTarget,
                         onTap: () =>
-                            onMove!(_ThoughtsPanelState._anchor(context)),
+                            onMove(_ThoughtsPanelState._anchor(context)),
                       ),
                     ),
                   _ThoughtButton(

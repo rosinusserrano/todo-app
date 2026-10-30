@@ -29,6 +29,18 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 72. The shelf, 2026-10-30  `[x]`
+
+Two rows from "Todo Widget" (Meine Apps).
+
+- [x] **72.1** "center parked task review": the review card is centred in
+      the pane (capped at `Layout.focusTileMax`), its text, dots and
+      buttons centred like the summary it ends on.
+- [x] **72.2** "double click edits thought": a double click (or tap)
+      opens a thought's words in place; Enter keeps, Shift+Enter is a
+      line, Esc puts them back, empty words keep the old ones
+      (`AppState.editThought`).
+
 ### 71. The thought pane's keyboard on an iPhone  `[x]`
 
 "the keyboard on mobile doesnt appear automatically anymore when adding a

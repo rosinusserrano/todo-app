@@ -3122,6 +3122,7 @@ class _WidgetShellState extends State<WidgetShell>
         notice: _closeRefused ? _refusalNotice : null,
         onPromote: s.promoteThought,
         onDiscard: s.resolveThought,
+        onEdit: s.editThought,
         onMove: _moveThoughts,
         onRemind: (t, anchor) => showReminderMenu(
           context: context,

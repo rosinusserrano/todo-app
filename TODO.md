@@ -29,6 +29,23 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 73. API tokens: thoughts, todos and notifications from scripts  `[~]`
+
+Asked 2026-10-30. Design: `ROADMAP.md`, *0.29.0 — API tokens*. Public
+description: `API.md`.
+
+- [x] **73.1** Server: `INBOX_SCOPE`, `/api/thought` and `/api/todo`
+      (`inbox.js`, `writeRow`), `/api/notification` alias, `/api/tokens`
+      (list / mint / revoke your own narrowed tokens). Tests
+      (`inbox.test.js`) and a scratch-server run of every route.
+- [x] **73.2** App: Settings → API tokens (`ui/api_tokens_view.dart`),
+      dialogs shared with the users panel (`ui/token_dialogs.dart`),
+      *Copy .env lines*.
+- [x] **73.3** `API.md`, DEPLOY.md, FEATURES.md, CLAUDE.md.
+- [ ] **73.4** Marco: deploy the server (`sudo server/update-server.sh`),
+      then the web app; make a token in Settings → API tokens and try
+      `curl` from another machine.
+
 ### 72. The shelf, 2026-10-30  `[x]`
 
 Two rows from "Todo Widget" (Meine Apps).

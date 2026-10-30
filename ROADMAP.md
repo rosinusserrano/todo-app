@@ -761,6 +761,20 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### 0.29.0 — API tokens: the account takes things in from scripts
+
+Asked 2026-10-30: scripts on other servers should be able to push a
+notification, a thought or a todo, with a token made in the app and kept in
+the project's `.env`. Built on what `/api/notify` already was: a third token
+kind, `inbox`, that can add and never read, so a script's credential leaking
+costs some unwanted entries and nothing else. The server writes the rows
+itself (`server/inbox.js`) through the ordinary merge, so devices pull them
+like anything else and the sync model does not grow a second way in. Names
+are resolved the way a person says them (workspace or `#shortcut`, shelf
+title, any case), and a miss answers with what exists, so an agent can fix
+its request from the error. `API.md` is public on purpose: it is what another
+project's agent is told to read.
+
 ### 0.28.0 — todos that arrive on their own, and a shelf you have to read
 
 The six-item batch above, all of it landed. What is worth keeping out of it:

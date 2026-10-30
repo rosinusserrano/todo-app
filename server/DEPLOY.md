@@ -347,6 +347,11 @@ An optional `tag` makes a later notification with the same tag replace the
 earlier one. It answers `{"sent": n, "subscriptions": m}`; `sent: 0` means no
 device has notifications on. Revoke the token like any other.
 
+An **API token** made in the app (Settings → API tokens) works here too, and
+also adds thoughts and todos - see `API.md` at the repo root, which is the
+full description of the requests. Prefer it for scripts; the notify-only
+token is for things like Beszel that should never be able to write a row.
+
 For Beszel (Settings → Notifications → Webhook / Push URL):
 
 ```

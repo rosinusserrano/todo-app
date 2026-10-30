@@ -92,7 +92,7 @@ void main() {
     expect(token.describe(), 'never used');
   });
 
-  test('a 403 says the account is not an admin, not "request failed"', () async {
+  test('a 403 says the account is not an admin, in the server\'s words', () async {
     final client = clientThat((_) async => http.Response(
           jsonEncode({'error': 'This account is not an admin of this server'}),
           403,
@@ -103,7 +103,7 @@ void main() {
       throwsA(isA<AdminException>().having(
         (e) => e.message,
         'message',
-        contains('cannot manage users'),
+        contains('not an admin'),
       )),
     );
   });

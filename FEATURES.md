@@ -1501,6 +1501,17 @@ simply stretched.
   nothing else: it is refused by every other route, so leaking it costs at most
   some unwanted notifications. Listed as *notify only*; revoked like any other.
   How to call it: `server/DEPLOY.md`, *Notifications from other things*.
+- **API tokens: thoughts, todos and notifications from scripts** — Settings →
+  *API tokens* makes a token for a script on another machine (any account,
+  not just an admin). With it, `POST /api/thought` adds a side thought,
+  `POST /api/todo` adds a task (to a workspace named or found by `#shortcut`,
+  optionally onto a shelf, with notes, a reminder or the flag), and
+  `POST /api/notify` (also `/api/notification`) sends a push; a thought or todo
+  can ask for a push too (`"notify": true`). The token can only add - every
+  other route refuses it, and it cannot mint more of itself. The new token's
+  dialog copies `TODO_URL` and `TODO_TOKEN` as two `.env` lines. The requests
+  are described for people and agents in **`API.md`** at the repo root
+  (public, so another project's agent can be pointed at it).
 
 ## Platforms
 
@@ -1621,6 +1632,10 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **API tokens** (server and app): Settings → API tokens makes an *inbox*
+    token, which can `POST /api/thought`, `/api/todo` and `/api/notify` and
+    nothing else. `API.md` describes the requests. The users panel's token
+    dialogs moved to `ui/token_dialogs.dart` to be shared.
   - **From the shelf, 2026-10-30**: a **double click rewrites a thought** in
     place (hand-rolled, like the task row's, so a single click that toggles a
     selection is not held back), and **a shelf's review is centred** in the

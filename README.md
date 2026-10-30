@@ -144,6 +144,12 @@ tokens table at startup as the token of the user `local`, which is the id every
 row written before multi-user already carries. So there is exactly one way to
 authenticate, and a revoked token is genuinely revoked.
 
+### From scripts: notifications, thoughts and todos
+
+Settings → *API tokens* in the app makes a token a script on another machine
+can use to send you a push notification, add a thought or add a todo - and
+nothing else. The requests are described in [`API.md`](API.md).
+
 ---
 
 ## Connecting the app to your server

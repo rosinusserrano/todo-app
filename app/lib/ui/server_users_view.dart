@@ -12,16 +12,17 @@
 // and genuinely modal, and one of them must be hard to dismiss by accident.
 //
 // The one thing the UI has to get right is that **a token is shown once**. The
-// server stores only a hash, so `_showToken` is the single moment that string
-// exists anywhere - it gets its own dialog, a copy button, and says so plainly.
-// Everything else on this screen is recoverable; that is not.
+// server stores only a hash, so `showIssuedToken` (token_dialogs.dart) is the
+// single moment that string exists anywhere - it gets its own dialog, a copy
+// button, and says so plainly. Everything else on this screen is recoverable;
+// that is not.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../sync/admin_client.dart';
 import '../sync/sync_service.dart';
 import '../theme.dart';
+import 'token_dialogs.dart';
 
 class ServerUsersView extends StatefulWidget {
   const ServerUsersView({super.key, required this.sync, required this.onBack});
@@ -90,7 +91,8 @@ class _ServerUsersViewState extends State<ServerUsersView> {
   }
 
   Future<void> _addUser() async {
-    final name = await _promptName(
+    final name = await promptTokenName(
+      context,
       title: 'New account',
       hint: 'Their name',
       help: 'They get their own tasks, notes and calendar on this server. '
@@ -100,12 +102,18 @@ class _ServerUsersViewState extends State<ServerUsersView> {
 
     final issued = await _run((c) => c.addUser(name));
     if (issued != null && mounted) {
-      await _showToken(issued, 'Give this to $name');
+      await showIssuedToken(
+        context,
+        token: issued.token,
+        subtitle: 'Give this to $name',
+        footer: 'They enter it in Settings, with the same server address.',
+      );
     }
   }
 
   Future<void> _addToken(ServerUser user) async {
-    final name = await _promptName(
+    final name = await promptTokenName(
+      context,
       title: 'Another token for ${user.label}',
       hint: 'Which device?',
       help: 'One token per device means losing a phone costs that phone only. '
@@ -116,12 +124,18 @@ class _ServerUsersViewState extends State<ServerUsersView> {
 
     final issued = await _run((c) => c.addToken(user, name));
     if (issued != null && mounted) {
-      await _showToken(issued, 'For ${user.label}');
+      await showIssuedToken(
+        context,
+        token: issued.token,
+        subtitle: 'For ${user.label}',
+        footer: 'They enter it in Settings, with the same server address.',
+      );
     }
   }
 
   Future<void> _revoke(ServerUser user, ServerToken token) async {
-    final ok = await _confirm(
+    final ok = await confirmDanger(
+      context,
       title: 'Revoke "${token.label}"?',
       body: 'That device stops syncing on its next attempt. It keeps the copy '
           'it already has. ${user.label} can be given a new token at any time.',
@@ -131,7 +145,8 @@ class _ServerUsersViewState extends State<ServerUsersView> {
   }
 
   Future<void> _deleteUser(ServerUser user) async {
-    final ok = await _confirm(
+    final ok = await confirmDanger(
+      context,
       title: 'Delete ${user.label}?',
       body: 'Removes the account and everything in it from this server: tasks, '
           'notes, journal and calendar. Their devices keep their local copies, '
@@ -139,151 +154,6 @@ class _ServerUsersViewState extends State<ServerUsersView> {
       danger: 'Delete',
     );
     if (ok) await _run((c) => c.deleteUser(user));
-  }
-
-  // --------------------------------------------------------------- sub-dialogs
-
-  Future<String?> _promptName({
-    required String title,
-    required String hint,
-    required String help,
-    String initial = '',
-  }) async {
-    final controller = TextEditingController(text: initial);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: T.bgSolid,
-        title: Text(title, style: const TextStyle(fontSize: T.fsBody)),
-        content: SizedBox(
-          width: 300,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(help,
-                  style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                maxLength: 60,
-                style: const TextStyle(fontSize: T.fsBody),
-                decoration: InputDecoration(
-                  hintText: hint,
-                  isDense: true,
-                  counterText: '',
-                ),
-                onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return (name == null || name.isEmpty) ? null : name;
-  }
-
-  /// The one and only appearance of a token. Deliberately hard to dismiss by
-  /// accident - no barrier dismiss - because closing it loses the string.
-  Future<void> _showToken(IssuedToken issued, String subtitle) {
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: T.bgSolid,
-        title: const Text('Token', style: TextStyle(fontSize: T.fsBody)),
-        content: SizedBox(
-          width: 300,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(subtitle, style: const TextStyle(fontSize: T.fsMeta, color: T.muted)),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(T.s2),
-                decoration: BoxDecoration(
-                  color: T.surface,
-                  borderRadius: BorderRadius.circular(T.radius),
-                ),
-                child: SelectableText(
-                  issued.token,
-                  style: const TextStyle(
-                    fontSize: T.fsLabel,
-                    height: 1.35,
-                    fontFamily: 'Consolas',
-                    fontFamilyFallback: ['Menlo', 'monospace'],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'The server keeps only a hash of this, so it cannot be shown '
-                'again. If it is lost, issue another and revoke this one.',
-                style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'They enter it in Settings, with the same server address.',
-                style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: issued.token));
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Copy & close'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<bool> _confirm({
-    required String title,
-    required String body,
-    required String danger,
-  }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: T.bgSolid,
-        title: Text(title, style: const TextStyle(fontSize: T.fsBody)),
-        content: SizedBox(
-          width: 300,
-          child: Text(body,
-              style: const TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4)),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: T.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(danger),
-          ),
-        ],
-      ),
-    );
-    return ok ?? false;
   }
 
   // --------------------------------------------------------------------- build

@@ -733,6 +733,19 @@ function enforceSingleInProgress(db, userId) {
 }
 
 /**
+ * One row written by the server itself rather than pushed by a device - what
+ * arrives from outside through the inbox routes (inbox.js). It goes through
+ * the same merge as a push, so it gets a seq and devices pull it like any
+ * other row. Returns the user's cursor, for the hint that wakes them.
+ */
+export function writeRow(db, userId, table, row) {
+  return db.transaction(() => {
+    mergeRow(db, table, userId, row);
+    return userCursor(db, userId);
+  })();
+}
+
+/**
  * The whole sync operation, in one transaction.
  *
  * Push and pull must share a transaction. If the pull read happened after the

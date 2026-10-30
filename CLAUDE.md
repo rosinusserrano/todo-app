@@ -1926,6 +1926,16 @@ publishes it. Three rules keep it compiling and starting:
   a **notify-only token** (`tokens.scope = 'notify'`): `identify()` refuses a
   scoped token unless the route passed that scope to `middleware()`, so a new
   route is closed to it by default - keep it that way.
+  **Inbox tokens** (`INBOX_SCOPE`, made in Settings → *API tokens* through
+  `/api/tokens`, any account's own) take `/api/notify` and
+  `POST /api/thought` / `/api/todo` (`server/inbox.js`), which are the only
+  rows the **server writes itself**: built whole with every column a client
+  writes (a device inserts a pulled row verbatim, so a missing NOT NULL fails
+  on the phone), merged through `writeRow` so they get a seq, then
+  `publish`ed to every device. Their stamps are `stampOf` (local + offset,
+  as the app's), not `toISOString()`, because the pile orders on
+  `created_at` as text. **`API.md` at the repo root is the public contract**
+  - change a field or an answer and change it there.
 - **A field that opens on a tap needs `primeWebKeyboard()` inside the tap**
   (`web_keyboard.dart`, `todoPrimeKeyboard` in `index.html`). iOS shows the
   keyboard only for a focus moved during a touch's own event handler, and a

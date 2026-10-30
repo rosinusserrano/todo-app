@@ -29,6 +29,7 @@ import 'archived_projects.dart' show ArchivedProjectsViewState;
 import 'push_settings.dart';
 import 'sso_sign_in.dart';
 import 'server_users_view.dart';
+import 'api_tokens_view.dart';
 import 'dock.dart' show DockEdge;
 import 'title_bar.dart';
 
@@ -115,6 +116,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
   /// as a dialog on top of it — a second modal route would put the barrier back
   /// over the title bar, and a 340px window has no room to stack panels anyway.
   bool _showUsers = false;
+
+  /// This account's API tokens, shown in place the same way.
+  bool _showApiTokens = false;
 
   /// The archived projects, shown in place the same way.
   bool _showArchive = false;
@@ -241,6 +245,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
                       sync: widget.sync,
                       onBack: () => setState(() => _showUsers = false),
                     )
+                  : _showApiTokens
+                  ? ApiTokensView(
+                      sync: widget.sync,
+                      onBack: () => setState(() => _showApiTokens = false),
+                    )
                   : _showArchive && widget.archive != null
                   ? widget.archive!(_archiveKey)
                   : _settingsBody(),
@@ -256,7 +265,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, 2),
       child: Row(
         children: [
-          if (_showUsers || _showArchive)
+          if (_showUsers || _showApiTokens || _showArchive)
             InkWell(
               // The archive has a rung of its own (one project) to walk
               // back down before the sheet leaves it.
@@ -265,6 +274,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 if (_showArchive && archive != null && archive.back()) return;
                 setState(() {
                   _showUsers = false;
+                  _showApiTokens = false;
                   _showArchive = false;
                 });
               },
@@ -277,6 +287,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Text(
             _showUsers
                 ? 'People on this server'
+                : _showApiTokens
+                ? 'API tokens'
                 : _showArchive
                 ? 'Archived projects'
                 : 'Settings',
@@ -784,6 +796,30 @@ class _SettingsSheetState extends State<SettingsSheet> {
           'Syncs automatically every minute and shortly after each change.',
           style: TextStyle(fontSize: T.fsMeta, color: T.muted),
         ),
+
+        // Any account, once a sync has answered who it is: before that there is
+        // no server known to take the request.
+        if (sync.identity != null) ...[
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0x14FFFFFF)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('API tokens', style: TextStyle(fontSize: T.fsLabel)),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _showApiTokens = true),
+                child: const Text('Manage'),
+              ),
+            ],
+          ),
+          const Text(
+            'Let scripts on other machines send you notifications, thoughts '
+            'and todos.',
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
+          ),
+        ],
 
         // Only for the account the server calls an admin, and only once a sync
         // has actually answered - a button that opens onto a 403 is worse than

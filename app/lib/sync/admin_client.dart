@@ -6,10 +6,11 @@
 // sentence on screen. Hence the different error style - `AdminException` rather
 // than a SyncFailed value - and hence the separate file.
 //
-// Nothing here is reachable without an admin account: the server answers 403,
-// and the app does not show the panel at all unless /api/me said admin. Both
-// checks exist on purpose; the client one is only to avoid showing a door that
-// will not open.
+// The user routes are not reachable without an admin account: the server
+// answers 403, and the app does not show the panel at all unless /api/me said
+// admin. Both checks exist on purpose; the client one is only to avoid showing
+// a door that will not open. The API-token calls at the end are every
+// account's own.
 
 import 'dart:convert';
 
@@ -31,6 +32,7 @@ class ServerToken {
     required this.label,
     required this.lastSeenAt,
     required this.revoked,
+    this.scope,
   });
 
   final String id;
@@ -38,11 +40,16 @@ class ServerToken {
   final DateTime? lastSeenAt;
   final bool revoked;
 
+  /// Null for a device token; `inbox` for an API token, `notify` for a
+  /// notify-only one (server/users.js).
+  final String? scope;
+
   static ServerToken fromJson(Map<String, dynamic> j) => ServerToken(
         id: j['id'] as String,
         label: (j['label'] as String?) ?? 'device',
         lastSeenAt: DateTime.tryParse((j['last_seen_at'] as String?) ?? '')?.toLocal(),
         revoked: j['revoked'] == true,
+        scope: j['scope'] as String?,
       );
 
   String describe() {
@@ -135,13 +142,16 @@ class AdminClient {
 
     // The server's own wording is better than anything inventable here - it is
     // the side that knows *why* ("that is the token you are using right now").
-    final message = switch (res.statusCode) {
-      401 => 'Token rejected. Check the token in Settings.',
-      403 => 'This account cannot manage users on this server.',
-      404 => 'That account no longer exists on the server.',
-      // An older server has no admin routes at all, and Express answers HTML.
-      _ => _errorOf(res.body) ?? 'The server answered ${res.statusCode}.',
-    };
+    // A 401 is the exception: "Invalid token" says less than where to fix it.
+    final message = res.statusCode == 401
+        ? 'Token rejected. Check the token in Settings.'
+        : _errorOf(res.body) ??
+            switch (res.statusCode) {
+              403 => 'This account cannot do that on this server.',
+              // An older server lacks the route, and Express answers HTML.
+              404 => 'The server does not have this yet. Update it.',
+              _ => 'The server answered ${res.statusCode}.',
+            };
     throw AdminException(message);
   }
 
@@ -178,6 +188,31 @@ class AdminClient {
 
   Future<void> deleteUser(ServerUser user) =>
       _send('DELETE', '/api/admin/users/${Uri.encodeComponent(user.id)}');
+
+  // ------------------------------------------------------------ API tokens
+  //
+  // Not admin routes: any account manages its own (server/index.js, *your
+  // tokens*). Here because they are the same kind of call - one-shot, a
+  // person waiting on the answer - on the same connection.
+
+  /// This account's narrowed tokens, revoked ones left out.
+  Future<List<ServerToken>> apiTokens() async {
+    final body = await _send('GET', '/api/tokens');
+    return ((body['tokens'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(ServerToken.fromJson)
+        .toList();
+  }
+
+  Future<String> addApiToken(String label) async {
+    final body = await _send('POST', '/api/tokens', body: {'label': label});
+    final token = body['token'];
+    if (token is! String) throw AdminException('The server did not return a token.');
+    return token;
+  }
+
+  Future<void> revokeApiToken(ServerToken token) =>
+      _send('POST', '/api/tokens/${Uri.encodeComponent(token.id)}/revoke');
 
   void dispose() => _http.close();
 

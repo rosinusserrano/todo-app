@@ -36,6 +36,15 @@ const BOOTSTRAP_LABEL = 'bootstrap secret';
 /// A token with no scope is a full device token, as every token was before.
 export const NOTIFY_SCOPE = 'notify';
 
+/// What a token made in the app's *API tokens* is: it can put things into
+/// its owner's account from outside - a notification, a thought, a todo
+/// (POST /api/notify, /api/thought, /api/todo; see API.md) - and read
+/// nothing. A script's .env holding one can fill the pile but cannot see
+/// what is in it.
+export const INBOX_SCOPE = 'inbox';
+
+const SCOPES = [NOTIFY_SCOPE, INBOX_SCOPE];
+
 export function initUsers(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -257,7 +266,7 @@ export function deleteUserIdentity(db, userId) {
  */
 export function issueToken(db, userId, label = 'device', { scope = null } = {}) {
   if (!getUser(db, userId)) throw new Error(`no such user: ${userId}`);
-  if (scope !== null && scope !== NOTIFY_SCOPE) throw new Error(`unknown scope: ${scope}`);
+  if (scope !== null && !SCOPES.includes(scope)) throw new Error(`unknown scope: ${scope}`);
 
   const token = randomBytes(24).toString('base64url');
   const id = randomBytes(4).toString('hex');

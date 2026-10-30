@@ -91,7 +91,7 @@ function identifyToken(presented, { db }, scope) {
   if (!found) throw new AuthError('Invalid token');
   // A full token is good everywhere, including a route that also takes a
   // narrowed one. A narrowed token is good only where its scope was asked for.
-  if (found.scope && found.scope !== scope) {
+  if (found.scope && ![scope].flat().includes(found.scope)) {
     throw new AuthError(`This token can only be used for "${found.scope}"`, 403);
   }
   return found.userId;
@@ -122,8 +122,9 @@ async function identifyOidc(presented, { db, oidc }) {
 }
 
 /**
- * @param {{scope?: string}} [options] a narrowed token kind this route also
- *   accepts (users.js NOTIFY_SCOPE); full tokens are always accepted.
+ * @param {{scope?: string|string[]}} [options] the narrowed token kind(s)
+ *   this route also accepts (users.js NOTIFY_SCOPE, INBOX_SCOPE); full tokens
+ *   are always accepted.
  */
 export function middleware(config, { scope = null } = {}) {
   return (req, res, next) => {

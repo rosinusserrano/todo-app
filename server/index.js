@@ -44,9 +44,11 @@ import {
   issueToken,
   listTokens,
   listUsers,
+  INBOX_SCOPE,
   NOTIFY_SCOPE,
   revokeToken,
 } from './users.js';
+import { InboxError, addThought, addTodo } from './inbox.js';
 
 const SECRET = loadSecret();
 const db = openDb(DB_PATH);
@@ -375,24 +377,109 @@ app.post('/api/push/test', middleware(auth), async (req, res, next) => {
 
 // Sends the caller a notification on every device that turned them on - for
 // things outside the app with news, like the server's monitoring. Takes a
-// notify-only token (`npm run token -- notify <user>`) as well as a full one,
-// so whatever is configured with it can do this and nothing else.
+// notify-only token (`npm run token -- notify <user>`) or an inbox token (the
+// app's *API tokens*) as well as a full one, so whatever is configured with it
+// can do this and not read a row. `/api/notification` is the same route under
+// the name API.md's readers are likeliest to guess.
 //
 //   POST /api/notify   {"title": "...", "body": "...", "tag": "optional"}
 //
 // 200 even when no device is subscribed: the request was fine, and `sent: 0`
 // says the rest. A 4xx would have a sender retrying something that cannot
 // succeed until a person turns notifications on.
-app.post('/api/notify', middleware(auth, { scope: NOTIFY_SCOPE }), async (req, res, next) => {
-  const payload = readNotification(req.body);
-  if (!payload) {
-    return res.status(400).json({ error: 'Send JSON with a "title" and/or "body" string' });
+app.post(
+  ['/api/notify', '/api/notification'],
+  middleware(auth, { scope: [NOTIFY_SCOPE, INBOX_SCOPE] }),
+  async (req, res, next) => {
+    const payload = readNotification(req.body);
+    if (!payload) {
+      return res.status(400).json({ error: 'Send JSON with a "title" and/or "body" string' });
+    }
+    try {
+      res.json(await notifyUser(db, vapidKeys(db), req.userId, payload));
+    } catch (err) {
+      next(err);
+    }
   }
-  try {
-    res.json(await notifyUser(db, vapidKeys(db), req.userId, payload));
-  } catch (err) {
-    next(err);
+);
+
+// ---------------------------------------------------------------------- inbox
+//
+// A thought or a todo from a script, with an inbox token. inbox.js writes the
+// row; this wakes the devices (no origin device: none of them wrote it) and,
+// when asked, sends the notification too. API.md is the public description.
+
+function inboxRoute(write) {
+  return async (req, res, next) => {
+    let written;
+    try {
+      written = write(db, req.userId, req.body);
+    } catch (err) {
+      if (err instanceof InboxError) {
+        return res.status(400).json({ error: err.message, ...err.extra });
+      }
+      return next(err);
+    }
+    publish(req.userId, written.cursor, null);
+
+    const payload = written.notification && readNotification(written.notification);
+    let notified;
+    if (payload) {
+      try {
+        notified = await notifyUser(db, vapidKeys(db), req.userId, payload);
+      } catch (err) {
+        // The row is written; a push service having a bad minute is not a
+        // reason to tell the script it failed and have it send a duplicate.
+        console.error('[inbox] notify failed:', err);
+        notified = { sent: 0, error: 'push failed' };
+      }
+    }
+    res.json({ ok: true, ...written.result, ...(notified ? { notified } : {}) });
+  };
+}
+
+const inbox = middleware(auth, { scope: INBOX_SCOPE });
+app.post('/api/thought', inbox, inboxRoute(addThought));
+app.post('/api/todo', inbox, inboxRoute(addTodo));
+
+// ------------------------------------------------------------- your tokens
+//
+// The app's *API tokens*: inbox tokens an ordinary account makes for itself,
+// and the narrowed tokens it already has (a notify one from the CLI). Full
+// tokens only - an inbox token cannot mint more of itself - and only
+// narrowed ones are listed or revoked here: device tokens are the admin
+// panel's, and revoking the one this request came in on is a lock-out.
+
+const narrowed = (t) => t.scope != null;
+
+app.get('/api/tokens', middleware(auth), (req, res) => {
+  res.json({
+    tokens: listTokens(db, req.userId)
+      .filter((t) => narrowed(t) && !t.revoked_at)
+      .map((t) => ({
+        id: t.id,
+        label: t.label,
+        scope: t.scope,
+        created_at: t.created_at,
+        last_seen_at: t.last_seen_at,
+      })),
+  });
+});
+
+app.post('/api/tokens', middleware(auth), (req, res) => {
+  const label = readLabel(req.body?.label, 'script');
+  if (!label) return res.status(400).json({ error: 'Invalid token name (60 chars max)' });
+  const { token, id } = issueToken(db, req.userId, label, { scope: INBOX_SCOPE });
+  res.json({ token, token_id: id, scope: INBOX_SCOPE });
+});
+
+app.post('/api/tokens/:id/revoke', middleware(auth), (req, res) => {
+  const token = listTokens(db, req.userId).find((t) => t.id === req.params.id);
+  if (!token || !narrowed(token) || token.revoked_at) {
+    return res.status(404).json({ error: 'No such token' });
   }
+  revokeToken(db, token.id);
+  res.json({ ok: true });
 });
 
 // ------------------------------------------------------------------ admin api

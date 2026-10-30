@@ -39,8 +39,10 @@ class ReleaseNote {
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
     id: '2026-10-30',
-    title: 'Two more from your shelf',
+    title: 'Two more from your shelf, and API tokens',
     points: [
+      'Settings → API tokens: let a script on another machine send you '
+          'notifications, thoughts and todos. How: API.md in the repo.',
       'Double-click a thought to rewrite it. Enter keeps it, Esc puts it back.',
       'Reviewing a shelf shows each task in the middle of the pane.',
     ],

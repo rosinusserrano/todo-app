@@ -705,6 +705,7 @@ class AppState extends ChangeNotifier {
     }
     projectOpenCounts =
         projects.isEmpty ? const {} : await _store.projectOpenCounts();
+    if (showHome) openCounts = await _store.openCounts();
     // The journal is loaded separately (see refreshJournal), only while its view
     // is open, so it is not swept up in every task edit. refreshJournal itself
     // handles the locked case by clearing the list.
@@ -1172,6 +1173,43 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ----------------------------------------------------------------- home
+
+  /// The home screen: every workspace as a square of its colour. Shown at
+  /// launch when there is no checklist to open, so the app does not open on
+  /// the list of a workspace you are not working in (Marco, 2026-11-09). It
+  /// is not a destination of its own - picking a workspace, a view, the
+  /// calendar or the checklist is how it is left, and [_closeOtherViews]
+  /// clears it so that every one of those does without having to remember.
+  bool showHome = false;
+
+  /// Open tasks per list, workspaces and projects, while home is shown.
+  Map<String, int> openCounts = {};
+
+  /// Opens home. The flag is set before anything is awaited, so whatever
+  /// lands somewhere else in the meantime - a tapped reminder, a quick
+  /// action - clears it rather than being covered by it.
+  Future<void> openHome() async {
+    if (workspaces.isEmpty) return;
+    _closeOtherViews();
+    showHome = true;
+    if (showCalendar) await commitPendingBlocks();
+    showCalendar = false;
+    notifyListeners();
+    await loadOpenCounts();
+  }
+
+  Future<void> loadOpenCounts() async {
+    openCounts = await _store.openCounts();
+    notifyListeners();
+  }
+
+  void leaveHome() {
+    if (!showHome) return;
+    showHome = false;
+    notifyListeners();
+  }
+
   void _closeOtherViews({
     bool keepHistory = false,
     bool keepThoughts = false,
@@ -1189,6 +1227,8 @@ class AppState extends ChangeNotifier {
     // The shopping list is not a per-workspace view, but it owns the same
     // content area, so anything opening there closes it.
     showList = false;
+    // Home likewise: whatever opens is where you are now.
+    showHome = false;
   }
 
   // ----------------------------------------------------------- attachments
@@ -3137,6 +3177,42 @@ class AppState extends ChangeNotifier {
     await _listChanged();
   }
 
+  /// Copy [tasks]' titles onto the open checklist, at its end, in the order
+  /// given. The tasks stay where they are: the checklist is what to get, the
+  /// list is what to do. A title already on the checklist and not yet ticked
+  /// is not added twice. Does nothing with no open checklist - the action is
+  /// only offered while one is (Marco, 2026-11-09).
+  ///
+  /// Returns how many were added.
+  Future<int> copyTasksToList(List<Task> tasks) async {
+    final list = currentList;
+    if (list == null) return 0;
+    final have = {
+      for (final i in listItems)
+        if (!i.isSection && i.checkedAt == null) i.text.trim().toLowerCase(),
+    };
+    var next = listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m);
+    var added = 0;
+    for (final t in tasks) {
+      final text = t.text.trim();
+      if (text.isEmpty || !have.add(text.toLowerCase())) continue;
+      final stamp = nowStamp();
+      await _store.putListItem(
+        ListItem(
+          uuid: newId(),
+          listUuid: list.uuid,
+          text: text,
+          sortOrder: ++next,
+          createdAt: stamp,
+          updatedAt: stamp,
+        ),
+      );
+      added++;
+    }
+    if (added > 0) await _listChanged();
+    return added;
+  }
+
   /// Where an item added to [sectionUuid] goes: just before the next
   /// heading. -1 for the end of the list (the section is the last one, or
   /// gone).
@@ -3365,6 +3441,23 @@ class AppState extends ChangeNotifier {
 
     await _collectionsChanged();
     return saved;
+  }
+
+  /// Moves [c] to another workspace or project - its fields and entries with
+  /// it, since they hang off the collection and not off the workspace. One
+  /// row is written, and it lands at the end of the target's collections.
+  Future<void> moveCollection(Collection c, String workspaceUuid) async {
+    if (c.workspaceUuid == workspaceUuid) return;
+    final there = await _store.collections(workspaceUuid);
+    final end = there.fold<int>(-1, (m, x) => x.sortOrder > m ? x.sortOrder : m);
+    await _store.putCollection(
+      c.copyWith(
+        workspaceUuid: workspaceUuid,
+        sortOrder: end + 1,
+        updatedAt: nowStamp(),
+      ),
+    );
+    await _collectionsChanged();
   }
 
   /// A collection, its fields and its entries, tombstoned so the removal

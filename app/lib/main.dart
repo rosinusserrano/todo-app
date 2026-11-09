@@ -58,6 +58,7 @@ import 'ui/collections.dart';
 import 'ui/content_slot.dart';
 import 'ui/dock.dart';
 import 'ui/footer.dart';
+import 'ui/home_view.dart';
 import 'ui/journal_panel.dart';
 import 'ui/list_rule.dart';
 import 'ui/panel_header.dart';
@@ -616,6 +617,17 @@ class _WidgetShellState extends State<WidgetShell>
       final g = await s.store.groupByUuid(uuid);
       if (g != null) await _onReviewDue(g.workspaceUuid);
     };
+    // Launching opens on the checklist when one is active (below), and
+    // otherwise on home, the workspaces as squares - not on the list of
+    // whichever workspace happened to be open last (Marco, 2026-11-09). Set
+    // here, before anything below can land somewhere: a tapped reminder or a
+    // quick action that does goes through selectWorkspace / _dockClear,
+    // which clear it. Set as a field: notifying from initState would be a
+    // setState before the first build.
+    if (s.currentList == null && s.focusTask == null && s.workspaces.isNotEmpty) {
+      s.showHome = true;
+      s.loadOpenCounts();
+    }
     // A click on a toast that started the app, now there is somewhere for it
     // to land.
     widget.notifications.deliverLaunch();
@@ -1110,6 +1122,7 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _landOnReminder(Task first) async {
     await _surfaceWindow();
     if (!mounted) return;
+    s.leaveHome();
 
     // A reminder can belong to a workspace that is not on screen. Showing the
     // window without switching would surface a list the task is not even in.
@@ -1577,7 +1590,8 @@ class _WidgetShellState extends State<WidgetShell>
   /// pile belonged to that workspace. Including in the split, where the tint is
   /// no more needed than it is beside the calendar - the pill on the workspace
   /// bar is still saying which list is on the left.
-  bool get _neutralChrome => s.showCalendar || s.showThoughts || s.showList;
+  bool get _neutralChrome =>
+      s.showCalendar || s.showThoughts || s.showList || s.showHome;
 
   /// The window's background. Translucent for the desktop's frosted window;
   /// in a browser it is laid **opaque** on [T.webBackdrop], so the page's own
@@ -2402,6 +2416,20 @@ class _WidgetShellState extends State<WidgetShell>
       return _calendar();
     }
 
+    // Home, at launch: every workspace, no one workspace's tasks.
+    if (s.showHome && s.workspaces.isNotEmpty) {
+      return HomeView(
+        workspaces: s.workspaces,
+        projectsOf: s.projectsOf,
+        openCounts: s.openCounts,
+        onOpen: _dockToWorkspace,
+        onOpenProject: (p) async {
+          await _dockClear();
+          if (mounted) await _openProject(p);
+        },
+      );
+    }
+
     // The dock and the swipe are the same navigation, offered twice: the
     // dock says which views exist, the swipe is the cheap way between them.
     // Both walk kViewOrder, so they cannot disagree about what is next to
@@ -2555,7 +2583,10 @@ class _WidgetShellState extends State<WidgetShell>
   Widget _dock(Color ws, DockEdge edge) {
     final view = _openView;
     final global =
-        s.showCalendar || s.showList || view == WorkspaceView.thoughts;
+        s.showCalendar ||
+        s.showList ||
+        s.showHome ||
+        view == WorkspaceView.thoughts;
     const views = {
       null: (Icons.check_circle_outline_rounded, 'Tasks'),
       WorkspaceView.notes: (Icons.notes_rounded, 'Notes'),
@@ -2611,7 +2642,7 @@ class _WidgetShellState extends State<WidgetShell>
           label: current?.name ?? 'Workspace',
           fill: ws,
           ink: T.inkOn(ws),
-          dimmed: s.showCalendar || s.showList,
+          dimmed: s.showCalendar || s.showList || s.showHome,
           semanticLabel: 'Workspace: ${current?.name ?? ''}',
           // A tap or a click on the workspace itself goes to its task list:
           // "this one's tasks" is the commonest thing to want of it. It used
@@ -2766,6 +2797,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (!keepCalendar && s.showCalendar) await _toggleCalendar();
     if (!keepList && s.showList) await s.setListOpen(false);
     if (_expandedTaskUuid != null) _collapseTask();
+    s.leaveHome();
   }
 
   Future<void> _dockToView(WorkspaceView? view) async {
@@ -3084,6 +3116,12 @@ class _WidgetShellState extends State<WidgetShell>
                 onMove: (anchor) => _moveTasks(_selectedTasks, anchor),
                 onDelete: () => _finishSelected(complete: false),
                 onClear: _clearSelection,
+                onCopyToList: s.currentList == null
+                    ? null
+                    : () async {
+                        await s.copyTasksToList(_selectedTasks);
+                        _clearSelection();
+                      },
               )
             else
               _addPrompt(ws),
@@ -3166,6 +3204,9 @@ class _WidgetShellState extends State<WidgetShell>
         onDeleteEntry: s.deleteEntry,
         onSetChecked: s.setEntryChecked,
         onBack: _toggleCollections,
+        moveTargets: s.moveTargets,
+        currentWorkspaceUuid: s.currentWorkspaceUuid,
+        onMoveCollection: s.moveCollection,
       );
     }
     if (s.showSession) {
@@ -3668,6 +3709,10 @@ class _WidgetShellState extends State<WidgetShell>
             onMakeProject: s.currentProject != null
                 ? null
                 : () => s.taskToProject(t),
+            // Only while a checklist is open (Marco, 2026-11-09).
+            onCopyToList: s.currentList == null
+                ? null
+                : () => s.copyTasksToList([t]),
             // Only ever offered on a task that *is* planned, where the row also
             // draws the mark saying so - the list is otherwise unchanged by
             // planning.

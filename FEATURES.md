@@ -908,7 +908,7 @@ title bar, beside the calendar. It belongs to no workspace and takes the whole
 window while it is open.
 
 - **The app opens on it.** While there is a list, launching the app opens on
-  it, and so does every return to it: unlocking the phone, coming back from
+  it (with none, launching opens on **home**, see *Getting around*), and so does every return to it: unlocking the phone, coming back from
   another app or browser tab. Moving around *inside* the app does not: go to
   Tasks and come back when you like. On the desktop widget, which is always
   open, it is launching and bringing the window back from the tray or from
@@ -936,6 +936,11 @@ window while it is open.
   and come back to their own section when unticked. Needs the server on
   sync protocol 9; until then headings stay on the device they were made
   on, and an older app never receives them.
+- **Copy tasks onto it.** While a list is open, a task's actions have
+  **Copy to the checklist**, and so does the bar over a selection of tasks.
+  The titles go at the end of the list; the tasks stay where they were. A
+  title already on the list and not yet ticked is not added twice. With no
+  list open the button is not there.
 - **Finished** archives the list as it is, and the next list starts empty. It
   is the green button once everything is ticked, and quieter before. Finished
   lists are under a small *Archived lists →* at the top: read-only, deletable.
@@ -974,6 +979,10 @@ the dock (where you are → *Collections*).
   arrows, remove, add. Removing a field that has something in it asks first. A
   new collection starts with one *Name* field, or from a starter: *Recipes*
   (Name, Link) or *Movies* (Title, Year, Seen).
+- **Move one to another workspace or project**: the ⇥ in an open
+  collection's header, or a long press / right-click on it in the list. Its
+  fields and entries go with it, and it lands at the end of the other
+  workspace's collections.
 - **Synced**, and deleted with their workspace. Needs the server updated (sync
   protocol 4); until then collections stay on the device they were made on.
 
@@ -1172,6 +1181,14 @@ at the screen gives nothing away) and its lock is **opt-in**.
   numbers — it is one signal, drawn wherever the layout put the control.
 
 ## Getting around
+
+- **Home: the workspaces as squares.** Launching the app with no checklist
+  open opens on home - every workspace as a big square of its own colour,
+  with how many tasks are open in it and its projects listed inside. Tap a
+  square for that workspace's list, a project line for the project. It is
+  only for launching, so the app does not open on the tasks of a workspace
+  you are not working in; there is no button back to it, since the dock's
+  workspace menu lists them all. Anything picked in the dock leaves it.
 
 - **One bar, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
@@ -1482,6 +1499,15 @@ simply stretched.
   - Safety rails on the things you cannot undo from inside the app: you cannot
     delete your own account, cannot revoke the token you are using right now,
     and cannot delete another admin without dropping their admin first.
+- **Server traffic**, beside *People on this server* (admin only): who has
+  been using the server and how hard, over the last 7, 30 or 90 days. A bar
+  per day of requests - point at or tap a day for that day's figures -
+  above the totals (requests, syncs, rows moved, data transferred, people
+  active, apps connected now), then every account: when it was last seen,
+  how many of its apps are connected, how many days it was active, its
+  syncs, rows each way, data, and how much it keeps on the server. The
+  server keeps counters per account per day (`traffic` table, 400 days),
+  never what anyone wrote.
 - **One token per device — optional, not required** — the same token works on as
   many devices as you like. Splitting them buys two things: a lost phone can be
   revoked without re-entering anything on your other devices, and the listing
@@ -1632,6 +1658,15 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **From the shelf, 2026-11-09**: **home** - launching with no checklist
+    open lands on the workspaces as coloured squares, projects inside
+    (`ui/home_view.dart`, `AppState.showHome`). **A collection moves** to
+    another workspace or project (`AppState.moveCollection`). **Copy to the
+    checklist** on a task and on a selection, only while a checklist is open
+    (`AppState.copyTasksToList`). **Server traffic** for an admin, in
+    Settings: requests, syncs, rows and bytes per day and per account
+    (`server/traffic.js`, `GET /api/admin/traffic`). Needs the server
+    updated for the traffic panel; nothing else changes the wire.
   - **API tokens** (server and app): Settings → API tokens makes an *inbox*
     token, which can `POST /api/thought`, `/api/todo` and `/api/notify` and
     nothing else. `API.md` describes the requests. The users panel's token

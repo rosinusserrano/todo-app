@@ -25,6 +25,7 @@ import { PROTOCOL } from './protocol.js';
 import { deletePushFor, initPush } from './push.js';
 import { deleteBlobsFor, initBlobs } from './blobs.js';
 import { deleteUserIdentity, initUsers } from './users.js';
+import { deleteTrafficFor, initTraffic } from './traffic.js';
 
 export function openDb(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -417,6 +418,7 @@ function init(db) {
   initPush(db);
   // The bytes a row names by digest - see blobs.js. Not in TABLES either.
   initBlobs(db);
+  initTraffic(db);
 }
 
 /**
@@ -603,6 +605,23 @@ export function userCursor(db, userId) {
  * It lives here rather than in users.js because deleting a user means deleting
  * their rows, and TABLES is what says which those are.
  */
+/**
+ * What an account keeps on this server: live rows per table, and the bytes of
+ * its recordings. For the admin's traffic overview.
+ */
+export function storedFor(db, userId) {
+  let rows = 0;
+  for (const table of Object.keys(TABLES)) {
+    rows += db
+      .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ? AND deleted_at IS NULL`)
+      .get(userId).n;
+  }
+  const blobBytes =
+    db.prepare('SELECT COALESCE(SUM(size), 0) AS n FROM blobs WHERE user_id = ?').get(userId)
+      .n;
+  return { rows, blobBytes };
+}
+
 export function purgeUser(db, userId) {
   const run = db.transaction(() => {
     let rows = 0;
@@ -611,6 +630,7 @@ export function purgeUser(db, userId) {
     }
     deletePushFor(db, userId);
     deleteBlobsFor(db, userId);
+    deleteTrafficFor(db, userId);
     deleteUserIdentity(db, userId);
     return rows;
   });

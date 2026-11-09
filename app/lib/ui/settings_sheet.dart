@@ -28,6 +28,7 @@ import '../theme.dart';
 import 'archived_projects.dart' show ArchivedProjectsViewState;
 import 'push_settings.dart';
 import 'sso_sign_in.dart';
+import 'server_traffic_view.dart';
 import 'server_users_view.dart';
 import 'api_tokens_view.dart';
 import 'dock.dart' show DockEdge;
@@ -119,6 +120,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   /// This account's API tokens, shown in place the same way.
   bool _showApiTokens = false;
+
+  /// The admin's traffic overview, shown in place the same way.
+  bool _showTraffic = false;
 
   /// The archived projects, shown in place the same way.
   bool _showArchive = false;
@@ -245,6 +249,11 @@ class _SettingsSheetState extends State<SettingsSheet> {
                       sync: widget.sync,
                       onBack: () => setState(() => _showUsers = false),
                     )
+                  : _showTraffic
+                  ? ServerTrafficView(
+                      sync: widget.sync,
+                      onBack: () => setState(() => _showTraffic = false),
+                    )
                   : _showApiTokens
                   ? ApiTokensView(
                       sync: widget.sync,
@@ -265,7 +274,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
       padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s2, 2),
       child: Row(
         children: [
-          if (_showUsers || _showApiTokens || _showArchive)
+          if (_showUsers || _showApiTokens || _showTraffic || _showArchive)
             InkWell(
               // The archive has a rung of its own (one project) to walk
               // back down before the sheet leaves it.
@@ -275,6 +284,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 setState(() {
                   _showUsers = false;
                   _showApiTokens = false;
+                  _showTraffic = false;
                   _showArchive = false;
                 });
               },
@@ -287,6 +297,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           Text(
             _showUsers
                 ? 'People on this server'
+                : _showTraffic
+                ? 'Server traffic'
                 : _showApiTokens
                 ? 'API tokens'
                 : _showArchive
@@ -875,6 +887,25 @@ class _SettingsSheetState extends State<SettingsSheet> {
           const Text(
             'Opens the widget when you sign in. It also lives in the tray, '
             'so it can be hidden without being closed.',
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Server traffic',
+                  style: TextStyle(fontSize: T.fsLabel),
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _showTraffic = true),
+                child: const Text('Open'),
+              ),
+            ],
+          ),
+          const Text(
+            'Who has been syncing, how often and how much, day by day.',
             style: TextStyle(fontSize: T.fsMeta, color: T.muted, height: 1.4),
           ),
         ],

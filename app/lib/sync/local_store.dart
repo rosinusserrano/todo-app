@@ -1726,6 +1726,19 @@ class LocalStore {
     return {for (final r in rows) r['w'] as String: (r['n'] as num).toInt()};
   }
 
+  /// How many open tasks are on every list, workspaces and projects alike,
+  /// keyed by uuid - what the home screen's squares count. Shelved tasks are
+  /// not on a list, so they are not counted.
+  Future<Map<String, int>> openCounts() async {
+    final rows = await _db.rawQuery(
+      'SELECT workspace_uuid AS w, COUNT(*) AS n FROM tasks '
+      'WHERE completed_at IS NULL AND deleted_at IS NULL '
+      'AND group_uuid IS NULL '
+      'GROUP BY workspace_uuid',
+    );
+    return {for (final r in rows) r['w'] as String: (r['n'] as num).toInt()};
+  }
+
   Future<int> nextGroupSortOrder(String workspaceUuid) async {
     final rows = await _db.rawQuery(
       'SELECT MAX(sort_order) AS m FROM parked_groups WHERE workspace_uuid = ?',

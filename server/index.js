@@ -16,8 +16,9 @@ import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 
-import { openDb, purgeUser, sync, userCursor, TABLES } from './db.js';
-import { publish, subscribe } from './events.js';
+import { openDb, purgeUser, storedFor, sync, userCursor, TABLES } from './db.js';
+import { connectionCount, publish, subscribe } from './events.js';
+import { trafficOverview, trafficRecorder } from './traffic.js';
 import { adminOnly, middleware } from './auth.js';
 import { DB_PATH, HOST, PORT, WEB_ROOT, loadSecret } from './config.js';
 import { MIN_CLIENT, PROTOCOL } from './protocol.js';
@@ -70,6 +71,8 @@ const auth = { db, oidc };
 
 const app = express();
 app.use(express.json({ limit: '8mb' }));
+// Per-account counters for the admin's overview; see traffic.js.
+app.use(trafficRecorder(db));
 
 // ---------------------------------------------------------------- validation
 
@@ -182,6 +185,14 @@ function deviceIdOf(req) {
   return trimmed && trimmed.length <= 64 ? trimmed : null;
 }
 
+function countRows(changes) {
+  let n = 0;
+  for (const rows of Object.values(changes ?? {})) {
+    if (Array.isArray(rows)) n += rows.length;
+  }
+  return n;
+}
+
 app.post('/api/sync', middleware(auth), (req, res, next) => {
   const problem = validatePayload(req.body);
   if (problem) return res.status(400).json({ error: problem });
@@ -195,6 +206,12 @@ app.post('/api/sync', middleware(auth), (req, res, next) => {
       // Absent is 1, as everywhere: every app from before the field existed.
       Number.isInteger(req.body.protocol) ? req.body.protocol : 1
     );
+    // For the admin's traffic overview (traffic.js), which counts on finish.
+    res.locals.traffic = {
+      sync: true,
+      rowsIn: countRows(req.body.changes),
+      rowsOut: countRows(result.changes),
+    };
     res.json(result);
 
     // After responding, and only when rows actually landed. The push that
@@ -520,6 +537,34 @@ app.get('/api/admin/users', ...admin, (_req, res) => {
       })),
     })),
   });
+});
+
+// Who has been using this server and how hard: per day, and per account over
+// the same window. Counters only (traffic.js) - nothing here says what anyone
+// wrote. `days` is clamped so a typo cannot ask for a decade of empty rows.
+app.get('/api/admin/traffic', ...admin, (req, res) => {
+  const asked = Number.parseInt(req.query.days ?? '30', 10);
+  const days = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 366) : 30;
+  const lastSeen = new Map();
+  for (const t of listTokens(db)) {
+    if (t.last_seen_at && (lastSeen.get(t.user_id) ?? '') < t.last_seen_at) {
+      lastSeen.set(t.user_id, t.last_seen_at);
+    }
+  }
+  const overview = trafficOverview(db, {
+    days,
+    users: listUsers(db),
+    extra: (u) => {
+      const stored = storedFor(db, u.id);
+      return {
+        rows_stored: stored.rows,
+        blob_bytes: stored.blobBytes,
+        devices_online: connectionCount(u.id),
+        last_seen_at: lastSeen.get(u.id) ?? null,
+      };
+    },
+  });
+  res.json({ ...overview, devices_online: connectionCount() });
 });
 
 // Creates the account *and* its first token, because an account nobody can log

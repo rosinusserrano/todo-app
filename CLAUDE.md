@@ -1029,6 +1029,22 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
   line. Unticking puts an item back where it was because a tick never touches
   `sort_order`.
 
+### Home (`app/lib/ui/home_view.dart`)
+
+Every workspace as a square of its colour, projects as lines inside, open
+counts from `LocalStore.openCounts`. **A launch screen, not a destination**
+(Marco, 2026-11-09): launch opens the checklist when one is open and home
+otherwise; returns from the background never bring it back, and nothing in
+the dock opens it. Two things are load-bearing:
+
+- **`showHome` is set in the shell's `initState`**, as a field (notifying
+  there is a setState before the first build), *before* `deliverLaunch` and
+  the first reminder tick - so a tapped notification or a quick action that
+  lands somewhere clears it rather than being covered by it.
+- **`_closeOtherViews` clears it**, and `_dockClear` and `_landOnReminder`
+  call `leaveHome`, so every way somewhere leaves it without having to
+  remember to. Same structural rule as the quick-add commit.
+
 ### Collections (`app/lib/ui/collections.dart`)
 
 A per-workspace view beside Notes and Parked (`WorkspaceView.collections`,
@@ -1053,6 +1069,8 @@ ROADMAP.md *Collections*. The rules that are not obvious from the code:
   the focus traversal, or let go) does not run; `_submitted` focuses the next
   *typed* field (a checkbox would put the phone keyboard away), and on the
   last one adds and clears. `test/collections_test.dart` pins it.
+- **Moving one is one row** (`AppState.moveCollection`): fields and entries
+  hang off the collection's uuid, never the workspace's.
 - **Loaded only while open**, the whole workspace's worth (`refreshCollections`,
   called from `refreshTasks`, which is also what a sync merge runs). Search and
   sort are in memory.
@@ -1614,6 +1632,12 @@ settings.
   means deleting rows and `TABLES` is what says which. It hard-deletes rather
   than tombstoning: tombstones exist so a *peer* learns of a removal, and the
   peers here are the devices being cut off at that same moment.
+- **Traffic is counters** (`server/traffic.js`, one row per account per
+  day): one `app.use` ahead of the routes reads `req.userId` on `finish`, so
+  every authenticated route is counted without opting in; the sync route
+  adds its row counts through `res.locals.traffic`. `purgeUser` deletes an
+  account's rows. Read by `GET /api/admin/traffic` and Settings → *Server
+  traffic*.
 - `server/config.js` exists so the CLI and the server cannot disagree about
   which database file they mean. A CLI minting tokens into a different file than
   the server reads fails as "I made a token and it says invalid".

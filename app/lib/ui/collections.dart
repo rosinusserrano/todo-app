@@ -32,6 +32,7 @@ import '../sync/models.dart';
 import '../theme.dart';
 import 'form_sheet.dart';
 import 'list_rule.dart';
+import 'move_picker.dart';
 import 'panel_header.dart';
 
 /// The width a typed column needs before the table is worth drawing.
@@ -79,6 +80,9 @@ class CollectionsView extends StatefulWidget {
     required this.onDeleteEntry,
     required this.onSetChecked,
     this.onBack,
+    this.moveTargets = const [],
+    this.currentWorkspaceUuid,
+    this.onMoveCollection,
   });
 
   final List<Collection> collections;
@@ -97,6 +101,16 @@ class CollectionsView extends StatefulWidget {
 
   /// Back to the task list, from the list of collections.
   final VoidCallback? onBack;
+
+  /// Every workspace and project a collection can be moved to
+  /// (`AppState.moveTargets`), and the one it is in now.
+  final List<Workspace> moveTargets;
+  final String? currentWorkspaceUuid;
+
+  /// Moves a collection, with its fields and entries, to another workspace
+  /// or project. Null - or nowhere else to go - draws no way to ask.
+  final Future<void> Function(Collection, String workspaceUuid)?
+  onMoveCollection;
 
   @override
   State<CollectionsView> createState() => _CollectionsViewState();
@@ -143,6 +157,37 @@ class _CollectionsViewState extends State<CollectionsView> {
   }
 
   void _closeCollection() => setState(() => _openUuid = null);
+
+  bool get _canMove =>
+      widget.onMoveCollection != null &&
+      widget.moveTargets.any((w) => w.uuid != widget.currentWorkspaceUuid);
+
+  /// Asks where [c] goes, from [anchor] (a rect in global coordinates), and
+  /// moves it there. It leaves this view, so an open one closes.
+  Future<void> _move(Collection c, Rect anchor) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    final local = Rect.fromPoints(
+      overlay.globalToLocal(anchor.topLeft),
+      overlay.globalToLocal(anchor.bottomRight),
+    );
+    final to = await showWorkspacePicker(
+      context,
+      position: RelativeRect.fromRect(local, Offset.zero & overlay.size),
+      currentWorkspaceUuid: widget.currentWorkspaceUuid ?? '',
+      targets: widget.moveTargets,
+      title: 'Move “${c.name}” to',
+    );
+    if (to == null || !mounted) return;
+    if (_openUuid == c.uuid) _closeCollection();
+    await widget.onMoveCollection!(c, to);
+  }
+
+  Rect _boxOf(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
 
   // ----------------------------------------------------------------- forms
 
@@ -298,52 +343,60 @@ class _CollectionsViewState extends State<CollectionsView> {
   Widget _collectionRow(Collection c) {
     final fields = widget.fields[c.uuid] ?? const [];
     final count = widget.entries[c.uuid]?.length ?? 0;
-    return InkWell(
-      onTap: () => _openCollection(c),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s3),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    c.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: T.fsMenu,
-                      fontFamily: T.fontDisplay,
-                      fontWeight: T.wMedium,
-                      color: T.text,
-                    ),
-                  ),
-                  if (fields.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+    return Builder(
+      builder: (rowContext) => InkWell(
+        onTap: () => _openCollection(c),
+        // The other way to move one, without opening it: the row's spare
+        // gesture, as a task row's is its actions.
+        onLongPress: _canMove ? () => _move(c, _boxOf(rowContext)) : null,
+        onSecondaryTapUp: _canMove
+            ? (d) => _move(c, d.globalPosition & Size.zero)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: T.s2, vertical: T.s3),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      fields.map((f) => f.name).join(' · '),
+                      c.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: T.fsMeta,
-                        color: T.muted,
+                        fontSize: T.fsMenu,
+                        fontFamily: T.fontDisplay,
+                        fontWeight: T.wMedium,
+                        color: T.text,
                       ),
                     ),
+                    if (fields.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        fields.map((f) => f.name).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: T.fsMeta,
+                          color: T.muted,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: T.s2),
-            Text(
-              '$count',
-              style: const TextStyle(
-                fontSize: T.fsMenu,
-                fontFamily: T.fontDisplay,
-                color: T.muted,
+              const SizedBox(width: T.s2),
+              Text(
+                '$count',
+                style: const TextStyle(
+                  fontSize: T.fsMenu,
+                  fontFamily: T.fontDisplay,
+                  color: T.muted,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -372,6 +425,14 @@ class _CollectionsViewState extends State<CollectionsView> {
           backTooltip: 'Back to collections (Esc)',
           actions: [
             if (all.length > 1) _sortMenu(fields),
+            if (_canMove)
+              Builder(
+                builder: (context) => _iconButton(
+                  Icons.drive_file_move_outline,
+                  'Move to another workspace or project',
+                  () => _move(c, _boxOf(context)),
+                ),
+              ),
             _iconButton(
               Icons.tune_rounded,
               'Fields and name',

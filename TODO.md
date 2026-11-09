@@ -29,6 +29,27 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 74. The shelf, 2026-11-09  `[~]`
+
+Four rows from "Todo Widget" (Meine Apps). Design notes in `ROADMAP.md`
+under *The shelf, 2026-11-09*.
+
+- [x] **74.1** "move collections": a collection moves, with its fields and
+      entries, to another workspace or project (`AppState.moveCollection`,
+      `showWorkspacePicker`; header button, long press / right-click).
+- [x] **74.2** "home screen is workspace selection in correspondingly
+      colored big squares": launch opens the checklist if one is open,
+      otherwise home (`ui/home_view.dart`); projects inside their square; no
+      dock entry (Marco).
+- [x] **74.3** "copy todos into the checklist": task action and selection
+      bar, only while a checklist is open (`AppState.copyTasksToList`).
+- [x] **74.4** "admin account can see general traffic of all users":
+      `server/traffic.js`, `GET /api/admin/traffic`, Settings → Server
+      traffic (`ui/server_traffic_view.dart`).
+- [ ] **74.5** Marco: `sudo server/update-server.sh` (the traffic panel
+      needs it; nothing else touches the wire), then publish the web app -
+      the What's new note is `2026-11-09`.
+
 ### 73. API tokens: thoughts, todos and notifications from scripts  `[~]`
 
 Asked 2026-10-30. Design: `ROADMAP.md`, *0.29.0 — API tokens*. Public

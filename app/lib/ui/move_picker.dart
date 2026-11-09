@@ -177,3 +177,90 @@ class _HeaderState extends State<_Header> {
     );
   }
 }
+
+/// Where a whole thing - a collection - goes: any workspace or project but
+/// the one it is in. Resolves to the chosen one's uuid, or null.
+///
+/// [targets] is `AppState.moveTargets`, each workspace followed by its
+/// projects, which is the order this lists them in; a project is drawn
+/// indented under its workspace and named on its own.
+Future<String?> showWorkspacePicker(
+  BuildContext context, {
+  required RelativeRect position,
+  required String currentWorkspaceUuid,
+  required List<Workspace> targets,
+  String title = 'Move to',
+}) {
+  return showMenu<String>(
+    context: context,
+    position: position,
+    color: T.bgSolid,
+    items: [
+      _WorkspaceHeader(title),
+      for (final w in targets)
+        if (w.uuid != currentWorkspaceUuid)
+          PopupMenuItem(
+            value: w.uuid,
+            height: 34,
+            child: Padding(
+              padding: EdgeInsets.only(left: w.isProject ? T.s4 : 0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: T.parseHex(
+                        w.isProject
+                            ? targets
+                                      .where((p) => p.uuid == w.parentUuid)
+                                      .firstOrNull
+                                      ?.color ??
+                                  w.color
+                            : w.color,
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: T.s2),
+                  Flexible(
+                    child: Text(
+                      w.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: T.fsLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    ],
+  );
+}
+
+class _WorkspaceHeader extends PopupMenuEntry<String> {
+  const _WorkspaceHeader(this.label);
+
+  final String label;
+
+  @override
+  double get height => 26;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_WorkspaceHeader> createState() => _WorkspaceHeaderState();
+}
+
+class _WorkspaceHeaderState extends State<_WorkspaceHeader> {
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, 2),
+    child: Text(
+      widget.label,
+      style: const TextStyle(fontSize: T.fsMeta, color: T.muted),
+    ),
+  );
+}

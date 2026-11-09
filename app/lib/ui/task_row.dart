@@ -81,6 +81,7 @@ class TaskRow extends StatefulWidget {
     this.onSetReminder,
     this.onPark,
     this.onMakeProject,
+    this.onCopyToList,
     this.onUnplan,
     this.onOpenAttachments,
     this.onSetPriority,
@@ -120,6 +121,10 @@ class TaskRow extends StatefulWidget {
   /// Turn the task into a project of its name, in its place on the list. Null
   /// inside a project (one level only) and wherever the row is not on a list.
   final Future<void> Function()? onMakeProject;
+
+  /// Put the title on the open checklist, leaving the task where it is. Null
+  /// while no checklist is open, which is what hides it.
+  final Future<void> Function()? onCopyToList;
 
   /// Take this task back out of the calendar block it is planned into. Offered
   /// only on a task that *is* planned, which is also the only case where the
@@ -350,6 +355,12 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           icon: Icons.folder_outlined,
           label: 'Make it a project — a list of its own',
         ),
+      if (widget.onCopyToList != null)
+        const TaskActionItem(
+          action: TaskAction.copyToList,
+          icon: Icons.playlist_add_rounded,
+          label: 'Copy to the checklist',
+        ),
       TaskActionItem(
         action: TaskAction.focus,
         icon: Icons.play_arrow_rounded,
@@ -421,6 +432,8 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
         await _openParkMenu();
       case TaskAction.project:
         await widget.onMakeProject?.call();
+      case TaskAction.copyToList:
+        await widget.onCopyToList?.call();
       case TaskAction.focus:
         widget.onFocus();
       case TaskAction.expand:

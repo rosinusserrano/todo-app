@@ -38,6 +38,20 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-09',
+    title: 'Four more from your shelf',
+    points: [
+      'With no checklist open, the app now starts on your workspaces as '
+          'coloured squares, with their projects inside. Tap one to go in.',
+      'Move a collection to another workspace or project: the arrow in its '
+          'header, or long-press it in the list.',
+      'While a checklist is open, a task (or a selection) can be copied onto '
+          'it.',
+      'Settings → Server traffic shows who has been syncing, and how much, '
+          'day by day.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-10-30',
     title: 'Two more from your shelf, and API tokens',
     points: [

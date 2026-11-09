@@ -761,6 +761,30 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### The shelf, 2026-11-09 — home, moving collections, copy to the checklist, server traffic
+
+Four rows. What needed a decision:
+
+- **Home is a launch screen, not a destination** (Marco: "I dont really need
+  a button bringing me there ... I dont want to see the todos of a workspace
+  i am not currently working at when opening the app"). Launch opens the
+  checklist when one is open, otherwise home; a return from the background
+  does not bring home back. `showHome` is set in the shell's `initState`,
+  before a tapped reminder or quick action can land anywhere, and
+  `_closeOtherViews` clears it - so everything that goes somewhere leaves it
+  without each path remembering to. Projects are lines inside their
+  workspace's square.
+- **A collection moves by its one row.** Fields and entries hang off the
+  collection uuid, never the workspace, so moving writes `workspace_uuid`
+  and `sort_order` and nothing else - no protocol change.
+- **Copy to the checklist copies titles**, the tasks stay, and an unticked
+  item of the same title is not added again. Shown only while a checklist is
+  open (Marco); it never starts one.
+- **Traffic is counters, not a log**: one row per account per day
+  (`server/traffic.js`), recorded on `finish` by one middleware so no route
+  has to opt in, rows counted by the sync route, kept 400 days. Answers
+  "who uses this and how hard" without the server keeping what anyone did.
+
 ### 0.29.0 — API tokens: the account takes things in from scripts
 
 Asked 2026-10-30: scripts on other servers should be able to push a

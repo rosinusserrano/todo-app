@@ -90,6 +90,132 @@ class ServerUser {
       );
 }
 
+/// One day's or one account's counters (server/traffic.js).
+class TrafficCounts {
+  const TrafficCounts({
+    this.requests = 0,
+    this.syncs = 0,
+    this.rowsIn = 0,
+    this.rowsOut = 0,
+    this.bytesIn = 0,
+    this.bytesOut = 0,
+  });
+
+  final int requests;
+  final int syncs;
+  final int rowsIn;
+  final int rowsOut;
+  final int bytesIn;
+  final int bytesOut;
+
+  int get bytes => bytesIn + bytesOut;
+
+  static int _int(Object? v) => v is num ? v.toInt() : 0;
+
+  static TrafficCounts fromJson(Map<String, dynamic> j) => TrafficCounts(
+    requests: _int(j['requests']),
+    syncs: _int(j['syncs']),
+    rowsIn: _int(j['rows_in']),
+    rowsOut: _int(j['rows_out']),
+    bytesIn: _int(j['bytes_in']),
+    bytesOut: _int(j['bytes_out']),
+  );
+}
+
+class TrafficDay {
+  const TrafficDay({
+    required this.day,
+    required this.counts,
+    required this.activeUsers,
+  });
+
+  /// `YYYY-MM-DD`, the server's local date.
+  final String day;
+  final TrafficCounts counts;
+  final int activeUsers;
+
+  static TrafficDay fromJson(Map<String, dynamic> j) => TrafficDay(
+    day: j['day'] as String,
+    counts: TrafficCounts.fromJson(j),
+    activeUsers: TrafficCounts._int(j['active_users']),
+  );
+}
+
+class TrafficAccount {
+  const TrafficAccount({
+    required this.id,
+    required this.label,
+    required this.admin,
+    required this.counts,
+    required this.activeDays,
+    required this.lastSeenAt,
+    required this.devicesOnline,
+    required this.rowsStored,
+    required this.blobBytes,
+  });
+
+  final String id;
+  final String label;
+  final bool admin;
+  final TrafficCounts counts;
+  final int activeDays;
+
+  /// The most recent use of any of the account's tokens.
+  final DateTime? lastSeenAt;
+
+  /// Open instant-sync streams: running apps, roughly.
+  final int devicesOnline;
+
+  /// Live rows across every synced table.
+  final int rowsStored;
+  final int blobBytes;
+
+  static TrafficAccount fromJson(Map<String, dynamic> j) => TrafficAccount(
+    id: j['id'] as String,
+    label: (j['label'] as String?) ?? j['id'] as String,
+    admin: j['admin'] == true,
+    counts: TrafficCounts.fromJson(j),
+    activeDays: TrafficCounts._int(j['active_days']),
+    lastSeenAt: DateTime.tryParse(
+      (j['last_seen_at'] as String?) ?? '',
+    )?.toLocal(),
+    devicesOnline: TrafficCounts._int(j['devices_online']),
+    rowsStored: TrafficCounts._int(j['rows_stored']),
+    blobBytes: TrafficCounts._int(j['blob_bytes']),
+  );
+}
+
+/// What `GET /api/admin/traffic` answers: every day of the window, oldest
+/// first, and every account with its totals over it.
+class TrafficOverview {
+  const TrafficOverview({
+    required this.days,
+    required this.accounts,
+    required this.totals,
+    required this.devicesOnline,
+  });
+
+  final List<TrafficDay> days;
+  final List<TrafficAccount> accounts;
+  final TrafficCounts totals;
+  final int devicesOnline;
+
+  static TrafficOverview fromJson(Map<String, dynamic> j) => TrafficOverview(
+    days: ((j['daily'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(TrafficDay.fromJson)
+        .toList(),
+    accounts: ((j['users'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(TrafficAccount.fromJson)
+        .toList(),
+    totals: TrafficCounts.fromJson(
+      (j['totals'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    devicesOnline: TrafficCounts._int(j['devices_online']),
+  );
+}
+
 /// A freshly minted token, on its way to the one screen that will ever show it.
 class IssuedToken {
   const IssuedToken({required this.token, required this.userLabel});
@@ -188,6 +314,13 @@ class AdminClient {
 
   Future<void> deleteUser(ServerUser user) =>
       _send('DELETE', '/api/admin/users/${Uri.encodeComponent(user.id)}');
+
+  /// Who has been using the server, per day and per account, over the last
+  /// [days] days.
+  Future<TrafficOverview> traffic({int days = 30}) async {
+    final body = await _send('GET', '/api/admin/traffic?days=$days');
+    return TrafficOverview.fromJson(body);
+  }
 
   // ------------------------------------------------------------ API tokens
   //

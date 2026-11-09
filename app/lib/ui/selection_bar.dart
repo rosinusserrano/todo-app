@@ -25,6 +25,7 @@ class SelectionBar extends StatelessWidget {
     required this.onMove,
     required this.onDelete,
     required this.onClear,
+    this.onCopyToList,
   });
 
   final int count;
@@ -34,6 +35,9 @@ class SelectionBar extends StatelessWidget {
 
   final VoidCallback onDelete;
   final VoidCallback onClear;
+
+  /// Their titles onto the open checklist. Null while none is open.
+  final VoidCallback? onCopyToList;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +85,13 @@ class SelectionBar extends StatelessWidget {
               size: size,
               onTap: onMove,
             ),
+            if (onCopyToList != null)
+              _Button(
+                icon: Icons.playlist_add_rounded,
+                tooltip: 'Copy them to the checklist',
+                size: size,
+                onTap: (_) => onCopyToList!(),
+              ),
             _Button(
               icon: Icons.delete_outline_rounded,
               tooltip: 'Delete them',

@@ -1313,7 +1313,11 @@ at the screen gives nothing away) and its lock is **opt-in**.
   since the add field sits behind the focus overlay; **Ctrl+Alt+H** no longer
   does, because focus mode has its own thought field. If another application
   already owns a combination, the footer says so rather than leaving a dead
-  shortcut.
+  shortcut. **A thought from Ctrl+Alt+H puts the window back**: if the
+  widget was minimised or in the tray when the shortcut raised it, closing
+  the pane (saving, ✕ or Esc) minimises it or hides it again. Already on
+  screen, it stays. Going somewhere else in the app while the pane is open
+  keeps the window up.
 - **The thought pane is the same everywhere.** Ctrl+Alt+H and the dock's
   *Add a thought* open it over whatever is on screen, on a desktop as on a
   phone; it used to be the small field at the foot of the list on most
@@ -1667,6 +1671,9 @@ reminders are both there now**, queued for 0.18.0.
     Settings: requests, syncs, rows and bytes per day and per account
     (`server/traffic.js`, `GET /api/admin/traffic`). Needs the server
     updated for the traffic panel; nothing else changes the wire.
+    Also: a thought from **Ctrl+Alt+H** sends the window back to minimised
+    or the tray when the pane closes, if that is where it was
+    (`_putBackAfterThought`).
   - **API tokens** (server and app): Settings → API tokens makes an *inbox*
     token, which can `POST /api/thought`, `/api/todo` and `/api/notify` and
     nothing else. `API.md` describes the requests. The users panel's token

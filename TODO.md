@@ -46,7 +46,13 @@ under *The shelf, 2026-11-09*.
 - [x] **74.4** "admin account can see general traffic of all users":
       `server/traffic.js`, `GET /api/admin/traffic`, Settings → Server
       traffic (`ui/server_traffic_view.dart`).
-- [ ] **74.5** Marco: `sudo server/update-server.sh` (the traffic panel
+- [x] **74.5** "close it afterwards if it was opened from being
+      minimized": a thought from Ctrl+Alt+H puts a minimised / hidden
+      window back when the pane closes (`_finishThoughtCapture`). Not tried
+      on Windows from here.
+- [ ] **74.6** Marco: rebuild Windows (`install-windows.ps1`) and try
+      Ctrl+Alt+H from minimised, from the tray and from on screen.
+- [ ] **74.7** Marco: `sudo server/update-server.sh` (the traffic panel
       needs it; nothing else touches the wire), then publish the web app -
       the What's new note is `2026-11-09`.
 

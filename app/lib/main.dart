@@ -1144,14 +1144,49 @@ class _WidgetShellState extends State<WidgetShell>
   /// [openList] only from the tray: that is somebody coming back to the app.
   /// Everything else surfaces it *for* something - a hotkey's capture, a
   /// reminder - and the list would be in front of it.
-  Future<void> _surfaceWindow({bool openList = false}) async {
-    if (!isDesktop) return;
+  ///
+  /// Answers where the window was before: minimised, hidden in the tray, or
+  /// null for already on screen - what a capture needs to put it back.
+  Future<_WindowWas?> _surfaceWindow({bool openList = false}) async {
+    if (!isDesktop) return null;
     if (!openList) _holdList();
-    if (await windowManager.isMinimized()) await windowManager.restore();
+    _WindowWas? was;
+    if (await windowManager.isMinimized()) {
+      was = _WindowWas.minimized;
+      await windowManager.restore();
+    } else if (!await windowManager.isVisible()) {
+      was = _WindowWas.hidden;
+    }
     await windowManager.show();
     await windowManager.focus();
     _taskbar.refresh();
     if (openList) await _openListOnReturn();
+    return was;
+  }
+
+  /// Where a thought captured with Ctrl+Alt+H found the window, so closing
+  /// the pane can put it back there (Marco, 2026-11-09): the shortcut is for
+  /// writing a line down without stopping, and a window left up afterwards
+  /// is a window to put away by hand. Null - it was on screen - leaves it
+  /// up. Cleared by anything that closes the pane *for* something else (a
+  /// dock destination, the add field), since the window is then in use.
+  _WindowWas? _putBackAfterThought;
+
+  /// The thought pane closing by itself - saved, ✕ or Esc - which is when a
+  /// window surfaced for it goes back to where it was.
+  Future<void> _finishThoughtCapture() async {
+    final back = _putBackAfterThought;
+    _closeThoughtCapture();
+    if (back == null || !isDesktop) return;
+    // After the pane's exit, so the next restore does not show it leaving.
+    await Future<void>.delayed(T.sheetDur);
+    if (!mounted || _thoughtCapture) return;
+    switch (back) {
+      case _WindowWas.minimized:
+        await windowManager.minimize();
+      case _WindowWas.hidden:
+        await windowManager.hide();
+    }
   }
 
   /// The taskbar toolbar cannot be set while the window is hidden - Windows
@@ -1193,7 +1228,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// Raise the window, clear whatever is covering the capture fields, and hand
   /// back control to the caller so it can put the caret where it wants it.
   Future<bool> _surfaceForCapture({required bool leaveFocus}) async {
-    await _surfaceWindow();
+    _surfacedFrom = await _surfaceWindow();
     if (!mounted) return false;
     _closeSound();
     _closeSettings();
@@ -1243,8 +1278,15 @@ class _WidgetShellState extends State<WidgetShell>
       _openFocusThought();
       return;
     }
+    // Pressed again with the pane already up, the window is on screen and
+    // the first press's answer still stands.
+    final from = _surfacedFrom;
     _openThoughtCapture();
+    if (from != null) _putBackAfterThought = from;
   }
+
+  /// What the last [_surfaceForCapture] found; see [_putBackAfterThought].
+  _WindowWas? _surfacedFrom;
 
   /// The quick action for the task in focus was picked.
   ///
@@ -1725,7 +1767,7 @@ class _WidgetShellState extends State<WidgetShell>
           } else if (_thoughtCapture) {
             // What was typed stays unsaved, as with the ✕: Esc is "never
             // mind", and Enter is right there for "keep it".
-            _closeThoughtCapture();
+            _finishThoughtCapture();
           } else if (_noteOn != null) {
             _closeNoteOn();
           } else if (_settingsOpen) {
@@ -1894,7 +1936,7 @@ class _WidgetShellState extends State<WidgetShell>
             accent: T.thoughts,
             onAdd: (text, clip, remindAt) =>
                 s.addThought(text, clip: clip, remindAt: remindAt),
-            onClose: _closeThoughtCapture,
+            onClose: _finishThoughtCapture,
             enterSaves: !_layout.touch,
             canRecord: true,
             canRemind: true,
@@ -2341,7 +2383,10 @@ class _WidgetShellState extends State<WidgetShell>
     setState(() => _thoughtCapture = true);
   }
 
-  void _closeThoughtCapture() => setState(() => _thoughtCapture = false);
+  void _closeThoughtCapture() {
+    _putBackAfterThought = null;
+    setState(() => _thoughtCapture = false);
+  }
 
   Future<void> _openSettings() async {
     _closeSound();
@@ -4157,3 +4202,6 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 }
+
+/// Where [_WidgetShellState._surfaceWindow] found the window.
+enum _WindowWas { minimized, hidden }

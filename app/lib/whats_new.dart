@@ -49,6 +49,8 @@ const kReleaseNotes = <ReleaseNote>[
           'it.',
       'Settings → Server traffic shows who has been syncing, and how much, '
           'day by day.',
+      'Ctrl+Alt+H from a minimised window (or the tray): once the thought '
+          'is written, the window goes back where it was.',
     ],
   ),
   ReleaseNote(

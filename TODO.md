@@ -52,9 +52,9 @@ under *The shelf, 2026-11-09*.
       on Windows from here.
 - [ ] **74.6** Marco: rebuild Windows (`install-windows.ps1`) and try
       Ctrl+Alt+H from minimised, from the tray and from on screen.
-- [ ] **74.7** Marco: `sudo server/update-server.sh` (the traffic panel
+- [x] **74.7** Marco: `sudo server/update-server.sh` (the traffic panel
       needs it; nothing else touches the wire), then publish the web app -
-      the What's new note is `2026-11-09`.
+      the What's new note is `2026-11-09`. Both done 2026-11-10.
 
 ### 73. API tokens: thoughts, todos and notifications from scripts  `[~]`
 

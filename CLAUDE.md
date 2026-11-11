@@ -1014,6 +1014,10 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
   restore event our own un-minimise sends a moment later. It refuses while something
   is being written (a route on top, the add field, a capture) and in focus
   mode. Moving inside the app never calls it.
+- **One list at a time survives a reopen**: `AppState.reopenList` clears an
+  archived list's `archived_at` and archives (or, empty, tombstones) the open
+  one, because "current" is the newest *open* list by `created_at` and a
+  reopened older one would otherwise come back as "Also open".
 - **It owns the content area like the calendar**: `showList` is cleared by
   `_closeOtherViews`, so every other view and `toggleCalendar` close it, and
   `setListOpen` commits quick-add blocks when it closes the calendar.

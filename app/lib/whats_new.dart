@@ -38,6 +38,15 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-11',
+    title: 'Finished checklists can come back',
+    points: [
+      'Checklist → Archived lists: Reopen makes a finished list the list '
+          'again, ticks as they were. The one you had open goes to the '
+          'archive in its place.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-09',
     title: 'Four more from your shelf',
     points: [

@@ -2241,13 +2241,14 @@ class ShoppingList implements SyncRow {
   ShoppingList copyWith({
     String? name,
     String? archivedAt,
+    bool clearArchived = false,
     String? updatedAt,
     String? deletedAt,
   }) =>
       ShoppingList(
         uuid: uuid,
         name: name ?? this.name,
-        archivedAt: archivedAt ?? this.archivedAt,
+        archivedAt: clearArchived ? null : archivedAt ?? this.archivedAt,
         createdAt: createdAt,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: deletedAt ?? this.deletedAt,

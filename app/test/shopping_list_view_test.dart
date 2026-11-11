@@ -180,6 +180,36 @@ void main() {
     expect(find.textContaining('1 item'), findsOneWidget);
   });
 
+  testWidgets('an archived list reopens, asking first if one is in use',
+      (tester) async {
+    final s = await fresh(tester, ['Tent']);
+    await tester.runAsync(() async {
+      await s.renameList('Camping');
+      await s.finishList();
+      await s.addListItem('Milk');
+    });
+    await show(tester, s);
+
+    await tester.tap(find.text('Archived lists →'));
+    await settle(tester);
+    await settle(tester);
+    await tester.tap(find.text('Camping'));
+    await settle(tester);
+    await settle(tester);
+    expect(find.text('Tent'), findsOneWidget);
+
+    await tester.tap(find.text('Reopen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reopen Camping?'), findsOneWidget);
+    expect(find.textContaining('Checklist goes to the archive'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Reopen').last);
+    await settle(tester);
+
+    expect(s.currentList!.name, 'Camping');
+    expect(find.text('Tent'), findsOneWidget, reason: 'back on the list');
+    expect(find.text('Archived lists →'), findsOneWidget);
+  });
+
   testWidgets('sections: a heading over what is left to get there', (
     tester,
   ) async {

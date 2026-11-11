@@ -944,6 +944,10 @@ window while it is open.
 - **Finished** archives the list as it is, and the next list starts empty. It
   is the green button once everything is ticked, and quieter before. Finished
   lists are under a small *Archived lists →* at the top: read-only, deletable.
+- **Reopen** brings a finished list back as the list, ticks as they were - from
+  its row in the archive or from reading it. The list open at the time goes to
+  the archive in its place (asked first when it has anything on it; an empty
+  one is simply dropped), so it can be reopened the same way.
 - **Synced**, so a list written at the desk is open on the phone in the shop.
   If two devices each start a list offline, the newer is the list and the other
   shows as "Also open", to merge in or finish. Needs the server updated
@@ -1662,6 +1666,8 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Reopen a finished checklist** (2026-11-11): from the archive, ticks
+    kept; the open list swaps into the archive (`AppState.reopenList`).
   - **From the shelf, 2026-11-09**: **home** - launching with no checklist
     open lands on the workspaces as coloured squares, projects inside
     (`ui/home_view.dart`, `AppState.showHome`). **A collection moves** to

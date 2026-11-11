@@ -102,6 +102,43 @@ void main() {
     expect(await s.archivedLists(), isEmpty);
   });
 
+  test('reopening brings a finished list back, ticks and all', () async {
+    final s = await fresh();
+    await s.addListItem('Tent');
+    await s.addListItem('Stove');
+    await s.setListItemChecked(s.listItems.first, true);
+    final trip = s.currentList!;
+    await s.finishList();
+
+    // Nothing open: it simply comes back.
+    await s.reopenList((await s.archivedLists()).single);
+    expect(s.currentList!.uuid, trip.uuid);
+    expect(s.currentList!.isArchived, isFalse);
+    expect(s.listItems.map((i) => (i.text, i.isChecked)),
+        [('Tent', true), ('Stove', false)]);
+    expect(await s.archivedLists(), isEmpty);
+
+    // A list with things on it is put away in its place.
+    await s.finishList();
+    await s.addListItem('Milk');
+    final shop = s.currentList!;
+    await s.reopenList((await s.archivedLists()).single);
+    expect(s.currentList!.uuid, trip.uuid);
+    expect(s.otherOpenLists, isEmpty);
+    final archived = await s.archivedLists();
+    expect(archived.single.uuid, shop.uuid);
+    expect((await s.itemsOfList(shop.uuid)).single.text, 'Milk');
+
+    // An empty one is not worth keeping.
+    await s.reopenList(archived.single);
+    await s.deleteListItem(s.listItems.single);
+    expect(s.currentList!.uuid, shop.uuid);
+    await s.reopenList((await s.archivedLists()).single);
+    expect(s.currentList!.uuid, trip.uuid);
+    expect((await s.archivedLists()).map((l) => l.uuid), isNot(contains(shop.uuid)));
+    expect(s.otherOpenLists, isEmpty);
+  });
+
   test('two lists started offline: the newer is current, the older merges in',
       () async {
     final a = await fresh();

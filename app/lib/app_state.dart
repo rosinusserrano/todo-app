@@ -3307,6 +3307,25 @@ class AppState extends ChangeNotifier {
     await _listChanged();
   }
 
+  /// Take a finished list out of the archive and make it the list again,
+  /// ticks as they were. There is one list at a time, so the one open now
+  /// goes to the archive as it is - or, with nothing on it, simply goes.
+  /// Older open lists (two devices offline) are left to be merged as before.
+  Future<void> reopenList(ShoppingList list) async {
+    if (!list.isArchived) return;
+    final current = currentList;
+    if (current != null && current.uuid != list.uuid) {
+      if (listItems.isEmpty) {
+        final stamp = nowStamp();
+        await _store.putList(current.copyWith(deletedAt: stamp, updatedAt: stamp));
+      } else {
+        await _store.putList(current.copyWith(archivedAt: nowStamp()));
+      }
+    }
+    await _store.putList(list.copyWith(clearArchived: true));
+    await _listChanged();
+  }
+
   Future<List<ShoppingList>> archivedLists() => _store.archivedLists();
 
   Future<Map<String, int>> listItemCounts() => _store.listItemCounts();

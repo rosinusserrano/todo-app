@@ -23,7 +23,10 @@
 //     add field into that section.
 //   - **The archive is quiet on purpose.** Finishing archives the list and you
 //     are not expected to go back; the way in is a small muted line, and what
-//     is behind it is read-only.
+//     is behind it is read-only. Reopen is the one way back out
+//     ([AppState.reopenList]): the list comes back as it was, and the one
+//     open now is put away in its place, with a question first if it has
+//     anything on it.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -155,6 +158,47 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     if (mounted) setState(() => _editingChoice = null);
   }
 
+  /// Bring [list] back as the list. Asks only when that puts away a list
+  /// with something on it - an empty one is nothing to lose.
+  Future<void> _reopen(ShoppingList list) async {
+    final current = s.currentList;
+    if (current != null && s.listItems.isNotEmpty) {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: T.bgSolid,
+          title: Text(
+            'Reopen ${list.name}?',
+            style: const TextStyle(fontSize: T.fsMenu),
+          ),
+          content: Text(
+            '${current.name} goes to the archive as it is. '
+            'You can reopen it from there.',
+            style: const TextStyle(fontSize: T.fsBody, color: T.muted),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Reopen'),
+            ),
+          ],
+        ),
+      );
+      if (yes != true) return;
+    }
+    await s.reopenList(list);
+    if (!mounted) return;
+    setState(() {
+      _rung = _Rung.list;
+      _reading = null;
+      _editingChoice = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final layout = Layout.of(context);
@@ -196,6 +240,7 @@ class _ShoppingListViewState extends State<ShoppingListView> {
           _Rung.archive => _ArchiveView(
             state: s,
             onBack: () => setState(() => _rung = _Rung.list),
+            onReopen: _reopen,
             onOpen: (l) => setState(() {
               _reading = l;
               _rung = _Rung.archived;
@@ -205,6 +250,7 @@ class _ShoppingListViewState extends State<ShoppingListView> {
             state: s,
             list: _reading!,
             onBack: () => setState(() => _rung = _Rung.archive),
+            onReopen: () => _reopen(_reading!),
           ),
         },
       ),
@@ -776,17 +822,20 @@ class _AlsoOpen extends StatelessWidget {
   );
 }
 
-/// Finished lists, newest first. Read-only; delete is the one thing to do.
+/// Finished lists, newest first. Read-only; reopen and delete are the two
+/// things to do.
 class _ArchiveView extends StatefulWidget {
   const _ArchiveView({
     required this.state,
     required this.onBack,
     required this.onOpen,
+    required this.onReopen,
   });
 
   final AppState state;
   final VoidCallback onBack;
   final void Function(ShoppingList) onOpen;
+  final Future<void> Function(ShoppingList) onReopen;
 
   @override
   State<_ArchiveView> createState() => _ArchiveViewState();
@@ -857,10 +906,20 @@ class _ArchiveViewState extends State<_ArchiveView> {
                   style: const TextStyle(color: T.muted, fontSize: T.fsMeta),
                 ),
                 onTap: () => widget.onOpen(l),
-                trailing: IconButton(
-                  tooltip: 'Delete',
-                  onPressed: () => _delete(l),
-                  icon: const Icon(Icons.delete_outline, color: T.muted),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Reopen',
+                      onPressed: () => widget.onReopen(l),
+                      icon: const Icon(Icons.unarchive_outlined, color: T.muted),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete',
+                      onPressed: () => _delete(l),
+                      icon: const Icon(Icons.delete_outline, color: T.muted),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -898,16 +957,23 @@ class _ArchivedListView extends StatelessWidget {
     required this.state,
     required this.list,
     required this.onBack,
+    required this.onReopen,
   });
 
   final AppState state;
   final ShoppingList list;
   final VoidCallback onBack;
+  final VoidCallback onReopen;
 
   @override
   Widget build(BuildContext context) => _Rung2(
     title: list.name,
     onBack: onBack,
+    action: TextButton.icon(
+      onPressed: onReopen,
+      icon: const Icon(Icons.unarchive_outlined, size: 18),
+      label: const Text('Reopen'),
+    ),
     child: FutureBuilder(
       future: state.itemsOfList(list.uuid),
       builder: (context, snap) => ListView(
@@ -959,11 +1025,15 @@ class _Rung2 extends StatelessWidget {
     required this.title,
     required this.onBack,
     required this.child,
+    this.action,
   });
 
   final String title;
   final VoidCallback onBack;
   final Widget child;
+
+  /// Drawn at the end of the title's line.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -980,14 +1050,23 @@ class _Rung2 extends StatelessWidget {
             label: const Text('Back'),
           ),
         ),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: T.fsTitle,
-            fontFamily: T.fontDisplay,
-            fontWeight: T.wMedium,
-            color: T.text,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: T.fsTitle,
+                  fontFamily: T.fontDisplay,
+                  fontWeight: T.wMedium,
+                  color: T.text,
+                ),
+              ),
+            ),
+            ?action,
+          ],
         ),
         const SizedBox(height: T.s2),
         Expanded(child: child),

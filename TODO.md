@@ -29,6 +29,15 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 75. Reopen an archived checklist  `[x]`
+
+Asked 2026-11-11. `AppState.reopenList`: clears `archived_at`; the open list
+is archived in its place (dropped if empty), with a confirm when it has
+items. Reopen on the archive row and on the read view. No schema change.
+
+- [x] **75.1** Reopen, tests (`shopping_list_test`, `shopping_list_view_test`),
+      docs, What's new `2026-11-11`, web published.
+
 ### 74. The shelf, 2026-11-09  `[~]`
 
 Four rows from "Todo Widget" (Meine Apps). Design notes in `ROADMAP.md`

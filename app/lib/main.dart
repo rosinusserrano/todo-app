@@ -624,7 +624,9 @@ class _WidgetShellState extends State<WidgetShell>
     // quick action that does goes through selectWorkspace / _dockClear,
     // which clear it. Set as a field: notifying from initState would be a
     // setState before the first build.
-    if (s.currentList == null && s.focusTask == null && s.workspaces.isNotEmpty) {
+    if (s.currentList == null &&
+        s.focusTask == null &&
+        s.workspaces.isNotEmpty) {
       s.showHome = true;
       s.loadOpenCounts();
     }
@@ -955,8 +957,7 @@ class _WidgetShellState extends State<WidgetShell>
   Future<void> _deleteEvent(CalendarEvent event) async {
     var onlyThis = false;
     if (event.inSeries) {
-      final scope =
-          await askSeriesScope(context, event: event, deleting: true);
+      final scope = await askSeriesScope(context, event: event, deleting: true);
       if (scope == null || !mounted) return;
       onlyThis = scope == SeriesScope.one;
     }
@@ -1719,6 +1720,25 @@ class _WidgetShellState extends State<WidgetShell>
               !_soundOpen &&
               !_settingsOpen) {
             _openAdd();
+            return KeyEventResult.handled;
+          }
+          // H goes home, under the same conditions as N: from anywhere a key
+          // is not being typed into something. The keyboard's way to the
+          // Home row of the dock's workspace menu.
+          if (event is KeyDownEvent &&
+              isDesktop &&
+              event.logicalKey == LogicalKeyboardKey.keyH &&
+              !HardwareKeyboard.instance.isControlPressed &&
+              !HardwareKeyboard.instance.isAltPressed &&
+              !HardwareKeyboard.instance.isMetaPressed &&
+              FocusManager.instance.primaryFocus?.context
+                      ?.findAncestorStateOfType<EditableTextState>() ==
+                  null &&
+              s.workspaces.isNotEmpty &&
+              s.focusTask == null &&
+              !_soundOpen &&
+              !_settingsOpen) {
+            _dockToHome();
             return KeyEventResult.handled;
           }
           // Ctrl+E: the calendar's edit mode, on and off. In a browser too -
@@ -2683,12 +2703,18 @@ class _WidgetShellState extends State<WidgetShell>
       },
       underhang: edge == DockEdge.bottom ? _bottomInset : 0,
       segments: [
+        // On home the segment says so: home is where its menu leads, and the
+        // workspace it would otherwise name is not on screen. Neutral, like
+        // the window around the squares.
         DockSegment(
-          label: current?.name ?? 'Workspace',
-          fill: ws,
-          ink: T.inkOn(ws),
-          dimmed: s.showCalendar || s.showList || s.showHome,
-          semanticLabel: 'Workspace: ${current?.name ?? ''}',
+          icon: s.showHome ? Icons.grid_view_rounded : null,
+          label: s.showHome ? 'Home' : current?.name ?? 'Workspace',
+          fill: s.showHome ? Color.lerp(T.bgSolid, T.text, 0.16)! : ws,
+          ink: s.showHome ? T.text : T.inkOn(ws),
+          dimmed: s.showCalendar || s.showList,
+          semanticLabel: s.showHome
+              ? 'Home'
+              : 'Workspace: ${current?.name ?? ''}',
           // A tap or a click on the workspace itself goes to its task list:
           // "this one's tasks" is the commonest thing to want of it. It used
           // to open the add field, which put a caret in front of someone who
@@ -2699,6 +2725,17 @@ class _WidgetShellState extends State<WidgetShell>
               ? _dockToWorkspace(current)
               : _dockToView(null),
           items: [
+            // Home is every workspace at once, so it heads the menu that
+            // lists them - furthest from the bar, above New workspace, the
+            // way a title heads a list. Not a segment of its own: it is the
+            // overview of this menu, not a fifth kind of place.
+            if (s.workspaces.isNotEmpty)
+              DockItem(
+                icon: Icons.grid_view_rounded,
+                label: 'Home',
+                current: s.showHome,
+                onChoose: _dockToHome,
+              ),
             DockItem(
               icon: Icons.add_rounded,
               label: 'New workspace',
@@ -2887,6 +2924,17 @@ class _WidgetShellState extends State<WidgetShell>
       _startNewNote = true;
     });
     if (_openView != WorkspaceView.notes) _selectView(WorkspaceView.notes);
+  }
+
+  /// Home, from the dock's workspace menu or `H`: everything in front of the
+  /// content cleared the way any dock destination clears it (which commits
+  /// pending blocks on the way out of the calendar), then the squares.
+  Future<void> _dockToHome() async {
+    if (s.workspaces.isEmpty) return;
+    await _dockClear();
+    if (!mounted) return;
+    _clearSelection();
+    await s.openHome();
   }
 
   Future<void> _dockToWorkspace(Workspace w) async {

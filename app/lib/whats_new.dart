@@ -38,6 +38,16 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-20',
+    title: 'Home, whenever you want it',
+    points: [
+      'The workspace menu in the dock now starts with Home: every workspace '
+          'as its coloured square, from wherever you are.',
+      'While you are there the dock says Home. On a keyboard, H gets you '
+          'there too.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-11',
     title: 'Finished checklists can come back',
     points: [

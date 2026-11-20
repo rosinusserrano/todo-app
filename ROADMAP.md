@@ -761,6 +761,23 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### Home as a destination (2026-11-20)
+
+Marco, eleven days after "I dont really need a button bringing me there":
+"add ability to navigate to the home screen". Where it goes:
+
+- **A row heading the workspace menu**, not a segment and not a More row.
+  Home *is* that menu drawn large - every workspace, with its projects -
+  so it is the menu's overview, above *New workspace*. A fifth segment
+  would spend bar width on a place visited a few times a day; More holds
+  what belongs to no workspace, and home is all of them.
+- **The segment says Home while it shows**, on a neutral fill. It used to
+  keep naming (dimmed) whichever workspace was current, which is not on
+  screen there. A tap on it still goes to that workspace's list.
+- **`H` on a desktop**, `N`'s twin with `N`'s guards.
+- Same path as every dock destination (`_dockClear` then `openHome`), so the
+  calendar's pending blocks commit and a checklist closes on the way.
+
 ### The shelf, 2026-11-09 — home, moving collections, copy to the checklist, server traffic
 
 Four rows. What needed a decision:

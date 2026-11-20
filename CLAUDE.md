@@ -1036,10 +1036,14 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
 ### Home (`app/lib/ui/home_view.dart`)
 
 Every workspace as a square of its colour, projects as lines inside, open
-counts from `LocalStore.openCounts`. **A launch screen, not a destination**
-(Marco, 2026-11-09): launch opens the checklist when one is open and home
-otherwise; returns from the background never bring it back, and nothing in
-the dock opens it. Two things are load-bearing:
+counts from `LocalStore.openCounts`. Launch opens the checklist when one is
+open and home otherwise; returns from the background never bring it back.
+Since 2026-11-20 it is also a destination: the **Home** row heading the
+dock's workspace menu (the overview of what that menu lists, not a segment
+of its own) and `H` on a desktop, both `_dockToHome` - `_dockClear`, then
+`AppState.openHome`. While it shows, the workspace segment reads *Home* on a
+neutral fill rather than naming a workspace that is not on screen. Two
+things are load-bearing:
 
 - **`showHome` is set in the shell's `initState`**, as a field (notifying
   there is a setState before the first build), *before* `deliverLaunch` and

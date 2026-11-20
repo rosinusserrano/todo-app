@@ -3,8 +3,9 @@
 // checklist to open - so it does not open on the tasks of a workspace you are
 // not working in (Marco, 2026-11-09).
 //
-// It is a launch screen, not a place: there is no button back to it, since
-// the dock's workspace menu already lists them. Picking a square switches to
+// What the app opens on at launch, and since 2026-11-20 a place you can go
+// back to: the Home row heading the dock's workspace menu (the overview of
+// what that menu lists), or H on a keyboard. Picking a square switches to
 // that workspace; picking a project line opens the project. Anything else
 // picked in the dock leaves it too (AppState._closeOtherViews clears it).
 //

@@ -155,6 +155,29 @@ void main() {
       await s.store.close();
     });
 
+    test(
+      'is reachable from anywhere: a project, a view, the checklist',
+      () async {
+        // Home is a destination since 2026-11-20 (the dock's workspace menu
+        // and H); whatever was open closes behind it.
+        final s = await fresh();
+        final p = await s.addProject('Launch');
+        await s.selectWorkspace(p!.uuid);
+        await s.toggleJournal();
+        expect(s.showJournal, isTrue);
+        await s.openHome();
+        expect(s.showHome, isTrue);
+        expect(s.showJournal, isFalse);
+
+        await s.setListOpen(true);
+        expect(s.showHome, isFalse);
+        await s.openHome();
+        expect(s.showHome, isTrue);
+        expect(s.showList, isFalse);
+        await s.store.close();
+      },
+    );
+
     testWidgets('a square per workspace, its projects inside', (tester) async {
       tester.view.physicalSize = const Size(340, 560);
       tester.view.devicePixelRatio = 1;

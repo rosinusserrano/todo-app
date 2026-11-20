@@ -29,6 +29,15 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 76. Home as a destination  `[x]`
+
+Asked 2026-11-20 ("you think of a way thats proper"). Design in
+`ROADMAP.md` *Home as a destination*.
+
+- [x] **76.1** Home row heading the dock's workspace menu, `H` on desktop,
+      segment reads Home; test in `shelf_1109_test`, docs, What's new
+      `2026-11-20`, web published.
+
 ### 75. Reopen an archived checklist  `[x]`
 
 Asked 2026-11-11. `AppState.reopenList`: clears `archived_at`; the open list

@@ -1177,10 +1177,11 @@ class AppState extends ChangeNotifier {
 
   /// The home screen: every workspace as a square of its colour. Shown at
   /// launch when there is no checklist to open, so the app does not open on
-  /// the list of a workspace you are not working in (Marco, 2026-11-09). It
-  /// is not a destination of its own - picking a workspace, a view, the
-  /// calendar or the checklist is how it is left, and [_closeOtherViews]
-  /// clears it so that every one of those does without having to remember.
+  /// the list of a workspace you are not working in (Marco, 2026-11-09), and
+  /// reachable again from the Home row of the dock's workspace menu or H
+  /// (2026-11-20). Picking a workspace, a view, the calendar or the checklist
+  /// is how it is left, and [_closeOtherViews] clears it so that every one of
+  /// those does without having to remember.
   bool showHome = false;
 
   /// Open tasks per list, workspaces and projects, while home is shown.

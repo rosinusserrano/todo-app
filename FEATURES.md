@@ -1189,10 +1189,12 @@ at the screen gives nothing away) and its lock is **opt-in**.
 - **Home: the workspaces as squares.** Launching the app with no checklist
   open opens on home - every workspace as a big square of its own colour,
   with how many tasks are open in it and its projects listed inside. Tap a
-  square for that workspace's list, a project line for the project. It is
-  only for launching, so the app does not open on the tasks of a workspace
-  you are not working in; there is no button back to it, since the dock's
-  workspace menu lists them all. Anything picked in the dock leaves it.
+  square for that workspace's list, a project line for the project. Launch
+  is the one time it opens by itself, so the app does not open on the tasks
+  of a workspace you are not working in. To go back to it, **Home** heads
+  the dock's workspace menu (or press `H` on a keyboard); while it shows,
+  the workspace part of the dock reads *Home*. Anything picked in the dock
+  leaves it.
 
 - **One bar, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
@@ -1666,6 +1668,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Home from anywhere** (2026-11-20): a Home row at the head of the
+    dock's workspace menu, and `H` on a desktop (`_dockToHome`); the
+    workspace segment reads *Home* while it shows.
   - **Reopen a finished checklist** (2026-11-11): from the archive, ticks
     kept; the open list swaps into the archive (`AppState.reopenList`).
   - **From the shelf, 2026-11-09**: **home** - launching with no checklist

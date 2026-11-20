@@ -537,6 +537,23 @@ void main() {
       await s.store.close();
     });
 
+    test('an empty block points at its workspace, a planned one does not', () async {
+      final now = DateTime.now();
+      final (s, event, task) = await planned(
+        start: now.subtract(const Duration(minutes: 10)),
+        end: now.add(const Duration(hours: 1)),
+      );
+      // Something to work through: the banner opens the session.
+      expect(s.emptySessionWorkspace, isNull);
+
+      // Nothing left: it goes to the workspace the block's calendar is.
+      await s.completeTask(task);
+      expect(s.emptySessionWorkspace, s.workspaceForEvent(event));
+      expect(s.emptySessionWorkspace, s.currentWorkspaceUuid);
+
+      await s.store.close();
+    });
+
     test('a block that has not started or is over is not live', () async {
       final now = DateTime.now();
 

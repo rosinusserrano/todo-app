@@ -29,6 +29,20 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 77. The shelf, 2026-11-20  `[x]`
+
+Three rows from "Todo Widget" (two from the shelf, one from chat). Design in
+`ROADMAP.md` *The shelf, 2026-11-20*.
+
+- [x] **77.1** Shelf review: keys for every answer (N, D, Del), printed on
+      the buttons (`reviewKeys`).
+- [x] **77.2** The timer: `countdown.dart` (parse, model), `ui/timer_view.dart`,
+      More → Timer, the dock's clock, the window surfacing when it is up,
+      a phone notification. Tests `countdown_test`, `timer_test`.
+- [x] **77.3** A live block with nothing planned: its tile goes to its
+      workspace, and is hidden while that workspace shows.
+- [x] **77.4** Docs, What's new `2026-11-20b`, web published.
+
 ### 76. Home as a destination  `[x]`
 
 Asked 2026-11-20 ("you think of a way thats proper"). Design in

@@ -28,7 +28,10 @@
 //   - **Keep is the safe answer and it is the one on the Enter key**, because
 //     the failure mode of a review under time pressure is bulk-answering it,
 //     and the answer that should be cheap to give is the one that changes
-//     nothing.
+//     nothing. The other three have keys too (Marco, 2026-11-20), each
+//     printed on its button: N for Do it now, D for Done, and Delete for
+//     Drop - the destructive one on the key that means it, away from the
+//     letters a hand rests on. [reviewKeys] is the one table.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,6 +45,32 @@ import 'reminder_menu.dart';
 
 /// What was decided about one task. Ordered as the buttons are.
 enum ReviewChoice { keep, activate, complete, drop }
+
+/// The keys that answer, and what each button prints beside its label. One
+/// table, so the hint can never name a key that does something else.
+const reviewKeys = <ReviewChoice, (List<LogicalKeyboardKey>, String)>{
+  ReviewChoice.keep: (
+    [LogicalKeyboardKey.enter, LogicalKeyboardKey.numpadEnter],
+    'Enter',
+  ),
+  ReviewChoice.activate: ([LogicalKeyboardKey.keyN], 'N'),
+  ReviewChoice.complete: ([LogicalKeyboardKey.keyD], 'D'),
+  ReviewChoice.drop: (
+    [LogicalKeyboardKey.delete, LogicalKeyboardKey.backspace],
+    'Del',
+  ),
+};
+
+/// The answer [key] gives, or null. Modified keys answer nothing: Ctrl+D or
+/// Alt+N belong to whoever else wants them.
+ReviewChoice? reviewChoiceFor(LogicalKeyboardKey key) {
+  final k = HardwareKeyboard.instance;
+  if (k.isControlPressed || k.isAltPressed || k.isMetaPressed) return null;
+  for (final e in reviewKeys.entries) {
+    if (e.value.$1.contains(key)) return e.key;
+  }
+  return null;
+}
 
 class ParkedReview extends StatefulWidget {
   const ParkedReview({
@@ -146,10 +175,9 @@ class ParkedReviewState extends State<ParkedReview> {
       autofocus: true,
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey != LogicalKeyboardKey.enter) {
-          return KeyEventResult.ignored;
-        }
-        choose(ReviewChoice.keep);
+        final choice = reviewChoiceFor(event.logicalKey);
+        if (choice == null) return KeyEventResult.ignored;
+        choose(choice);
         return KeyEventResult.handled;
       },
       child: Column(
@@ -244,7 +272,7 @@ class ParkedReviewState extends State<ParkedReview> {
           children: [
             _Choice(
               label: 'Keep',
-              hint: layout.touch ? null : 'Enter',
+              hint: layout.touch ? null : reviewKeys[ReviewChoice.keep]!.$2,
               icon: Icons.inventory_2_outlined,
               color: widget.accent,
               filled: true,
@@ -253,6 +281,7 @@ class ParkedReviewState extends State<ParkedReview> {
             ),
             _Choice(
               label: 'Do it now',
+              hint: layout.touch ? null : reviewKeys[ReviewChoice.activate]!.$2,
               icon: Icons.north_east_rounded,
               color: widget.accent,
               touch: layout.touch,
@@ -260,6 +289,7 @@ class ParkedReviewState extends State<ParkedReview> {
             ),
             _Choice(
               label: 'Done',
+              hint: layout.touch ? null : reviewKeys[ReviewChoice.complete]!.$2,
               icon: Icons.check_rounded,
               color: T.ok,
               touch: layout.touch,
@@ -267,6 +297,7 @@ class ParkedReviewState extends State<ParkedReview> {
             ),
             _Choice(
               label: 'Drop',
+              hint: layout.touch ? null : reviewKeys[ReviewChoice.drop]!.$2,
               icon: Icons.close_rounded,
               color: T.danger,
               touch: layout.touch,

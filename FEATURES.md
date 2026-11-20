@@ -339,9 +339,11 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
   of them leaves the task where it is:
   - **Keep** — still parked. Also the **Enter** key, because the safe answer
     should be the cheap one.
-  - **Do it now** — back onto the current list.
-  - **Done** — checked off from here, into history.
-  - **Drop** — deleted.
+  - **Do it now** — back onto the current list. Key: **N**.
+  - **Done** — checked off from here, into history. Key: **D**.
+  - **Drop** — deleted. Key: **Delete** (or Backspace), away from the letters.
+
+  Each button prints its key on a keyboard.
 
   You cannot reach the end without answering for every task, and **reaching the
   end is what restarts the clock**. Leaving early (Esc, or the back arrow) keeps
@@ -720,9 +722,12 @@ Three tiers, none of which need an account, an API key, or a licence:
     its calendar, and it is the one control in the app that talks about a
     workspace other than the one on screen — so pressing it takes you there,
     rather than showing that block's todos beside a different list.
-  - A block with **nothing** planned into it says so and leaves it there:
-    planning is choosing among todos you already have, and both ways of doing
-    it are in the calendar.
+  - A block with **nothing** planned into it is a statement about which
+    workspace this hour is for, so its tile **takes you to that workspace**
+    instead of opening an empty session - and while you are already in it
+    (its list, its views or projects, or beside the calendar) the tile is not
+    drawn at all. Planning is still choosing among todos you already have, in
+    the calendar.
   - There is no permanent button for it because for most of the day there is no
     answer: the way in appears when a block starts and the view hands the
     content area back when the last one ends. Esc closes it like the other
@@ -952,6 +957,28 @@ window while it is open.
   If two devices each start a list offline, the newer is the list and the other
   shows as "Also open", to merge in or finish. Needs the server updated
   (sync protocol 3); until then the list stays on the device it was written on.
+
+## Timer
+
+**More → Timer** (hover the dock's More, or tap it): one line, said the way
+you would say it - "1h for checking mails", "checking mails 45m", "1h30
+call", "25", "1:15 Mails", German units too - read back under the field as
+you type ("1 h · checking mails"), and **Enter** starts it. Or tap a length
+(5, 15, 25, 45 min, 1 h) and whatever is typed is what it is for.
+
+- **Running**, the time left fills the view, with a bar for how much is gone
+  and when it ends. **Pause** (Space), **+5 min**, **Stop**.
+- **Go anywhere else** and a little clock with the time left sits in the
+  corner of the dock's More; the Timer row there brings you back.
+- **When it is up the app comes to you**: minimised, in the tray, behind
+  other windows or on another view, the window comes forward on the timer,
+  which says *Time's up* - **Done** (Enter), **+5 min**, or **Again**. On a
+  phone the app cannot raise itself, so the OS shows a notification at that
+  moment and tapping it lands there. The web app can only do this while its
+  page is open.
+- **One timer, on this device.** It is not synced - it is about this sitting
+  at this machine - and it survives closing the app: one that ran out while
+  the app was closed is waiting, up, when it opens.
 
 ## Collections
 
@@ -1668,6 +1695,12 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **From the shelf, 2026-11-20**: a **timer** (More → Timer, "1h for
+    checking mails"; the window comes back when it is up;
+    `countdown.dart`, `ui/timer_view.dart`, device-local). The shelf
+    review's other answers have **keys** (N, D, Del). A running block with
+    nothing planned: its **tile goes to its workspace**, and is not drawn
+    while you are in it.
   - **Home from anywhere** (2026-11-20): a Home row at the head of the
     dock's workspace menu, and `H` on a desktop (`_dockToHome`); the
     workspace segment reads *Home* while it shows.

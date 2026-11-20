@@ -442,6 +442,49 @@ void main() {
       expect(find.text('Reviewed 2 todos.'), findsOneWidget);
     });
 
+    testWidgets('every answer has a key, and its button names it', (
+      tester,
+    ) async {
+      final calls = Calls();
+      await pumpPanel(
+        tester,
+        groups: [shelf('g1', 'Backlog')],
+        parked: {
+          'g1': [
+            for (var i = 1; i <= 4; i++)
+              task('t$i', 'task $i', groupUuid: 'g1'),
+          ],
+        },
+        calls: calls,
+      );
+      await tester.tap(find.text('Review'));
+      await tester.pumpAndSettle();
+      for (final hint in ['Enter', 'N', 'D', 'Del']) {
+        expect(find.text(hint), findsOneWidget, reason: hint);
+      }
+
+      // Ctrl+D is somebody else's: it answers nothing.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(find.text('1 of 4'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyN);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+
+      expect(calls.unparked, ['t2']);
+      expect(calls.completed, ['t3']);
+      expect(calls.deleted, ['t4']);
+      expect(calls.reviewed, ['g1']);
+    });
+
     testWidgets('leaving early keeps the decisions and not the clock',
         (tester) async {
       final calls = Calls();

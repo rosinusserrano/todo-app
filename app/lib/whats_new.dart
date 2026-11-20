@@ -38,6 +38,19 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-20b',
+    title: 'A timer, and two smaller things',
+    points: [
+      'More → Timer: type "1h for checking mails" and press Enter. Leave it '
+          'and a little clock in the corner of More shows what is left; when '
+          'it is up, the app comes back to tell you.',
+      'Reviewing a shelf: N is Do it now, D is Done, Del is Drop, as well as '
+          'Enter for Keep.',
+      'A calendar block with nothing planned in it: its tile now takes you '
+          'to its workspace, and stays out of the way while you are there.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-20',
     title: 'Home, whenever you want it',
     points: [

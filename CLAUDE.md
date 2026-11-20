@@ -887,6 +887,10 @@ time on one. The rules that are not obvious from the schema:
   directly, titled `calendarName(target)`, instead of opening the editor. The
   grid is not told about the mode, only about `blockTitle`/`blockColor` for the
   draft — the draft is the sole preview of what letting go will write.
+- **A block with nothing planned points at its workspace**
+  (`AppState.emptySessionWorkspace`): the banner goes there instead of
+  opening an empty session, and `_showsSessionBanner` leaves it out while
+  that workspace is what is showing (Marco, 2026-11-20).
 - **The session ("Now") is derived, never stored.** `AppState.refreshSessions`
   asks the store which events cover this instant and what is planned into each;
   there is no "current session" row, so nothing can go stale or disagree with
@@ -1068,6 +1072,29 @@ things are load-bearing:
   call `leaveHome`, so every way somewhere leaves it without having to
   remember to. Same structural rule as the quick-add commit.
 
+### The timer (`app/lib/countdown.dart`, `app/lib/ui/timer_view.dart`)
+
+One countdown, **device-local** (`settings` key `timer`, JSON), with a view of
+its own on the dock's More (`AppState.showTimer`, cleared by
+`_closeOtherViews` like home). Design in ROADMAP.md *The timer*. Load-bearing:
+
+- **It stores an instant** (`endsAt`, or `left` while paused - exactly one),
+  so it survives a restart, and **up is a state**: it stays until Done, so a
+  launch after it ran out opens on it.
+- **One Dart `Timer` in the shell** (`_armCountdown`, re-armed from every
+  notify by comparing the instant) fires `_onCountdownUp`: `_surfaceWindow`,
+  out of focus mode, then `openTimer`. It does not wait for something being
+  written the way a reminder does - the add card and the thought pane sit
+  over the content and stay. `_openListOnReturn` stands aside for an open or
+  up timer, or the resume that delivers it would open the checklist on top.
+- **Phones get it from the OS**: `NotificationService.reschedule` takes the
+  countdown (payload `timer:`), and `_setCountdown` reschedules. Not on
+  Windows: there the shell raising the window *is* the alarm.
+- **Nothing rebuilds per second but what shows a second**: the view and the
+  dock's `CountdownBadge` (`DockSegment.badge`) each tick themselves.
+- `parseCountdown` is pure and tuned not to guess, like the add card's
+  keywords: a unit, an `h:mm`, or a number opening the line.
+
 ### Collections (`app/lib/ui/collections.dart`)
 
 A per-workspace view beside Notes and Parked (`WorkspaceView.collections`,
@@ -1223,7 +1250,8 @@ which exactly one leaves it alone. Three properties are load-bearing:
   a post-frame callback in `initState` (the owner reacts with `setState`).
 - **Enter is Keep.** The failure mode of a review under time pressure is
   bulk-answering it, so the answer that should be cheapest to give is the one
-  that changes nothing.
+  that changes nothing. The rest have keys too (N, D, Delete) from one table,
+  `reviewKeys`, which the button hints are printed from.
 
 The funnel is a **rung of `ParkedPanel`**, not a view of its own, so nothing in
 the shell had to learn about it — the panel holds a `FocusNode` and walks Esc

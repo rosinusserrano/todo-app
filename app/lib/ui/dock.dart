@@ -159,6 +159,7 @@ class DockSegment {
     this.semanticLabel,
     this.extent,
     this.onClick,
+    this.badge,
   });
 
   final String label;
@@ -195,6 +196,10 @@ class DockSegment {
   /// means the tap is for the menu - it opens it, and a second tap closes it
   /// (Marco, 2026-10-18).
   final VoidCallback? onClick;
+
+  /// Something small in the corner opposite the count - the timer's clock
+  /// beside More. Null for nothing.
+  final Widget? badge;
 }
 
 class Dock extends StatefulWidget {
@@ -827,6 +832,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                 ),
               ),
             ),
+            if (seg.badge != null)
+              Positioned(
+                top: _vertical ? null : T.s1,
+                bottom: _vertical ? T.s1 : null,
+                left: T.s1 + 2,
+                child: IgnorePointer(child: seg.badge!),
+              ),
             // The count and the dot sit in the corner, not after the label:
             // inline, they took the room the label needed and "Thoughts 3"
             // came out as "Thoug… 3".

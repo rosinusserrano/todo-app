@@ -133,6 +133,10 @@ class T {
   /// same size as the rows under it is a row.
   static const fsTitle = 20.0;
 
+  /// The timer's time left: a number read from across the room, which is
+  /// the whole job of that screen. Only ever that.
+  static const fsReadout = 56.0;
+
   /// Text laid *into* the calendar grid: the hour gutter, a weekday initial, a
   /// day number in a month tile, the label inside a block.
   ///

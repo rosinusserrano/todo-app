@@ -37,6 +37,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'countdown.dart';
 import 'platform.dart';
 import 'sync/models.dart';
 
@@ -82,6 +83,9 @@ class NotificationService {
   /// Called when the user taps a shelf's review reminder.
   void Function(String groupUuid)? onReviewTapped;
 
+  /// The timer's notification was tapped.
+  void Function()? onTimerTapped;
+
   /// Payloads say which kind of row they came from.
   ///
   /// Both live in one notification namespace - `cancelAll` does not know the
@@ -91,6 +95,7 @@ class NotificationService {
   static const _eventPrefix = 'event:';
   static const _thoughtPrefix = 'thought:';
   static const _reviewPrefix = 'review:';
+  static const _timerPayload = 'timer:';
 
   static const _channel = AndroidNotificationChannel(
     'reminders',
@@ -175,7 +180,9 @@ class NotificationService {
   /// A click on a notification, by its payload.
   void _route(String? payload) {
     if (payload == null || payload.isEmpty) return;
-    if (payload.startsWith(_eventPrefix)) {
+    if (payload == _timerPayload) {
+      onTimerTapped?.call();
+    } else if (payload.startsWith(_eventPrefix)) {
       onEventTapped?.call(payload.substring(_eventPrefix.length));
     } else if (payload.startsWith(_thoughtPrefix)) {
       onThoughtTapped?.call(payload.substring(_thoughtPrefix.length));
@@ -215,12 +222,30 @@ class NotificationService {
     List<ParkedGroup> reviews = const [],
     List<CalendarEvent> events = const [],
     Map<String, Calendar> calendars = const {},
+    Countdown? countdown,
   }) async {
     if (!supported || !_ready) return;
 
     await _plugin.cancelAll();
 
     final now = tz.TZDateTime.now(tz.local);
+
+    // The timer, on a phone: the app is not running when it is up, so the OS
+    // is told now. On a desktop the shell surfaces the window itself, which
+    // is what was asked for - "the app appears".
+    final timerEnds = countdown?.endsAt;
+    if (!toastsFromPoll && timerEnds != null) {
+      await _scheduleOne(
+        id: idFor('timer'),
+        title: "Time's up",
+        body: countdown!.label.isEmpty ? 'Timer' : countdown.label,
+        at: timerEnds,
+        now: now,
+        payload: _timerPayload,
+        channel: _channel,
+        describe: 'the timer',
+      );
+    }
 
     // On Windows the poll toasts these as they fall due ([showDue]).
     if (toastsFromPoll) {

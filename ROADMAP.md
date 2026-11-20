@@ -761,6 +761,31 @@ Open, and worth answering before any of Step 1 is written:
 
 ## Shipped
 
+### The shelf, 2026-11-20 — the timer, review keys, the empty session tile
+
+- **The timer is device-local and singular.** "1h for checking mails" is
+  about this sitting at this machine; syncing it would ring on a phone in a
+  pocket for a timer set at the desk. One, because "the timer" is what was
+  asked for. It stores the instant it ends (or what is left, paused), which
+  survives a restart and is what a phone's OS is handed.
+- **One line, not a picker.** The sentence is how a timer is said; it is
+  parsed like the add card's keywords (needs a unit, `h:mm`, or a leading
+  number) and read back under the field before Enter. Presets start at once.
+- **When it is up the window comes back** - Marco's words, "no matter if
+  the app is minimized or not". On Windows that replaces a toast (the
+  reminders' way); on a phone, which cannot raise an app, it is a scheduled
+  notification. The web app cannot do either with its page closed: the
+  server would have to know about the timer, and it is device-local. Left
+  for later if it is missed.
+- **The dock shows it on More's corner** (where Timer lives), ticking itself.
+- **Review keys**: N, D, Delete for the three answers that are not Keep -
+  Delete because Drop is the destructive one and should not sit under a
+  resting finger.
+- **An empty block's tile goes to its workspace.** With nothing planned the
+  session view is an empty page; the block is saying which workspace the
+  hour is for. Hidden while that workspace is on screen, since it would
+  offer where you are.
+
 ### Home as a destination (2026-11-20)
 
 Marco, eleven days after "I dont really need a button bringing me there":

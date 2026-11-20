@@ -4,7 +4,7 @@
 // behaviour is the part that is not allowed to regress on Windows: frameless,
 // transparent, acrylic, and always on top *while unfocused*.
 
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:convert' show utf8;
 import 'dart:io' show File;
 
@@ -81,6 +81,7 @@ import 'ui/task_drag.dart';
 import 'ui/task_row.dart';
 import 'ui/title_bar.dart';
 import 'ui/thought_sheet.dart';
+import 'ui/timer_view.dart';
 import 'ui/update_sheet.dart';
 import 'ui/workspace_form.dart';
 import 'ui/workspace_view.dart';
@@ -613,6 +614,7 @@ class _WidgetShellState extends State<WidgetShell>
     widget.notifications.onTapped = _openTappedReminder;
     widget.notifications.onEventTapped = _openTappedEvent;
     widget.notifications.onThoughtTapped = (_) => _onThoughtReminderDue();
+    widget.notifications.onTimerTapped = () => _onCountdownUp();
     widget.notifications.onReviewTapped = (uuid) async {
       final g = await s.store.groupByUuid(uuid);
       if (g != null) await _onReviewDue(g.workspaceUuid);
@@ -630,6 +632,9 @@ class _WidgetShellState extends State<WidgetShell>
       s.showHome = true;
       s.loadOpenCounts();
     }
+    // A timer still running from before the app closed is armed again; one
+    // that ran out meanwhile fires at once and lands on its view.
+    _armCountdown();
     // A click on a toast that started the app, now there is somewhere for it
     // to land.
     widget.notifications.deliverLaunch();
@@ -710,6 +715,9 @@ class _WidgetShellState extends State<WidgetShell>
   /// is already "the app opens on this one thing", and leaving it is an edit.
   Future<void> _openListOnReturn() async {
     if (!mounted || s.showList || s.currentList == null) return;
+    // The timer's view is not taken away by coming back to it, and a timer
+    // that ran out while the app was away is about to put it on screen.
+    if (s.showTimer || (s.countdown?.isUp(DateTime.now()) ?? false)) return;
     if (_listHeldUntil != null && DateTime.now().isBefore(_listHeldUntil!)) {
       return;
     }
@@ -1075,6 +1083,56 @@ class _WidgetShellState extends State<WidgetShell>
     await _landOnReminder(task);
   }
 
+  // ------------------------------------------------------------------ timer
+
+  /// The one Dart timer that waits for the countdown to run out, and the
+  /// instant it was set for - re-armed from every notify, so it follows a
+  /// pause, a "+5 min" or a stop without each of them having to tell it.
+  Timer? _countdownAlarm;
+  DateTime? _countdownArmedFor;
+
+  void _armCountdown() {
+    final c = s.countdown;
+    final ends = c == null || c.paused ? null : c.endsAt;
+    if (ends == _countdownArmedFor) return;
+    _countdownAlarm?.cancel();
+    _countdownAlarm = null;
+    _countdownArmedFor = ends;
+    if (ends == null) return;
+    final wait = ends.difference(DateTime.now());
+    _countdownAlarm = Timer(
+      wait.isNegative ? Duration.zero : wait,
+      _onCountdownUp,
+    );
+  }
+
+  /// The timer is up, or its notification was tapped: the window comes back
+  /// - from minimised, from the tray, from behind something - and lands on
+  /// the timer's view, whatever was open (Marco, 2026-11-20). Unlike a
+  /// reminder it does not wait for something being written: the add card
+  /// and the thought pane are drawn over the content and stay where they
+  /// are, and a note being written saves as it closes.
+  Future<void> _onCountdownUp() async {
+    if (!mounted || s.countdown == null) return;
+    await _surfaceWindow();
+    if (!mounted) return;
+    if (s.focusTask != null) await _exitFocus();
+    _closeSound();
+    _closeSettings();
+    if (_expandedTaskUuid != null) _collapseTask();
+    if (!s.showTimer) await s.openTimer();
+  }
+
+  Future<void> _dockToTimer() async {
+    // Inside the tap, as for a thought: iOS raises a web page's keyboard
+    // only then, and the field is built a frame later.
+    if (isWeb && _layout.touch && s.countdown == null) primeWebKeyboard();
+    await _dockClear();
+    if (!mounted) return;
+    _clearSelection();
+    await s.openTimer();
+  }
+
   // --------------------------------------------------------------- reminders
 
   /// A thought's reminder came due, or its notification was tapped: the
@@ -1249,6 +1307,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (!await _surfaceForCapture(leaveFocus: true)) return;
     if (s.showCalendar && !_layout.splitsCalendar) await _toggleCalendar();
     if (s.showList) await s.setListOpen(false);
+    await s.closeTimer();
     if (!mounted) return;
     // Land on the task list, not on whichever view was covering it. Not
     // [_showTasks]: that stops after closing one overlay, which is right for a
@@ -1379,6 +1438,8 @@ class _WidgetShellState extends State<WidgetShell>
     widget.notifications.onEventTapped = null;
     widget.notifications.onThoughtTapped = null;
     widget.notifications.onReviewTapped = null;
+    widget.notifications.onTimerTapped = null;
+    _countdownAlarm?.cancel();
     _reminders.dispose();
     if (isDesktop) {
       windowManager.removeListener(this);
@@ -1394,6 +1455,7 @@ class _WidgetShellState extends State<WidgetShell>
 
   void _onState() {
     _noteCompatibility();
+    _armCountdown();
     // The quick-action menu names the task in focus. Cheap to call on every
     // notify - it compares the title it would print and does nothing unless it
     // has moved - and there is no single write to hang it off instead, since a
@@ -1634,7 +1696,11 @@ class _WidgetShellState extends State<WidgetShell>
   /// no more needed than it is beside the calendar - the pill on the workspace
   /// bar is still saying which list is on the left.
   bool get _neutralChrome =>
-      s.showCalendar || s.showThoughts || s.showList || s.showHome;
+      s.showCalendar ||
+      s.showThoughts ||
+      s.showList ||
+      s.showHome ||
+      s.showTimer;
 
   /// The window's background. Translucent for the desktop's frosted window;
   /// in a browser it is laid **opaque** on [T.webBackdrop], so the page's own
@@ -1806,6 +1872,8 @@ class _WidgetShellState extends State<WidgetShell>
             _clearSelection();
           } else if (s.showList) {
             _toggleList();
+          } else if (s.showTimer) {
+            s.closeTimer();
           } else if (s.showCalendar) {
             _toggleCalendar();
           } else if (s.showThoughts) {
@@ -2206,7 +2274,29 @@ class _WidgetShellState extends State<WidgetShell>
   /// block's workspace** first, because the tile is the one control in the app
   /// that talks about a workspace other than the one on screen - showing its
   /// todos beside a different workspace's list is how you read the wrong one.
+  /// The banner, unless what it would offer is where you already are: an
+  /// empty block's workspace, showing - its list, a view of it, one of its
+  /// projects, or beside the calendar in the split. Home, the checklist, the
+  /// timer and the full-window calendar are not in it.
+  bool get _showsSessionBanner {
+    if (!s.hasLiveSession || s.showSession) return false;
+    final ws = s.emptySessionWorkspace;
+    if (ws == null) return true;
+    final inIt =
+        s.homeWorkspace?.uuid == ws &&
+        !s.showHome &&
+        !s.showList &&
+        !s.showTimer &&
+        !(s.showCalendar && !_layout.splitsCalendar);
+    return !inIt;
+  }
+
   Future<void> _openSession() async {
+    final empty = s.emptySessionWorkspace;
+    if (empty != null) {
+      await _dockToWorkspace(s.workspaces.firstWhere((w) => w.uuid == empty));
+      return;
+    }
     if (_clearOverlays()) return;
     final first = s.liveEvents.isEmpty ? null : s.liveEvents.first;
     if (first == null) return;
@@ -2475,6 +2565,7 @@ class _WidgetShellState extends State<WidgetShell>
     // The shopping list replaces the whole body the same way: it belongs to no
     // workspace, and it is meant to be the only thing on screen.
     if (s.showList) return ShoppingListView(state: s);
+    if (s.showTimer) return TimerView(state: s);
 
     if (s.showCalendar) {
       if (_layout.splitsCalendar) return _splitCalendar(ws);
@@ -2519,8 +2610,7 @@ class _WidgetShellState extends State<WidgetShell>
 
     return Column(
       children: [
-        if (s.hasLiveSession && !s.showSession && !_takesScreen)
-          _sessionBanner(),
+        if (_showsSessionBanner && !_takesScreen) _sessionBanner(),
         // The content keeps its element through every one of those `if`s
         // resolving differently - see content_slot.dart, which is the whole
         // reason opening a note on a phone no longer closes it again.
@@ -2586,6 +2676,7 @@ class _WidgetShellState extends State<WidgetShell>
       !s.showSession &&
       !s.showCalendar &&
       !s.showList &&
+      !s.showTimer &&
       s.focusTask == null &&
       _expandedTask != null;
 
@@ -2651,6 +2742,7 @@ class _WidgetShellState extends State<WidgetShell>
         s.showCalendar ||
         s.showList ||
         s.showHome ||
+        s.showTimer ||
         view == WorkspaceView.thoughts;
     const views = {
       null: (Icons.check_circle_outline_rounded, 'Tasks'),
@@ -2687,6 +2779,8 @@ class _WidgetShellState extends State<WidgetShell>
         ? (Icons.calendar_month_outlined, 'Calendar')
         : s.showList
         ? (Icons.checklist_rounded, 'Checklist')
+        : s.showTimer
+        ? (Icons.timer_outlined, 'Timer')
         : view == WorkspaceView.thoughts
         ? (Icons.cloud_outlined, 'Thoughts')
         : (Icons.more_horiz_rounded, 'More');
@@ -2711,7 +2805,7 @@ class _WidgetShellState extends State<WidgetShell>
           label: s.showHome ? 'Home' : current?.name ?? 'Workspace',
           fill: s.showHome ? Color.lerp(T.bgSolid, T.text, 0.16)! : ws,
           ink: s.showHome ? T.text : T.inkOn(ws),
-          dimmed: s.showCalendar || s.showList,
+          dimmed: s.showCalendar || s.showList || s.showTimer,
           semanticLabel: s.showHome
               ? 'Home'
               : 'Workspace: ${current?.name ?? ''}',
@@ -2800,6 +2894,10 @@ class _WidgetShellState extends State<WidgetShell>
           count: s.thoughtCount,
           pressure: s.thoughtCount,
           dot: syncNeedsYou,
+          // The timer's little clock, while it runs somewhere off screen.
+          badge: s.countdown != null && !s.showTimer
+              ? CountdownBadge(countdown: s.countdown!, ink: T.text)
+              : null,
           items: [
             DockItem(
               icon: Icons.settings_outlined,
@@ -2822,12 +2920,20 @@ class _WidgetShellState extends State<WidgetShell>
               onChoose: _dockToCalendar,
             ),
             DockItem(
+              icon: Icons.timer_outlined,
+              label: 'Timer',
+              current: s.showTimer,
+              dot: s.countdown?.isUp(DateTime.now()) ?? false,
+              onChoose: _dockToTimer,
+            ),
+            DockItem(
               icon: Icons.cloud_outlined,
               label: 'Thoughts',
               count: s.thoughtCount,
               current:
                   !s.showCalendar &&
                   !s.showList &&
+                  !s.showTimer &&
                   view == WorkspaceView.thoughts,
               onChoose: () => _dockToView(WorkspaceView.thoughts),
             ),
@@ -2880,6 +2986,7 @@ class _WidgetShellState extends State<WidgetShell>
     if (!keepList && s.showList) await s.setListOpen(false);
     if (_expandedTaskUuid != null) _collapseTask();
     s.leaveHome();
+    await s.closeTimer();
   }
 
   Future<void> _dockToView(WorkspaceView? view) async {
@@ -3022,7 +3129,7 @@ class _WidgetShellState extends State<WidgetShell>
                 layout: Layout(constraints.biggest, touch: !isDesktop),
                 child: Column(
                   children: [
-                    if (s.hasLiveSession && !s.showSession) _sessionBanner(),
+                    if (_showsSessionBanner) _sessionBanner(),
                     Expanded(child: _stackedContent(ws)),
                   ],
                 ),

@@ -14,6 +14,7 @@ import 'dart:ui' show Color;
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 
+import 'countdown.dart';
 import 'journal_crypto.dart';
 import 'task_variables.dart';
 import 'notifications.dart';
@@ -238,6 +239,7 @@ class AppState extends ChangeNotifier {
     await restoreFocus();
     await loadFeeds();
     await loadList();
+    await _loadCountdown();
   }
 
   // ------------------------------------------------------------ what's new
@@ -303,6 +305,18 @@ class AppState extends ChangeNotifier {
   List<Task> get sessionTaskList => [
     for (final e in liveEvents) ...?sessionTasks[e.uuid],
   ];
+
+  /// The workspace a running block points at when nothing is planned into
+  /// it, or null - something is planned, or its calendar is no workspace's.
+  /// With nothing to work through, the session view would be an empty page;
+  /// the block says which workspace this hour is for, and the banner takes
+  /// you there instead (Marco, 2026-11-20).
+  String? get emptySessionWorkspace {
+    if (!hasLiveSession || sessionTaskList.isNotEmpty) return null;
+    final ws = workspaceForEvent(liveEvents.first);
+    if (ws == null || !workspaces.any((w) => w.uuid == ws)) return null;
+    return ws;
+  }
 
   /// What the banner is made of. Compared before and after a poll so that a
   /// tick which found nothing new does not rebuild the whole widget every 20
@@ -740,6 +754,7 @@ class AppState extends ChangeNotifier {
       reviews: await _store.pendingGroupReviews(),
       events: await _store.upcomingEvents(),
       calendars: {for (final c in await _store.calendars()) c.uuid: c},
+      countdown: countdown,
     );
   }
 
@@ -1173,6 +1188,82 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------------------------------------------------------------- timer
+
+  /// The one timer (countdown.dart), device-local, or null for none.
+  Countdown? countdown;
+
+  /// The timer's view owns the content area, like the checklist.
+  bool showTimer = false;
+
+  static const _kCountdown = 'timer';
+
+  Future<void> _loadCountdown() async {
+    final raw = await _store.setting(_kCountdown);
+    if (raw == null) return;
+    try {
+      countdown = Countdown.fromJson(jsonDecode(raw));
+    } on FormatException {
+      countdown = null;
+    }
+  }
+
+  /// Opens the timer's view - the running one, or the line to set one.
+  Future<void> openTimer() async {
+    _closeOtherViews();
+    showTimer = true;
+    if (showCalendar) await commitPendingBlocks();
+    showCalendar = false;
+    notifyListeners();
+  }
+
+  Future<void> closeTimer() async {
+    if (!showTimer) return;
+    showTimer = false;
+    notifyListeners();
+  }
+
+  Future<void> startCountdown(Duration d, String label) =>
+      _setCountdown(Countdown.start(d, label.trim(), DateTime.now()));
+
+  Future<void> pauseCountdown() async {
+    final c = countdown;
+    if (c != null) await _setCountdown(c.pause(DateTime.now()));
+  }
+
+  Future<void> resumeCountdown() async {
+    final c = countdown;
+    if (c != null) await _setCountdown(c.resume(DateTime.now()));
+  }
+
+  Future<void> extendCountdown(Duration by) async {
+    final c = countdown;
+    if (c != null) await _setCountdown(c.extend(by, DateTime.now()));
+  }
+
+  /// The same again, from now: what "Again" on a finished timer does.
+  Future<void> restartCountdown() async {
+    final c = countdown;
+    if (c == null) return;
+    await startCountdown(c.total, c.label);
+  }
+
+  /// Stopped, or dismissed once it is up.
+  Future<void> clearCountdown() => _setCountdown(null);
+
+  Future<void> _setCountdown(Countdown? c) async {
+    countdown = c;
+    notifyListeners();
+    if (c == null) {
+      await _store.clearSetting(_kCountdown);
+    } else {
+      await _store.setSetting(_kCountdown, jsonEncode(c.toJson()));
+    }
+    // A phone is told in advance, as for a reminder: the app will not be
+    // running when it is up.
+    await _rescheduleNotifications();
+  }
+
   // ----------------------------------------------------------------- home
 
   /// The home screen: every workspace as a square of its colour. Shown at
@@ -1228,8 +1319,9 @@ class AppState extends ChangeNotifier {
     // The shopping list is not a per-workspace view, but it owns the same
     // content area, so anything opening there closes it.
     showList = false;
-    // Home likewise: whatever opens is where you are now.
+    // Home and the timer likewise: whatever opens is where you are now.
     showHome = false;
+    showTimer = false;
   }
 
   // ----------------------------------------------------------- attachments

@@ -65,6 +65,21 @@ Run from `app/` unless noted. The Flutter SDK must be on `PATH`.
 | Start the server with setup + firewall help | `server\start-server.ps1` / `server/start-server.sh` |
 | Install the built app for daily use (repo root) | `install-windows.ps1` |
 
+**Deploying is Claude's to do, without asking** (Marco, 2026-11-20). This
+machine has passwordless `sudo`, and once work is committed, pushed, analyze
+clean and tests green, Claude deploys it directly:
+
+- **Web app**: `server/build-web.sh /srv/todo-web` (repo root; finds
+  `~/flutter/bin` itself). No restart needed. The dev site is
+  `server/build-web.sh /srv/todo-dev-web`. Every deploy needs a new
+  `ReleaseNote` (see *What's new*).
+- **Server** (after a change under `server/`): `sudo systemctl restart
+  todo-sync` (the dev copy is `todo-sync-dev`), then check
+  `systemctl status` and `/api/health`.
+- **The live database** is under `/var/lib/todo-sync/` (owned by `todosync`).
+  Reading it with `sudo` is fine. To inspect it, read a `sqlite3 .backup`
+  copy. Never write to the live file by hand.
+
 `install-windows.ps1` builds, then copies the bundle **out of the working tree**
 to `%LOCALAPPDATA%\Programs\Todo Widget` and shortcuts it — running the daily
 driver straight out of `app\build\` means the next `flutter build` overwrites the

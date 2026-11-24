@@ -629,8 +629,11 @@ row that left the list drops out rather than being acted on. `TaskRow` takes
 `selected` / `selecting` / `onToggleSelect`: Ctrl+click toggles, and once
 anything is selected a plain click does too. `SelectionBar` takes the add
 field's slot. `ui/move_picker.dart` answers "where does this go" for one task
-or many - this workspace's shelves, then every other workspace's list and
-shelves - and replaced the single-workspace park picker. The writes are
+or many - a panel of workspaces (this one first), and beside the hovered or
+tapped one its list, shelves and, for this one, *New group…* - and replaced
+the single-workspace park picker. It is a route of its own, not `showMenu`:
+the flyout is placed from the row's box measured when it opens, so the
+workspace panel's scroll closes it. The writes are
 `AppState.moveTasks` / `finishTasks`: one pass, one refresh.
 
 
@@ -1194,6 +1197,13 @@ third on a task that asked for everything.
   focus mode — rather than by every path that opens something else, because a
   rule each call site has to remember is the rule that gets missed (see the
   quick-add commit rule for how that goes).
+- **A swipe is a shortcut on touch** (`TaskRow.swipeable`): left deletes,
+  right opens the park picker. Hand-rolled, not `Dismissible`, because
+  `Dismissible` asserts if the row is still in the tree after `onDismissed`
+  and the list only drops it after an awaited write; the row flies off and
+  collapses through `_leave` like a tick. The shell turns it off where
+  `_rowsDrag` (the row is a `Draggable` onto a block or shelf) - the row's
+  recogniser is deeper and would win that arena, as it does the view swipe.
 - **Reordering is per pointer too.** A pointer gets `dragHandle` on the *right*
   (it was on the left, indenting the title of every row for a control only a
   mouse can use); touch gets no handle at all and a

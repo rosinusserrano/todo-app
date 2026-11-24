@@ -29,6 +29,16 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 78. Swipes, and the picker by workspace  `[x]`
+
+Asked 2026-11-24. Design in `ROADMAP.md` *Swipes, and a picker that starts
+with workspaces*.
+
+- [x] **78.1** Touch swipe on a task row: left deletes, right opens the park
+      picker (`TaskRow.swipeable`). Move picker lists workspaces; hover/tap
+      opens its list and shelves beside it. Tests in `touch_task_row_test`,
+      `multi_select_test`. Docs, What's new `2026-11-24`, web published.
+
 ### 77. The shelf, 2026-11-20  `[x]`
 
 Three rows from "Todo Widget" (two from the shelf, one from chat). Design in

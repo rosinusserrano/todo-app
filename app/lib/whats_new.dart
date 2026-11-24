@@ -38,6 +38,17 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-24',
+    title: 'Swipe a task',
+    points: [
+      'On your phone, swipe a task left to delete it, or right to park it. '
+          'It has to go about a third of the way across - it turns solid '
+          'when letting go will count.',
+      'Parking or moving now shows your workspaces first. Hover over one '
+          '(or tap it) to see its list and shelves next to it.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-20b',
     title: 'A timer, and two smaller things',
     points: [

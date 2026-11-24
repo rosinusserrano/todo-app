@@ -434,4 +434,67 @@ void main() {
       expect(grip.dx, greaterThan(title.dx));
     });
   });
+
+  group('swipes', () {
+    Future<({int deleted, int parked})> swipe(
+      WidgetTester tester, {
+      required double dx,
+      bool touch = true,
+      bool swipeable = true,
+    }) async {
+      var deleted = 0;
+      var parked = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: LayoutScope(
+            layout: Layout(const Size(T.designWidth, 600), touch: touch),
+            child: TaskRow(
+              task: task(),
+              accent: T.accent,
+              onComplete: () async {},
+              onDelete: () async => deleted++,
+              onFocus: () {},
+              onPark: (_) async => parked++,
+              swipeable: swipeable,
+            ),
+          ),
+        ),
+      ));
+      await tester.drag(find.text('inspect the layers'), Offset(dx, 0));
+      await tester.pumpAndSettle();
+      return (deleted: deleted, parked: parked);
+    }
+
+    testWidgets('left past the threshold deletes', (tester) async {
+      expect(await swipe(tester, dx: -200), (deleted: 1, parked: 0));
+    });
+
+    testWidgets('right past the threshold parks, and the row comes back', (
+      tester,
+    ) async {
+      expect(await swipe(tester, dx: 200), (deleted: 0, parked: 1));
+      expect(
+        tester.getTopLeft(find.byType(TaskRow)).dx,
+        0,
+        reason: 'the row springs back while the picker is open',
+      );
+    });
+
+    testWidgets('a short slide does nothing', (tester) async {
+      expect(await swipe(tester, dx: -40), (deleted: 0, parked: 0));
+    });
+
+    testWidgets('not under a pointer, nor where the shell says no', (
+      tester,
+    ) async {
+      expect(
+        await swipe(tester, dx: -200, touch: false),
+        (deleted: 0, parked: 0),
+      );
+      expect(
+        await swipe(tester, dx: -200, swipeable: false),
+        (deleted: 0, parked: 0),
+      );
+    });
+  });
 }

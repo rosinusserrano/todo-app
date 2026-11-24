@@ -32,6 +32,7 @@
 //   | double-click on the text | edit it | - |
 //   | right-click | open the actions | - |
 //   | long press | - | pick the row up to reorder it (the list's) |
+//   | swipe left / right | - | delete it / park it (the list's, [swipeable]) |
 //
 // **The double-click is hand-rolled, and that is the point.** Registering
 // Flutter's own `onDoubleTap` beside a tap puts both recognisers in one arena,
@@ -53,6 +54,19 @@
 // that pencil, not a replacement for it: it is the one thing on this row a
 // finger cannot do, so the bar stays the way both pointers can always get
 // there.
+//
+// **The swipes are shortcuts too** (Marco, 2026-11-24): left past the
+// threshold deletes, right parks (the move picker opens, the row springs
+// back). Hand-rolled rather than `Dismissible`, for the delete's sake:
+// `Dismissible` wants the row gone from the tree the moment `onDismissed`
+// returns, and the list only loses it after an awaited write and reload - a
+// rebuild in between is an assertion. Here the row flies off, collapses with
+// the same [_leave] a tick uses, and stays in the tree at zero height until
+// the list drops it. Touch only, and only where the shell says so: the row's
+// horizontal drag is deeper than the view swipe and the planning `Draggable`,
+// so it would win both arenas - which is right for the view swipe on a row
+// (the space under the list still turns the page) and wrong for the drag
+// onto a calendar block, which is why the shell turns it off there.
 
 import 'dart:async';
 
@@ -93,7 +107,12 @@ class TaskRow extends StatefulWidget {
     this.selected = false,
     this.selecting = false,
     this.onToggleSelect,
+    this.swipeable = false,
   });
+
+  /// Swipe left to delete, right to park ([onPark]). Touch only; the shell
+  /// passes false where a horizontal drag already means something on the row.
+  final bool swipeable;
 
   /// This row is in the multi-selection.
   final bool selected;
@@ -174,12 +193,23 @@ class TaskRow extends StatefulWidget {
   State<TaskRow> createState() => _TaskRowState();
 }
 
-class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
+class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
   late final AnimationController _out = AnimationController(
     vsync: this,
     duration: T.slideOutDur,
   );
   bool _hovered = false;
+
+  /// How far a swipe has carried the row, in pixels; negative is left. A
+  /// controller rather than a field so letting go can animate it home (or off
+  /// the edge) with the same value the finger was writing.
+  late final AnimationController _swipe = AnimationController.unbounded(
+    vsync: this,
+  )..addListener(_swipeMoved);
+
+  /// Past the threshold on the current side - kept so the haptic tick fires
+  /// once on crossing it, not on every frame beyond it.
+  bool _swipeArmed = false;
 
   /// Showing its details in place. Deliberately per-row state rather than
   /// something the list owns: several open at once is a normal way to read a
@@ -199,6 +229,7 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
   @override
   void dispose() {
     _secondClick?.cancel();
+    _swipe.dispose();
     _out.dispose();
     super.dispose();
   }
@@ -210,6 +241,98 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
     await _out.forward();
     if (!mounted) return;
     await action();
+  }
+
+  // ---------------------------------------------------------------- swipe
+
+  bool get _swipes =>
+      widget.swipeable && !widget.selecting && Layout.of(context).touch;
+
+  /// How far a swipe has to travel to count: a third of the row, but never so
+  /// little on a narrow one that scrolling at a slant deletes.
+  double _swipeThreshold(double width) => (width * 0.35).clamp(72.0, 160.0);
+
+  void _swipeMoved() {
+    final width = context.size?.width ?? 0;
+    final armed = _swipe.value.abs() >= _swipeThreshold(width);
+    if (armed != _swipeArmed) {
+      _swipeArmed = armed;
+      if (armed) HapticFeedback.selectionClick();
+    }
+  }
+
+  void _swipeUpdate(DragUpdateDetails d) {
+    var dx = _swipe.value + d.delta.dx;
+    // Nothing to reveal on a side with no action: the row stays put.
+    if (dx > 0 && widget.onPark == null) dx = 0;
+    _swipe.value = dx;
+  }
+
+  Future<void> _swipeEnd(DragEndDetails d) async {
+    final width = context.size?.width ?? 0;
+    final dx = _swipe.value;
+    final v = d.primaryVelocity ?? 0;
+    // Far enough, or flung that way from a deliberate start.
+    final go =
+        dx.abs() >= _swipeThreshold(width) ||
+        (dx.abs() > 24 && v.abs() > 900 && v.sign == dx.sign);
+    if (!go || dx == 0) {
+      await _swipeHome();
+      return;
+    }
+    if (dx < 0) {
+      await _swipe.animateTo(
+        -width,
+        duration: T.slideOutDur,
+        curve: Curves.easeOut,
+      );
+      if (!mounted) return;
+      await _leave(widget.onDelete);
+      return;
+    }
+    // Park: the row springs back while the picker opens over it. If something
+    // is chosen the list drops the row; if not, it was never anywhere else.
+    unawaited(_swipeHome());
+    await _openParkMenu();
+  }
+
+  Future<void> _swipeHome() => _swipe.animateTo(
+    0,
+    duration: const Duration(milliseconds: 180),
+    curve: Curves.easeOutCubic,
+  );
+
+  /// What a swipe uncovers: the action on the side it is moving away from,
+  /// faint until the threshold and solid past it.
+  Widget _swipeBackground(double dx, double width) {
+    final delete = dx < 0;
+    final fill = delete ? T.danger : widget.accent;
+    final armed = dx.abs() >= _swipeThreshold(width);
+    final ink = armed ? T.inkOn(fill) : fill;
+    return Container(
+      color: fill.withValues(alpha: armed ? 1 : 0.22),
+      alignment: delete ? Alignment.centerRight : Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: T.s4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            delete ? Icons.delete_outline_rounded : Icons.inbox_rounded,
+            size: 18,
+            color: ink,
+          ),
+          const SizedBox(width: T.s2),
+          Text(
+            delete ? 'Delete' : 'Park',
+            style: TextStyle(
+              fontSize: T.fsLabel,
+              fontWeight: T.wMedium,
+              color: ink,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Where a menu opened from the row should appear.
@@ -489,7 +612,10 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
           onSecondaryTapUp: touch
               ? null
               : (d) => _openActions(at: d.globalPosition),
-          child: Column(
+          onHorizontalDragUpdate: _swipes ? _swipeUpdate : null,
+          onHorizontalDragEnd: _swipes ? _swipeEnd : null,
+          onHorizontalDragCancel: _swipes ? _swipeHome : null,
+          child: _swipeable(Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -600,11 +726,36 @@ class _TaskRowState extends State<TaskRow> with SingleTickerProviderStateMixin {
               ),
               if (widget.divider) const ListRule(),
             ],
-          ),
+          )),
         ),
       ),
     );
   }
+
+  /// The row over what a swipe uncovers. Built whether or not the row swipes,
+  /// so starting one never changes the tree's shape under the finger.
+  Widget _swipeable(Widget row) => AnimatedBuilder(
+    animation: _swipe,
+    child: row,
+    builder: (context, child) {
+      final dx = _swipe.value;
+      return ClipRect(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: dx == 0
+                  ? const SizedBox.shrink()
+                  : LayoutBuilder(
+                      builder: (context, box) =>
+                          _swipeBackground(dx, box.maxWidth),
+                    ),
+            ),
+            Transform.translate(offset: Offset(dx, 0), child: child),
+          ],
+        ),
+      );
+    },
+  );
 
   /// Where the title starts, so the expanded detail lines up under it rather
   /// than under the tick box.

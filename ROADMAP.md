@@ -786,6 +786,27 @@ Open, and worth answering before any of Step 1 is written:
   hour is for. Hidden while that workspace is on screen, since it would
   offer where you are.
 
+### Swipes, and a picker that starts with workspaces (2026-11-24)
+
+Marco: "swipe left to delete, right to put into parked group. Also parked
+group selection (also when moving), should first only list workspaces, and
+when hovering over one, it also reveals its parked groups".
+
+- **Swipes are touch only**, and off where the list sits beside the calendar
+  or the parked panel: there a sideways drag already carries the task onto a
+  block or a shelf, and the row's swipe, being the deeper recogniser, would
+  take it. On a row the swipe also beats the view swipe; the space under the
+  list still turns the page.
+- **The delete is not confirmed**, like the bar's: the row has to travel a
+  third of its width (72-160px), turns solid red and ticks when it will
+  count. An undo would be the next step if one goes by mistake.
+- **Right opens the picker rather than a fixed shelf** - "put into parked
+  group" needs a group, and the picker is where that question is answered.
+- **Workspaces first** because the one long menu grew with every shelf.
+  Hover opens after 140ms so crossing rows on the way to the flyout opens
+  nothing; a click or tap opens at once. The flyout sits beside its row
+  when there is room, else on the other side.
+
 ### Home as a destination (2026-11-20)
 
 Marco, eleven days after "I dont really need a button bringing me there":

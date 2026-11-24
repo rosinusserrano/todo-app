@@ -6,6 +6,7 @@
 // list and shelves are destinations), and the batch writes in AppState (a
 // move is still a move - the same rows, keeping their uuids).
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -225,7 +226,11 @@ void main() {
           updatedAt: nowStamp(),
         );
 
-    Future<MoveTarget?> pick(WidgetTester tester, String label) async {
+    Future<MoveTarget?> pick(
+      WidgetTester tester,
+      String workspace,
+      String label,
+    ) async {
       MoveTarget? picked;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -249,21 +254,70 @@ void main() {
       ));
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
+      // Workspaces only, until one is opened.
+      expect(find.text('Backlog'), findsNothing);
+      expect(find.text('Someday'), findsNothing);
+      await tester.tap(find.text(workspace));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(label));
       await tester.pumpAndSettle();
       return picked;
     }
 
     testWidgets('a shelf here', (tester) async {
-      expect(await pick(tester, 'Backlog'), const MoveTarget('home', 'g-home'));
+      expect(
+        await pick(tester, 'Home', 'Backlog'),
+        const MoveTarget('home', 'g-home'),
+      );
     });
 
     testWidgets("another workspace's list", (tester) async {
-      expect(await pick(tester, 'Its list'), const MoveTarget('work'));
+      expect(await pick(tester, 'Work', 'List'), const MoveTarget('work'));
     });
 
     testWidgets("another workspace's shelf", (tester) async {
-      expect(await pick(tester, 'Someday'), const MoveTarget('work', 'g-work'));
+      expect(
+        await pick(tester, 'Work', 'Someday'),
+        const MoveTarget('work', 'g-work'),
+      );
+    });
+
+    testWidgets('hovering a workspace reveals its shelves', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showMovePicker(
+                context,
+                position: RelativeRect.fill,
+                currentWorkspaceUuid: 'home',
+                workspaces: [ws('home', 'Home'), ws('work', 'Work')],
+                groups: {
+                  'work': [shelf('g-work', 'work', 'Someday')],
+                },
+                onCreateGroup: () async => null,
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.text('Work')));
+      await tester.pump();
+      // Crossing a row on the way somewhere opens nothing...
+      expect(find.text('Someday'), findsNothing);
+      // ...resting on it does.
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('Someday'), findsOneWidget);
+      // New group belongs to the workspace you are in, not to this one.
+      expect(find.text('New group…'), findsNothing);
     });
   });
 }

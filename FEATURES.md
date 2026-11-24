@@ -81,6 +81,16 @@ Newest changes are noted in the changelog at the bottom.
   can go: this workspace's parked groups (see below), or **any other
   workspace** — onto its list, or onto one of its shelves. A task typed while
   the wrong list was on screen no longer has to be deleted and typed again.
+  The picker lists **only workspaces** at first (this one on top, marked
+  *here*, projects under their workspace); **hover** one — or tap it on a
+  phone — and its list and shelves open in a second panel beside it. *New
+  group…* is in this workspace's panel.
+- **Swipe a task on a phone**: **left to delete it**, **right to park it**
+  (the picker opens and the row springs back). The row has to travel about a
+  third of its width - the action's colour goes solid and the phone ticks
+  when it will count - so a slanted scroll does not delete anything. Not
+  where the list sits beside the calendar or the parked panel, because there
+  a sideways drag puts the task on a block or a shelf.
 - **Select several and act on them together** — **Ctrl+click** rows with a
   mouse, or pick **Select** in a row's action bar on a phone. Once one is
   selected, a plain click (or tap) on another adds it, and the add field turns
@@ -272,9 +282,9 @@ tasks you are deliberately not doing now. Unlike side thoughts these are
 - **Open them** — "Parked" in the dock's second part (where you are) swaps the
   content area for the parked view, the same way History and Thoughts do. Click
   the "← Parked" header, press Esc, or pick "Parked" again to go back.
-- **Park a task** — the 📥 in a task's action bar opens a picker of this
-  workspace's groups, plus "New group…", which creates one and parks straight
-  into it.
+- **Park a task** — the 📥 in a task's action bar (or a swipe right on a
+  phone) opens the move picker: pick this workspace, then one of its groups,
+  or "New group…", which creates one and parks straight into it.
 - **Or drag it there.** When the window is wide enough that the parked panel
   sits *beside* the list rather than replacing it, a task can be dragged
   sideways out of the list and dropped on a group. The group lights up while the
@@ -1695,6 +1705,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Swipe a task** (2026-11-24, touch): left deletes, right parks
+    (`TaskRow.swipeable`, off where the row is dragged onto a block or a
+    shelf). **The move picker lists workspaces first**; hovering or tapping
+    one opens its list and shelves beside it (`move_picker.dart`, a route of
+    its own rather than `showMenu`).
   - **From the shelf, 2026-11-20**: a **timer** (More → Timer, "1h for
     checking mails"; the window comes back when it is up;
     `countdown.dart`, `ui/timer_view.dart`, device-local). The shelf

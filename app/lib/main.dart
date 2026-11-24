@@ -3933,6 +3933,10 @@ class _WidgetShellState extends State<WidgetShell>
                 _selectedIn == s.currentWorkspaceUuid,
             selecting: _selectedTasks.isNotEmpty,
             onToggleSelect: () => _toggleSelected(t),
+            // Left deletes, right parks. Not where the row is also dragged
+            // sideways onto a block or a shelf: the row's swipe is the deeper
+            // recogniser and would take that gesture away.
+            swipeable: !_rowsDrag,
             // On the right, and only where there is a pointer to aim it with.
             // A finger picks the row up by pressing and holding it, so the
             // six-dot glyph would be a permanent mark for a gesture that needs
@@ -3968,6 +3972,11 @@ class _WidgetShellState extends State<WidgetShell>
     );
   }
 
+  /// Something is beside the list that a row can be dragged onto.
+  bool get _rowsDrag =>
+      (s.showCalendar && _layout.splitsCalendar) ||
+      (s.showParked && _layout.splitsContent);
+
   /// A row that can be dragged onto whatever is open beside the list - a
   /// calendar block ("do this then") or a parked group ("not now") - or the row
   /// itself, untouched, when there is nothing beside it.
@@ -3983,9 +3992,7 @@ class _WidgetShellState extends State<WidgetShell>
   /// *sideways* is the one gesture that means "put this over there". Nothing
   /// here fires on a phone, where nothing is ever side by side.
   Widget _plannable(Task t, Color ws, Widget row) {
-    final toCalendar = s.showCalendar && _layout.splitsCalendar;
-    final toGroup = s.showParked && _layout.splitsContent;
-    if (!toCalendar && !toGroup) return row;
+    if (!_rowsDrag) return row;
     return Draggable<Task>(
       data: t,
       affinity: Axis.horizontal,

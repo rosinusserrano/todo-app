@@ -1055,6 +1055,19 @@ One throwaway list on the title bar beside the calendar; design in ROADMAP.md
   line. Unticking puts an item back where it was because a tick never touches
   `sort_order`.
 
+### Overdue (`app/lib/ui/overdue.dart`)
+
+A task whose reminder went off and is still open is said **across
+workspaces**: the dock's workspace segment blinks (`DockSegment.alert`, its
+own controller beside `ThoughtPulse`), and `OverdueMark` (a blinking warn dot
+and a count) sits on the workspace menu's rows (`DockItem.overdue`), the home
+squares and project rows. The counts are `AppState.overdueCounts`, per list,
+from `LocalStore.dueReminders` - so parked and archived are quiet - rolled up
+by `overdueOf`. Re-read in `refreshTasks` and on the poll (`_onTick`), which
+notifies only when they move. Nothing is stored: the reminder is the state.
+The blink repeats forever, so a widget test that pumps the shell or home
+with a due reminder cannot `pumpAndSettle`.
+
 ### Home (`app/lib/ui/home_view.dart`)
 
 Every workspace as a square of its colour, projects as lines inside, open

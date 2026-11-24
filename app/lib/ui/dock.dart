@@ -79,6 +79,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
+import 'overdue.dart';
 import 'thought_pressure.dart';
 
 /// Which edge of the window the bar runs along.
@@ -112,6 +113,7 @@ class DockItem {
     this.current = false,
     this.count = 0,
     this.dot = false,
+    this.overdue = 0,
     this.secondaryIcon,
     this.secondaryLabel,
     this.onSecondary,
@@ -132,6 +134,9 @@ class DockItem {
 
   /// Something here wants looking at (a parked review that is due).
   final bool dot;
+
+  /// Tasks overdue in it (see overdue.dart). Zero draws nothing.
+  final int overdue;
 
   final VoidCallback onChoose;
 
@@ -156,6 +161,7 @@ class DockSegment {
     this.count = 0,
     this.dot = false,
     this.pressure = 0,
+    this.alert = false,
     this.semanticLabel,
     this.extent,
     this.onClick,
@@ -182,6 +188,10 @@ class DockSegment {
   /// The thought pile's escalation (see [ThoughtPulse]), carried by whichever
   /// segment holds Thoughts. Drives the tint and the pulse.
   final int pressure;
+
+  /// Blink in warn: something is overdue somewhere (overdue.dart). The
+  /// workspace segment's, in any workspace - the menu it opens says which.
+  final bool alert;
 
   final String? semanticLabel;
 
@@ -252,6 +262,23 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   final _scroll = ScrollController();
 
   late final ThoughtPulse _pulse = ThoughtPulse(this);
+
+  /// The [DockSegment.alert] blink. Runs only while a segment asks for it.
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: kOverdueBlink,
+  );
+
+  void _syncBlink() {
+    final on = widget.segments.any((s) => s.alert);
+    if (on && !_blink.isAnimating) {
+      _blink.repeat(reverse: true);
+    } else if (!on && _blink.isAnimating) {
+      _blink
+        ..stop()
+        ..value = 0;
+    }
+  }
 
   /// Which segment's menu is open, or null.
   int? _open;
@@ -332,12 +359,14 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _pulse.sync(_pressure);
+    _syncBlink();
   }
 
   @override
   void didUpdateWidget(Dock oldWidget) {
     super.didUpdateWidget(oldWidget);
     _pulse.sync(_pressure);
+    _syncBlink();
     // The menus are rebuilt from state on every notify. A row that went away
     // under a finger must not stay "hovered" at an index that now means
     // something else.
@@ -358,6 +387,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     _subTimer?.cancel();
     _holdTimer?.cancel();
     _pulse.dispose();
+    _blink.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -670,7 +700,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         height: _vertical ? null : widget.thickness,
         width: _vertical ? widget.thickness : null,
         child: AnimatedBuilder(
-          animation: _pulse.controller,
+          animation: Listenable.merge([_pulse.controller, _blink]),
           builder: (context, _) => Stack(
             clipBehavior: Clip.none,
             children: [
@@ -771,6 +801,13 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         fill,
         T.complementary(T.thoughts),
         hot * (0.35 + glow * 0.25),
+      )!;
+    }
+    if (seg.alert) {
+      fill = Color.lerp(
+        fill,
+        T.warn,
+        0.15 + 0.5 * Curves.easeInOut.transform(_blink.value),
       )!;
     }
     // Dimmed fades the block, not its label: something else owns the screen,
@@ -1244,6 +1281,10 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                       if (item.dot) ...[
                         const SizedBox(width: T.s2),
                         const _Dot(),
+                      ],
+                      if (item.overdue > 0) ...[
+                        const SizedBox(width: T.s2),
+                        OverdueMark(count: item.overdue, ink: ink),
                       ],
                       if (item.children.isNotEmpty)
                         Icon(

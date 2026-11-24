@@ -85,6 +85,14 @@ Newest changes are noted in the changelog at the bottom.
   *here*, projects under their workspace); **hover** one — or tap it on a
   phone — and its list and shelves open in a second panel beside it. *New
   group…* is in this workspace's panel.
+- **Overdue tasks are said everywhere, not only on their list.** A task
+  whose reminder has gone off and that is still open makes the dock's
+  **workspace segment blink** (in the warm warn colour, from any workspace),
+  and a blinking dot with the count sits on that workspace's row in the
+  dock's menu, on its square at home ("2 overdue"), and on a project's row
+  and its line at home. Tick the task, or clear or move its reminder, and it
+  stops. Parked tasks and archived projects stay quiet, as their reminders
+  do.
 - **Swipe a task on a phone**: **left to delete it**, **right to park it**
   (the picker opens and the row springs back). The row has to travel about a
   third of its width - the action's colour goes solid and the phone ticks
@@ -1705,6 +1713,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Overdue, across workspaces** (2026-11-24): the workspace segment
+    blinks while any task's reminder has gone off unticked; the menu rows,
+    home squares and project rows carry the count
+    (`ui/overdue.dart`, `AppState.overdueCounts`, refreshed on every write
+    and on the reminder poll).
   - **Swipe a task** (2026-11-24, touch): left deletes, right parks
     (`TaskRow.swipeable`, off where the row is dragged onto a block or a
     shelf). **The move picker lists workspaces first**; hovering or tapping

@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../sync/models.dart';
 import '../theme.dart';
+import 'overdue.dart';
 
 /// How wide a square wants to be before another column is worth adding.
 const kHomeTile = 168.0;
@@ -31,9 +32,16 @@ class HomeView extends StatelessWidget {
     required this.openCounts,
     required this.onOpen,
     required this.onOpenProject,
+    this.overdueOf,
+    this.overdueCounts = const {},
   });
 
   final List<Workspace> workspaces;
+
+  /// Overdue in a workspace, its projects included, and per list - see
+  /// overdue.dart. Null counts nothing.
+  final int Function(String uuid)? overdueOf;
+  final Map<String, int> overdueCounts;
   final List<Workspace> Function(String uuid) projectsOf;
 
   /// Open tasks per workspace and project uuid.
@@ -66,6 +74,8 @@ class HomeView extends StatelessWidget {
                     workspace: w,
                     projects: projectsOf(w.uuid),
                     openCounts: openCounts,
+                    overdue: overdueOf?.call(w.uuid) ?? 0,
+                    overdueCounts: overdueCounts,
                     onOpen: () => onOpen(w),
                     onOpenProject: onOpenProject,
                   ),
@@ -85,7 +95,12 @@ class _Square extends StatefulWidget {
     required this.openCounts,
     required this.onOpen,
     required this.onOpenProject,
+    this.overdue = 0,
+    this.overdueCounts = const {},
   });
+
+  final int overdue;
+  final Map<String, int> overdueCounts;
 
   final Workspace workspace;
   final List<Workspace> projects;
@@ -153,6 +168,15 @@ class _SquareState extends State<_Square> {
                     color: ink.withValues(alpha: 0.75),
                   ),
                 ),
+                if (widget.overdue > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: OverdueMark(
+                      count: widget.overdue,
+                      label: true,
+                      ink: ink,
+                    ),
+                  ),
                 const Spacer(),
                 // Clipped rather than overflowing: a small square with three
                 // projects keeps its name and loses lines from the bottom.
@@ -165,6 +189,7 @@ class _SquareState extends State<_Square> {
                         _ProjectLine(
                           name: p.name,
                           open: widget.openCounts[p.uuid] ?? 0,
+                          overdue: widget.overdueCounts[p.uuid] ?? 0,
                           ink: ink,
                           onTap: () => widget.onOpenProject(p),
                         ),
@@ -197,10 +222,12 @@ class _ProjectLine extends StatelessWidget {
     required this.open,
     required this.ink,
     required this.onTap,
+    this.overdue = 0,
   });
 
   final String name;
   final int open;
+  final int overdue;
   final Color ink;
   final VoidCallback onTap;
 
@@ -223,6 +250,10 @@ class _ProjectLine extends StatelessWidget {
                 color: ink,
               ),
               const SizedBox(width: T.s1),
+              if (overdue > 0) ...[
+                OverdueMark(count: overdue),
+                const SizedBox(width: T.s1),
+              ],
               Expanded(
                 child: Text(
                   name,

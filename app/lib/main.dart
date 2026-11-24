@@ -538,6 +538,9 @@ class _WidgetShellState extends State<WidgetShell>
     // the same tick is about to describe.
     await s.sweepRecurrences();
     await s.refreshSessions();
+    // A reminder going off writes nothing, so only the clock can notice a
+    // task turning overdue (ui/overdue.dart).
+    await s.refreshOverdue();
     await _ensurePinned();
     // Last, and not awaited: a fetch can take seconds, and nothing else on
     // this tick should wait on somebody else's calendar server. Due-ness is
@@ -2578,6 +2581,8 @@ class _WidgetShellState extends State<WidgetShell>
         workspaces: s.workspaces,
         projectsOf: s.projectsOf,
         openCounts: s.openCounts,
+        overdueOf: s.overdueOf,
+        overdueCounts: s.overdueCounts,
         onOpen: _dockToWorkspace,
         onOpenProject: (p) async {
           await _dockClear();
@@ -2809,6 +2814,8 @@ class _WidgetShellState extends State<WidgetShell>
           semanticLabel: s.showHome
               ? 'Home'
               : 'Workspace: ${current?.name ?? ''}',
+          // Anything overdue in any workspace: the menu's rows say where.
+          alert: s.overdueTotal > 0,
           // A tap or a click on the workspace itself goes to its task list:
           // "this one's tasks" is the commonest thing to want of it. It used
           // to open the add field, which put a caret in front of someone who
@@ -2840,6 +2847,7 @@ class _WidgetShellState extends State<WidgetShell>
                 label: w.name,
                 fill: T.parseHex(w.color),
                 current: w.uuid == current?.uuid,
+                overdue: s.overdueOf(w.uuid),
                 onChoose: () => _dockToWorkspace(w),
                 secondaryIcon: Icons.edit_outlined,
                 secondaryLabel: 'Edit ${w.name}',
@@ -3822,6 +3830,7 @@ class _WidgetShellState extends State<WidgetShell>
     project: p,
     accent: ws,
     openCount: s.projectOpenCounts[p.uuid] ?? 0,
+    overdue: s.overdueCounts[p.uuid] ?? 0,
     onOpen: () => _openProject(p),
     onAction: (a) => _projectAction(p, a),
     dragHandle: handle,

@@ -28,6 +28,7 @@ import '../layout.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'form_sheet.dart';
+import 'overdue.dart';
 
 enum ProjectAction { open, rename, archive, delete }
 
@@ -37,6 +38,7 @@ class ProjectRow extends StatefulWidget {
     required this.project,
     required this.accent,
     required this.openCount,
+    this.overdue = 0,
     required this.onOpen,
     required this.onAction,
     this.dragHandle,
@@ -49,6 +51,9 @@ class ProjectRow extends StatefulWidget {
 
   /// Open tasks on its list.
   final int openCount;
+
+  /// Tasks on its list whose reminder has gone off (overdue.dart).
+  final int overdue;
 
   final VoidCallback onOpen;
   final void Function(ProjectAction action) onAction;
@@ -128,6 +133,10 @@ class _ProjectRowState extends State<ProjectRow> {
                       ),
                     ),
                     const SizedBox(width: T.s2),
+                    if (widget.overdue > 0) ...[
+                      OverdueMark(count: widget.overdue, ink: T.warn),
+                      const SizedBox(width: T.s2),
+                    ],
                     Text(
                       n == 0 ? 'empty' : '$n open',
                       style: const TextStyle(

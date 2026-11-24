@@ -29,6 +29,15 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 79. Overdue, across workspaces  `[x]`
+
+Asked 2026-11-24. Design in `ROADMAP.md` *Overdue, said across workspaces*.
+
+- [x] **79.1** `AppState.overdueCounts` (due reminders per list, on writes
+      and the poll), the workspace segment blinks, `OverdueMark` on the
+      workspace menu rows, home squares and project rows. Test
+      `overdue_test`. Docs, What's new `2026-11-24b`, web published.
+
 ### 78. Swipes, and the picker by workspace  `[x]`
 
 Asked 2026-11-24. Design in `ROADMAP.md` *Swipes, and a picker that starts

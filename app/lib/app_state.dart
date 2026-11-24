@@ -720,6 +720,7 @@ class AppState extends ChangeNotifier {
     projectOpenCounts =
         projects.isEmpty ? const {} : await _store.projectOpenCounts();
     if (showHome) openCounts = await _store.openCounts();
+    await refreshOverdue(notify: false);
     // The journal is loaded separately (see refreshJournal), only while its view
     // is open, so it is not swept up in every task edit. refreshJournal itself
     // handles the locked case by clearing the list.
@@ -1277,6 +1278,36 @@ class AppState extends ChangeNotifier {
 
   /// Open tasks per list, workspaces and projects, while home is shown.
   Map<String, int> openCounts = {};
+
+  /// Tasks whose reminder has gone off and that are still open, per list
+  /// (workspace or project uuid), across every workspace (Marco,
+  /// 2026-11-24): a reminder swiped away on a day off is otherwise forgotten,
+  /// because nothing outside that workspace's own list says anything. What
+  /// [LocalStore.dueReminders] returns, so parked tasks and archived projects
+  /// are quiet here too. Clearing the reminder or ticking the task is what
+  /// makes it stop.
+  Map<String, int> overdueCounts = const {};
+
+  /// Overdue on [uuid]'s list and, for a workspace, its projects' - what a
+  /// workspace is said to have, wherever it is drawn as one thing.
+  int overdueOf(String uuid) =>
+      (overdueCounts[uuid] ?? 0) +
+      projectsOf(uuid).fold(0, (n, p) => n + (overdueCounts[p.uuid] ?? 0));
+
+  int get overdueTotal => overdueCounts.values.fold(0, (n, c) => n + c);
+
+  /// Re-reads [overdueCounts]. From the poll as well as every write, since a
+  /// reminder going off writes nothing; notifies only when the answer moved,
+  /// so a quiet tick rebuilds nothing.
+  Future<void> refreshOverdue({bool notify = true, DateTime? now}) async {
+    final next = <String, int>{};
+    for (final t in await _store.dueReminders(now)) {
+      next[t.workspaceUuid] = (next[t.workspaceUuid] ?? 0) + 1;
+    }
+    if (mapEquals(next, overdueCounts)) return;
+    overdueCounts = next;
+    if (notify) notifyListeners();
+  }
 
   /// Opens home. The flag is set before anything is awaited, so whatever
   /// lands somewhere else in the meantime - a tapped reminder, a quick

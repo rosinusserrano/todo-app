@@ -786,6 +786,27 @@ Open, and worth answering before any of Step 1 is written:
   hour is for. Hidden while that workspace is on screen, since it would
   offer where you are.
 
+### Overdue, said across workspaces (2026-11-24)
+
+Marco: a reminder (uploading the tutorial's solutions) went off, was swiped
+away, it was a day off, and it was forgotten - the row was orange on a list
+nobody opened. He wanted it on home, "workspace übergreifend", and settled on
+the workspace button blinking the way More pulses for the thought pile.
+
+- **Overdue is the reminder, nothing stored.** Still open, `remind_at` past
+  - exactly `LocalStore.dueReminders`, so parked and archived stay quiet the
+  way their reminders do. No "seen" flag: dealing with it (tick, clear,
+  move the reminder) is the only way to stop it, which is the point.
+- **The workspace segment blinks**, from any workspace, because it is the
+  control whose menu answers "where": the menu's rows carry the count.
+  Warn, not danger, and a steady blink rather than the thoughts'
+  escalation - one overdue task is already the whole message.
+- **Also on home and on project rows**, the places that draw a workspace or
+  a list as one thing. Not in the task list itself: the row already turns
+  warn there.
+- Refreshed with every `refreshTasks` and on the 20-second poll (a reminder
+  going off writes nothing), notifying only when the counts change.
+
 ### Swipes, and a picker that starts with workspaces (2026-11-24)
 
 Marco: "swipe left to delete, right to put into parked group. Also parked

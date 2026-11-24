@@ -38,6 +38,17 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-24b',
+    title: 'Overdue tasks blink',
+    points: [
+      'When a task\'s reminder has gone off and it is still not done, the '
+          'workspace button in the bar blinks - from any workspace.',
+      'Open its menu to see where: the workspace has a blinking dot with the '
+          'count. Home shows it on the square too, and projects on their row.',
+      'It stops once you tick the task or clear or move its reminder.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-24',
     title: 'Swipe a task',
     points: [

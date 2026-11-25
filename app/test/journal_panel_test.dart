@@ -179,6 +179,56 @@ void main() {
       expect(find.byType(TextField), findsNothing);
     });
 
+    Future<void> openToRead(WidgetTester tester) async {
+      await pumpPanel(
+        tester,
+        items: [item('a', 'Trip', 'Leaves at nine')],
+        saves: Saves(),
+      );
+      await tester.tap(find.text('Trip'));
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a mouse double click in a note opens the editor', (
+      tester,
+    ) async {
+      await openToRead(tester);
+      // Below the text, on nothing: the whole reader is the handle.
+      final at = tester.getBottomLeft(find.text('Leaves at nine')) +
+          const Offset(4, 40);
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNWidgets(2));
+    });
+
+    testWidgets('two slow clicks in a note are two clicks', (tester) async {
+      await openToRead(tester);
+      final at = tester.getCenter(find.text('Leaves at nine'));
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    testWidgets('a double tap with a finger leaves the note read', (
+      tester,
+    ) async {
+      await openToRead(tester);
+      final at = tester.getCenter(find.text('Leaves at nine'));
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
+    });
+
     testWidgets('a new entry skips the reader and lands in the fields', (
       tester,
     ) async {

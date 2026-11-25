@@ -44,7 +44,8 @@
 
 import 'dart:async' show Timer;
 
-import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kDoubleTapSlop, kDoubleTapTimeout, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -349,17 +350,41 @@ class _JournalViewState extends State<JournalView> {
     _openExisting(item);
     if (!_reading) return;
     _secondClick?.cancel();
+    _firstClickAt = null;
     _secondClick = Timer(kDoubleTapTimeout, () => _secondClick = null);
   }
 
+  /// Where the click that armed [_secondClick] landed, when it landed on the
+  /// reader; null when it was the list's (the reader replaced that row, so
+  /// there is no distance to measure).
+  Offset? _firstClickAt;
+
   /// A pointer went down on the reader. Inside the double-click window it is
-  /// the second click of one gesture, so it edits.
-  void _readerPointerDown(PointerDownEvent _) {
+  /// the second click of one gesture, so it edits. Otherwise a mouse's
+  /// primary click arms the window: a double click anywhere in a note opens
+  /// the editor. Touch is left out - a phone's double tap is a zoom anywhere
+  /// else, and the pencil is a fingertip away.
+  void _readerPointerDown(PointerDownEvent e) {
     final armed = _secondClick;
-    if (armed == null || !armed.isActive) return;
-    armed.cancel();
-    _secondClick = null;
-    _edit();
+    final first = _firstClickAt;
+    if (armed != null &&
+        armed.isActive &&
+        (first == null || (e.position - first).distance <= kDoubleTapSlop)) {
+      armed.cancel();
+      _secondClick = null;
+      _firstClickAt = null;
+      _edit();
+      return;
+    }
+    if (e.kind != PointerDeviceKind.mouse || e.buttons != kPrimaryButton) {
+      return;
+    }
+    armed?.cancel();
+    _firstClickAt = e.position;
+    _secondClick = Timer(kDoubleTapTimeout, () {
+      _secondClick = null;
+      _firstClickAt = null;
+    });
   }
 
   void _openExisting(JournalItem item) {
@@ -755,9 +780,9 @@ class _JournalViewState extends State<JournalView> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // The body is a handle too, the same way a task's rendered
-                // notes are: the obvious thing to do to something you are
-                // reading and want to change is to touch it.
+                // No onTapText: MarkdownBody only honours it when the text
+                // is selectable. A double click anywhere in the reader is
+                // the handle instead (_readerPointerDown).
                 MarkdownText(
                   _body.text,
                   style: const TextStyle(
@@ -765,7 +790,6 @@ class _JournalViewState extends State<JournalView> {
                     color: T.text,
                     height: 1.4,
                   ),
-                  onTapText: _edit,
                 ),
               ],
             ),

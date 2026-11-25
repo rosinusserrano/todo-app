@@ -29,6 +29,14 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 80. Double-click a note to edit  `[x]`
+
+Asked 2026-11-25 (desktop).
+
+- [x] **80.1** A mouse double click anywhere in the journal reader opens the
+      editor (`_readerPointerDown`). Tests in `journal_panel_test`. What's
+      new `2026-11-25`, web published.
+
 ### 79. Overdue, across workspaces  `[x]`
 
 Asked 2026-11-24. Design in `ROADMAP.md` *Overdue, said across workspaces*.

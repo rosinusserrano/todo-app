@@ -1091,8 +1091,9 @@ at the screen gives nothing away) and its lock is **opt-in**.
   deletes it, **Ctrl+L** selects it, **Ctrl+Enter** opens a line below, and
   Tab indents any line.
 - **Opening an entry reads it.** Picking one from the list renders its body as
-  Markdown (see **Markdown & maths**) under its title; the ✎ in the header, or a
-  tap on the text, turns it back into the two fields. **Double-click** an entry
+  Markdown (see **Markdown & maths**) under its title; the ✎ in the header,
+  Ctrl+E, or (with a mouse) a **double click anywhere in the note** turns it
+  back into the two fields. **Double-click** an entry
   in the list to go straight to the fields; with a mouse, hovering a row swaps
   its date for **Read** and **Edit**. A *new* entry skips
   straight to the fields, because there is nothing to read yet. Esc walks back
@@ -1713,6 +1714,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Double-click a note to edit it** (2026-11-25, mouse): anywhere in the
+    reader, not only from the list. The tap-on-the-text this replaces never
+    worked - `MarkdownBody` honours `onTapText` only when selectable.
   - **Overdue, across workspaces** (2026-11-24): the workspace segment
     blinks while any task's reminder has gone off unticked; the menu rows,
     home squares and project rows carry the count

@@ -73,9 +73,12 @@ clean and tests green, Claude deploys it directly:
   `~/flutter/bin` itself). No restart needed. The dev site is
   `server/build-web.sh /srv/todo-dev-web`. Every deploy needs a new
   `ReleaseNote` (see *What's new*).
-- **Server** (after a change under `server/`): `sudo systemctl restart
-  todo-sync` (the dev copy is `todo-sync-dev`), then check
-  `systemctl status` and `/api/health`.
+- **Server** (after a change under `server/`, pushed): `sudo
+  server/update-server.sh` (repo root). The live service runs from a copy
+  in `/opt/todo-sync`, so a bare `systemctl restart todo-sync` restarts the
+  *old* code; the script backs up, copies, restarts and checks. The dev
+  copy (`todo-sync-dev`) runs from `~/todo-app-redesign`. Then check
+  `/api/health` reports the new `protocol`.
 - **The live database** is under `/var/lib/todo-sync/` (owned by `todosync`).
   Reading it with `sudo` is fine. To inspect it, read a `sqlite3 .backup`
   copy. Never write to the live file by hand.

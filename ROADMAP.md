@@ -786,6 +786,29 @@ Open, and worth answering before any of Step 1 is written:
   hour is for. Hidden while that workspace is on screen, since it would
   offer where you are.
 
+### Automatic overdue (2026-11-26)
+
+Marco keeps tasks on the main list for a very long time without touching
+them, and the list clutters. Asked for: a per-workspace time after which a
+task counts as overdue and gets flashy, so it is annoying enough to deal with.
+
+- **A workspace column, synced** (`stale_days`, null = off): it is a fact
+  about the list, wanted on every device. Projects follow their parent, as
+  they do its colour; the form is the workspace's only.
+- **Age is from `created_at`.** Nothing resets it but leaving the list:
+  done, parked (a shelf is "not now"), deleted, or **a reminder still
+  ahead** - giving it a date is the way to keep a task without the nag.
+  When that reminder goes off it is overdue anyway.
+- **It joins the overdue counts** rather than a second signal, so the dock
+  segment, the menu rows, home and project rows needed nothing new; a task
+  both due and stale counts once.
+- **The row blinks** (`TaskRow.stale`), which a due reminder's row does
+  not: this is meant to be the louder one. Its marks gain an hourglass and
+  the age. The controller exists only while stale, so a fresh list runs no
+  tickers.
+- Choices are chips (3d to 3 months), not a free number; a value set some
+  other way is shown as its own chip.
+
 ### Overdue, said across workspaces (2026-11-24)
 
 Marco: a reminder (uploading the tutorial's solutions) went off, was swiped

@@ -76,5 +76,7 @@
 //      Also `list_items.section`, a shopping list's section heading, on the
 //      same terms: the column in COLUMN_SINCE and the heading rows in
 //      ROW_SINCE. MIN_CLIENT stays 1.
-export const PROTOCOL = 9;
+//  10  `workspaces.stale_days`, a workspace's automatic overdue, in
+//      COLUMN_SINCE on 5's terms. MIN_CLIENT stays 1.
+export const PROTOCOL = 10;
 export const MIN_CLIENT = 1;

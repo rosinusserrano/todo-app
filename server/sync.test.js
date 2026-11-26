@@ -1366,6 +1366,31 @@ test('workspace shortcuts sync at protocol 5 and survive an older app', async ()
   assert.equal(after.shortcuts, '["MT"]');
 });
 
+test('automatic overdue syncs at protocol 10 and survives an older app', async () => {
+  const db = freshDb();
+  const ws = {
+    uuid: 'w-uni',
+    name: 'Uni',
+    color: '#7c9cff',
+    sort_order: 0,
+    stale_days: 14,
+    created_at: '2026-11-26T10:00:00+01:00',
+    updated_at: '2026-11-26T10:00:00+01:00',
+    deleted_at: null,
+  };
+  sync(db, USER, 0, { workspaces: [ws] }, 10);
+  assert.equal(sync(db, USER, 0, {}, 10).changes.workspaces[0].stale_days, 14);
+
+  const old = sync(db, USER, 0, {}, 9).changes.workspaces[0];
+  assert.equal('stale_days' in old, false);
+  const renamed = { ...old, name: 'Study', updated_at: '2026-11-26T11:00:00+01:00' };
+  delete renamed.seq;
+  sync(db, USER, 0, { workspaces: [renamed] }, 9);
+  const after = sync(db, USER, 0, {}, 10).changes.workspaces[0];
+  assert.equal(after.name, 'Study');
+  assert.equal(after.stale_days, 14);
+});
+
 test('voice notes sync at protocol 6 and survive an older app', async () => {
   const db = freshDb();
   const thought = {

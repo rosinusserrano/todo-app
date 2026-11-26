@@ -3909,6 +3909,7 @@ class _WidgetShellState extends State<WidgetShell>
             accent: ws,
             // No rule against a project's block: the block is its own edge.
             divider: i < rows.length - 1 && rows[i + 1] is Task,
+            stale: s.isStale(t),
             onComplete: () => s.completeTask(t),
             onDelete: () => s.deleteTask(t),
             onFocus: () => _startFocus(t),
@@ -4370,6 +4371,7 @@ class _WidgetShellState extends State<WidgetShell>
       name: result.name,
       color: result.color,
       shortcuts: result.shortcuts,
+      stale: (days: result.staleDays),
     );
   }
 }

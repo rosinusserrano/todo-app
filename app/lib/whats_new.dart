@@ -38,6 +38,18 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-26',
+    title: 'Automatic overdue',
+    points: [
+      'Edit a workspace to pick how long a task may sit on its list - 3 days '
+          'up to 3 months. It is off until you choose.',
+      'After that the task counts as overdue: it blinks on the list with its '
+          'age, and the workspace button blinks too.',
+      'Finish it, park it, delete it, or give it a reminder for later to make '
+          'it stop.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-25',
     title: 'Double-click a note',
     points: [

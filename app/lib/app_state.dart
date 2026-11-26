@@ -419,6 +419,9 @@ class AppState extends ChangeNotifier {
     required String name,
     required String color,
     List<String>? shortcuts,
+    // Automatic overdue, in days: null leaves it as it is, `(days: null)`
+    // turns it off.
+    ({int? days})? stale,
   }) async {
     if (uuid == null) {
       final ws = Workspace(
@@ -426,6 +429,7 @@ class AppState extends ChangeNotifier {
         name: name,
         color: color,
         sortOrder: workspaces.length,
+        staleDays: stale?.days,
         createdAt: nowStamp(),
         updatedAt: nowStamp(),
       );
@@ -441,6 +445,8 @@ class AppState extends ChangeNotifier {
         name: name,
         color: color,
         shortcuts: shortcuts,
+        staleDays: stale?.days,
+        clearStale: stale != null && stale.days == null,
         updatedAt: nowStamp(),
       ),
     );
@@ -454,6 +460,7 @@ class AppState extends ChangeNotifier {
       }
     }
     await refreshWorkspaces();
+    if (stale != null) await refreshOverdue();
   }
 
   /// Gives a workspace another name for the add card's title: `#MT` for
@@ -1286,7 +1293,24 @@ class AppState extends ChangeNotifier {
   /// [LocalStore.dueReminders] returns, so parked tasks and archived projects
   /// are quiet here too. Clearing the reminder or ticking the task is what
   /// makes it stop.
+  ///
+  /// Stale tasks count too ([isStale], Marco 2026-11-26): a workspace's
+  /// automatic overdue says a task left on the list that long is overdue, so
+  /// it is said everywhere a reminder is. A task that is both counts once.
   Map<String, int> overdueCounts = const {};
+
+  /// The automatic overdue that applies on [listUuid]'s list: its own
+  /// workspace's, or for a project its parent's.
+  int? staleDaysOf(String listUuid) {
+    final w = workspaceByUuid(listUuid);
+    if (w == null) return null;
+    final home = w.isProject ? workspaceByUuid(w.parentUuid) ?? w : w;
+    return home.staleDays;
+  }
+
+  /// [task] has sat on its list past its workspace's automatic overdue.
+  bool isStale(Task task, [DateTime? now]) =>
+      task.isStale(staleDaysOf(task.workspaceUuid), now);
 
   /// Overdue on [uuid]'s list and, for a workspace, its projects' - what a
   /// workspace is said to have, wherever it is drawn as one thing.
@@ -1301,8 +1325,22 @@ class AppState extends ChangeNotifier {
   /// so a quiet tick rebuilds nothing.
   Future<void> refreshOverdue({bool notify = true, DateTime? now}) async {
     final next = <String, int>{};
-    for (final t in await _store.dueReminders(now)) {
+    final counted = <String>{};
+    void count(Task t) {
+      if (!counted.add(t.uuid)) return;
       next[t.workspaceUuid] = (next[t.workspaceUuid] ?? 0) + 1;
+    }
+
+    for (final t in await _store.dueReminders(now)) {
+      count(t);
+    }
+    final days = <String, int>{};
+    for (final w in [...workspaces, ...projects]) {
+      final d = staleDaysOf(w.uuid);
+      if (d != null) days[w.uuid] = d;
+    }
+    for (final t in await _store.staleTasks(days, now)) {
+      count(t);
     }
     if (mapEquals(next, overdueCounts)) return;
     overdueCounts = next;

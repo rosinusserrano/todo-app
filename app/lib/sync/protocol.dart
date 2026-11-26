@@ -59,7 +59,10 @@
 /// and hand them on as exactly that. 9 also added `list_items.section`, a
 /// shopping list's section heading, on the same terms: to a build without
 /// the column a heading is one more thing to buy.
-const kSyncProtocol = 9;
+///
+/// 10 added `workspaces.stale_days`, a workspace's automatic overdue, on 5's
+/// terms.
+const kSyncProtocol = 10;
 
 /// The first server wire that keeps an exception row as one - and a list's
 /// section heading as a heading.

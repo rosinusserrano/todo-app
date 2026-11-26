@@ -1,5 +1,5 @@
-// Creating and editing a workspace: its name and colour, its shortcuts, and
-// deleting it. Shortcuts are only removed here; one is added on the add card,
+// Creating and editing a workspace: its name and colour, its shortcuts, its
+// automatic overdue, and deleting it. Shortcuts are only removed here; one is added on the add card,
 // from the `#name` it stands for (task_capture.dart).
 //
 // The form outlived the workspace bar it was drawn from (the dock replaced
@@ -17,12 +17,16 @@ class WorkspaceEdit {
     this.name,
     this.color, {
     this.shortcuts = const [],
+    this.staleDays,
     this.delete = false,
   });
 
   final String name;
   final String color;
   final List<String> shortcuts;
+
+  /// Automatic overdue in days; null is off.
+  final int? staleDays;
   final bool delete;
 
   static const deleted = WorkspaceEdit('', '', delete: true);
@@ -64,6 +68,7 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
   late final _name = TextEditingController(text: widget.existing?.name ?? '');
   late Color _color = widget.initialColor;
   late final _shortcuts = [...?widget.existing?.shortcuts];
+  late int? _staleDays = widget.existing?.staleDays;
 
   @override
   void dispose() {
@@ -76,7 +81,12 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
     if (name.isEmpty) return;
     Navigator.pop(
       context,
-      WorkspaceEdit(name, T.toHex(_color), shortcuts: _shortcuts),
+      WorkspaceEdit(
+        name,
+        T.toHex(_color),
+        shortcuts: _shortcuts,
+        staleDays: _staleDays,
+      ),
     );
   }
 
@@ -127,6 +137,32 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
                 ),
             ],
           ),
+          const SizedBox(height: T.s4),
+          const Text(
+            'Overdue when left on the list for',
+            style: TextStyle(fontSize: T.fsMeta, color: T.muted),
+          ),
+          const SizedBox(height: T.s2),
+          Wrap(
+            spacing: T.s2,
+            runSpacing: T.s2,
+            children: [
+              for (final d in [
+                null,
+                ...kStaleChoices,
+                if (_staleDays != null && !kStaleChoices.contains(_staleDays))
+                  _staleDays,
+              ])
+                ChoiceChip(
+                  label: Text(
+                    describeStaleDays(d),
+                    style: const TextStyle(fontSize: T.fsLabel),
+                  ),
+                  selected: _staleDays == d,
+                  onSelected: (_) => setState(() => _staleDays = d),
+                ),
+            ],
+          ),
           if (_shortcuts.isNotEmpty) ...[
             const SizedBox(height: T.s4),
             const Text(
@@ -167,3 +203,17 @@ class _WorkspaceDialogState extends State<_WorkspaceDialog> {
     );
   }
 }
+
+/// The automatic overdue the form offers, in days.
+const kStaleChoices = [3, 7, 14, 30, 90];
+
+/// "Off", "3 days", "1 week", "1 month"...
+String describeStaleDays(int? days) => switch (days) {
+  null => 'Off',
+  1 => '1 day',
+  7 => '1 week',
+  30 => '1 month',
+  90 => '3 months',
+  final d when d % 7 == 0 => '${d ~/ 7} weeks',
+  final d => '$d days',
+};

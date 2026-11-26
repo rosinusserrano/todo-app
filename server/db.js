@@ -63,6 +63,7 @@ function init(db) {
       shortcuts  TEXT,
       parent_uuid TEXT,
       archived_at TEXT,
+      stale_days INTEGER,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       deleted_at TEXT,
@@ -396,6 +397,8 @@ function init(db) {
   // Projects: a workspace inside a workspace, and its archive (protocol 7).
   addColumn(db, 'workspaces', 'parent_uuid', 'TEXT');
   addColumn(db, 'workspaces', 'archived_at', 'TEXT');
+  // Automatic overdue, in days (protocol 10).
+  addColumn(db, 'workspaces', 'stale_days', 'INTEGER');
   // A voice note on a thought, and on the task a thought became (protocol 6).
   // The bytes are not a column - see blobs.js.
   addColumn(db, 'side_thoughts', 'audio', 'TEXT');
@@ -442,6 +445,7 @@ export const TABLES = {
     'shortcuts',
     'parent_uuid',
     'archived_at',
+    'stale_days',
     'created_at',
   ],
   parked_groups: [
@@ -529,7 +533,7 @@ export const TABLES = {
 // likewise. A client that does not say which protocol it speaks is 1.
 const COLUMN_SINCE = {
   calendar_events: { feed_uuid: 2, series_uuid: 9, occurrence_at: 9, cancelled: 9 },
-  workspaces: { shortcuts: 5, parent_uuid: 7, archived_at: 7 },
+  workspaces: { shortcuts: 5, parent_uuid: 7, archived_at: 7, stale_days: 10 },
   side_thoughts: { audio: 6, audio_ms: 6, remind_at: 8 },
   tasks: { audio: 6, audio_ms: 6 },
   list_items: { section: 9 },

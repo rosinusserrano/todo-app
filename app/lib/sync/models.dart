@@ -470,6 +470,12 @@ class Workspace implements SyncRow {
   /// Archived is frozen as it was, open tasks and all; nothing in it reminds,
   /// spawns or turns up in a session until it is restored.
   final String? archivedAt;
+
+  /// Automatic overdue (v25): a task open this many days with nothing saying
+  /// when it will be done counts as overdue (see [Task.isStale]). Null is
+  /// off, which is what every older row means. Set on a workspace only; its
+  /// projects follow it, as they do its colour.
+  final int? staleDays;
   final String createdAt;
   @override
   final String updatedAt;
@@ -484,6 +490,7 @@ class Workspace implements SyncRow {
     this.shortcuts = const [],
     this.parentUuid,
     this.archivedAt,
+    this.staleDays,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -502,6 +509,8 @@ class Workspace implements SyncRow {
     List<String>? shortcuts,
     String? archivedAt,
     bool clearArchived = false,
+    int? staleDays,
+    bool clearStale = false,
     String? updatedAt,
     String? deletedAt,
     bool clearDeleted = false,
@@ -514,6 +523,7 @@ class Workspace implements SyncRow {
         shortcuts: shortcuts ?? this.shortcuts,
         parentUuid: parentUuid,
         archivedAt: clearArchived ? null : (archivedAt ?? this.archivedAt),
+        staleDays: clearStale ? null : (staleDays ?? this.staleDays),
         createdAt: createdAt,
         updatedAt: updatedAt ?? nowStamp(),
         deletedAt: clearDeleted ? null : (deletedAt ?? this.deletedAt),
@@ -528,6 +538,7 @@ class Workspace implements SyncRow {
         'shortcuts': shortcuts.isEmpty ? null : jsonEncode(shortcuts),
         'parent_uuid': parentUuid,
         'archived_at': archivedAt,
+        'stale_days': staleDays,
         'created_at': createdAt,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
@@ -541,10 +552,17 @@ class Workspace implements SyncRow {
         shortcuts: _decodeShortcuts(m['shortcuts']),
         parentUuid: m['parent_uuid'] as String?,
         archivedAt: m['archived_at'] as String?,
+        staleDays: _positive(m['stale_days']),
         createdAt: m['created_at']! as String,
         updatedAt: m['updated_at']! as String,
         deletedAt: m['deleted_at'] as String?,
       );
+
+  /// A day count, or off: zero, negative or not a number all read as off.
+  static int? _positive(Object? raw) {
+    final n = (raw as num?)?.toInt();
+    return n == null || n <= 0 ? null : n;
+  }
 
   /// A list of strings, or nothing: a value another build wrote that is not
   /// one reads as no shortcuts rather than failing the whole load.
@@ -893,6 +911,26 @@ class Task implements SyncRow {
     final at = remindAtTime;
     if (at == null || !isActive) return false;
     return !at.isAfter(now ?? DateTime.now());
+  }
+
+  /// When it was written, local time; null for a stamp that does not parse.
+  DateTime? get createdAtTime => DateTime.tryParse(createdAt)?.toLocal();
+
+  /// Automatic overdue: open on a list for [days] or more (the workspace's
+  /// [Workspace.staleDays]) with nothing saying when it will be done - no
+  /// reminder still ahead. A reminder later on is how a task is kept without
+  /// the nag, which is the point: either it gets a date, a shelf, or done.
+  /// Parked tasks are never stale; a shelf is where "not now" goes.
+  bool isStale(int? days, [DateTime? now]) {
+    if (days == null || days <= 0 || !isActive || groupUuid != null) {
+      return false;
+    }
+    final t = now ?? DateTime.now();
+    final at = remindAtTime;
+    if (at != null && at.isAfter(t)) return false;
+    final created = createdAtTime;
+    if (created == null) return false;
+    return !created.add(Duration(days: days)).isAfter(t);
   }
 
   @override

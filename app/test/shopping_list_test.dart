@@ -277,6 +277,7 @@ void main() {
       final path = p.join(dir.path, 'todo.db');
       final store = await LocalStore.open(path: path, singleInstance: false);
       await store.raw.execute('ALTER TABLE list_items DROP COLUMN section');
+      await store.raw.execute('ALTER TABLE workspaces DROP COLUMN stale_days');
       await store.raw.setVersion(23);
       await store.close();
 

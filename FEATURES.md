@@ -93,6 +93,14 @@ Newest changes are noted in the changelog at the bottom.
   and its line at home. Tick the task, or clear or move its reminder, and it
   stops. Parked tasks and archived projects stay quiet, as their reminders
   do.
+- **Automatic overdue, per workspace.** In a workspace's form, *Overdue when
+  left on the list for* (Off, 3 days, 1 week, 2 weeks, 1 month, 3 months;
+  off by default, its projects follow it). A task open that long with no
+  reminder still ahead counts as overdue everywhere above, and its own row
+  **blinks** warn with an hourglass and its age ("3w"). It stops when the
+  task is done, parked, deleted, or given a reminder for later - the way to
+  keep it without the nag is to say when. Synced (`workspaces.stale_days`,
+  protocol 10).
 - **Swipe a task on a phone**: **left to delete it**, **right to park it**
   (the picker opens and the row springs back). The row has to travel about a
   third of its width - the action's colour goes solid and the phone ticks
@@ -1714,6 +1722,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **Automatic overdue** (2026-11-26): a workspace setting after which a
+    task left on the list counts as overdue; its row blinks and shows its
+    age (`Workspace.staleDays`, `Task.isStale`, client v25, protocol 10).
   - **Double-click a note to edit it** (2026-11-25, mouse): anywhere in the
     reader, not only from the list. The tap-on-the-text this replaces never
     worked - `MarkdownBody` honours `onTapText` only when selectable.

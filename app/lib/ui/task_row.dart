@@ -80,6 +80,7 @@ import '../link_titles.dart';
 import '../theme.dart';
 import 'list_rule.dart';
 import 'markdown_text.dart';
+import 'overdue.dart';
 import 'reminder_menu.dart';
 import 'task_actions.dart';
 import 'task_detail.dart';
@@ -108,7 +109,15 @@ class TaskRow extends StatefulWidget {
     this.selecting = false,
     this.onToggleSelect,
     this.swipeable = false,
+    this.stale = false,
   });
+
+  /// Past its workspace's automatic overdue ([Task.isStale]): the row's
+  /// fill blinks warn and it says how old it is, until it is done, parked,
+  /// given a reminder or deleted. Louder than a due reminder on purpose -
+  /// it is meant to be an annoyance worth getting rid of (Marco,
+  /// 2026-11-26).
+  final bool stale;
 
   /// Swipe left to delete, right to park ([onPark]). Touch only; the shell
   /// passes false where a horizontal drag already means something on the row.
@@ -220,6 +229,33 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
   /// picker are anchored to now that none of them has an icon to hang off.
   final _rowKey = GlobalKey();
 
+  /// The stale blink; only exists while [TaskRow.stale], so a list of fresh
+  /// rows runs no tickers.
+  AnimationController? _blink;
+
+  void _syncBlink() {
+    final want = widget.stale && !widget.selected;
+    if (want && _blink == null) {
+      _blink = AnimationController(vsync: this, duration: kOverdueBlink ~/ 2)
+        ..repeat(reverse: true);
+    } else if (!want && _blink != null) {
+      _blink!.dispose();
+      _blink = null;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncBlink();
+  }
+
+  @override
+  void didUpdateWidget(TaskRow old) {
+    super.didUpdateWidget(old);
+    _syncBlink();
+  }
+
   /// Live between the two halves of a double-click. A click arriving while it
   /// is still running is the second half; it clears itself after
   /// [kDoubleTapTimeout], which is what makes two deliberate clicks a minute
@@ -229,6 +265,7 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
   @override
   void dispose() {
     _secondClick?.cancel();
+    _blink?.dispose();
     _swipe.dispose();
     _out.dispose();
     super.dispose();
@@ -619,7 +656,7 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
+              _staleFill(Container(
                 key: _rowKey,
                 // No gap between rows and no box around one: the rule below says
                 // where a row ends (see list_rule.dart). Taller padding instead, so
@@ -635,8 +672,11 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
                   // Selected outranks everything: it is the state you are about to
                   // act on, and a row that is both overdue and selected has to be
                   // unmistakably part of the batch.
+                  // A stale row's fill is _staleFill's, under this one.
                   color: widget.selected
                       ? widget.accent.withValues(alpha: 0.24)
+                      : _blink != null
+                      ? null
                       : due
                       ? T.warn.withValues(alpha: 0.14)
                       : widget.task.inProgress
@@ -699,6 +739,9 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
                           attached: widget.attachmentCount > 0,
                           planned: widget.task.isPlanned,
                           voice: widget.task.audio != null,
+                          staleAge: widget.stale
+                              ? describeAge(widget.task.createdAtTime)
+                              : null,
                         ),
                         if (widget.dragHandle != null) widget.dragHandle!,
                       ],
@@ -723,7 +766,7 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
                       ),
                   ],
                 ),
-              ),
+              )),
               if (widget.divider) const ListRule(),
             ],
           )),
@@ -731,6 +774,24 @@ class _TaskRowState extends State<TaskRow> with TickerProviderStateMixin {
       ),
     );
   }
+
+  /// The blinking warn fill under a stale row. Always the same widget, so a
+  /// row turning stale (or being selected) never changes the tree's shape.
+  Widget _staleFill(Widget row) => AnimatedBuilder(
+    animation: _blink ?? kAlwaysDismissedAnimation,
+    child: row,
+    builder: (context, child) {
+      final b = _blink;
+      if (b == null) return child!;
+      final t = Curves.easeInOut.transform(b.value);
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: T.warn.withValues(alpha: 0.06 + 0.22 * t),
+        ),
+        child: child,
+      );
+    },
+  );
 
   /// The row over what a swipe uncovers. Built whether or not the row swipes,
   /// so starting one never changes the tree's shape under the finger.
@@ -782,6 +843,7 @@ class _StateMarks extends StatelessWidget {
     required this.armed,
     required this.attached,
     required this.planned,
+    this.staleAge,
     this.voice = false,
   });
 
@@ -795,9 +857,32 @@ class _StateMarks extends StatelessWidget {
   /// It has a voice note, which the read view plays.
   final bool voice;
 
+  /// How long a stale task has been on the list ("3w"); null when it is not
+  /// stale.
+  final String? staleAge;
+
   @override
   Widget build(BuildContext context) {
     final marks = <Widget>[
+      if (staleAge != null)
+        Tooltip(
+          message: 'On the list for $staleAge - finish it, park it, or give '
+              'it a reminder',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.hourglass_bottom_rounded, size: size, color: T.warn),
+              Text(
+                staleAge!,
+                style: const TextStyle(
+                  fontSize: T.fsMeta,
+                  fontFamily: T.fontDisplay,
+                  color: T.warn,
+                ),
+              ),
+            ],
+          ),
+        ),
       if (armed)
         Icon(
           due
@@ -926,4 +1011,13 @@ class _Checkbox extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How long ago [since] was, short: "5d", "3w", "4mo". Empty for no date.
+String describeAge(DateTime? since, [DateTime? now]) {
+  if (since == null) return '';
+  final days = (now ?? DateTime.now()).difference(since).inDays;
+  if (days < 14) return '${days}d';
+  if (days < 60) return '${days ~/ 7}w';
+  return '${days ~/ 30}mo';
 }

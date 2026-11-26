@@ -29,6 +29,16 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 81. Automatic overdue  `[x]`
+
+Asked 2026-11-26. Design in `ROADMAP.md` *Automatic overdue*.
+
+- [x] **81.1** `workspaces.stale_days` (client v25, protocol 10, server
+      column + `COLUMN_SINCE`), set in the workspace form; stale tasks join
+      `overdueCounts`; a stale row blinks with its age. Tests in
+      `overdue_test`, `sync.test.js`. What's new `2026-11-26`, server
+      restarted, web published.
+
 ### 80. Double-click a note to edit  `[x]`
 
 Asked 2026-11-25 (desktop).

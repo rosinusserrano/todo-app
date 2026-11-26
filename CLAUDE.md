@@ -1065,6 +1065,14 @@ squares and project rows. The counts are `AppState.overdueCounts`, per list,
 from `LocalStore.dueReminders` - so parked and archived are quiet - rolled up
 by `overdueOf`. Re-read in `refreshTasks` and on the poll (`_onTick`), which
 notifies only when they move. Nothing is stored: the reminder is the state.
+
+**Automatic overdue** joins the same counts: `workspaces.stale_days` (client
+v25, protocol 10; null is off, set in the workspace form, a project follows
+its parent through `AppState.staleDaysOf`) makes a task **stale** once it is
+that many days past `created_at` with no reminder ahead (`Task.isStale`,
+`LocalStore.staleTasks`; parked and archived are quiet). A stale row blinks
+(`TaskRow.stale`, a controller only while stale) and shows its age; the
+union with due reminders counts a task once.
 The blink repeats forever, so a widget test that pumps the shell or home
 with a due reminder cannot `pumpAndSettle`.
 

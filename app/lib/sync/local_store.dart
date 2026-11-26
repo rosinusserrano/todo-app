@@ -87,7 +87,7 @@ class LocalStore {
     final db = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 24,
+        version: 25,
         onCreate: (db, version) =>
             _create(db, version, seedWorkspace: seedWorkspace),
         onUpgrade: _upgrade,
@@ -313,6 +313,14 @@ class LocalStore {
       // protocol 9. No cursor reset: v23 already went back for protocol 9,
       // and no server has held a heading back from anybody yet.
       await db.execute('ALTER TABLE list_items ADD COLUMN section INTEGER');
+    }
+    if (from < 25) {
+      // Automatic overdue (Workspace.staleDays). Null is "off", which is
+      // every existing row. The cursor goes back for v16's reason: below
+      // protocol 10 the server does not send the column.
+      await db.execute('ALTER TABLE workspaces ADD COLUMN stale_days INTEGER');
+      await db.update('sync_state', {'value': '0'},
+          where: 'key = ?', whereArgs: ['cursor']);
     }
   }
 
@@ -719,6 +727,7 @@ class LocalStore {
         shortcuts  TEXT,
         parent_uuid TEXT,
         archived_at TEXT,
+        stale_days INTEGER,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -953,6 +962,28 @@ class LocalStore {
   /// is applied on parsed instants instead.
   Future<List<Task>> dueReminders([DateTime? now]) async =>
       (await _armed()).where((t) => t.isDue(now)).toList();
+
+  /// Tasks past their workspace's automatic overdue ([Task.isStale]), on
+  /// every list whose uuid is in [days] - a workspace's own and its
+  /// projects', which the caller puts in with the workspace's number.
+  /// Archived projects are quiet, as their reminders are; the age is
+  /// compared in Dart for [dueReminders]' reason.
+  Future<List<Task>> staleTasks(
+    Map<String, int> days, [
+    DateTime? now,
+  ]) async {
+    if (days.isEmpty) return const [];
+    final marks = List.filled(days.length, '?').join(',');
+    final rows = await _db.query('tasks',
+        where: 'completed_at IS NULL AND deleted_at IS NULL '
+            'AND group_uuid IS NULL AND $_notArchived '
+            'AND workspace_uuid IN ($marks)',
+        whereArgs: days.keys.toList());
+    return rows
+        .map(Task.fromMap)
+        .where((t) => t.isStale(days[t.workspaceUuid], now))
+        .toList();
+  }
 
   /// Reminders still ahead, for handing to the OS scheduler on mobile.
   Future<List<Task>> pendingReminders([DateTime? now]) async =>

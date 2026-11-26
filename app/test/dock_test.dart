@@ -405,6 +405,62 @@ void main() {
     // either side of it on a 400 screen, so it sits against the right edge,
     // level with Home: Home notes beside Home, Home history beside Work.
     const subX = 300.0;
+    // The row's right end, its chevron: the last 56 of the menu's 220.
+    const chevronX = 200.0;
+
+    Future<TestGesture> hoverMenu(WidgetTester tester) async {
+      final g = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await g.addPointer(location: const Offset(200, 100));
+      addTearDown(g.removePointer);
+      await g.moveTo(const Offset(60, barY));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      return g;
+    }
+
+    testWidgets('a mouse resting on the rest of the row opens nothing, and '
+        'leaving the chevron closes it', (tester) async {
+      await pump(tester);
+      final g = await hoverMenu(tester);
+      await g.moveTo(rowCentre(1, x: 100));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Home history'), findsNothing);
+
+      await g.moveTo(rowCentre(1, x: chevronX));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Home history'), findsOneWidget);
+      await g.moveTo(rowCentre(1, x: 100));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Home history'), findsNothing);
+    });
+
+    testWidgets('a row with a submenu has its second action on the left', (
+      tester,
+    ) async {
+      await pump(tester);
+      final g = await hoverMenu(tester);
+      await g.moveTo(rowCentre(1, x: 20));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Edit Home'), findsOneWidget);
+      expect(find.text('Home history'), findsNothing);
+      await tester.tapAt(rowCentre(1, x: 20), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(fired, ['edit Home']);
+    });
+
+    testWidgets('a held finger slides left onto it', (tester) async {
+      await pump(tester);
+      final g = await tester.startGesture(const Offset(60, barY));
+      await tester.pump();
+      await g.moveTo(rowCentre(1));
+      await tester.pump();
+      await g.moveTo(rowCentre(1, x: 20));
+      await tester.pump();
+      expect(find.text('Edit Home'), findsOneWidget);
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(fired, ['edit Home']);
+    });
 
     testWidgets('a held finger staying on a row opens it; slide across and '
         'let go', (tester) async {
@@ -461,7 +517,7 @@ void main() {
       await mouse.moveTo(const Offset(60, barY));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
-      await mouse.moveTo(rowCentre(1));
+      await mouse.moveTo(rowCentre(1, x: chevronX));
       await tester.pump(const Duration(milliseconds: 250));
       // Home notes sits level with Home, against the right edge; its ＋ is
       // the row's last 56.
@@ -497,7 +553,7 @@ void main() {
       await g.moveTo(const Offset(60, barY));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
-      await g.moveTo(rowCentre(1));
+      await g.moveTo(rowCentre(1, x: chevronX));
       await tester.pump(const Duration(milliseconds: 250));
       expect(find.text('Home history'), findsOneWidget);
 

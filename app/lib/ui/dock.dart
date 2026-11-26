@@ -26,10 +26,14 @@
 // has moved, so a tap never flashes a menu on its way somewhere else
 // (Marco, 2026-10-18).
 //
-// **Slide right for the second thing.** A row that has another action keeps it
-// at its right-hand end - edit a workspace, add a task, write a thought - and
-// carrying the finger over to it is how you ask for it. The row's label says
-// what letting go there will do, so the gesture explains itself while it runs.
+// **Slide sideways for the second thing.** A row that has another action keeps
+// it at one end - edit a workspace, add a note - and carrying the finger over
+// to it is how you ask for it. The row's label says what letting go there will
+// do, so the gesture explains itself while it runs. It is the right-hand end,
+// except on a row with a submenu, where the right end is the submenu's (the
+// chevron) and the second action is on the **left**: in a narrow window the
+// submenu cannot fit beside the menu and is laid over its right end, which is
+// where the workspace's pen used to be (Marco, 2026-11-26).
 //
 // **Sliding along the bar switches menus,** the way a desktop menu bar does once
 // one menu is open. A finger that landed on the wrong segment does not have to
@@ -37,8 +41,10 @@
 //
 // **A row can have a submenu** (`DockItem.children` - a workspace's views),
 // drawn beside the menu level with its row: a mouse opens it by resting on
-// the row (`_subDelay`, which is also what lets the pointer cut across other
-// rows on its way in), a held finger by staying on the row (`_holdForSub`)
+// the row's right end, the chevron (`_inSubZone`, after `_subDelay`, which is
+// also what lets the pointer cut across other rows on its way in) - resting
+// on the rest of the row opens nothing, and closes a submenu that is open -
+// a held finger by staying anywhere on the row (`_holdForSub`)
 // and then sliding across, and a held-open menu by a long press on the row.
 // The row itself still means what it did. The submenu counts as part of the
 // menu for the hover close, and `_move` asks it first, since it is drawn on
@@ -643,6 +649,26 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     });
   }
 
+  /// Where on a row [item]'s second action is: the left end on a row with a
+  /// submenu (whose right end is the chevron), the right end otherwise.
+  static bool _onSecondary(DockItem item, double dx, double width) {
+    if (item.onSecondary == null) return false;
+    return item.children.isNotEmpty
+        ? dx < Dock.secondaryWidth
+        : dx >= width - Dock.secondaryWidth;
+  }
+
+  /// The mouse is on the right end of a menu row that has a submenu - the
+  /// only place resting opens it.
+  bool _inSubZone(Offset global) {
+    final open = _open;
+    final box = _menuKey.currentContext?.findRenderObject() as RenderBox?;
+    if (open == null || box == null || !box.hasSize) return false;
+    final (row, _) = _rowAt(global);
+    if (row == null || _drawn(open)[row].children.isEmpty) return false;
+    return box.globalToLocal(global).dx >= box.size.width - Dock.secondaryWidth;
+  }
+
   void _fire(DockItem item, bool secondary) {
     if (secondary && item.onSecondary != null) {
       item.onSecondary!();
@@ -663,10 +689,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     final offset = _scroll.hasClients ? _scroll.offset : 0.0;
     final row = ((local.dy + offset) / Dock.rowHeight).floor();
     if (row < 0 || row >= items.length) return (null, false);
-    final secondary =
-        items[row].onSecondary != null &&
-        local.dx >= box.size.width - Dock.secondaryWidth;
-    return (row, secondary);
+    return (row, _onSecondary(items[row], local.dx, box.size.width));
   }
 
   /// Which submenu row is at [global], and whether it is on that row's
@@ -683,10 +706,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
     final row = (local.dy / Dock.rowHeight).floor();
     final children = _drawn(open)[subFor].children;
     if (row < 0 || row >= children.length) return (null, false);
-    final secondary =
-        children[row].onSecondary != null &&
-        local.dx >= box.size.width - Dock.secondaryWidth;
-    return (row, secondary);
+    return (row, _onSecondary(children[row], local.dx, box.size.width));
   }
 
   // ------------------------------------------------------------ drawing
@@ -1156,6 +1176,39 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
         ? Color.lerp(base, Colors.white, own == null ? 0.14 : 0.38)!
         : base;
     final label = secondary ? item.secondaryLabel ?? item.label : item.label;
+    // A row with a submenu has its second action at the left end (see the
+    // file header); every other row at the right.
+    final leading = item.onSecondary != null && item.children.isNotEmpty;
+    final subOpen = !sub && _subFor == index;
+    Widget secondaryButton() => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        close();
+        item.onSecondary!();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 90),
+        width: Dock.secondaryWidth,
+        height: Dock.rowHeight,
+        color: secondary ? ink : Colors.transparent,
+        child: Icon(
+          item.secondaryIcon,
+          size: 18,
+          color: secondary
+              ? fill
+              : ink.withValues(
+                  alpha: hovered
+                      ? 0.9
+                      // A submenu under the mouse shows
+                      // its row's second action on the
+                      // row it is over, not on every row.
+                      : sub && _viaHover
+                      ? 0
+                      : 0.4,
+                ),
+        ),
+      ),
+    );
 
     return Semantics(
       button: true,
@@ -1185,7 +1238,7 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
               _hoverSecondary = secondary;
             });
           }
-          _aimSub(row, _subDelay);
+          _aimSub(_inSubZone(e.position) ? row : null, _subDelay);
         },
         onExit: (_) {
           if (sub || !_sticky) return;
@@ -1247,7 +1300,11 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                 Positioned.fill(
                   child: Row(
                     children: [
-                      SizedBox(width: hovered ? T.s4 + 4 : T.s4),
+                      if (leading)
+                        secondaryButton()
+                      else
+                        SizedBox(width: hovered ? T.s4 + 4 : T.s4),
+                      if (leading && hovered) const SizedBox(width: 4),
                       if (item.icon != null) ...[
                         Icon(item.icon, size: 18, color: ink),
                         const SizedBox(width: T.s3),
@@ -1286,42 +1343,25 @@ class DockState extends State<Dock> with TickerProviderStateMixin {
                         const SizedBox(width: T.s2),
                         OverdueMark(count: item.overdue, ink: ink),
                       ],
+                      // The submenu's end: resting here is what opens it
+                      // under a mouse, so it is drawn as a target, lit while
+                      // its submenu is open.
                       if (item.children.isNotEmpty)
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 18,
-                          color: ink.withValues(alpha: 0.5),
-                        ),
-                      if (item.onSecondary != null)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            close();
-                            item.onSecondary!();
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 90),
-                            width: Dock.secondaryWidth,
-                            height: Dock.rowHeight,
-                            color: secondary ? ink : Colors.transparent,
-                            child: Icon(
-                              item.secondaryIcon,
-                              size: 18,
-                              color: secondary
-                                  ? fill
-                                  : ink.withValues(
-                                      alpha: hovered
-                                          ? 0.9
-                                          // A submenu under the mouse shows
-                                          // its row's second action on the
-                                          // row it is over, not on every row.
-                                          : sub && _viaHover
-                                          ? 0
-                                          : 0.4,
-                                    ),
-                            ),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 90),
+                          width: Dock.secondaryWidth,
+                          height: Dock.rowHeight,
+                          color: subOpen
+                              ? ink.withValues(alpha: 0.14)
+                              : Colors.transparent,
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: ink.withValues(alpha: subOpen ? 0.9 : 0.5),
                           ),
                         )
+                      else if (item.onSecondary != null && !leading)
+                        secondaryButton()
                       else
                         const SizedBox(width: T.s4),
                     ],

@@ -38,6 +38,15 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-26b',
+    title: 'Editing a workspace is easier to reach',
+    points: [
+      'In the workspace menu the pencil is now at the left end of each row.',
+      'The menu of views opens only when you rest on the ▸ at the right end, '
+          'so it no longer pops up over the pencil.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-26',
     title: 'Automatic overdue',
     points: [

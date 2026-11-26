@@ -1276,13 +1276,15 @@ at the screen gives nothing away) and its lock is **opt-in**.
   finger to a row - it lights, and the phone ticks - and let go to go there.
   Let go anywhere off the menu and nothing happens. Sliding along the bar
   itself switches to the neighbouring menu without lifting.
-- **Slide right to edit a workspace.** Each workspace row has a pencil at its
-  right-hand end; carry your finger onto it and the row says "Edit …" - let go
-  there to edit it.
+- **Slide left to edit a workspace.** Each workspace row has a pencil at its
+  **left** end; carry your finger (or the mouse) onto it and the row says
+  "Edit …" - let go or click there to edit it. It was at the right end until
+  2026-11-26, where in a narrow window the views' menu opened on top of it.
 - **A workspace's views, straight from the workspace menu.** Each workspace
-  row has a ▸ and a little menu beside it: Tasks, Notes, Collections, Parked,
-  History. With a mouse, rest on the row; with a finger, hold on the row for a
-  moment and slide across (or long-press it in a held-open menu). Picking
+  row has a ▸ at its right end and a little menu beside it: Tasks, Notes,
+  Collections, Parked, History. With a mouse, rest on the ▸ (resting on the
+  rest of the row opens nothing, and closes it); with a finger, hold on the
+  row for a moment and slide across (or long-press it in a held-open menu). Picking
   one switches workspace and opens that view in one go.
 - **A new note, straight from the menu.** Notes in that little menu - and
   Notes in the middle part's menu, for where you are now - has a ＋
@@ -1722,6 +1724,9 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **The workspace pencil is on the left** (2026-11-26): rows with a
+    submenu keep their second action at the left end, and a mouse opens the
+    submenu only from the row's ▸ (`_inSubZone` in `dock.dart`).
   - **Automatic overdue** (2026-11-26): a workspace setting after which a
     task left on the list counts as overdue; its row blinks and shows its
     age (`Workspace.staleDays`, `Task.isStale`, client v25, protocol 10).

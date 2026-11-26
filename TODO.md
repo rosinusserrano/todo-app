@@ -29,6 +29,14 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 82. The workspace pen, out from under the submenu  `[x]`
+
+Asked 2026-11-26.
+
+- [x] **82.1** Rows with a submenu put their second action (the workspace
+      pen) at the left end; a mouse opens the submenu only from the row's
+      chevron end. Tests in `dock_test`. What's new `2026-11-26b`.
+
 ### 81. Automatic overdue  `[x]`
 
 Asked 2026-11-26. Design in `ROADMAP.md` *Automatic overdue*.

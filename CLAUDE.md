@@ -495,9 +495,14 @@ their views. It is drawn in the same overlay Stack as the menu, beside it
 (`_submenu`), and has to be in **both** of the dock's input paths - the
 press-and-slide asks `_subRowAt` before `_rowAt` because the submenu is drawn
 on top, and opens after `_holdForSub` on one row; the mouse opens it after
-`_subDelay` from the row's hover and keeps it while `_overSub`, which
+`_subDelay` from a hover on the row's **right end** only (`_inSubZone`; the
+rest of the row aims it closed) and keeps it while `_overSub`, which
 `_closeAfterHover` also has to respect or the menu closes under a pointer that
 is in its submenu. A held-open menu has no hover, so there it is a long press.
+**A row with a submenu has its second action at the left end**
+(`_onSecondary`, which both `_rowAt` and `_subRowAt` ask): its right end is
+the chevron, and in a narrow window the submenu is laid over the menu's
+right end, which is where the workspace pen was hidden.
 A submenu row takes a second action too (Notes' ＋, `_addNote`): `_subRowAt`
 answers `(row, secondary)` like `_rowAt`, and under a hovered menu the icon
 shows only on the row the mouse is on.

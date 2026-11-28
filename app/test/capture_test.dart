@@ -44,20 +44,22 @@ void main() {
     return (home, other);
   }
 
-  test('a task aimed at another workspace lands there, and the list stays',
-      () async {
-    final s = await freshState();
-    final (home, other) = await twoWorkspaces(s);
+  test(
+    'a task aimed at another workspace lands there, and the list stays',
+    () async {
+      final s = await freshState();
+      final (home, other) = await twoWorkspaces(s);
 
-    await s.addTask('here');
-    await s.addTask('over there', workspaceUuid: other);
+      await s.addTask('here');
+      await s.addTask('over there', workspaceUuid: other);
 
-    expect(s.currentWorkspaceUuid, home);
-    expect(s.tasks.map((t) => t.text), ['here']);
-    final there = await s.store.allTasksInWorkspace(other);
-    expect(there.map((t) => t.text), ['over there']);
-    await s.store.close();
-  });
+      expect(s.currentWorkspaceUuid, home);
+      expect(s.tasks.map((t) => t.text), ['here']);
+      final there = await s.store.allTasksInWorkspace(other);
+      expect(there.map((t) => t.text), ['over there']);
+      await s.store.close();
+    },
+  );
 
   test('moving thoughts writes tasks and resolves the thoughts', () async {
     final s = await freshState();
@@ -72,10 +74,10 @@ void main() {
     expect(s.thoughts.map((t) => t.text), ['stays']);
     expect(s.currentWorkspaceUuid, home);
     final there = await s.store.allTasksInWorkspace(other);
-    expect(
-      there.map((t) => t.text).toSet(),
-      {'book recommendation', 'call mum'},
-    );
+    expect(there.map((t) => t.text).toSet(), {
+      'book recommendation',
+      'call mum',
+    });
     await s.store.close();
   });
 
@@ -98,11 +100,11 @@ void main() {
 
   group('the thoughts panel', () {
     SideThought thought(String id, String text) => SideThought(
-          uuid: id,
-          text: text,
-          createdAt: '2026-10-09T10:00:00.000+02:00',
-          updatedAt: '2026-10-09T10:00:00.000+02:00',
-        );
+      uuid: id,
+      text: text,
+      createdAt: '2026-10-09T10:00:00.000+02:00',
+      updatedAt: '2026-10-09T10:00:00.000+02:00',
+    );
 
     Widget panel({
       required List<SideThought> thoughts,
@@ -110,46 +112,53 @@ void main() {
       bool touch = true,
       String? notice,
       Future<void> Function(SideThought, String)? onEdit,
-    }) =>
-        MaterialApp(
-          home: Scaffold(
-            body: LayoutScope(
-              layout: Layout(const Size(T.designWidth, 600), touch: touch),
-              child: ThoughtsPanel(
-                thoughts: thoughts,
-                onPromote: (_) async {},
-                onDiscard: (_) async {},
-                onMove: onMove,
-                onEdit: onEdit,
-                notice: notice,
-              ),
-            ),
+    }) => MaterialApp(
+      home: Scaffold(
+        body: LayoutScope(
+          layout: Layout(const Size(T.designWidth, 600), touch: touch),
+          child: ThoughtsPanel(
+            thoughts: thoughts,
+            onPromote: (_) async {},
+            onDiscard: (_) async {},
+            onMove: onMove,
+            onEdit: onEdit,
+            notice: notice,
           ),
-        );
+        ),
+      ),
+    );
 
     testWidgets('a refused close says why under the header', (tester) async {
-      await tester.pumpWidget(panel(
-        thoughts: [thought('a', 'one')],
-        onMove: (_, _) async {},
-      ));
+      await tester.pumpWidget(
+        panel(thoughts: [thought('a', 'one')], onMove: (_, _) async {}),
+      );
       expect(find.byIcon(Icons.block_rounded), findsNothing);
 
-      await tester.pumpWidget(panel(
-        thoughts: [thought('a', 'one')],
-        onMove: (_, _) async {},
-        notice: 'This thought is still waiting.',
-      ));
+      await tester.pumpWidget(
+        panel(
+          thoughts: [thought('a', 'one')],
+          onMove: (_, _) async {},
+          notice: 'This thought is still waiting.',
+        ),
+      );
       expect(find.text('This thought is still waiting.'), findsOneWidget);
       expect(find.byIcon(Icons.block_rounded), findsOneWidget);
     });
 
-    testWidgets('a long press selects, and the bar moves the selection',
-        (tester) async {
+    testWidgets('a long press selects, and the bar moves the selection', (
+      tester,
+    ) async {
       final moved = <List<String>>[];
-      await tester.pumpWidget(panel(
-        thoughts: [thought('a', 'one'), thought('b', 'two'), thought('c', 'three')],
-        onMove: (list, _) async => moved.add([for (final t in list) t.uuid]),
-      ));
+      await tester.pumpWidget(
+        panel(
+          thoughts: [
+            thought('a', 'one'),
+            thought('b', 'two'),
+            thought('c', 'three'),
+          ],
+          onMove: (list, _) async => moved.add([for (final t in list) t.uuid]),
+        ),
+      );
       await tester.pumpAndSettle();
 
       await tester.longPress(find.text('one'));
@@ -166,16 +175,83 @@ void main() {
       expect(moved, [
         ['a', 'c'],
       ]);
-      expect(find.text('Thoughts'), findsOneWidget,
-          reason: 'moving ends the selection');
+      expect(
+        find.text('Thoughts'),
+        findsOneWidget,
+        reason: 'moving ends the selection',
+      );
+    });
+
+    testWidgets('the bar copies the selection as a Markdown list', (
+      tester,
+    ) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+
+      await tester.pumpWidget(
+        panel(
+          thoughts: [
+            thought('a', 'one'),
+            thought('b', 'two'),
+            thought('c', 'three\nand more'),
+          ],
+          onMove: (_, _) async {},
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('one'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('three'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Copy as a Markdown list'));
+      await tester.pump();
+      expect(copied, '- one\n- three\n  and more\n');
+      expect(find.text('Copied 2 as a list'), findsOneWidget);
+
+      // The thoughts stay; the selection lets go a moment later.
+      await tester.pump(const Duration(milliseconds: 1300));
+      await tester.pumpAndSettle();
+      expect(find.text('Thoughts'), findsOneWidget);
+      expect(find.text('one'), findsOneWidget);
+    });
+
+    test('a recording with no words is still an item', () {
+      final voice = SideThought(
+        uuid: 'v',
+        text: '',
+        audio: 'abc',
+        createdAt: '2026-10-09T10:00:00.000+02:00',
+        updatedAt: '2026-10-09T10:00:00.000+02:00',
+      );
+      expect(
+        thoughtsAsMarkdown([voice, thought('a', ' x ')]),
+        '- (voice note)\n- x\n',
+      );
     });
 
     testWidgets('one thought moves from its own row', (tester) async {
       final moved = <List<String>>[];
-      await tester.pumpWidget(panel(
-        thoughts: [thought('a', 'one'), thought('b', 'two')],
-        onMove: (list, _) async => moved.add([for (final t in list) t.uuid]),
-      ));
+      await tester.pumpWidget(
+        panel(
+          thoughts: [thought('a', 'one'), thought('b', 'two')],
+          onMove: (list, _) async => moved.add([for (final t in list) t.uuid]),
+        ),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Move to a list or shelf').last);
@@ -188,12 +264,14 @@ void main() {
     group('a double click', () {
       Future<List<String>> open(WidgetTester tester) async {
         final edits = <String>[];
-        await tester.pumpWidget(panel(
-          thoughts: [thought('a', 'one'), thought('b', 'two')],
-          onMove: (_, _) async {},
-          touch: false,
-          onEdit: (t, text) async => edits.add('${t.uuid}:$text'),
-        ));
+        await tester.pumpWidget(
+          panel(
+            thoughts: [thought('a', 'one'), thought('b', 'two')],
+            onMove: (_, _) async {},
+            touch: false,
+            onEdit: (t, text) async => edits.add('${t.uuid}:$text'),
+          ),
+        );
         await tester.pumpAndSettle();
         await tester.tap(find.text('two'));
         await tester.pump(const Duration(milliseconds: 50));
@@ -222,8 +300,9 @@ void main() {
         expect(find.text('two'), findsOneWidget);
       });
 
-      testWidgets('cleared words are not a way to throw it away',
-          (tester) async {
+      testWidgets('cleared words are not a way to throw it away', (
+        tester,
+      ) async {
         final edits = await open(tester);
         await tester.enterText(find.byType(TextField), '  ');
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
@@ -232,12 +311,14 @@ void main() {
       });
 
       testWidgets('two clicks apart are two clicks', (tester) async {
-        await tester.pumpWidget(panel(
-          thoughts: [thought('a', 'one')],
-          onMove: (_, _) async {},
-          touch: false,
-          onEdit: (_, _) async {},
-        ));
+        await tester.pumpWidget(
+          panel(
+            thoughts: [thought('a', 'one')],
+            onMove: (_, _) async {},
+            touch: false,
+            onEdit: (_, _) async {},
+          ),
+        );
         await tester.tap(find.text('one'));
         await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
         await tester.tap(find.text('one'));
@@ -247,10 +328,9 @@ void main() {
     });
 
     testWidgets('its controls are a fingertip on touch', (tester) async {
-      await tester.pumpWidget(panel(
-        thoughts: [thought('a', 'one')],
-        onMove: (_, _) async {},
-      ));
+      await tester.pumpWidget(
+        panel(thoughts: [thought('a', 'one')], onMove: (_, _) async {}),
+      );
       await tester.pumpAndSettle();
 
       final button = find.ancestor(

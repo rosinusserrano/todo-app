@@ -26,7 +26,8 @@ import 'sync/models.dart';
 // For the grid's hour-height constants: the zoom this holds is the grid's own
 // geometry, and a second copy of the bounds would drift from the ones the
 // pinch clamps to.
-import 'ui/calendar/time_grid.dart' show kHourHeight, kHourHeightMin, kHourHeightMax;
+import 'ui/calendar/time_grid.dart'
+    show kHourHeight, kHourHeightMin, kHourHeightMax;
 import 'ui/dock.dart' show DockEdge;
 import 'theme.dart';
 import 'voice_clip.dart';
@@ -195,8 +196,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// The projects on [parentUuid]'s list, in its order.
-  List<Workspace> projectsOf(String? parentUuid) =>
-      [for (final p in projects) if (p.parentUuid == parentUuid) p];
+  List<Workspace> projectsOf(String? parentUuid) => [
+    for (final p in projects)
+      if (p.parentUuid == parentUuid) p,
+  ];
 
   /// The current list's projects. Empty inside a project: one level only.
   List<Workspace> get currentProjects =>
@@ -218,8 +221,8 @@ class AppState extends ChangeNotifier {
   /// Every place a task can be moved to, each workspace followed by its
   /// projects - the move picker's and the add card's list.
   List<Workspace> get moveTargets => [
-        for (final w in workspaces) ...[w, ...projectsOf(w.uuid)],
-      ];
+    for (final w in workspaces) ...[w, ...projectsOf(w.uuid)],
+  ];
 
   int get thoughtCount => thoughts.length;
 
@@ -336,9 +339,7 @@ class AppState extends ChangeNotifier {
     final before = _sessionSignature;
 
     liveEvents = await _store.liveEvents(now);
-    sessionTasks = {
-      for (final e in liveEvents) e.uuid: await tasksForBlock(e),
-    };
+    sessionTasks = {for (final e in liveEvents) e.uuid: await tasksForBlock(e)};
     // [calendars] is normally loaded by opening the calendar view, and the
     // banner can appear on a run where that never happened - a block needs its
     // calendar to know what colour and whose it is. Read-only, and only in the
@@ -366,16 +367,28 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshWorkspaces() async {
     final all = await _store.workspaces();
-    final roots = {for (final w in all) if (w.parentUuid == null) w.uuid};
+    final roots = {
+      for (final w in all)
+        if (w.parentUuid == null) w.uuid,
+    };
     bool isProject(Workspace w) => roots.contains(w.parentUuid);
-    workspaces = [for (final w in all) if (!isProject(w)) w];
-    projects = [for (final w in all) if (isProject(w) && !w.isArchived) w];
+    workspaces = [
+      for (final w in all)
+        if (!isProject(w)) w,
+    ];
+    projects = [
+      for (final w in all)
+        if (isProject(w) && !w.isArchived) w,
+    ];
     archivedProjects = [
-      for (final w in all) if (isProject(w) && w.isArchived) w,
+      for (final w in all)
+        if (isProject(w) && w.isArchived) w,
     ]..sort((a, b) => b.archivedAt!.compareTo(a.archivedAt!));
 
-    final known = [...workspaces, ...projects]
-        .any((w) => w.uuid == currentWorkspaceUuid);
+    final known = [
+      ...workspaces,
+      ...projects,
+    ].any((w) => w.uuid == currentWorkspaceUuid);
     if (!known) {
       // A project archived or deleted under you - here or on another device -
       // hands you back to its parent rather than to the first workspace.
@@ -384,8 +397,8 @@ class AppState extends ChangeNotifier {
       currentWorkspaceUuid = roots.contains(parent)
           ? parent
           : workspaces.isEmpty
-              ? null
-              : workspaces.first.uuid;
+          ? null
+          : workspaces.first.uuid;
     }
     notifyListeners();
   }
@@ -455,8 +468,9 @@ class AppState extends ChangeNotifier {
     if (color != existing.color) {
       for (final p in [...projects, ...archivedProjects]) {
         if (p.parentUuid != uuid) continue;
-        await _store
-            .putWorkspace(p.copyWith(color: color, updatedAt: nowStamp()));
+        await _store.putWorkspace(
+          p.copyWith(color: color, updatedAt: nowStamp()),
+        );
       }
     }
     await refreshWorkspaces();
@@ -511,7 +525,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _tombstoneWorkspace(String uuid, String stamp) async {
-
     for (final t in await _store.allTasksInWorkspace(uuid)) {
       await _store.putTask(t.copyWith(deletedAt: stamp, updatedAt: stamp));
     }
@@ -724,8 +737,9 @@ class AppState extends ChangeNotifier {
       parked = await _store.parkedTasks(ws);
       if (showHistory) historyTasks = await _store.history(ws);
     }
-    projectOpenCounts =
-        projects.isEmpty ? const {} : await _store.projectOpenCounts();
+    projectOpenCounts = projects.isEmpty
+        ? const {}
+        : await _store.projectOpenCounts();
     if (showHome) openCounts = await _store.openCounts();
     await refreshOverdue(notify: false);
     // The journal is loaded separately (see refreshJournal), only while its view
@@ -905,7 +919,8 @@ class AppState extends ChangeNotifier {
     int? recurLead,
     String? recurText,
     String? recurNotes,
-  }) _resolveRepeat({
+  })
+  _resolveRepeat({
     required String text,
     required String notes,
     required String? recur,
@@ -913,7 +928,8 @@ class AppState extends ChangeNotifier {
     required int? recurLead,
     required DateTime? remindAt,
   }) {
-    final keeps = recur != null &&
+    final keeps =
+        recur != null &&
         (remindAt != null || recurFrom == RecurFrom.completion);
 
     if (!keeps) {
@@ -1028,8 +1044,10 @@ class AppState extends ChangeNotifier {
   /// The whole database's worth, called from the reminder poll. Refreshes only
   /// when something was actually written, so a quiet tick costs one query.
   Future<int> sweepRecurrences([DateTime? now]) async {
-    final written =
-        await _spawnOccurrences(await _store.recurringSeeds(now), now);
+    final written = await _spawnOccurrences(
+      await _store.recurringSeeds(now),
+      now,
+    );
     if (written > 0) {
       await refreshTasks();
       _mutated();
@@ -1320,14 +1338,49 @@ class AppState extends ChangeNotifier {
 
   int get overdueTotal => overdueCounts.values.fold(0, (n, c) => n + c);
 
+  /// Every overdue task, across workspaces: what [overdueCounts] counts,
+  /// each once. Kept whether or not the list is open - [refreshOverdue]
+  /// reads these rows anyway to count them.
+  List<Task> overdueTasks = const [];
+
+  /// The overdue list owns the content area (ui/overdue_view.dart), reached
+  /// from home (Marco, 2026-11-28): every overdue task in one place, so
+  /// getting rid of them is one sitting rather than a tour of workspaces.
+  bool showOverdue = false;
+
+  /// When [task] became overdue: its reminder, or the day its workspace's
+  /// automatic overdue ran out, whichever came first. Null for a task that
+  /// is neither.
+  DateTime? overdueSince(Task task, [DateTime? now]) {
+    final at = task.isDue(now) ? task.remindAtTime : null;
+    final days = staleDaysOf(task.workspaceUuid);
+    final created = task.createdAtTime;
+    final stale = task.isStale(days, now) && created != null
+        ? created.add(Duration(days: days!))
+        : null;
+    if (at == null) return stale;
+    if (stale == null) return at;
+    return at.isBefore(stale) ? at : stale;
+  }
+
+  Future<void> openOverdue() async {
+    _closeOtherViews();
+    showOverdue = true;
+    if (showCalendar) await commitPendingBlocks();
+    showCalendar = false;
+    notifyListeners();
+  }
+
   /// Re-reads [overdueCounts]. From the poll as well as every write, since a
   /// reminder going off writes nothing; notifies only when the answer moved,
   /// so a quiet tick rebuilds nothing.
   Future<void> refreshOverdue({bool notify = true, DateTime? now}) async {
     final next = <String, int>{};
     final counted = <String>{};
+    final rows = <Task>[];
     void count(Task t) {
       if (!counted.add(t.uuid)) return;
+      rows.add(t);
       next[t.workspaceUuid] = (next[t.workspaceUuid] ?? 0) + 1;
     }
 
@@ -1342,7 +1395,23 @@ class AppState extends ChangeNotifier {
     for (final t in await _store.staleTasks(days, now)) {
       count(t);
     }
-    if (mapEquals(next, overdueCounts)) return;
+    // Longest overdue first: the one that has waited longest is the one to
+    // deal with.
+    final far = DateTime(9999);
+    rows.sort(
+      (a, b) =>
+          (overdueSince(a, now) ?? far).compareTo(overdueSince(b, now) ?? far),
+    );
+    final same =
+        mapEquals(next, overdueCounts) &&
+        listEquals(
+          [for (final t in rows) t.uuid],
+          [for (final t in overdueTasks) t.uuid],
+        );
+    // The rows themselves are always the fresh ones - a title edited on an
+    // overdue task changes no count.
+    overdueTasks = rows;
+    if (same) return;
     overdueCounts = next;
     if (notify) notifyListeners();
   }
@@ -1365,9 +1434,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Off home, and off the overdue list it leads to.
   void leaveHome() {
-    if (!showHome) return;
+    if (!showHome && !showOverdue) return;
     showHome = false;
+    showOverdue = false;
     notifyListeners();
   }
 
@@ -1388,8 +1459,10 @@ class AppState extends ChangeNotifier {
     // The shopping list is not a per-workspace view, but it owns the same
     // content area, so anything opening there closes it.
     showList = false;
-    // Home and the timer likewise: whatever opens is where you are now.
+    // Home, the overdue list and the timer likewise: whatever opens is where
+    // you are now.
     showHome = false;
+    showOverdue = false;
     showTimer = false;
   }
 
@@ -1646,10 +1719,11 @@ class AppState extends ChangeNotifier {
   Future<int> unparkGroup(ParkedGroup g) async {
     final ws = currentWorkspaceUuid;
     if (ws == null) return 0;
-    final tasks = (await _store.allTasksInGroup(g.uuid))
-        .where((t) => t.completedAt == null)
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final tasks =
+        (await _store.allTasksInGroup(
+            g.uuid,
+          )).where((t) => t.completedAt == null).toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     if (tasks.isEmpty) return 0;
 
     var order = await _store.nextSortOrder(ws);
@@ -1657,11 +1731,9 @@ class AppState extends ChangeNotifier {
     final offShelf = await _offShelf();
     for (final t in tasks) {
       await _store.putTask(
-        offShelf(t).copyWith(
-          clearGroup: true,
-          sortOrder: order++,
-          updatedAt: stamp,
-        ),
+        offShelf(
+          t,
+        ).copyWith(clearGroup: true, sortOrder: order++, updatedAt: stamp),
       );
     }
     await refreshTasks();
@@ -1704,8 +1776,7 @@ class AppState extends ChangeNotifier {
     final live = await _store.taskByUuid(t.uuid);
     if (live == null || live.isDeleted) return null;
 
-    final notes =
-        live.notes.isEmpty ? trimmed : '${live.notes}\n$trimmed';
+    final notes = live.notes.isEmpty ? trimmed : '${live.notes}\n$trimmed';
     final row = live.copyWith(notes: notes, updatedAt: nowStamp());
     await _store.putTask(row);
     // The focus tile prints the notes under the title, so the copy the shell is
@@ -1815,9 +1886,12 @@ class AppState extends ChangeNotifier {
     }
     wideDock = DockEdge.parse(await _store.setting(_kWideDock)) ?? DockEdge.top;
     tasksPaneCollapsed = (await _store.setting(_kTasksPaneCollapsed)) == '1';
-    splitFraction = double.tryParse(await _store.setting(_kSplitFraction) ?? '');
-    calendarSplitFraction =
-        double.tryParse(await _store.setting(_kCalendarSplitFraction) ?? '');
+    splitFraction = double.tryParse(
+      await _store.setting(_kSplitFraction) ?? '',
+    );
+    calendarSplitFraction = double.tryParse(
+      await _store.setting(_kCalendarSplitFraction) ?? '',
+    );
     windowModes = decodeWindowModes(await _store.setting(_kWindowModes));
     notePreview = (await _store.setting(_kNotePreview)) == '1';
     codeKeys = (await _store.setting(_kCodeKeys)) == '1';
@@ -1883,7 +1957,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// Null puts the split back to the shell's default.
-  Future<void> setSplitFraction(double? fraction, {bool calendar = false}) async {
+  Future<void> setSplitFraction(
+    double? fraction, {
+    bool calendar = false,
+  }) async {
     if (calendar) {
       calendarSplitFraction = fraction;
     } else {
@@ -2387,7 +2464,10 @@ class AppState extends ChangeNotifier {
   static const pendingBlockLength = Duration(hours: 1);
 
   void placePendingBlock(DateTime start, [DateTime? end]) {
-    pendingBlocks.add((start: start, end: end ?? start.add(pendingBlockLength)));
+    pendingBlocks.add((
+      start: start,
+      end: end ?? start.add(pendingBlockLength),
+    ));
     notifyListeners();
   }
 
@@ -2761,9 +2841,7 @@ class AppState extends ChangeNotifier {
     if (allDay) {
       from = DateTime(from.year, from.month, from.day);
       final lastDay = DateTime(to.year, to.month, to.day);
-      to = lastDay.isAfter(from)
-          ? lastDay
-          : from.add(const Duration(days: 1));
+      to = lastDay.isAfter(from) ? lastDay : from.add(const Duration(days: 1));
     }
 
     // An exception is one occurrence and cannot have a rule of its own; a
@@ -3001,8 +3079,10 @@ class AppState extends ChangeNotifier {
   bool isRefreshingFeed(String uuid) => _refreshing.contains(uuid);
 
   /// Subscriptions writing into [calendarUuid].
-  List<CalendarFeed> feedsOn(String calendarUuid) =>
-      [for (final f in feeds) if (f.calendarUuid == calendarUuid) f];
+  List<CalendarFeed> feedsOn(String calendarUuid) => [
+    for (final f in feeds)
+      if (f.calendarUuid == calendarUuid) f,
+  ];
 
   CalendarFeed? feedByUuid(String? uuid) {
     for (final f in feeds) {
@@ -3017,8 +3097,9 @@ class AppState extends ChangeNotifier {
     feeds = await _store.calendarFeeds();
     for (final f in feeds) {
       if (feedStatus.containsKey(f.uuid)) continue;
-      feedStatus[f.uuid] =
-          FeedStatus.decode(await _store.setting(_feedKey(f.uuid)));
+      feedStatus[f.uuid] = FeedStatus.decode(
+        await _store.setting(_feedKey(f.uuid)),
+      );
     }
     feedStatus.removeWhere((k, _) => !feeds.any((f) => f.uuid == k));
     notifyListeners();
@@ -3031,8 +3112,10 @@ class AppState extends ChangeNotifier {
     if (uri == null) throw const FeedError('That is not a web address.');
     final fetch = fetchFeed;
     if (fetch == null) {
-      throw const FeedError('In the browser, subscribing goes through your '
-          'sync server - set one up in Settings first.');
+      throw const FeedError(
+        'In the browser, subscribing goes through your '
+        'sync server - set one up in Settings first.',
+      );
     }
     return fetch(uri);
   }
@@ -3112,7 +3195,8 @@ class AppState extends ChangeNotifier {
     for (final c in await _store.calendars()) {
       if (c.uuid == feed.calendarUuid) calendar = c;
     }
-    final emptied = calendar != null &&
+    final emptied =
+        calendar != null &&
         !calendar.isWorkspaceCalendar &&
         (await _store.eventsOnCalendar(calendar.uuid)).isEmpty &&
         !feeds.any((f) => f.calendarUuid == calendar!.uuid);
@@ -3162,7 +3246,11 @@ class AppState extends ChangeNotifier {
   ///
   /// A failure keeps what is there. A calendar that cannot be fetched for an
   /// afternoon should go on showing this morning's meetings, not none.
-  Future<void> refreshFeed(CalendarFeed feed, {String? text, DateTime? now}) async {
+  Future<void> refreshFeed(
+    CalendarFeed feed, {
+    String? text,
+    DateTime? now,
+  }) async {
     if (!_refreshing.add(feed.uuid)) return;
     final at = now ?? DateTime.now();
     final before = feedStatus[feed.uuid] ?? const FeedStatus();
@@ -3183,8 +3271,10 @@ class AppState extends ChangeNotifier {
       } else {
         final fetch = fetchFeed;
         if (fetch == null) {
-          throw const FeedError('Needs a sync server to fetch through in the '
-              'browser.');
+          throw const FeedError(
+            'Needs a sync server to fetch through in the '
+            'browser.',
+          );
         }
         body = await fetch(uri);
       }
@@ -3197,11 +3287,7 @@ class AppState extends ChangeNotifier {
         to: window.to,
       );
       wrote = applied.added + applied.changed + applied.removed > 0;
-      result = FeedStatus(
-        fetchedAt: at,
-        triedAt: at,
-        count: rows.length,
-      );
+      result = FeedStatus(fetchedAt: at, triedAt: at, count: rows.length);
     } on FeedError catch (e) {
       result = before.copyWith(triedAt: at, error: e.message);
     } catch (e) {
@@ -3353,7 +3439,10 @@ class AppState extends ChangeNotifier {
       for (final i in listItems)
         if (!i.isSection && i.checkedAt == null) i.text.trim().toLowerCase(),
     };
-    var next = listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m);
+    var next = listItems.fold<int>(
+      -1,
+      (m, i) => i.sortOrder > m ? i.sortOrder : m,
+    );
     var added = 0;
     for (final t in tasks) {
       final text = t.text.trim();
@@ -3412,9 +3501,11 @@ class AppState extends ChangeNotifier {
   /// sort order never changed while it was ticked.
   Future<void> setListItemChecked(ListItem item, bool checked) async {
     if (item.isChecked == checked) return;
-    await _store.putListItem(checked
-        ? item.copyWith(checkedAt: nowStamp())
-        : item.copyWith(clearChecked: true));
+    await _store.putListItem(
+      checked
+          ? item.copyWith(checkedAt: nowStamp())
+          : item.copyWith(clearChecked: true),
+    );
     await _listChanged();
   }
 
@@ -3460,10 +3551,13 @@ class AppState extends ChangeNotifier {
   Future<void> mergeListIntoCurrent(ShoppingList other) async {
     final current = currentList;
     if (current == null || other.uuid == current.uuid) return;
-    var next = listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m) + 1;
+    var next =
+        listItems.fold<int>(-1, (m, i) => i.sortOrder > m ? i.sortOrder : m) +
+        1;
     for (final item in await _store.listItems(other.uuid)) {
       await _store.putListItem(
-          item.copyWith(listUuid: current.uuid, sortOrder: next++));
+        item.copyWith(listUuid: current.uuid, sortOrder: next++),
+      );
     }
     await _store.putList(other.copyWith(archivedAt: nowStamp()));
     await _listChanged();
@@ -3479,7 +3573,9 @@ class AppState extends ChangeNotifier {
     if (current != null && current.uuid != list.uuid) {
       if (listItems.isEmpty) {
         final stamp = nowStamp();
-        await _store.putList(current.copyWith(deletedAt: stamp, updatedAt: stamp));
+        await _store.putList(
+          current.copyWith(deletedAt: stamp, updatedAt: stamp),
+        );
       } else {
         await _store.putList(current.copyWith(archivedAt: nowStamp()));
       }
@@ -3500,7 +3596,9 @@ class AppState extends ChangeNotifier {
   Future<void> deleteList(ShoppingList list) async {
     final stamp = nowStamp();
     for (final item in await _store.listItems(list.uuid)) {
-      await _store.putListItem(item.copyWith(deletedAt: stamp, updatedAt: stamp));
+      await _store.putListItem(
+        item.copyWith(deletedAt: stamp, updatedAt: stamp),
+      );
     }
     await _store.putList(list.copyWith(deletedAt: stamp, updatedAt: stamp));
     await _listChanged();
@@ -3594,22 +3692,25 @@ class AppState extends ChangeNotifier {
       if (fieldName.isEmpty) continue;
       final old = draft.uuid == null ? null : before[draft.uuid];
       if (old == null) {
-        await _store.putCollectionField(CollectionField(
-          uuid: newId(),
-          collectionUuid: saved.uuid,
-          name: fieldName,
-          kind: draft.kind,
-          sortOrder: order,
-          createdAt: stamp,
-          updatedAt: stamp,
-        ));
+        await _store.putCollectionField(
+          CollectionField(
+            uuid: newId(),
+            collectionUuid: saved.uuid,
+            name: fieldName,
+            kind: draft.kind,
+            sortOrder: order,
+            createdAt: stamp,
+            updatedAt: stamp,
+          ),
+        );
       } else {
         kept.add(old.uuid);
         if (old.name != fieldName ||
             old.kind != draft.kind ||
             old.sortOrder != order) {
           await _store.putCollectionField(
-              old.copyWith(name: fieldName, kind: draft.kind, sortOrder: order));
+            old.copyWith(name: fieldName, kind: draft.kind, sortOrder: order),
+          );
         }
       }
       order++;
@@ -3617,7 +3718,8 @@ class AppState extends ChangeNotifier {
     for (final old in before.values) {
       if (kept.contains(old.uuid)) continue;
       await _store.putCollectionField(
-          old.copyWith(deletedAt: stamp, updatedAt: stamp));
+        old.copyWith(deletedAt: stamp, updatedAt: stamp),
+      );
     }
 
     await _collectionsChanged();
@@ -3630,7 +3732,10 @@ class AppState extends ChangeNotifier {
   Future<void> moveCollection(Collection c, String workspaceUuid) async {
     if (c.workspaceUuid == workspaceUuid) return;
     final there = await _store.collections(workspaceUuid);
-    final end = there.fold<int>(-1, (m, x) => x.sortOrder > m ? x.sortOrder : m);
+    final end = there.fold<int>(
+      -1,
+      (m, x) => x.sortOrder > m ? x.sortOrder : m,
+    );
     await _store.putCollection(
       c.copyWith(
         workspaceUuid: workspaceUuid,
@@ -3654,12 +3759,14 @@ class AppState extends ChangeNotifier {
     for (final f in await _store.collectionFields(ws)) {
       if (f.collectionUuid != c.uuid) continue;
       await _store.putCollectionField(
-          f.copyWith(deletedAt: stamp, updatedAt: stamp));
+        f.copyWith(deletedAt: stamp, updatedAt: stamp),
+      );
     }
     for (final e in await _store.collectionEntries(ws)) {
       if (e.collectionUuid != c.uuid) continue;
       await _store.putCollectionEntry(
-          e.copyWith(deletedAt: stamp, updatedAt: stamp));
+        e.copyWith(deletedAt: stamp, updatedAt: stamp),
+      );
     }
     await _store.putCollection(c.copyWith(deletedAt: stamp, updatedAt: stamp));
   }
@@ -3719,7 +3826,8 @@ class AppState extends ChangeNotifier {
   Future<void> deleteEntry(CollectionEntry e) async {
     final stamp = nowStamp();
     await _store.putCollectionEntry(
-        e.copyWith(deletedAt: stamp, updatedAt: stamp));
+      e.copyWith(deletedAt: stamp, updatedAt: stamp),
+    );
     await _collectionsChanged();
   }
 
@@ -3755,7 +3863,6 @@ class AppState extends ChangeNotifier {
   }
 }
 
-
 /// How a feed's refreshes have gone on this device.
 class FeedStatus {
   const FeedStatus({this.fetchedAt, this.triedAt, this.error, this.count = 0});
@@ -3779,18 +3886,18 @@ class FeedStatus {
   }
 
   FeedStatus copyWith({DateTime? triedAt, String? error}) => FeedStatus(
-        fetchedAt: fetchedAt,
-        triedAt: triedAt ?? this.triedAt,
-        error: error,
-        count: count,
-      );
+    fetchedAt: fetchedAt,
+    triedAt: triedAt ?? this.triedAt,
+    error: error,
+    count: count,
+  );
 
   String encode() => jsonEncode({
-        'fetched': fetchedAt?.toUtc().toIso8601String(),
-        'tried': triedAt?.toUtc().toIso8601String(),
-        'error': error,
-        'count': count,
-      });
+    'fetched': fetchedAt?.toUtc().toIso8601String(),
+    'tried': triedAt?.toUtc().toIso8601String(),
+    'error': error,
+    'count': count,
+  });
 
   static FeedStatus decode(String? raw) {
     if (raw == null) return const FeedStatus();

@@ -392,6 +392,25 @@ class ThoughtsPanel extends StatefulWidget {
 /// click toggles too. The header then becomes the bar that acts on the
 /// selection. Held as uuids and read through [ThoughtsPanel.thoughts], so a
 /// thought resolved elsewhere simply drops out of it.
+/// [thoughts] as a Markdown list, one `- ` item each, in the pile's order. A
+/// thought of several lines keeps them, indented under its item so the list
+/// stays one list; a recording with no words is "(voice note)", so the item
+/// is not an empty bullet.
+String thoughtsAsMarkdown(Iterable<SideThought> thoughts) {
+  final out = StringBuffer();
+  for (final t in thoughts) {
+    final text = t.text.trim();
+    final lines = text.isEmpty
+        ? [t.audio != null ? '(voice note)' : '']
+        : text.split(RegExp(r'\r?\n'));
+    out.writeln('- ${lines.first.trimRight()}');
+    for (final l in lines.skip(1)) {
+      out.writeln(l.trim().isEmpty ? '' : '  ${l.trimRight()}');
+    }
+  }
+  return out.toString();
+}
+
 class _ThoughtsPanelState extends State<ThoughtsPanel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _in = AnimationController(
@@ -401,6 +420,10 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
 
   final _selected = <String>{};
 
+  /// Set for a moment after Copy, so the bar can say it worked before the
+  /// selection lets go.
+  Timer? _copied;
+
   List<SideThought> get _selection => [
     for (final t in widget.thoughts)
       if (_selected.contains(t.uuid)) t,
@@ -409,6 +432,7 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
   @override
   void dispose() {
     _in.dispose();
+    _copied?.cancel();
     super.dispose();
   }
 
@@ -438,6 +462,24 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
     if (move == null || picked.isEmpty) return;
     await move(picked, _anchor(anchorContext));
     if (mounted) _clear();
+  }
+
+  /// The selection onto the clipboard as a Markdown list. The thoughts stay
+  /// in the pile: copying is taking them somewhere else to read, not dealing
+  /// with them.
+  Future<void> _copySelection() async {
+    final picked = _selection;
+    if (picked.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: thoughtsAsMarkdown(picked)));
+    if (!mounted) return;
+    _copied?.cancel();
+    setState(() {
+      _copied = Timer(const Duration(milliseconds: 1200), () {
+        if (!mounted) return;
+        setState(() => _copied = null);
+        _clear();
+      });
+    });
   }
 
   Future<void> _discardSelection() async {
@@ -545,7 +587,7 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
         children: [
           Expanded(
             child: Text(
-              '$count selected',
+              _copied != null ? 'Copied $count as a list' : '$count selected',
               style: const TextStyle(
                 fontSize: T.fsBody,
                 color: T.text,
@@ -563,6 +605,13 @@ class _ThoughtsPanelState extends State<ThoughtsPanel>
                 onTap: () => _moveSelection(context),
               ),
             ),
+          _ThoughtButton(
+            icon: _copied != null ? Icons.check_rounded : Icons.copy_rounded,
+            tooltip: 'Copy as a Markdown list',
+            size: size,
+            side: layout.tapTarget,
+            onTap: _copySelection,
+          ),
           _ThoughtButton(
             icon: Icons.delete_outline_rounded,
             tooltip: 'Throw them away',

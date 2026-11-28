@@ -38,6 +38,18 @@ class ReleaseNote {
 /// Newest first.
 const kReleaseNotes = <ReleaseNote>[
   ReleaseNote(
+    id: '2026-11-28',
+    title: 'Every overdue task in one list',
+    points: [
+      'Home has a new strip above the workspaces: tap it to see every overdue '
+          'task from every workspace in one list, and deal with them there.',
+      'In the workspace menu, Home now has a ▸ with Overview and Overdue, and '
+          'a gear at its left end that opens Settings.',
+      'Select several thoughts and the new copy button puts them on the '
+          'clipboard as a Markdown list.',
+    ],
+  ),
+  ReleaseNote(
     id: '2026-11-26b',
     title: 'Editing a workspace is easier to reach',
     points: [

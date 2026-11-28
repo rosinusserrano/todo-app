@@ -786,6 +786,27 @@ Open, and worth answering before any of Step 1 is written:
   hour is for. Hidden while that workspace is on screen, since it would
   offer where you are.
 
+### The overdue list (2026-11-28)
+
+Marco: a global list of overdue tasks, reached from Home; and the Home row
+of the dock's workspace menu built like a workspace row, with a ▸ on the
+right and, where a workspace has its pen, a way to Settings.
+
+- **A view like home, not a fifth workspace view**: `showOverdue` owns the
+  content area and is cleared by `_closeOtherViews` and `leaveHome`, so it
+  is left exactly as home is. Esc goes back to home.
+- **The rows are `TaskRow`s built by the shell**, so every action works as
+  on the list; a row leaves as soon as it stops being overdue. The move
+  picker opens on the task's own workspace (`_moveTasks(from:)`).
+- **No second query**: `refreshOverdue` already reads the rows to count
+  them, so it keeps them (`overdueTasks`), sorted by `overdueSince` - the
+  reminder or the day automatic overdue ran out, whichever came first.
+- **Ways in**: a strip above home's squares, always drawn (quiet when
+  nothing is overdue, so the list is findable before it is needed), and
+  *Overdue* in the Home row's submenu, which carries the total.
+- **Copy thoughts** (same day): the pile's selection bar copies the picked
+  thoughts as a Markdown list and keeps them in the pile.
+
 ### Automatic overdue (2026-11-26)
 
 Marco keeps tasks on the main list for a very long time without touching

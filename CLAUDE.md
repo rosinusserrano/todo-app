@@ -1084,6 +1084,15 @@ union with due reminders counts a task once.
 The blink repeats forever, so a widget test that pumps the shell or home
 with a due reminder cannot `pumpAndSettle`.
 
+**The overdue list** (`ui/overdue_view.dart`, `AppState.showOverdue`) is
+every row those counts count, kept by `refreshOverdue` as `overdueTasks`
+(longest overdue first, `overdueSince`) - no second query. It is a rung
+above home: reached from home's `OverdueStrip` and the Home row's submenu,
+left like home (`_closeOtherViews`, `leaveHome`), Esc goes to home. Its
+rows are the shell's `TaskRow`s, and the move picker opens on the task's
+own workspace (`_moveTasks(from:)`). The Home row carries Settings as its
+left-end second action, the way a workspace row carries its pen.
+
 ### Home (`app/lib/ui/home_view.dart`)
 
 Every workspace as a square of its colour, projects as lines inside, open

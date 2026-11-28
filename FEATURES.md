@@ -1198,6 +1198,10 @@ at the screen gives nothing away) and its lock is **opt-in**.
   another workspace's list, or any shelf. **Select several** — Ctrl+click, or a
   long press on a phone, then plain clicks add more — and move or discard them
   together. A moved thought becomes a task there and is resolved, not deleted.
+- **Copy several thoughts as a list.** With some selected, the copy button
+  puts them on the clipboard as a Markdown list (`- one`, `- two`; a thought
+  of several lines keeps them, indented under its item). They stay in the
+  pile.
 - **Double-click a thought to rewrite it** (a double tap on a phone): its words
   open in place, **Enter** keeps them, **Shift+Enter** is a new line, **Esc**
   puts them back. Clearing the words does not throw it away - the × does. Its
@@ -1248,7 +1252,16 @@ at the screen gives nothing away) and its lock is **opt-in**.
   of a workspace you are not working in. To go back to it, **Home** heads
   the dock's workspace menu (or press `H` on a keyboard); while it shows,
   the workspace part of the dock reads *Home*. Anything picked in the dock
-  leaves it.
+  leaves it. The Home row is built like a workspace row: a **gear at its
+  left end opens Settings**, and its ▸ opens a little menu of *Overview*
+  and *Overdue*.
+- **Every overdue task in one list.** A strip above home's squares (*3
+  overdue tasks*, or *Nothing overdue*) and *Overdue* under the Home row
+  open it: every overdue task from every workspace - a reminder gone off, or
+  past a workspace's automatic overdue - grouped by list under the
+  workspace's name and colour, the list holding the longest-overdue task
+  first. The rows are the list's own: tick, swipe, set a reminder, move. A
+  list's heading goes to that list; Esc or the arrow goes back home.
 
 - **One bar, in four parts**, which touch: the **workspace**
   you are in (filled in its colour), **where** in it you are (Tasks, Notes,
@@ -1724,6 +1737,11 @@ reminders are both there now**, queued for 0.18.0.
 ## Changelog
 
 - **0.29.0** — *(in progress)*
+  - **The overdue list** (2026-11-28): every overdue task across workspaces,
+    from home's strip or the Home row's submenu (`ui/overdue_view.dart`,
+    `AppState.overdueTasks` / `showOverdue`). The Home row gains Settings at
+    its left end and a submenu (Overview, Overdue). **Copy thoughts as a
+    Markdown list** from the pile's selection (`thoughtsAsMarkdown`).
   - **The workspace pencil is on the left** (2026-11-26): rows with a
     submenu keep their second action at the left end, and a mouse opens the
     submenu only from the row's ▸ (`_inSubZone` in `dock.dart`).

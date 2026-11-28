@@ -29,6 +29,17 @@ small-to-large. Design for 45-47 and 54 is in `ROADMAP.md` under *Capture
 should be fast*. Dropped from the shelf: "remove concentration sounds" (Marco:
 keep them). Already shipped: "double click TODO WIDGET edits task" (43).
 
+### 83. The overdue list, the Home row, copying thoughts  `[x]`
+
+Asked 2026-11-28.
+
+- [x] **83.1** Copy selected thoughts as a Markdown list (`footer.dart`,
+      `capture_test`).
+- [x] **83.2** A global overdue list from home's strip and the Home row's
+      submenu (`ui/overdue_view.dart`, `overdue_view_test`).
+- [x] **83.3** The Home row: Settings on its left end, a ▸ submenu
+      (Overview, Overdue). What's new `2026-11-28`.
+
 ### 82. The workspace pen, out from under the submenu  `[x]`
 
 Asked 2026-11-26.

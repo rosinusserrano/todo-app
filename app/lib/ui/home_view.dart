@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../sync/models.dart';
 import '../theme.dart';
 import 'overdue.dart';
+import 'overdue_view.dart';
 
 /// How wide a square wants to be before another column is worth adding.
 const kHomeTile = 168.0;
@@ -34,9 +35,13 @@ class HomeView extends StatelessWidget {
     required this.onOpenProject,
     this.overdueOf,
     this.overdueCounts = const {},
+    this.onOpenOverdue,
   });
 
   final List<Workspace> workspaces;
+
+  /// Opens the overdue list (overdue_view.dart). Null draws no strip.
+  final VoidCallback? onOpenOverdue;
 
   /// Overdue in a workspace, its projects included, and per list - see
   /// overdue.dart. Null counts nothing.
@@ -63,8 +68,13 @@ class HomeView extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, box) {
             final columns = columnsFor(box.maxWidth - 2 * T.s3);
-            return GridView.count(
-              padding: const EdgeInsets.fromLTRB(T.s3, T.s3, T.s3, T.s4),
+            final grid = GridView.count(
+              padding: EdgeInsets.fromLTRB(
+                T.s3,
+                onOpenOverdue == null ? T.s3 : T.s2,
+                T.s3,
+                T.s4,
+              ),
               crossAxisCount: columns,
               mainAxisSpacing: T.s2,
               crossAxisSpacing: T.s2,
@@ -79,6 +89,23 @@ class HomeView extends StatelessWidget {
                     onOpen: () => onOpen(w),
                     onOpenProject: onOpenProject,
                   ),
+              ],
+            );
+            final open = onOpenOverdue;
+            if (open == null) return grid;
+            // Every overdue task in one list, above the squares that count
+            // them per workspace.
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(T.s3, T.s3, T.s3, 0),
+                  child: OverdueStrip(
+                    count: overdueCounts.values.fold(0, (n, c) => n + c),
+                    onOpen: open,
+                  ),
+                ),
+                Expanded(child: grid),
               ],
             );
           },

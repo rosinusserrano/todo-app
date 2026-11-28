@@ -59,6 +59,7 @@ import 'ui/content_slot.dart';
 import 'ui/dock.dart';
 import 'ui/footer.dart';
 import 'ui/home_view.dart';
+import 'ui/overdue_view.dart';
 import 'ui/journal_panel.dart';
 import 'ui/list_rule.dart';
 import 'ui/panel_header.dart';
@@ -1703,6 +1704,7 @@ class _WidgetShellState extends State<WidgetShell>
       s.showThoughts ||
       s.showList ||
       s.showHome ||
+      s.showOverdue ||
       s.showTimer;
 
   /// The window's background. Translucent for the desktop's frosted window;
@@ -1877,6 +1879,9 @@ class _WidgetShellState extends State<WidgetShell>
             _toggleList();
           } else if (s.showTimer) {
             s.closeTimer();
+          } else if (s.showOverdue) {
+            // The overdue list is a rung above home.
+            _dockToHome();
           } else if (s.showCalendar) {
             _toggleCalendar();
           } else if (s.showThoughts) {
@@ -2288,6 +2293,7 @@ class _WidgetShellState extends State<WidgetShell>
     final inIt =
         s.homeWorkspace?.uuid == ws &&
         !s.showHome &&
+        !s.showOverdue &&
         !s.showList &&
         !s.showTimer &&
         !(s.showCalendar && !_layout.splitsCalendar);
@@ -2575,9 +2581,12 @@ class _WidgetShellState extends State<WidgetShell>
       return _calendar();
     }
 
+    if (s.showOverdue) return _overdueView();
+
     // Home, at launch: every workspace, no one workspace's tasks.
     if (s.showHome && s.workspaces.isNotEmpty) {
       return HomeView(
+        onOpenOverdue: _dockToOverdue,
         workspaces: s.workspaces,
         projectsOf: s.projectsOf,
         openCounts: s.openCounts,
@@ -2682,6 +2691,7 @@ class _WidgetShellState extends State<WidgetShell>
       !s.showCalendar &&
       !s.showList &&
       !s.showTimer &&
+      !s.showOverdue &&
       s.focusTask == null &&
       _expandedTask != null;
 
@@ -2747,6 +2757,7 @@ class _WidgetShellState extends State<WidgetShell>
         s.showCalendar ||
         s.showList ||
         s.showHome ||
+        s.showOverdue ||
         s.showTimer ||
         view == WorkspaceView.thoughts;
     const views = {
@@ -2780,6 +2791,9 @@ class _WidgetShellState extends State<WidgetShell>
           : null,
     );
 
+    // Home and the overdue list it leads to: no one workspace on screen.
+    final homeish = s.showHome || s.showOverdue;
+
     final (moreIcon, moreLabel) = s.showCalendar
         ? (Icons.calendar_month_outlined, 'Calendar')
         : s.showList
@@ -2806,12 +2820,22 @@ class _WidgetShellState extends State<WidgetShell>
         // workspace it would otherwise name is not on screen. Neutral, like
         // the window around the squares.
         DockSegment(
-          icon: s.showHome ? Icons.grid_view_rounded : null,
-          label: s.showHome ? 'Home' : current?.name ?? 'Workspace',
-          fill: s.showHome ? Color.lerp(T.bgSolid, T.text, 0.16)! : ws,
-          ink: s.showHome ? T.text : T.inkOn(ws),
+          icon: s.showOverdue
+              ? Icons.warning_amber_rounded
+              : s.showHome
+              ? Icons.grid_view_rounded
+              : null,
+          label: s.showOverdue
+              ? 'Overdue'
+              : s.showHome
+              ? 'Home'
+              : current?.name ?? 'Workspace',
+          fill: homeish ? Color.lerp(T.bgSolid, T.text, 0.16)! : ws,
+          ink: homeish ? T.text : T.inkOn(ws),
           dimmed: s.showCalendar || s.showList || s.showTimer,
-          semanticLabel: s.showHome
+          semanticLabel: s.showOverdue
+              ? 'Overdue'
+              : s.showHome
               ? 'Home'
               : 'Workspace: ${current?.name ?? ''}',
           // Anything overdue in any workspace: the menu's rows say where.
@@ -2834,8 +2858,32 @@ class _WidgetShellState extends State<WidgetShell>
               DockItem(
                 icon: Icons.grid_view_rounded,
                 label: 'Home',
-                current: s.showHome,
+                current: homeish,
+                overdue: s.overdueTotal,
                 onChoose: _dockToHome,
+                // Settings on its left end, where a workspace has its pen:
+                // home is every workspace, and what is set for all of them
+                // is the app's settings.
+                secondaryIcon: Icons.settings_outlined,
+                secondaryLabel: 'Settings',
+                onSecondary: () {
+                  if (!_settingsOpen) _openSettings();
+                },
+                children: [
+                  DockItem(
+                    icon: Icons.grid_view_rounded,
+                    label: 'Overview',
+                    current: s.showHome,
+                    onChoose: _dockToHome,
+                  ),
+                  DockItem(
+                    icon: Icons.warning_amber_rounded,
+                    label: 'Overdue',
+                    current: s.showOverdue,
+                    overdue: s.overdueTotal,
+                    onChoose: _dockToOverdue,
+                  ),
+                ],
               ),
             DockItem(
               icon: Icons.add_rounded,
@@ -3051,6 +3099,58 @@ class _WidgetShellState extends State<WidgetShell>
     _clearSelection();
     await s.openHome();
   }
+
+  /// Every overdue task, from home's strip or the Home row's submenu.
+  Future<void> _dockToOverdue() async {
+    await _dockClear();
+    if (!mounted) return;
+    _clearSelection();
+    await s.openOverdue();
+  }
+
+  /// The task list [uuid] names, a workspace's or a project's, from anywhere.
+  Future<void> _dockToListOf(String uuid) async {
+    final w = s.workspaceByUuid(uuid);
+    if (w == null) return;
+    if (!w.isProject) return _dockToWorkspace(w);
+    await _dockClear();
+    if (mounted) await _openProject(w);
+  }
+
+  Widget _overdueView() => OverdueView(
+    tasks: s.overdueTasks,
+    onBack: _dockToHome,
+    listOf: (uuid) {
+      final w = s.workspaceByUuid(uuid);
+      if (w == null) return null;
+      final parent = w.isProject ? s.workspaceByUuid(w.parentUuid) : null;
+      return (
+        name: parent == null ? w.name : '${parent.name} › ${w.name}',
+        color: s.colorOf(w),
+      );
+    },
+    onOpenList: _dockToListOf,
+    buildRow: (t, accent, divider) => TaskRow(
+      key: ValueKey('overdue-${t.uuid}'),
+      task: t,
+      accent: accent,
+      divider: divider,
+      stale: s.isStale(t),
+      onComplete: () => s.completeTask(t),
+      onDelete: () => s.deleteTask(t),
+      onFocus: () => _startFocus(t),
+      onSetReminder: (at) => s.setReminder(t, at),
+      // The picker opens on the task's own workspace, as it would on its
+      // list.
+      onPark: (anchor) => _moveTasks([t], anchor, from: t.workspaceUuid),
+      onCopyToList: s.currentList == null ? null : () => s.copyTasksToList([t]),
+      onUnplan: () => s.setTaskEvent(t, null),
+      onOpenAttachments: s.blobs == null ? null : () => _openAttachments(t),
+      onSetPriority: (high) => s.setPriority(t, high),
+      onOpen: () => _openTask(t, accent: accent),
+      swipeable: _layout.touch,
+    ),
+  );
 
   Future<void> _dockToWorkspace(Workspace w) async {
     await _dockClear();
@@ -3514,8 +3614,12 @@ class _WidgetShellState extends State<WidgetShell>
       _moveTasks([t], anchor);
 
   /// The picker, for one task or a selection.
-  Future<void> _moveTasks(List<Task> tasks, RelativeRect anchor) async {
-    final here = s.currentWorkspaceUuid;
+  Future<void> _moveTasks(
+    List<Task> tasks,
+    RelativeRect anchor, {
+    String? from,
+  }) async {
+    final here = from ?? s.currentWorkspaceUuid;
     if (tasks.isEmpty || here == null) return;
     final groups = await s.groupsByWorkspace();
     if (!mounted) return;
@@ -3691,11 +3795,11 @@ class _WidgetShellState extends State<WidgetShell>
   }
 
   /// The same form on a task that already exists, opened from its own text.
-  Future<void> _openTask(Task t) async {
+  Future<void> _openTask(Task t, {Color? accent}) async {
     final draft = await showTaskComposer(
       context,
       existing: t,
-      accent: s.workspaceColor,
+      accent: accent ?? s.workspaceColor,
     );
     if (draft == null || !mounted) return;
     await s.saveTaskDetails(
